@@ -1,0 +1,130 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+env:
+  JAVA_VERSION: '17'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Version
+        id: version
+        run: |
+          # 取最新 tag 的版本号，自动递增 patch
+          LATEST=$(git tag --sort=-v:refname | grep '^v[0-9]' | head -1)
+          if [ -z "$LATEST" ]; then
+            NEXT="v1.0.0"
+          else
+            V=${LATEST#v}
+            MAJOR=$(echo $V | cut -d. -f1)
+            MINOR=$(echo $V | cut -d. -f2)
+            PATCH=$(echo $V | cut -d. -f3)
+            NEXT="v${MAJOR}.${MINOR}.$((PATCH+1))"
+          fi
+          echo "tag=$NEXT" >> $GITHUB_OUTPUT
+          echo "Build version: $NEXT"
+
+      - name: Compile
+        run: |
+          javac -cp "drivers/ojdbc17-23.26.1.0.0.jar:drivers/postgresql-42.7.10.jar" \
+            OracleToPgComplete.java
+
+      - name: Fat JAR
+        run: |
+          mkdir -p fat-jar/drivers
+          # 解压驱动到 fat-jar
+          cd fat-jar
+          jar xf ../drivers/ojdbc17-23.26.1.0.0.jar
+          jar xf ../drivers/postgresql-42.7.10.jar
+          rm -rf META-INF
+          cd ..
+          # 复制主类
+          cp OracleToPgComplete.class OracleToPgComplete\$ColumnInfo.class fat-jar/
+          # 创建 manifest
+          cat > MANIFEST.MF << 'EOF'
+          Manifest-Version: 1.0
+          Main-Class: OracleToPgComplete
+          EOF
+          # 打包 fat JAR
+          jar cfm OracleToPgComplete.jar MANIFEST.MF -C fat-jar .
+
+      - name: Minimal JRE
+        run: |
+          jlink \
+            --module-path "$JAVA_HOME/jmods" \
+            --add-modules java.base,java.sql,java.naming,java.management,java.security.jgss \
+            --output jre \
+            --strip-debug \
+            --no-header-files \
+            --no-man-pages \
+            --compress=zip-6
+
+      - name: Package
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          # 纯 JAR 包
+          zip "data-cube-${VERSION}.zip" OracleToPgComplete.jar
+          # JAR + JRE 包
+          mkdir -p "data-cube-jre/data-cube-${VERSION}"
+          cp OracleToPgComplete.jar "data-cube-jre/data-cube-${VERSION}/"
+          cp -r jre "data-cube-jre/data-cube-${VERSION}/"
+          cp run.sh run.bat "data-cube-jre/data-cube-${VERSION}/"
+          cd data-cube-jre && zip -r "../data-cube-${VERSION}-win64-jre.zip" "data-cube-${VERSION}"
+
+      - name: Create Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}" || true
+          git push origin "${{ steps.version.outputs.tag }}" || true
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Release ${{ steps.version.outputs.tag }}"
+          body: |
+            ## data-cube ${{ steps.version.outputs.tag }}
+
+            | 文件 | 说明 |
+            |------|------|
+            | `data-cube-${{ steps.version.outputs.tag }}.zip` | 纯 JAR（需要本机安装 Java 17+） |
+            | `data-cube-${{ steps.version.outputs.tag }}-win64-jre.zip` | 内置 JRE（无需安装 Java，仅 Windows x64） |
+
+            ### 运行方式
+            ```bash
+            # 纯 JAR 版（需 Java 17+）
+            java -jar OracleToPgComplete.jar
+
+            # 内置 JRE 版（解压后直接运行）
+            ./jre/bin/java -jar OracleToPgComplete.jar
+            ```
+          files: |
+            data-cube-${{ steps.version.outputs.tag }}.zip
+            data-cube-${{ steps.version.outputs.tag }}-win64-jre.zip
+
+      - name: Summary
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          echo "### Release ${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- [纯 JAR](https://github.com/${{ github.repository }}/releases/download/${VERSION}/data-cube-${VERSION}.zip)" >> $GITHUB_STEP_SUMMARY
+          echo "- [内置 JRE](https://github.com/${{ github.repository }}/releases/download/${VERSION}/data-cube-${VERSION}-win64-jre.zip)" >> $GITHUB_STEP_SUMMARY
