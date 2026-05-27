@@ -1,6 +1,6 @@
 @echo off
 if exist "jre" (
-    .\jre\bin\java.exe -jar OracleToPgComplete.jar
+    .\jre\bin\java.exe -jar DataCube.jar
 ) else (
-    java -jar OracleToPgComplete.jar
+    java -jar DataCube.jar
 )

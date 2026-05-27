@@ -44,8 +44,9 @@ jobs:
 
       - name: Compile
         run: |
-          javac -cp "drivers/ojdbc17-23.26.1.0.0.jar:drivers/postgresql-42.7.10.jar" \
-            OracleToPgComplete.java
+          javac -sourcepath src \
+            -cp "drivers/ojdbc17-23.26.1.0.0.jar:drivers/postgresql-42.7.10.jar" \
+            src/com/datacube/*.java
 
       - name: Fat JAR
         run: |
@@ -56,15 +57,13 @@ jobs:
           jar xf ../drivers/postgresql-42.7.10.jar
           rm -rf META-INF
           cd ..
-          # 复制主类
-          cp OracleToPgComplete.class OracleToPgComplete\$ColumnInfo.class fat-jar/
           # 创建 manifest
           cat > MANIFEST.MF << 'EOF'
           Manifest-Version: 1.0
-          Main-Class: OracleToPgComplete
+          Main-Class: com.datacube.DataCube
           EOF
-          # 打包 fat JAR
-          jar cfm OracleToPgComplete.jar MANIFEST.MF -C fat-jar .
+          # 打包 fat JAR（从 src 目录打包，保留包结构）
+          jar cfm DataCube.jar MANIFEST.MF -C src com
 
       - name: Minimal JRE
         run: |
@@ -75,16 +74,16 @@ jobs:
             --strip-debug \
             --no-header-files \
             --no-man-pages \
-            --compress=2
+            --compress=zip-6
 
       - name: Package
         run: |
           VERSION="${{ steps.version.outputs.tag }}"
           # 纯 JAR 包
-          zip "data-cube-${VERSION}.zip" OracleToPgComplete.jar
+          zip "data-cube-${VERSION}.zip" DataCube.jar
           # JAR + JRE 包
           mkdir -p "data-cube-jre/data-cube-${VERSION}"
-          cp OracleToPgComplete.jar "data-cube-jre/data-cube-${VERSION}/"
+          cp DataCube.jar "data-cube-jre/data-cube-${VERSION}/"
           cp -r jre "data-cube-jre/data-cube-${VERSION}/"
           cp run.sh run.bat "data-cube-jre/data-cube-${VERSION}/"
           cd data-cube-jre && zip -r "../data-cube-${VERSION}-win64-jre.zip" "data-cube-${VERSION}"
@@ -112,10 +111,10 @@ jobs:
             ### 运行方式
             ```bash
             # 纯 JAR 版（需 Java 17+）
-            java -jar OracleToPgComplete.jar
+            java -jar DataCube.jar
 
             # 内置 JRE 版（解压后直接运行）
-            ./jre/bin/java -jar OracleToPgComplete.jar
+            ./jre/bin/java -jar DataCube.jar
             ```
           files: |
             data-cube-${{ steps.version.outputs.tag }}.zip

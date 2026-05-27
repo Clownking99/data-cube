@@ -5,4 +5,4 @@ if [ -d "jre" ]; then
 else
     JAVA="java"
 fi
-$JAVA -jar OracleToPgComplete.jar
+$JAVA -jar DataCube.jar
