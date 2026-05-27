@@ -17,7 +17,7 @@ public class OracleExporter {
     private static final int MAX_RETRY = 2;
 
     private final MigrationLogger logger;
-    private int exportThreads = 4;
+    private int maxConcurrency = 20;
     private boolean convertBool = false;
     private Map<String, Map<String, String>> columnCommentsCache = new HashMap<>();
 
@@ -25,7 +25,7 @@ public class OracleExporter {
         this.logger = logger;
     }
 
-    public void setExportThreads(int threads) { this.exportThreads = threads; }
+    public void setMaxConcurrency(int concurrency) { this.maxConcurrency = concurrency; }
     public void setConvertBool(boolean convert) { this.convertBool = convert; }
 
     // ==================== DDL 导出 ====================
@@ -324,10 +324,10 @@ public class OracleExporter {
         return count;
     }
 
-    // ==================== 数据导出（多线程） ====================
+    // ==================== 数据导出（虚拟线程） ====================
 
     public void exportData(Connection conn, String oraUrl, String oraUser, String oraPass, String pgSchema) throws SQLException, IOException {
-        logger.logSection("导出数据：" + oraUser + "（并行 " + exportThreads + " 线程, 超时 " + TABLE_TIMEOUT_SEC + "s/表）");
+        logger.logSection("导出数据：" + oraUser + "（虚拟线程, 并发上限 " + maxConcurrency + ", 超时 " + TABLE_TIMEOUT_SEC + "s/表）");
 
         String dataDir = BASE_DIR + "/" + pgSchema.toLowerCase() + "/data";
         new File(dataDir).mkdirs();
@@ -349,7 +349,7 @@ public class OracleExporter {
         }
 
         int total = tables.size();
-        logger.logInfo("共 " + total + " 张表，启动并行导出...");
+        logger.logInfo("共 " + total + " 张表，启动虚拟线程并行导出...");
 
         AtomicInteger ok = new AtomicInteger(0);
         AtomicInteger empty = new AtomicInteger(0);
@@ -358,46 +358,52 @@ public class OracleExporter {
         AtomicLong totalBytes = new AtomicLong(0);
         AtomicInteger done = new AtomicInteger(0);
 
-        ExecutorService pool = Executors.newFixedThreadPool(exportThreads);
+        Semaphore semaphore = new Semaphore(maxConcurrency);
+        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
         List<Future<?>> futures = new ArrayList<>();
 
         for (String table : tables) {
             futures.add(pool.submit(() -> {
-                boolean success = false;
-                for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
-                    try (Connection threadConn = DriverManager.getConnection(oraUrl, oraUser, oraPass)) {
-                        synchronized (logger) {
-                            logger.logInfo(">> 导出: " + table + (attempt > 1 ? " (重试 " + attempt + ")" : ""));
-                        }
+                semaphore.acquireUninterruptibly();
+                try {
+                    boolean success = false;
+                    for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
+                        try (Connection threadConn = DriverManager.getConnection(oraUrl, oraUser, oraPass)) {
+                            synchronized (logger) {
+                                logger.logInfo(">> 导出: " + table + (attempt > 1 ? " (重试 " + attempt + ")" : ""));
+                            }
 
-                        long[] result = exportTableData(threadConn, oraUser, table, dataDir);
-                        if (result[0] > 0) {
-                            ok.incrementAndGet();
-                            totalRows.addAndGet(result[0]);
-                            totalBytes.addAndGet(result[1]);
-                            synchronized (logger) {
-                                logger.logOk(table + ": " + result[0] + " 行, " + ConsoleLogger.formatBytes(result[1]));
+                            long[] result = exportTableData(threadConn, oraUser, table, dataDir);
+                            if (result[0] > 0) {
+                                ok.incrementAndGet();
+                                totalRows.addAndGet(result[0]);
+                                totalBytes.addAndGet(result[1]);
+                                synchronized (logger) {
+                                    logger.logOk(table + ": " + result[0] + " 行, " + ConsoleLogger.formatBytes(result[1]));
+                                }
+                            } else {
+                                empty.incrementAndGet();
                             }
-                        } else {
-                            empty.incrementAndGet();
-                        }
-                        success = true;
-                        break;
-                    } catch (Exception e) {
-                        String msg = e.getMessage() != null ? e.getMessage() : "unknown";
-                        logger.logToFile("[ERR]   " + table + " (attempt " + attempt + "): " + msg);
-                        if (attempt < MAX_RETRY) {
-                            synchronized (logger) {
-                                logger.logWarn(table + " 失败，" + (TABLE_TIMEOUT_SEC > 0 ? "超时或连接断开，" : "") + "重试中...");
+                            success = true;
+                            break;
+                        } catch (Exception e) {
+                            String msg = e.getMessage() != null ? e.getMessage() : "unknown";
+                            logger.logToFile("[ERR]   " + table + " (attempt " + attempt + "): " + msg);
+                            if (attempt < MAX_RETRY) {
+                                synchronized (logger) {
+                                    logger.logWarn(table + " 失败，重试中...");
+                                }
                             }
                         }
                     }
-                }
-                if (!success) {
-                    fail.incrementAndGet();
-                    synchronized (logger) {
-                        logger.logErr(table + ": " + MAX_RETRY + " 次尝试均失败，跳过");
+                    if (!success) {
+                        fail.incrementAndGet();
+                        synchronized (logger) {
+                            logger.logErr(table + ": " + MAX_RETRY + " 次尝试均失败，跳过");
+                        }
                     }
+                } finally {
+                    semaphore.release();
                 }
 
                 int d = done.incrementAndGet();

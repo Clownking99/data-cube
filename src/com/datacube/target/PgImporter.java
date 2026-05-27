@@ -8,16 +8,23 @@ import java.io.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 
 public class PgImporter {
 
     private static final String BASE_DIR = "pg_migration";
+    private static final int BATCH_SIZE = 1000;
+    private static final int MAX_RETRY = 2;
 
     private final MigrationLogger logger;
+    private int maxConcurrency = 20;
 
     public PgImporter(MigrationLogger logger) {
         this.logger = logger;
     }
+
+    public void setMaxConcurrency(int concurrency) { this.maxConcurrency = concurrency; }
 
     public void importToPg(String pgUrl, String pgUser, String pgPass, String owner, String schema, boolean incremental) throws Exception {
         String mode = incremental ? "增量模式" : "完整模式";
@@ -57,8 +64,8 @@ public class PgImporter {
             logger.logInfo("[4/7] 建索引...");
             execSqlFile(conn, basePath + "/03_indexes.sql");
 
-            logger.logInfo("[5/7] 导入数据...");
-            importData(conn, basePath + "/data", incremental);
+            logger.logInfo("[5/7] 导入数据（虚拟线程, 并发上限 " + maxConcurrency + ", 批大小 " + BATCH_SIZE + "）...");
+            importData(pgUrl, pgUser, pgPass, schema, basePath + "/data", incremental);
 
             logger.logInfo("[6/7] 建约束（主键/唯一）...");
             execSqlFile(conn, basePath + "/04_constraints.sql");
@@ -99,7 +106,9 @@ public class PgImporter {
         }
     }
 
-    private void importData(Connection conn, String dataDir, boolean incremental) throws Exception {
+    // ==================== 数据导入（虚拟线程 + 批量 INSERT） ====================
+
+    private void importData(String pgUrl, String pgUser, String pgPass, String schema, String dataDir, boolean incremental) throws Exception {
         File dir = new File(dataDir);
         if (!dir.exists()) { logger.logWarn("无数据目录: " + dataDir); return; }
 
@@ -107,33 +116,71 @@ public class PgImporter {
         if (files == null || files.length == 0) { logger.logWarn("无数据文件"); return; }
 
         int total = files.length;
-        int ok = 0, fail = 0, skip = 0;
-        long totalRows = 0;
-        List<String> failedTables = new ArrayList<>();
+        logger.logInfo("共 " + total + " 个数据文件，启动虚拟线程并行导入...");
 
-        for (int i = 0; i < total; i++) {
-            try {
-                long rows = execDataFile(conn, files[i], incremental);
-                if (rows == 0 && incremental) skip++;
-                totalRows += rows;
-                ok++;
-            } catch (Exception e) {
-                fail++;
-                String tableName = files[i].getName().replace(".sql", "");
-                failedTables.add(tableName);
-                logger.logErr("导入失败: " + tableName + " - " + e.getMessage());
-                logger.logToFile("[ERR]   " + files[i].getName() + ": " + e.getMessage());
-            }
-            logger.logProgress("导入数据", i + 1, total);
+        AtomicInteger ok = new AtomicInteger(0);
+        AtomicInteger fail = new AtomicInteger(0);
+        AtomicInteger skip = new AtomicInteger(0);
+        AtomicLong totalRows = new AtomicLong(0);
+        AtomicInteger done = new AtomicInteger(0);
+        ConcurrentLinkedQueue<String> failedTables = new ConcurrentLinkedQueue<>();
+
+        Semaphore semaphore = new Semaphore(maxConcurrency);
+        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
+        List<Future<?>> futures = new ArrayList<>();
+
+        for (File file : files) {
+            futures.add(pool.submit(() -> {
+                semaphore.acquireUninterruptibly();
+                try {
+                    String tableName = file.getName().replace(".sql", "");
+                    long rows = 0;
+                    boolean success = false;
+                    for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
+                        try (Connection conn = DriverManager.getConnection(pgUrl, pgUser, pgPass)) {
+                            conn.createStatement().execute("SET search_path TO " + schema);
+                            rows = execDataFileBatch(conn, file, incremental);
+                            if (rows == 0 && incremental) skip.incrementAndGet();
+                            totalRows.addAndGet(rows);
+                            ok.incrementAndGet();
+                            success = true;
+                            break;
+                        } catch (Exception e) {
+                            logger.logToFile("[ERR]   " + tableName + " (attempt " + attempt + "): " + e.getMessage());
+                        }
+                    }
+                    if (!success) {
+                        fail.incrementAndGet();
+                        failedTables.add(file.getName().replace(".sql", ""));
+                        synchronized (logger) {
+                            logger.logErr("导入失败: " + file.getName().replace(".sql", ""));
+                        }
+                    }
+                } finally {
+                    semaphore.release();
+                }
+
+                int d = done.incrementAndGet();
+                logger.logProgress("导入数据", d, total);
+            }));
         }
 
-        logger.logOk("数据导入完成: " + ok + " 个表处理, " + fail + " 个失败, " + skip + " 个跳过(已有数据), 共 " + totalRows + " 行");
+        for (Future<?> f : futures) {
+            try { f.get(1, TimeUnit.HOURS); } catch (Exception ignored) {}
+        }
+        pool.shutdown();
+
+        logger.logOk("数据导入完成: " + ok.get() + " 个表处理, " + fail.get() + " 个失败, "
+                + skip.get() + " 个跳过(已有数据), 共 " + totalRows.get() + " 行");
         if (!failedTables.isEmpty()) {
             logger.logWarn("失败的表 (" + failedTables.size() + "): " + String.join(", ", failedTables));
         }
     }
 
-    private long execDataFile(Connection conn, File file, boolean incremental) throws Exception {
+    /**
+     * 批量执行数据文件，使用 addBatch/executeBatch 替代逐行 execute
+     */
+    private long execDataFileBatch(Connection conn, File file, boolean incremental) throws Exception {
         String tableName = file.getName().replace(".sql", "");
 
         if (incremental) {
@@ -143,9 +190,11 @@ public class PgImporter {
             }
         }
 
+        conn.setAutoCommit(false);
         long rows = 0;
         int errCount = 0;
         String lastErr = null;
+
         try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(file), "UTF-8"), 1024 * 1024);
              Statement stmt = conn.createStatement()) {
             String line;
@@ -154,19 +203,43 @@ public class PgImporter {
                 if (line.isEmpty() || line.startsWith("--")) continue;
                 if (line.endsWith(";")) line = line.substring(0, line.length() - 1).trim();
                 if (line.isEmpty() || !line.toUpperCase().startsWith("INSERT")) continue;
-                try { stmt.execute(line); rows++; }
-                catch (SQLException e) {
-                    errCount++;
-                    lastErr = e.getMessage();
-                    if (errCount <= 3) logger.logToFile("[ERR]   " + tableName + ": " + e.getMessage());
+
+                stmt.addBatch(line);
+                rows++;
+
+                if (rows % BATCH_SIZE == 0) {
+                    try {
+                        stmt.executeBatch();
+                        stmt.clearBatch();
+                        conn.commit();
+                    } catch (SQLException e) {
+                        errCount++;
+                        lastErr = e.getMessage();
+                        if (errCount <= 3) logger.logToFile("[ERR]   " + tableName + ": " + e.getMessage());
+                        conn.rollback();
+                    }
                 }
             }
+            // 执行剩余的批次
+            try {
+                stmt.executeBatch();
+                stmt.clearBatch();
+                conn.commit();
+            } catch (SQLException e) {
+                errCount++;
+                lastErr = e.getMessage();
+                if (errCount <= 3) logger.logToFile("[ERR]   " + tableName + ": " + e.getMessage());
+                conn.rollback();
+            }
         }
+
         if (rows == 0 && errCount > 0) {
-            throw new SQLException(tableName + ": 全部 " + errCount + " 条 INSERT 失败, 最后错误: " + lastErr);
+            throw new SQLException(tableName + ": 全部 INSERT 失败, 最后错误: " + lastErr);
         }
         return rows;
     }
+
+    // ==================== SQL 文件执行 ====================
 
     private int fixMissing(Connection conn, String schema, String scriptPath) throws Exception {
         File scriptFile = new File(scriptPath);

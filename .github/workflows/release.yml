@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 env:
-  JAVA_VERSION: '17'
+  JAVA_VERSION: '21'
 
 jobs:
   build:
@@ -77,7 +77,7 @@ jobs:
             --strip-debug \
             --no-header-files \
             --no-man-pages \
-            --compress=2
+            --compress=zip-6
 
       - name: Package
         run: |
@@ -108,12 +108,12 @@ jobs:
 
             | 文件 | 说明 |
             |------|------|
-            | `data-cube-${{ steps.version.outputs.tag }}.zip` | 纯 JAR（需要本机安装 Java 17+） |
+            | `data-cube-${{ steps.version.outputs.tag }}.zip` | 纯 JAR（需要本机安装 Java 21+） |
             | `data-cube-${{ steps.version.outputs.tag }}-win64-jre.zip` | 内置 JRE（无需安装 Java，仅 Windows x64） |
 
             ### 运行方式
             ```bash
-            # 纯 JAR 版（需 Java 17+）
+            # 纯 JAR 版（需 Java 21+）
             java -jar DataCube.jar
 
             # 内置 JRE 版（解压后直接运行）

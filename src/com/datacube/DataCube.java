@@ -33,10 +33,10 @@ public class DataCube {
 
             // 导出配置
             logger.logSection("第三步：导出配置");
-            int exportThreads = 4;
-            String threadsStr = prompter.prompt("并行线程数", "4", "建议 2-8，网络不稳定可设为 1");
-            try { exportThreads = Integer.parseInt(threadsStr); } catch (Exception e) { exportThreads = 4; }
-            if (exportThreads < 1) exportThreads = 1;
+            int maxConcurrency = 20;
+            String concurrencyStr = prompter.prompt("并发上限", "20", "虚拟线程数，建议 10-50，网络不稳定可设低");
+            try { maxConcurrency = Integer.parseInt(concurrencyStr); } catch (Exception e) { maxConcurrency = 20; }
+            if (maxConcurrency < 1) maxConcurrency = 1;
 
             String boolStr = prompter.prompt("是否自动转换布尔值(0/1→TRUE/FALSE)", "n", "仅当字段注释包含\"是否/true/false\"等关键词时转换 (y/n)");
             boolean convertBool = "y".equalsIgnoreCase(boolStr) || "yes".equalsIgnoreCase(boolStr);
@@ -44,7 +44,7 @@ public class DataCube {
             else logger.logInfo("布尔转换: 关闭（0/1 保持原值）");
 
             logger.logInfo("Oracle 用户: " + oraUser + " → PG Schema: " + pgSchema);
-            logger.logInfo("并行线程: " + exportThreads);
+            logger.logInfo("并发上限: " + maxConcurrency);
 
             // 加载驱动
             Class.forName("oracle.jdbc.driver.OracleDriver");
@@ -103,10 +103,12 @@ public class DataCube {
 
             // 初始化模块（注入 logger）
             OracleExporter exporter = new OracleExporter(logger);
-            exporter.setExportThreads(exportThreads);
+            exporter.setMaxConcurrency(maxConcurrency);
             exporter.setConvertBool(convertBool);
 
             PgImporter importer = new PgImporter(logger);
+            importer.setMaxConcurrency(maxConcurrency);
+
             PgVerifier verifier = new PgVerifier(logger);
 
             // 主菜单
@@ -116,7 +118,7 @@ public class DataCube {
                 System.out.println("  功能菜单");
                 logger.logLine();
                 System.out.println("  1. 导出 DDL（表/序列/索引/约束/函数）");
-                System.out.println("  2. 导出数据（全量，并行 " + exportThreads + " 线程）");
+                System.out.println("  2. 导出数据（全量，虚拟线程并发 " + maxConcurrency + "）");
                 System.out.println("  3. 导入到 PostgreSQL（完整模式 - 先清空再导入）");
                 System.out.println("  4. 导入到 PostgreSQL（增量模式 - 仅补充缺失）");
                 System.out.println("  5. 一键全部（导出DDL + 导出数据 + 增量导入）");
