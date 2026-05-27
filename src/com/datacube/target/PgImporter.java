@@ -178,7 +178,8 @@ public class PgImporter {
     }
 
     /**
-     * 批量执行数据文件，使用 addBatch/executeBatch 替代逐行 execute
+     * 批量执行数据文件，使用 addBatch/executeBatch 替代逐行 execute。
+     * 流式逐行读取，每 BATCH_SIZE 条提交一次，始终 clearBatch 防止内存堆积。
      */
     private long execDataFileBatch(Connection conn, File file, boolean incremental) throws Exception {
         String tableName = file.getName().replace(".sql", "");
@@ -192,8 +193,7 @@ public class PgImporter {
 
         conn.setAutoCommit(false);
         long rows = 0;
-        int errCount = 0;
-        String lastErr = null;
+        int batchCount = 0;
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(file), "UTF-8"), 1024 * 1024);
              Statement stmt = conn.createStatement()) {
@@ -205,38 +205,37 @@ public class PgImporter {
                 if (line.isEmpty() || !line.toUpperCase().startsWith("INSERT")) continue;
 
                 stmt.addBatch(line);
+                batchCount++;
                 rows++;
 
-                if (rows % BATCH_SIZE == 0) {
-                    try {
-                        stmt.executeBatch();
-                        stmt.clearBatch();
-                        conn.commit();
-                    } catch (SQLException e) {
-                        errCount++;
-                        lastErr = e.getMessage();
-                        if (errCount <= 3) logger.logToFile("[ERR]   " + tableName + ": " + e.getMessage());
-                        conn.rollback();
-                    }
+                if (batchCount >= BATCH_SIZE) {
+                    flushBatch(conn, stmt, tableName);
+                    batchCount = 0;
                 }
             }
             // 执行剩余的批次
-            try {
-                stmt.executeBatch();
-                stmt.clearBatch();
-                conn.commit();
-            } catch (SQLException e) {
-                errCount++;
-                lastErr = e.getMessage();
-                if (errCount <= 3) logger.logToFile("[ERR]   " + tableName + ": " + e.getMessage());
-                conn.rollback();
+            if (batchCount > 0) {
+                flushBatch(conn, stmt, tableName);
             }
         }
 
-        if (rows == 0 && errCount > 0) {
-            throw new SQLException(tableName + ": 全部 INSERT 失败, 最后错误: " + lastErr);
-        }
         return rows;
+    }
+
+    /**
+     * 执行并清空当前批次，失败时回滚但始终 clearBatch 释放内存
+     */
+    private void flushBatch(Connection conn, Statement stmt, String tableName) throws SQLException {
+        try {
+            stmt.executeBatch();
+            conn.commit();
+        } catch (SQLException e) {
+            logger.logToFile("[ERR]   " + tableName + ": " + e.getMessage());
+            try { conn.rollback(); } catch (SQLException ignored) {}
+            throw e;
+        } finally {
+            stmt.clearBatch();
+        }
     }
 
     // ==================== SQL 文件执行 ====================
