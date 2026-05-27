@@ -147,7 +147,7 @@ java -jar DataCube.jar
 
 | 包 | 说明 |
 |---|---|
-| `data-cube-vX.X.X.zip` | 纯 JAR（需本机安装 Java 17+） |
+| `data-cube-vX.X.X.zip` | 纯 JAR（需本机安装 Java 21+） |
 | `data-cube-vX.X.X-win64-jre.zip` | 内置 JRE（无需安装 Java，仅 Windows x64） |
 
 驱动已内置在 JAR 中，无需额外下载。
