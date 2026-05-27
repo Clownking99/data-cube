@@ -1,12 +1,9 @@
-package com.datacube;
+package com.datacube.core;
 
 import java.util.Map;
 
 public class TypeConverter {
 
-    /**
-     * Oracle 数据类型 → PostgreSQL 数据类型
-     */
     public static String convertType(String type, int len, int prec, int scale) {
         switch (type) {
             case "VARCHAR2": case "NVARCHAR2": return "VARCHAR(" + len + ")";
@@ -27,18 +24,12 @@ public class TypeConverter {
         }
     }
 
-    /**
-     * Oracle 默认值 → PostgreSQL 默认值
-     */
     public static String convertDefault(String v) {
         if ("SYSDATE".equalsIgnoreCase(v) || "SYSTIMESTAMP".equalsIgnoreCase(v)) return "CURRENT_TIMESTAMP";
         if (v.startsWith("SYS_GUID()")) return "gen_random_uuid()";
         return v;
     }
 
-    /**
-     * 判断字段注释是否暗示布尔类型
-     */
     public static boolean isBoolComment(Map<String, Map<String, String>> commentsCache, String table, String colName) {
         Map<String, String> cols = commentsCache.get(table);
         if (cols == null) return false;
@@ -52,9 +43,6 @@ public class TypeConverter {
         return false;
     }
 
-    /**
-     * 转义 DDL 注释中的块注释符号
-     */
     public static String escapeComment(String s) {
         if (s == null) return "";
         return s.replace("*/", "* /").replace("/*", "/ *");

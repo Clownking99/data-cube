@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "编译..."
 javac -sourcepath src -cp "drivers/ojdbc17-23.26.1.0.0.jar;drivers/postgresql-42.7.10.jar" \
-    src/com/datacube/*.java
+    src/com/datacube/*.java src/com/datacube/*/*.java
 if [ $? -ne 0 ]; then
     echo "编译失败"
     exit 1

@@ -1,4 +1,7 @@
-package com.datacube;
+package com.datacube.source;
+
+import com.datacube.cli.ConsoleLogger;
+import com.datacube.core.*;
 
 import java.io.*;
 import java.sql.*;
@@ -13,9 +16,14 @@ public class OracleExporter {
     private static final int TABLE_TIMEOUT_SEC = 600;
     private static final int MAX_RETRY = 2;
 
+    private final MigrationLogger logger;
     private int exportThreads = 4;
     private boolean convertBool = false;
     private Map<String, Map<String, String>> columnCommentsCache = new HashMap<>();
+
+    public OracleExporter(MigrationLogger logger) {
+        this.logger = logger;
+    }
 
     public void setExportThreads(int threads) { this.exportThreads = threads; }
     public void setConvertBool(boolean convert) { this.convertBool = convert; }
@@ -23,8 +31,7 @@ public class OracleExporter {
     // ==================== DDL 导出 ====================
 
     public void exportDDL(Connection conn, String owner, String pgSchema) throws SQLException, IOException {
-        ConsoleLogger.startTimer();
-        ConsoleLogger.logSection("导出 DDL：" + owner + " → " + pgSchema);
+        logger.logSection("导出 DDL：" + owner + " → " + pgSchema);
 
         String outputDir = BASE_DIR + "/" + pgSchema;
         new File(outputDir).mkdirs();
@@ -38,8 +45,7 @@ public class OracleExporter {
         stats.put("包",            exportPackages(conn, owner, outputDir));
         stats.put("触发器",        exportTriggers(conn, owner, outputDir));
 
-        ConsoleLogger.logSummary("DDL 导出统计 (" + ConsoleLogger.elapsed() + ")", stats);
-        ConsoleLogger.logOk("脚本已输出到 " + outputDir + "/");
+        logger.logOk("脚本已输出到 " + outputDir + "/");
     }
 
     // ==================== 序列 ====================
@@ -77,7 +83,7 @@ public class OracleExporter {
             }
         }
         w.close();
-        ConsoleLogger.logOk("序列: " + count + " 个");
+        logger.logOk("序列: " + count + " 个");
         return count;
     }
 
@@ -107,10 +113,10 @@ public class OracleExporter {
         int total = tables.size();
         for (int i = 0; i < total; i++) {
             writeTable(conn, owner, tables.get(i), w, tableComments, colComments);
-            ConsoleLogger.logProgress("导出表结构", i + 1, total);
+            logger.logProgress("导出表结构", i + 1, total);
         }
         w.close();
-        ConsoleLogger.logOk("表: " + total + " 个");
+        logger.logOk("表: " + total + " 个");
         return total;
     }
 
@@ -194,7 +200,7 @@ public class OracleExporter {
             }
         }
         w.close();
-        ConsoleLogger.logOk("索引: " + count + " 个");
+        logger.logOk("索引: " + count + " 个");
         return count;
     }
 
@@ -226,7 +232,7 @@ public class OracleExporter {
             }
         }
         w.close();
-        ConsoleLogger.logOk("约束: " + count + " 个");
+        logger.logOk("约束: " + count + " 个");
         return count;
     }
 
@@ -250,7 +256,7 @@ public class OracleExporter {
             }
         }
         w.close();
-        ConsoleLogger.logOk("存储过程/函数: " + count + " 个");
+        logger.logOk("存储过程/函数: " + count + " 个");
         return count;
     }
 
@@ -274,7 +280,7 @@ public class OracleExporter {
             }
         }
         w.close();
-        ConsoleLogger.logOk("包: " + count + " 个");
+        logger.logOk("包: " + count + " 个");
         return count;
     }
 
@@ -314,15 +320,14 @@ public class OracleExporter {
             }
         }
         w.close();
-        ConsoleLogger.logOk("触发器: " + count + " 个");
+        logger.logOk("触发器: " + count + " 个");
         return count;
     }
 
     // ==================== 数据导出（多线程） ====================
 
     public void exportData(Connection conn, String oraUrl, String oraUser, String oraPass, String pgSchema) throws SQLException, IOException {
-        ConsoleLogger.startTimer();
-        ConsoleLogger.logSection("导出数据：" + oraUser + "（并行 " + exportThreads + " 线程, 超时 " + TABLE_TIMEOUT_SEC + "s/表）");
+        logger.logSection("导出数据：" + oraUser + "（并行 " + exportThreads + " 线程, 超时 " + TABLE_TIMEOUT_SEC + "s/表）");
 
         String dataDir = BASE_DIR + "/" + pgSchema.toLowerCase() + "/data";
         new File(dataDir).mkdirs();
@@ -344,7 +349,7 @@ public class OracleExporter {
         }
 
         int total = tables.size();
-        ConsoleLogger.logInfo("共 " + total + " 张表，启动并行导出...");
+        logger.logInfo("共 " + total + " 张表，启动并行导出...");
 
         AtomicInteger ok = new AtomicInteger(0);
         AtomicInteger empty = new AtomicInteger(0);
@@ -361,9 +366,8 @@ public class OracleExporter {
                 boolean success = false;
                 for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
                     try (Connection threadConn = DriverManager.getConnection(oraUrl, oraUser, oraPass)) {
-                        synchronized (System.out) {
-                            System.out.println();
-                            ConsoleLogger.logInfo(">> 导出: " + table + (attempt > 1 ? " (重试 " + attempt + ")" : ""));
+                        synchronized (logger) {
+                            logger.logInfo(">> 导出: " + table + (attempt > 1 ? " (重试 " + attempt + ")" : ""));
                         }
 
                         long[] result = exportTableData(threadConn, oraUser, table, dataDir);
@@ -371,9 +375,8 @@ public class OracleExporter {
                             ok.incrementAndGet();
                             totalRows.addAndGet(result[0]);
                             totalBytes.addAndGet(result[1]);
-                            synchronized (System.out) {
-                                System.out.println();
-                                ConsoleLogger.logOk(table + ": " + result[0] + " 行, " + ConsoleLogger.formatBytes(result[1]));
+                            synchronized (logger) {
+                                logger.logOk(table + ": " + result[0] + " 行, " + ConsoleLogger.formatBytes(result[1]));
                             }
                         } else {
                             empty.incrementAndGet();
@@ -382,25 +385,23 @@ public class OracleExporter {
                         break;
                     } catch (Exception e) {
                         String msg = e.getMessage() != null ? e.getMessage() : "unknown";
-                        ConsoleLogger.logToFile("[ERR]   " + table + " (attempt " + attempt + "): " + msg);
+                        logger.logToFile("[ERR]   " + table + " (attempt " + attempt + "): " + msg);
                         if (attempt < MAX_RETRY) {
-                            synchronized (System.out) {
-                                System.out.println();
-                                ConsoleLogger.logWarn(table + " 失败，" + (TABLE_TIMEOUT_SEC > 0 ? "超时或连接断开，" : "") + "重试中...");
+                            synchronized (logger) {
+                                logger.logWarn(table + " 失败，" + (TABLE_TIMEOUT_SEC > 0 ? "超时或连接断开，" : "") + "重试中...");
                             }
                         }
                     }
                 }
                 if (!success) {
                     fail.incrementAndGet();
-                    synchronized (System.out) {
-                        System.out.println();
-                        ConsoleLogger.logErr(table + ": " + MAX_RETRY + " 次尝试均失败，跳过");
+                    synchronized (logger) {
+                        logger.logErr(table + ": " + MAX_RETRY + " 次尝试均失败，跳过");
                     }
                 }
 
                 int d = done.incrementAndGet();
-                ConsoleLogger.logProgress("导出进度", d, total);
+                logger.logProgress("导出进度", d, total);
             }));
         }
 
@@ -415,12 +416,9 @@ public class OracleExporter {
         stats.put("失败", fail.get());
         stats.put("总行数", (int) totalRows.get());
         stats.put("总大小", ConsoleLogger.formatBytes(totalBytes.get()));
-        ConsoleLogger.logSummary("数据导出统计 (" + ConsoleLogger.elapsed() + ")", stats);
+        logger.logSummary("数据导出统计", stats);
     }
 
-    /**
-     * 导出单张表的数据，返回 [行数, 文件大小]
-     */
     private long[] exportTableData(Connection conn, String owner, String table, String dataDir) throws SQLException, IOException {
         List<ColumnInfo> columns = getColumns(conn, owner, table);
         if (columns.isEmpty()) return new long[]{0, 0};
@@ -461,7 +459,7 @@ public class OracleExporter {
 
     // ==================== 元数据查询 ====================
 
-    public Map<String, String> getTableComments(Connection conn, String owner) throws SQLException {
+    private Map<String, String> getTableComments(Connection conn, String owner) throws SQLException {
         Map<String, String> m = new HashMap<>();
         try (PreparedStatement ps = conn.prepareStatement(
                 "SELECT TABLE_NAME, COMMENTS FROM ALL_TAB_COMMENTS WHERE OWNER = ? AND COMMENTS IS NOT NULL")) {
@@ -473,7 +471,7 @@ public class OracleExporter {
         return m;
     }
 
-    public Map<String, Map<String, String>> getColumnComments(Connection conn, String owner) throws SQLException {
+    private Map<String, Map<String, String>> getColumnComments(Connection conn, String owner) throws SQLException {
         Map<String, Map<String, String>> m = new HashMap<>();
         try (PreparedStatement ps = conn.prepareStatement(
                 "SELECT TABLE_NAME, COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS WHERE OWNER = ? AND COMMENTS IS NOT NULL")) {

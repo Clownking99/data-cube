@@ -1,4 +1,4 @@
-package com.datacube;
+package com.datacube.core;
 
 import java.io.PrintWriter;
 import java.sql.ResultSet;
@@ -12,9 +12,6 @@ import java.util.Map;
 
 public class SqlUtils {
 
-    /**
-     * 生成 INSERT INTO 语句
-     */
     public static String insertSql(String table, List<ColumnInfo> cols, ResultSet rs,
                                    boolean convertBool, Map<String, Map<String, String>> commentsCache) throws SQLException {
         StringBuilder sb = new StringBuilder("INSERT INTO " + table.toLowerCase() + " (");
@@ -31,9 +28,6 @@ public class SqlUtils {
         return sb.toString();
     }
 
-    /**
-     * 将 ResultSet 中的列值转为 SQL 字面量
-     */
     public static String colVal(ResultSet rs, ColumnInfo col, boolean convertBool,
                                 Map<String, Map<String, String>> commentsCache) throws SQLException {
         Object val = rs.getObject(col.name);
@@ -71,9 +65,6 @@ public class SqlUtils {
         }
     }
 
-    /**
-     * 字符串转义为 SQL 字面量（含单引号包裹）
-     */
     public static String escapeStr(String s) {
         if (s == null) return "NULL";
         return "'" + s.replace("\\", "\\\\").replace("'", "''")
@@ -81,16 +72,10 @@ public class SqlUtils {
                 .replace("\t", "\\t").replace("\0", "") + "'";
     }
 
-    /**
-     * SQL 字符串转义（不含单引号包裹，用于 COMMENT ON）
-     */
     public static String escapeSql(String s) {
         return s != null ? s.replace("\\", "\\\\").replace("'", "''") : "";
     }
 
-    /**
-     * 分割 SQL 语句（支持 $$ 美元引用）
-     */
     public static List<String> splitSql(String sql) {
         List<String> stmts = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
@@ -133,9 +118,6 @@ public class SqlUtils {
         return stmts;
     }
 
-    /**
-     * 写入 SQL 文件头
-     */
     public static void header(PrintWriter w, String title) {
         w.println("-- ============================================");
         w.println("-- Oracle → PostgreSQL 迁移脚本");
@@ -145,9 +127,6 @@ public class SqlUtils {
         w.println();
     }
 
-    /**
-     * 列名拼接（小写，逗号分隔）
-     */
     public static String joinLower(List<String> list) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < list.size(); i++) {
