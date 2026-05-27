@@ -46,24 +46,27 @@ jobs:
         run: |
           javac -sourcepath src \
             -cp "drivers/ojdbc17-23.26.1.0.0.jar:drivers/postgresql-42.7.10.jar" \
-            src/com/datacube/*.java
+            src/com/datacube/*.java src/com/datacube/*/*.java
 
       - name: Fat JAR
         run: |
-          mkdir -p fat-jar/drivers
+          mkdir -p fat-jar
           # 解压驱动到 fat-jar
           cd fat-jar
           jar xf ../drivers/ojdbc17-23.26.1.0.0.jar
           jar xf ../drivers/postgresql-42.7.10.jar
           rm -rf META-INF
           cd ..
+          # 复制编译后的 class 文件（从 src 目录，保留包结构）
+          cp -r src/com fat-jar/
+          find fat-jar/com -name "*.java" -delete
           # 创建 manifest
           cat > MANIFEST.MF << 'EOF'
           Manifest-Version: 1.0
           Main-Class: com.datacube.DataCube
           EOF
-          # 打包 fat JAR（从 src 目录打包，保留包结构）
-          jar cfm DataCube.jar MANIFEST.MF -C src com
+          # 打包 fat JAR
+          jar cfm DataCube.jar MANIFEST.MF -C fat-jar .
 
       - name: Minimal JRE
         run: |

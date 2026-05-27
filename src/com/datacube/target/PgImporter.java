@@ -1,4 +1,8 @@
-package com.datacube;
+package com.datacube.target;
+
+import com.datacube.cli.ConsoleLogger;
+import com.datacube.core.MigrationLogger;
+import com.datacube.core.SqlUtils;
 
 import java.io.*;
 import java.nio.file.*;
@@ -9,10 +13,15 @@ public class PgImporter {
 
     private static final String BASE_DIR = "pg_migration";
 
+    private final MigrationLogger logger;
+
+    public PgImporter(MigrationLogger logger) {
+        this.logger = logger;
+    }
+
     public void importToPg(String pgUrl, String pgUser, String pgPass, String owner, String schema, boolean incremental) throws Exception {
-        ConsoleLogger.startTimer();
         String mode = incremental ? "增量模式" : "完整模式";
-        ConsoleLogger.logSection("导入到 PostgreSQL：" + owner + " → " + schema + "（" + mode + "）");
+        logger.logSection("导入到 PostgreSQL：" + owner + " → " + schema + "（" + mode + "）");
 
         String basePath = BASE_DIR + "/" + schema.toLowerCase();
 
@@ -30,31 +39,31 @@ public class PgImporter {
             int beforeTableCount = existingTables.size();
 
             if (incremental) {
-                ConsoleLogger.logInfo("[1/7] 建表（增量: 仅创建缺失表）...");
+                logger.logInfo("[1/7] 建表（增量: 仅创建缺失表）...");
                 execSqlFileIncremental(conn, basePath + "/02_tables.sql", existingTables);
             } else {
-                ConsoleLogger.logInfo("[1/7] 建表（完整模式）...");
+                logger.logInfo("[1/7] 建表（完整模式）...");
                 execSqlFile(conn, basePath + "/02_tables.sql");
             }
 
-            ConsoleLogger.logInfo("[2/7] 检测并修复缺失表...");
+            logger.logInfo("[2/7] 检测并修复缺失表...");
             int fixed = fixMissing(conn, schema, basePath + "/02_tables.sql");
-            if (fixed > 0) ConsoleLogger.logOk("修复了 " + fixed + " 个缺失表");
-            else ConsoleLogger.logOk("无缺失表");
+            if (fixed > 0) logger.logOk("修复了 " + fixed + " 个缺失表");
+            else logger.logOk("无缺失表");
 
-            ConsoleLogger.logInfo("[3/7] 建序列...");
+            logger.logInfo("[3/7] 建序列...");
             execSqlFile(conn, basePath + "/01_sequences.sql");
 
-            ConsoleLogger.logInfo("[4/7] 建索引...");
+            logger.logInfo("[4/7] 建索引...");
             execSqlFile(conn, basePath + "/03_indexes.sql");
 
-            ConsoleLogger.logInfo("[5/7] 导入数据...");
+            logger.logInfo("[5/7] 导入数据...");
             importData(conn, basePath + "/data", incremental);
 
-            ConsoleLogger.logInfo("[6/7] 建约束（主键/唯一）...");
+            logger.logInfo("[6/7] 建约束（主键/唯一）...");
             execSqlFile(conn, basePath + "/04_constraints.sql");
 
-            ConsoleLogger.logInfo("[7/7] 建触发器...");
+            logger.logInfo("[7/7] 建触发器...");
             execSqlFile(conn, basePath + "/07_triggers.sql");
 
             rs = conn.createStatement().executeQuery(
@@ -66,7 +75,7 @@ public class PgImporter {
             stats.put("导入前表数", beforeTableCount);
             stats.put("导入后表数", afterTableCount);
             stats.put("新增表数", afterTableCount - beforeTableCount);
-            ConsoleLogger.logSummary("导入统计 (" + ConsoleLogger.elapsed() + ")", stats);
+            logger.logSummary("导入统计", stats);
         }
     }
 
@@ -78,13 +87,13 @@ public class PgImporter {
             try (ResultSet rs = ps.executeQuery()) { schemaExists = rs.next(); }
         }
         if (!schemaExists) {
-            ConsoleLogger.logInfo("Schema \"" + schema + "\" 不存在，正在创建...");
+            logger.logInfo("Schema \"" + schema + "\" 不存在，正在创建...");
             try (Statement stmt = conn.createStatement()) {
                 stmt.execute("CREATE SCHEMA " + schema);
-                ConsoleLogger.logOk("Schema \"" + schema + "\" 创建成功");
+                logger.logOk("Schema \"" + schema + "\" 创建成功");
             } catch (SQLException e) {
-                ConsoleLogger.logErr("创建 Schema 失败: " + e.getMessage());
-                ConsoleLogger.logToFile(ConsoleLogger.stackTrace(e));
+                logger.logErr("创建 Schema 失败: " + e.getMessage());
+                logger.logToFile(ConsoleLogger.stackTrace(e));
                 throw e;
             }
         }
@@ -92,10 +101,10 @@ public class PgImporter {
 
     private void importData(Connection conn, String dataDir, boolean incremental) throws Exception {
         File dir = new File(dataDir);
-        if (!dir.exists()) { ConsoleLogger.logWarn("无数据目录: " + dataDir); return; }
+        if (!dir.exists()) { logger.logWarn("无数据目录: " + dataDir); return; }
 
         File[] files = dir.listFiles((d, n) -> n.endsWith(".sql"));
-        if (files == null || files.length == 0) { ConsoleLogger.logWarn("无数据文件"); return; }
+        if (files == null || files.length == 0) { logger.logWarn("无数据文件"); return; }
 
         int total = files.length;
         int ok = 0, fail = 0, skip = 0;
@@ -112,15 +121,15 @@ public class PgImporter {
                 fail++;
                 String tableName = files[i].getName().replace(".sql", "");
                 failedTables.add(tableName);
-                ConsoleLogger.logErr("导入失败: " + tableName + " - " + e.getMessage());
-                ConsoleLogger.logToFile("[ERR]   " + files[i].getName() + ": " + e.getMessage());
+                logger.logErr("导入失败: " + tableName + " - " + e.getMessage());
+                logger.logToFile("[ERR]   " + files[i].getName() + ": " + e.getMessage());
             }
-            ConsoleLogger.logProgress("导入数据", i + 1, total);
+            logger.logProgress("导入数据", i + 1, total);
         }
 
-        ConsoleLogger.logOk("数据导入完成: " + ok + " 个表处理, " + fail + " 个失败, " + skip + " 个跳过(已有数据), 共 " + totalRows + " 行");
+        logger.logOk("数据导入完成: " + ok + " 个表处理, " + fail + " 个失败, " + skip + " 个跳过(已有数据), 共 " + totalRows + " 行");
         if (!failedTables.isEmpty()) {
-            ConsoleLogger.logWarn("失败的表 (" + failedTables.size() + "): " + String.join(", ", failedTables));
+            logger.logWarn("失败的表 (" + failedTables.size() + "): " + String.join(", ", failedTables));
         }
     }
 
@@ -149,7 +158,7 @@ public class PgImporter {
                 catch (SQLException e) {
                     errCount++;
                     lastErr = e.getMessage();
-                    if (errCount <= 3) ConsoleLogger.logToFile("[ERR]   " + tableName + ": " + e.getMessage());
+                    if (errCount <= 3) logger.logToFile("[ERR]   " + tableName + ": " + e.getMessage());
                 }
             }
         }
@@ -162,7 +171,7 @@ public class PgImporter {
     private int fixMissing(Connection conn, String schema, String scriptPath) throws Exception {
         File scriptFile = new File(scriptPath);
         if (!scriptFile.exists()) {
-            ConsoleLogger.logWarn("DDL 文件不存在: " + scriptPath);
+            logger.logWarn("DDL 文件不存在: " + scriptPath);
             return 0;
         }
 
@@ -184,7 +193,7 @@ public class PgImporter {
         missing.removeAll(dbTables);
         if (missing.isEmpty()) return 0;
 
-        ConsoleLogger.logWarn("发现 " + missing.size() + " 个缺失表: " + String.join(", ", missing));
+        logger.logWarn("发现 " + missing.size() + " 个缺失表: " + String.join(", ", missing));
 
         Map<String, String> ddlMap = new HashMap<>();
         List<String> lines = Files.readAllLines(scriptFile.toPath());
@@ -217,13 +226,13 @@ public class PgImporter {
         try (Statement stmt = conn.createStatement()) {
             for (String table : missing) {
                 String ddl = ddlMap.get(table);
-                if (ddl == null) { ConsoleLogger.logWarn("未找到DDL: " + table); continue; }
+                if (ddl == null) { logger.logWarn("未找到DDL: " + table); continue; }
                 try {
                     stmt.execute(fixDDL(ddl));
                     fixed++;
-                    ConsoleLogger.logOk("修复: " + table);
+                    logger.logOk("修复: " + table);
                 } catch (SQLException e) {
-                    ConsoleLogger.logErr("修复失败: " + table + " - " + e.getMessage().substring(0, Math.min(60, e.getMessage().length())));
+                    logger.logErr("修复失败: " + table + " - " + e.getMessage().substring(0, Math.min(60, e.getMessage().length())));
                 }
             }
         }
@@ -244,7 +253,7 @@ public class PgImporter {
                 catch (SQLException e) { if (!e.getMessage().contains("already exists")) err++; }
             }
         }
-        ConsoleLogger.logOk("执行 " + ok + " 条语句" + (err > 0 ? ", " + err + " 条错误/跳过" : ""));
+        logger.logOk("执行 " + ok + " 条语句" + (err > 0 ? ", " + err + " 条错误/跳过" : ""));
     }
 
     private void execSqlFileIncremental(Connection conn, String path, Set<String> existingTables) throws Exception {
@@ -267,11 +276,11 @@ public class PgImporter {
                 try { stmt.execute(s); created++; }
                 catch (SQLException e) {
                     if (!e.getMessage().contains("already exists"))
-                        ConsoleLogger.logErr(e.getMessage().substring(0, Math.min(60, e.getMessage().length())));
+                        logger.logErr(e.getMessage().substring(0, Math.min(60, e.getMessage().length())));
                 }
             }
         }
-        ConsoleLogger.logOk("新建 " + created + " 个对象" + (skipped > 0 ? ", 跳过 " + skipped + " 个已存在" : ""));
+        logger.logOk("新建 " + created + " 个对象" + (skipped > 0 ? ", 跳过 " + skipped + " 个已存在" : ""));
     }
 
     private String fixDDL(String ddl) {
