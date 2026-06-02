@@ -11,6 +11,25 @@ import java.sql.*;
 public class DataCube {
 
     public static void main(String[] args) {
+        // --gui 模式启动 JavaFX 界面（纯反射，编译时不依赖 JavaFX）
+        if (args.length > 0 && "--gui".equals(args[0])) {
+            try {
+                Class<?> appClass = Class.forName("javafx.application.Application");
+                Class<?> fxClass = Class.forName("com.datacube.DataCubeFx");
+                java.lang.reflect.Method launch = appClass.getMethod("launch", Class.class, String[].class);
+                launch.invoke(null, fxClass, args);
+            } catch (ClassNotFoundException e) {
+                System.err.println("  [ERR] JavaFX 未找到。请将 JavaFX SDK 放入 lib/ 目录。");
+                System.err.println("  下载地址: https://gluonhq.com/products/javafx/");
+            } catch (NoClassDefFoundError e) {
+                System.err.println("  [ERR] JavaFX 未找到。请将 JavaFX SDK 放入 lib/ 目录。");
+                System.err.println("  下载地址: https://gluonhq.com/products/javafx/");
+            } catch (Exception e) {
+                System.err.println("  [ERR] GUI 启动失败: " + e.getMessage());
+            }
+            return;
+        }
+
         try {
             printBanner();
 

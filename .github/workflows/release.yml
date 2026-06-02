@@ -9,6 +9,7 @@ permissions:
 
 env:
   JAVA_VERSION: '21'
+  JAVAFX_VERSION: '21.0.7'
 
 jobs:
   build:
@@ -28,7 +29,6 @@ jobs:
       - name: Version
         id: version
         run: |
-          # 取最新 tag 的版本号，自动递增 patch
           LATEST=$(git tag --sort=-v:refname | grep '^v[0-9]' | head -1)
           if [ -z "$LATEST" ]; then
             NEXT="v1.0.0"
@@ -42,11 +42,24 @@ jobs:
           echo "tag=$NEXT" >> $GITHUB_OUTPUT
           echo "Build version: $NEXT"
 
+      - name: Download OpenJFX
+        run: |
+          curl -sL "https://download2.gluonhq.com/openjfx/${JAVAFX_VERSION}/openjfx-${JAVAFX_VERSION}_linux-x64_bin-sdk.zip" -o javafx-sdk.zip
+          unzip -q javafx-sdk.zip
+          mkdir -p lib
+          cp javafx-sdk/javafx-sdk-${JAVAFX_VERSION}/lib/javafx-base.jar lib/
+          cp javafx-sdk/javafx-sdk-${JAVAFX_VERSION}/lib/javafx-controls.jar lib/
+          cp javafx-sdk/javafx-sdk-${JAVAFX_VERSION}/lib/javafx-fxml.jar lib/
+          cp javafx-sdk/javafx-sdk-${JAVAFX_VERSION}/lib/javafx-graphics.jar lib/
+          rm -rf javafx-sdk javafx-sdk.zip
+
       - name: Compile
         run: |
+          JAVAFX_CP=""
+          for jar in lib/javafx*.jar; do JAVAFX_CP="$JAVAFX_CP:$jar"; done
           javac -sourcepath src \
-            -cp "drivers/ojdbc17-23.26.1.0.0.jar:drivers/postgresql-42.7.10.jar" \
-            src/com/datacube/*.java src/com/datacube/*/*.java
+            -cp "drivers/ojdbc17-23.26.1.0.0.jar:drivers/postgresql-42.7.10.jar$JAVAFX_CP" \
+            src/com/datacube/*.java src/com/datacube/*/*.java src/com/datacube/fx/*.java src/com/datacube/DataCubeFx.java
 
       - name: Fat JAR
         run: |
@@ -57,7 +70,12 @@ jobs:
           jar xf ../drivers/postgresql-42.7.10.jar
           rm -rf META-INF
           cd ..
-          # 复制编译后的 class 文件（从 src 目录，保留包结构）
+          # 解压 JavaFX 到 fat-jar
+          for jar in lib/javafx*.jar; do
+            (cd fat-jar && jar xf ../$jar)
+          done
+          rm -rf fat-jar/META-INF
+          # 复制编译后的 class 文件
           cp -r src/com fat-jar/
           find fat-jar/com -name "*.java" -delete
           # 创建 manifest
@@ -70,9 +88,14 @@ jobs:
 
       - name: Minimal JRE
         run: |
+          # 收集 JavaFX 模块
+          JAVAFX_MODS=""
+          for jar in lib/javafx*.jar; do
+            JAVAFX_MODS="$JAVAFX_MODS:$jar"
+          done
           jlink \
-            --module-path "$JAVA_HOME/jmods" \
-            --add-modules java.base,java.sql,java.naming,java.management,java.security.jgss \
+            --module-path "$JAVA_HOME/jmods${JAVAFX_MODS}" \
+            --add-modules java.base,java.sql,java.naming,java.management,java.security.jgss,javafx.controls,javafx.fxml \
             --output jre \
             --strip-debug \
             --no-header-files \
@@ -82,13 +105,13 @@ jobs:
       - name: Package
         run: |
           VERSION="${{ steps.version.outputs.tag }}"
-          # 纯 JAR 包
+          # 纯 JAR 包（含 GUI 支持）
           zip "data-cube-${VERSION}.zip" DataCube.jar
           # JAR + JRE 包
           mkdir -p "data-cube-jre/data-cube-${VERSION}"
           cp DataCube.jar "data-cube-jre/data-cube-${VERSION}/"
           cp -r jre "data-cube-jre/data-cube-${VERSION}/"
-          cp run.sh run.bat "data-cube-jre/data-cube-${VERSION}/"
+          cp run.sh run.bat run-gui.sh run-gui.bat "data-cube-jre/data-cube-${VERSION}/"
           cd data-cube-jre && zip -r "../data-cube-${VERSION}-win64-jre.zip" "data-cube-${VERSION}"
 
       - name: Create Tag
@@ -108,16 +131,20 @@ jobs:
 
             | 文件 | 说明 |
             |------|------|
-            | `data-cube-${{ steps.version.outputs.tag }}.zip` | 纯 JAR（需要本机安装 Java 21+） |
+            | `data-cube-${{ steps.version.outputs.tag }}.zip` | 纯 JAR（需 Java 21+，已内置 GUI） |
             | `data-cube-${{ steps.version.outputs.tag }}-win64-jre.zip` | 内置 JRE（无需安装 Java，仅 Windows x64） |
 
             ### 运行方式
             ```bash
-            # 纯 JAR 版（需 Java 21+）
+            # CLI 模式
             java -jar DataCube.jar
 
+            # GUI 模式
+            java -jar DataCube.jar --gui
+
             # 内置 JRE 版（解压后直接运行）
-            ./jre/bin/java -jar DataCube.jar
+            ./run.sh          # CLI
+            ./run-gui.sh      # GUI
             ```
           files: |
             data-cube-${{ steps.version.outputs.tag }}.zip
