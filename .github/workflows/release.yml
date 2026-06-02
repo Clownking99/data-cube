@@ -44,14 +44,16 @@ jobs:
 
       - name: Download OpenJFX
         run: |
+          JAVAFX_MAJOR=$(echo $JAVAFX_VERSION | cut -d. -f1)
           curl -sL "https://download2.gluonhq.com/openjfx/${JAVAFX_VERSION}/openjfx-${JAVAFX_VERSION}_linux-x64_bin-sdk.zip" -o javafx-sdk.zip
           unzip -q javafx-sdk.zip
           mkdir -p lib
-          cp javafx-sdk/javafx-sdk-${JAVAFX_VERSION}/lib/javafx-base.jar lib/
-          cp javafx-sdk/javafx-sdk-${JAVAFX_VERSION}/lib/javafx-controls.jar lib/
-          cp javafx-sdk/javafx-sdk-${JAVAFX_VERSION}/lib/javafx-fxml.jar lib/
-          cp javafx-sdk/javafx-sdk-${JAVAFX_VERSION}/lib/javafx-graphics.jar lib/
-          rm -rf javafx-sdk javafx-sdk.zip
+          SDK_DIR="javafx-sdk-${JAVAFX_MAJOR}"
+          cp ${SDK_DIR}/lib/javafx.base.jar lib/
+          cp ${SDK_DIR}/lib/javafx.controls.jar lib/
+          cp ${SDK_DIR}/lib/javafx.fxml.jar lib/
+          cp ${SDK_DIR}/lib/javafx.graphics.jar lib/
+          rm -rf javafx-sdk* ${SDK_DIR}
 
       - name: Compile
         run: |

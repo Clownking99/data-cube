@@ -10,10 +10,10 @@ GUI 模式需要 JavaFX SDK。JDK 21+ 不含 JavaFX，需单独下载。
 
 ```
 lib/
-├── javafx-base.jar
-├── javafx-controls.jar
-├── javafx-fxml.jar
-└── javafx-graphics.jar
+├── javafx.base.jar
+├── javafx.controls.jar
+├── javafx.fxml.jar
+└── javafx.graphics.jar
 ```
 
 ## 本地编译（无 JavaFX）
