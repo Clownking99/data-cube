@@ -20,17 +20,31 @@ public class OracleExporter {
     private int maxConcurrency = 20;
     private boolean convertBool = false;
     private Map<String, Map<String, String>> columnCommentsCache = new HashMap<>();
+    private final java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public OracleExporter(MigrationLogger logger) {
         this.logger = logger;
     }
 
-    public void setMaxConcurrency(int concurrency) { this.maxConcurrency = concurrency; }
+    public void setMaxConcurrency(int concurrency) {
+        if (concurrency < 1) concurrency = 1;
+        if (concurrency > 100) concurrency = 100;
+        this.maxConcurrency = concurrency;
+    }
     public void setConvertBool(boolean convert) { this.convertBool = convert; }
+
+    /** 请求取消导出（幂等，调用后下个检查点会中断） */
+    public void cancel() { cancelled.set(true); }
+
+    /** 重置取消标志（在重新调用 exportDDL/exportData 前需调用） */
+    public void resetCancel() { cancelled.set(false); }
+
+    public boolean isCancelled() { return cancelled.get(); }
 
     // ==================== DDL 导出 ====================
 
     public void exportDDL(Connection conn, String owner, String pgSchema) throws SQLException, IOException {
+        cancelled.set(false);
         logger.logSection("导出 DDL：" + owner + " → " + pgSchema);
 
         String outputDir = BASE_DIR + "/" + pgSchema;
@@ -45,7 +59,11 @@ public class OracleExporter {
         stats.put("包",            exportPackages(conn, owner, outputDir));
         stats.put("触发器",        exportTriggers(conn, owner, outputDir));
 
-        logger.logOk("脚本已输出到 " + outputDir + "/");
+        if (cancelled.get()) {
+            logger.logWarn("DDL 导出已被取消");
+        } else {
+            logger.logOk("脚本已输出到 " + outputDir + "/");
+        }
     }
 
     // ==================== 序列 ====================
@@ -327,6 +345,7 @@ public class OracleExporter {
     // ==================== 数据导出（虚拟线程） ====================
 
     public void exportData(Connection conn, String oraUrl, String oraUser, String oraPass, String pgSchema) throws SQLException, IOException {
+        cancelled.set(false);
         logger.logSection("导出数据：" + oraUser + "（虚拟线程, 并发上限 " + maxConcurrency + ", 超时 " + TABLE_TIMEOUT_SEC + "s/表）");
 
         String dataDir = BASE_DIR + "/" + pgSchema.toLowerCase() + "/data";
@@ -363,11 +382,14 @@ public class OracleExporter {
         List<Future<?>> futures = new ArrayList<>();
 
         for (String table : tables) {
+            if (cancelled.get()) break;
             futures.add(pool.submit(() -> {
                 semaphore.acquireUninterruptibly();
                 try {
+                    if (cancelled.get()) return;
                     boolean success = false;
                     for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
+                        if (cancelled.get()) break;
                         try (Connection threadConn = DriverManager.getConnection(oraUrl, oraUser, oraPass)) {
                             synchronized (logger) {
                                 logger.logInfo(">> 导出: " + table + (attempt > 1 ? " (重试 " + attempt + ")" : ""));

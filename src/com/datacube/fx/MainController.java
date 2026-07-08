@@ -1,13 +1,17 @@
 package com.datacube.fx;
 
 import com.datacube.cli.ConsoleLogger;
+import com.datacube.core.ConnectionHelper;
 import com.datacube.source.OracleExporter;
 import com.datacube.target.PgImporter;
 import com.datacube.target.PgVerifier;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.util.Duration;
 
 import java.sql.*;
 
@@ -26,6 +30,7 @@ public class MainController {
     private Label statusLabel;
     private TextArea logArea;
     private Button[] actionButtons;
+    private Button cancelBtn;
 
     // 业务逻辑
     private FxLogger fxLogger;
@@ -35,6 +40,7 @@ public class MainController {
 
     private Connection oraConn;
     private String oraUrl, oraUser, oraPass, pgUrl, pgUser, pgPass, pgSchema;
+    private volatile boolean shuttingDown = false;
 
     public VBox createUI() {
         VBox root = new VBox(10);
@@ -151,11 +157,15 @@ public class MainController {
         Button incrBtn = new Button("增量导入");
         Button allBtn = new Button("一键全部");
         Button verifyBtn = new Button("验证");
+        cancelBtn = new Button("取消");
+        cancelBtn.setStyle("-fx-background-color: #f44336; -fx-text-fill: white; -fx-font-weight: bold;");
+        cancelBtn.setVisible(false);
+        cancelBtn.setOnAction(e -> onCancel());
 
         // 一键全部按钮突出显示
         allBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
 
-        actionButtons = new Button[]{testBtn, ddlBtn, dataBtn, fullBtn, incrBtn, allBtn, verifyBtn};
+        actionButtons = new Button[]{testBtn, ddlBtn, dataBtn, fullBtn, incrBtn, allBtn, verifyBtn, cancelBtn};
 
         testBtn.setOnAction(e -> onTestConnection());
         ddlBtn.setOnAction(e -> runAsync(() -> onExportDDL()));
@@ -215,40 +225,19 @@ public class MainController {
     }
 
     private boolean connect() {
+        ConnectionHelper.loadDrivers(fxLogger);
+
         try {
-            Class.forName("oracle.jdbc.driver.OracleDriver");
-            Class.forName("org.postgresql.Driver");
-        } catch (ClassNotFoundException e) {
-            fxLogger.logErr("JDBC 驱动加载失败: " + e.getMessage());
+            oraConn = ConnectionHelper.openAndTest(oraUrl, oraUser, oraPass, "Oracle", fxLogger);
+        } catch (SQLException e) {
             return false;
         }
 
-        try {
-            oraConn = DriverManager.getConnection(oraUrl, oraUser, oraPass);
-            fxLogger.logOk("Oracle 连接成功");
+        try (Connection pgConn = ConnectionHelper.openAndTest(pgUrl, pgUser, pgPass, "PostgreSQL", fxLogger)) {
+            ConnectionHelper.ensureSchema(pgConn, pgSchema, fxLogger);
         } catch (SQLException e) {
-            fxLogger.logErr("Oracle 连接失败: " + e.getMessage());
-            return false;
-        }
-
-        try (Connection pgConn = DriverManager.getConnection(pgUrl, pgUser, pgPass)) {
-            fxLogger.logOk("PostgreSQL 连接成功");
-
-            boolean schemaExists = false;
-            try (PreparedStatement ps = pgConn.prepareStatement(
-                    "SELECT 1 FROM information_schema.schemata WHERE schema_name = ?")) {
-                ps.setString(1, pgSchema);
-                try (ResultSet rs = ps.executeQuery()) { schemaExists = rs.next(); }
-            }
-
-            if (!schemaExists) {
-                fxLogger.logInfo("Schema \"" + pgSchema + "\" 不存在，正在创建...");
-                pgConn.createStatement().execute("CREATE SCHEMA " + pgSchema);
-                fxLogger.logOk("Schema \"" + pgSchema + "\" 创建成功");
-            }
-        } catch (SQLException e) {
-            fxLogger.logErr("PostgreSQL 连接失败: " + e.getMessage());
             try { oraConn.close(); } catch (Exception ignored) {}
+            oraConn = null;
             return false;
         }
 
@@ -256,7 +245,10 @@ public class MainController {
     }
 
     private void initModules() {
+        // Spinner setEditable(true) 后用户可能输入越界值，需 clamp
         int concurrency = concurrencySpinner.getValue();
+        if (concurrency < 1) concurrency = 1;
+        if (concurrency > 100) concurrency = 100;
         boolean convertBool = boolCheck.isSelected();
 
         exporter = new OracleExporter(fxLogger);
@@ -273,25 +265,13 @@ public class MainController {
         if (!readInputs()) return;
         runAsync(() -> {
             fxLogger.logSection("测试连接");
+            ConnectionHelper.loadDrivers(fxLogger);
             try {
-                Class.forName("oracle.jdbc.driver.OracleDriver");
-                Class.forName("org.postgresql.Driver");
-            } catch (ClassNotFoundException e) {
-                fxLogger.logErr("JDBC 驱动加载失败");
-                return;
-            }
-
-            try (Connection c = DriverManager.getConnection(oraUrl, oraUser, oraPass)) {
-                fxLogger.logOk("Oracle 连接成功 (" + oraUrl + ")");
-            } catch (SQLException e) {
-                fxLogger.logErr("Oracle 连接失败: " + e.getMessage());
-            }
-
-            try (Connection c = DriverManager.getConnection(pgUrl, pgUser, pgPass)) {
-                fxLogger.logOk("PostgreSQL 连接成功 (" + pgUrl + ")");
-            } catch (SQLException e) {
-                fxLogger.logErr("PostgreSQL 连接失败: " + e.getMessage());
-            }
+                try (Connection c = ConnectionHelper.openAndTest(oraUrl, oraUser, oraPass, "Oracle", fxLogger)) {}
+            } catch (SQLException ignored) {}
+            try {
+                try (Connection c = ConnectionHelper.openAndTest(pgUrl, pgUser, pgPass, "PostgreSQL", fxLogger)) {}
+            } catch (SQLException ignored) {}
         });
     }
 
@@ -359,7 +339,13 @@ public class MainController {
     // ==================== 工具方法 ====================
 
     private void runAsync(Runnable task) {
-        setButtonsDisabled(true);
+        // 禁用其他按钮，显示取消按钮
+        for (Button btn : actionButtons) {
+            if (btn == cancelBtn) continue;
+            btn.setDisable(true);
+        }
+        cancelBtn.setVisible(true);
+        cancelBtn.setDisable(false);
         progressBar.setProgress(-1);
         statusLabel.setText("执行中...");
 
@@ -368,15 +354,57 @@ public class MainController {
                 task.run();
             } catch (Exception e) {
                 fxLogger.logErr("异常: " + e.getMessage());
+                // 保留完整堆栈到日志文件，便于事后排查
+                fxLogger.logToFile(ConsoleLogger.stackTrace(e));
             } finally {
                 Platform.runLater(() -> {
                     setButtonsDisabled(false);
-                    progressBar.setProgress(0);
-                    statusLabel.setText("就绪");
+                    cancelBtn.setVisible(false);
+                    progressBar.setProgress(1.0);
+                    statusLabel.setText("完成");
+                    // 延迟 1.5s 重置进度条，避免视觉“突然消失”
+                    Timeline delay = new Timeline(new KeyFrame(Duration.seconds(1.5), ev -> {
+                        if (!controller_shutting_down()) {
+                            progressBar.setProgress(0);
+                            statusLabel.setText("就绪");
+                        }
+                    }));
+                    delay.play();
                 });
-                fxLogger.closeLog();
+                // 不再在此处关闭日志文件，避免连续任务日志丢失；
+                // 统一在窗口关闭时由 shutdown() 关闭。
             }
-        }).start();
+        }, "DataCube-Worker").start();
+    }
+
+    private void onCancel() {
+        fxLogger.logWarn("收到取消请求，正在停止...");
+        cancelBtn.setDisable(true);
+        if (exporter != null) exporter.cancel();
+        if (importer != null) importer.cancel();
+    }
+
+    /**
+     * 关闭资源（仅由窗口关闭事件调用）
+     */
+    public void shutdown() {
+        shuttingDown = true;
+        try {
+            if (oraConn != null && !oraConn.isClosed()) oraConn.close();
+        } catch (Exception ignored) {}
+        if (fxLogger != null) fxLogger.closeLog();
+    }
+
+    /** 供 Timeline 延迟回调查询是否正在关闭 */
+    private boolean controller_shutting_down() {
+        return shuttingDown;
+    }
+
+    /**
+     * 当前是否有任务在运行（供窗口关闭事件查询）
+     */
+    public boolean isRunning() {
+        return progressBar.getProgress() < 0;
     }
 
     private void setButtonsDisabled(boolean disabled) {

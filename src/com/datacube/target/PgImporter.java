@@ -19,14 +19,24 @@ public class PgImporter {
 
     private final MigrationLogger logger;
     private int maxConcurrency = 20;
+    private final java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public PgImporter(MigrationLogger logger) {
         this.logger = logger;
     }
 
-    public void setMaxConcurrency(int concurrency) { this.maxConcurrency = concurrency; }
+    public void setMaxConcurrency(int concurrency) {
+        if (concurrency < 1) concurrency = 1;
+        if (concurrency > 100) concurrency = 100;
+        this.maxConcurrency = concurrency;
+    }
+
+    public void cancel() { cancelled.set(true); }
+    public void resetCancel() { cancelled.set(false); }
+    public boolean isCancelled() { return cancelled.get(); }
 
     public void importToPg(String pgUrl, String pgUser, String pgPass, String owner, String schema, boolean incremental) throws Exception {
+        cancelled.set(false);
         String mode = incremental ? "增量模式" : "完整模式";
         logger.logSection("导入到 PostgreSQL：" + owner + " → " + schema + "（" + mode + "）");
 
@@ -45,6 +55,8 @@ public class PgImporter {
 
             int beforeTableCount = existingTables.size();
 
+            if (cancelled.get()) { logger.logWarn("已取消，跳过导入"); return; }
+
             if (incremental) {
                 logger.logInfo("[1/7] 建表（增量: 仅创建缺失表）...");
                 execSqlFileIncremental(conn, basePath + "/02_tables.sql", existingTables);
@@ -53,6 +65,7 @@ public class PgImporter {
                 execSqlFile(conn, basePath + "/02_tables.sql");
             }
 
+            if (cancelled.get()) { logger.logWarn("已取消"); return; }
             logger.logInfo("[2/7] 检测并修复缺失表...");
             int fixed = fixMissing(conn, schema, basePath + "/02_tables.sql");
             if (fixed > 0) logger.logOk("修复了 " + fixed + " 个缺失表");
@@ -130,13 +143,16 @@ public class PgImporter {
         List<Future<?>> futures = new ArrayList<>();
 
         for (File file : files) {
+            if (cancelled.get()) break;
             futures.add(pool.submit(() -> {
                 semaphore.acquireUninterruptibly();
                 try {
+                    if (cancelled.get()) return;
                     String tableName = file.getName().replace(".sql", "");
                     long rows = 0;
                     boolean success = false;
                     for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
+                        if (cancelled.get()) break;
                         try (Connection conn = DriverManager.getConnection(pgUrl, pgUser, pgPass)) {
                             conn.createStatement().execute("SET search_path TO " + schema);
                             rows = execDataFileBatch(conn, file, incremental);

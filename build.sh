@@ -1,54 +1,98 @@
 #!/bin/bash
-echo "编译..."
+# DataCube 构建脚本
+# 编译所有模块 + 打包 fat-jar（含 JavaFX classes + JDBC 驱动 + JavaFX native dlls）
+#
+# 用法: ./build.sh
+# 产物: DataCube.jar（含全部 classes + drivers + JavaFX + 核心 Windows native dll）
 
-# 基础编译文件（CLI + 核心层）
-BASE_FILES="src/com/datacube/DataCube.java src/com/datacube/cli/*.java src/com/datacube/core/*.java src/com/datacube/source/*.java src/com/datacube/target/*.java"
+set -e
 
-# JavaFX（可选，无 SDK 时跳过 GUI 文件）
+cd "$(dirname "$0")"
+
+# ===== [1/4] 编译 =====
+echo "===== [1/4] 编译 ====="
+rm -rf build-out
+mkdir -p build-out
+
 JAVAFX_CP=""
 JAVAFX_FILES=""
-if ls lib/javafx*.jar 1>/dev/null 2>&1; then
+if ls lib/javafx*.jar >/dev/null 2>&1; then
     for jar in lib/javafx*.jar; do
         JAVAFX_CP="$JAVAFX_CP;$jar"
     done
     JAVAFX_FILES="src/com/datacube/fx/*.java src/com/datacube/DataCubeFx.java"
-    echo "  检测到 JavaFX SDK，编译 GUI 模块"
+    echo "  JavaFX SDK: 已检测到，编译 GUI 模块"
 else
-    echo "  未检测到 JavaFX SDK，跳过 GUI 模块（仅编译 CLI）"
+    echo "  JavaFX SDK: 未检测到，仅编译 CLI 模块"
 fi
 
-javac -cp "drivers/ojdbc17-23.26.1.0.0.jar;drivers/postgresql-42.7.10.jar$JAVAFX_CP" \
-    $BASE_FILES $JAVAFX_FILES
-if [ $? -ne 0 ]; then
-    echo "编译失败"
-    exit 1
+javac -d build-out \
+    -cp "drivers/ojdbc17-23.26.1.0.0.jar;drivers/postgresql-42.7.10.jar$JAVAFX_CP" \
+    src/com/datacube/DataCube.java \
+    src/com/datacube/cli/*.java \
+    src/com/datacube/core/*.java \
+    src/com/datacube/fx/*.java \
+    src/com/datacube/source/*.java \
+    src/com/datacube/target/*.java \
+    $JAVAFX_FILES
+
+# ===== [2/4] 解压依赖到 staging =====
+echo "===== [2/4] 解压依赖到 staging ====="
+STAGE=build-staging
+rm -rf "$STAGE" MANIFEST.MF
+mkdir -p "$STAGE"
+
+# 编译产物
+cp -r build-out/* "$STAGE/"
+
+# JDBC 驱动类
+for jar in drivers/*.jar; do
+    echo "  解压驱动: $jar"
+    (cd "$STAGE" && jar xf "../$jar")
+    # 删除冲突的 MANIFEST.MF，保留 services 等其他 META-INF 文件
+    rm -f "$STAGE/META-INF/MANIFEST.MF"
+done
+
+# JavaFX 类
+if ls lib/javafx*.jar >/dev/null 2>&1; then
+    for jar in lib/javafx*.jar; do
+        echo "  解压 JavaFX: $jar"
+        (cd "$STAGE" && jar xf "../$jar")
+        rm -f "$STAGE/META-INF/MANIFEST.MF"
+    done
 fi
 
-echo "打包..."
-echo "Manifest-Version: 1.0
+# JavaFX native dll（嵌入到 lib/javafx/，运行时由 DataCube 自动解压到 java.library.path）
+if [ -d "lib/native/win" ]; then
+    mkdir -p "$STAGE/lib/javafx"
+    cp lib/native/win/*.dll "$STAGE/lib/javafx/"
+    echo "  嵌入 native dll: $(ls lib/native/win/*.dll | wc -l) 个"
+else
+    echo "  WARN: lib/native/win 不存在，GUI 可能无法初始化（d3d/sw pipeline 缺失）"
+fi
+
+# ===== [3/4] 打包 fat-jar =====
+echo "===== [3/4] 打包 fat-jar ====="
+cat > MANIFEST.MF <<EOF
+Manifest-Version: 1.0
+Multi-Release: true
 Main-Class: com.datacube.DataCube
-Class-Path: drivers/ojdbc17-23.26.1.0.0.jar drivers/postgresql-42.7.10.jar" > MANIFEST.MF
+EOF
 
-# 先打包到临时文件，避免 JAR 被占用时失败
-jar cfm DataCube_new.jar MANIFEST.MF -C src com
-if [ $? -ne 0 ]; then
-    echo "打包失败"
-    rm -f MANIFEST.MF
-    exit 1
-fi
+# 用 staging.jar 作为中间产物（避免目标 jar 被占用）
+jar cfm staging.jar MANIFEST.MF -C "$STAGE" .
 
-# 清理编译产物
-find src -name "*.class" -delete
-rm -f MANIFEST.MF
-
-# 替换旧 JAR（如果未被占用）
+# ===== [4/4] 完成 + 清理 =====
+echo "===== [4/4] 完成 ====="
 if [ -f DataCube.jar ]; then
-    mv -f DataCube_new.jar DataCube.jar 2>/dev/null
-    if [ $? -ne 0 ]; then
-        echo "旧 JAR 被占用，新文件: DataCube_new.jar"
-        echo "请关闭正在运行的程序后手动替换"
-        exit 0
-    fi
+    mv -f staging.jar DataCube.jar 2>/dev/null || mv -f staging.jar DataCube_new.jar
+else
+    mv -f staging.jar DataCube.jar 2>/dev/null || mv -f staging.jar DataCube_new.jar
 fi
 
-echo "完成: DataCube.jar"
+rm -rf "$STAGE" MANIFEST.MF build-out
+
+ls -lh DataCube*.jar 2>/dev/null
+echo ""
+echo "运行 GUI:  ./run-gui.bat  或  ./run-gui.sh"
+echo "运行 CLI:  ./run.bat --help  或  ./run.sh --help"
