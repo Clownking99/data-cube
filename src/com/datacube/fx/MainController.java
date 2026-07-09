@@ -38,40 +38,47 @@ public class MainController {
     private PgImporter importer;
     private PgVerifier verifier;
 
+    // SQL 窗口（解耦依赖：通过 setConnectionInfo/setSchema 注入）
+    private final SqlEditorController sqlEditor = new SqlEditorController();
+
     private Connection oraConn;
     private String oraUrl, oraUser, oraPass, pgUrl, pgUser, pgPass, pgSchema;
     private volatile boolean shuttingDown = false;
 
     public VBox createUI() {
-        VBox root = new VBox(10);
-        root.setPadding(new Insets(15));
+        VBox root = new VBox();
         root.setStyle("-fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; -fx-font-size: 13px;");
 
-        // Oracle 连接面板
+        TabPane tabPane = new TabPane();
+        tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        Tab migrationTab = new Tab("数据迁移", createMigrationContent());
+        Tab sqlTab = new Tab("SQL 窗口", sqlEditor.createUI());
+        tabPane.getTabs().addAll(migrationTab, sqlTab);
+
+        root.getChildren().add(tabPane);
+        VBox.setVgrow(tabPane, Priority.ALWAYS);
+        return root;
+    }
+
+    /** 迁移 Tab 内容：原 UI 拆出。 */
+    private VBox createMigrationContent() {
+        VBox content = new VBox(10);
+        content.setPadding(new Insets(15));
+
         TitledPane oraPane = createOraclePane();
-
-        // PostgreSQL 连接面板
         TitledPane pgPane = createPgPane();
-
-        // 配置面板
         HBox configBox = createConfigBox();
-
-        // 操作按钮
         FlowPane buttonPane = createButtonPane();
-
-        // 进度条
         VBox progressBox = createProgressBox();
-
-        // 日志区域
         VBox logBox = createLogBox();
 
-        root.getChildren().addAll(oraPane, pgPane, configBox, buttonPane, progressBox, logBox);
+        content.getChildren().addAll(oraPane, pgPane, configBox, buttonPane, progressBox, logBox);
         VBox.setVgrow(logBox, Priority.ALWAYS);
 
         // 初始化 logger（日志区域创建后）
         fxLogger = new FxLogger(logArea, progressBar, statusLabel);
-
-        return root;
+        return content;
     }
 
     private TitledPane createOraclePane() {
@@ -241,6 +248,8 @@ public class MainController {
             return false;
         }
 
+        // 连接验证成功后同步给 SQL 窗口（解耦注入）
+        sqlEditor.setConnectionInfo(pgUrl, pgUser, pgPass, pgSchema);
         return true;
     }
 

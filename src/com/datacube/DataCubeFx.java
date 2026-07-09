@@ -24,11 +24,11 @@ public class DataCubeFx extends Application {
             scrollPane.setFitToWidth(true);
             scrollPane.setFitToHeight(true);
 
-            Scene scene = new Scene(scrollPane, 700, 750);
+            Scene scene = new Scene(scrollPane, 950, 780);
             primaryStage.setTitle("DataCube 迁移工具");
             primaryStage.setScene(scene);
-            primaryStage.setMinWidth(600);
-            primaryStage.setMinHeight(500);
+            primaryStage.setMinWidth(700);
+            primaryStage.setMinHeight(560);
 
             // 窗口关闭事件：任务进行中提示确认
             primaryStage.setOnCloseRequest((WindowEvent e) -> {

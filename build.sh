@@ -26,12 +26,24 @@ else
     echo "  JavaFX SDK: 未检测到，仅编译 CLI 模块"
 fi
 
+# JSqlParser（SQL 美化依赖）
+JSQLPARSER_CP=""
+if ls lib/jsqlparser*.jar >/dev/null 2>&1; then
+    for jar in lib/jsqlparser*.jar; do
+        JSQLPARSER_CP="$JSQLPARSER_CP;$jar"
+    done
+    echo "  JSqlParser: 已检测到，编译 SQL 编辑器模块"
+else
+    echo "  WARN: lib/jsqlparser*.jar 未找到，SQL 窗口美化功能不可用"
+fi
+
 javac -d build-out \
-    -cp "drivers/ojdbc17-23.26.1.0.0.jar;drivers/postgresql-42.7.10.jar$JAVAFX_CP" \
+    -cp "drivers/ojdbc17-23.26.1.0.0.jar;drivers/postgresql-42.7.10.jar$JAVAFX_CP$JSQLPARSER_CP" \
     src/com/datacube/DataCube.java \
     src/com/datacube/cli/*.java \
     src/com/datacube/core/*.java \
     src/com/datacube/fx/*.java \
+    src/com/datacube/sqleditor/*.java \
     src/com/datacube/source/*.java \
     src/com/datacube/target/*.java \
     $JAVAFX_FILES
@@ -69,6 +81,15 @@ if [ -d "lib/native/win" ]; then
     echo "  嵌入 native dll: $(ls lib/native/win/*.dll | wc -l) 个"
 else
     echo "  WARN: lib/native/win 不存在，GUI 可能无法初始化（d3d/sw pipeline 缺失）"
+fi
+
+# JSqlParser 类（SQL 美化）
+if ls lib/jsqlparser*.jar >/dev/null 2>&1; then
+    for jar in lib/jsqlparser*.jar; do
+        echo "  解压 JSqlParser: $jar"
+        (cd "$STAGE" && jar xf "../$jar")
+        rm -f "$STAGE/META-INF/MANIFEST.MF"
+    done
 fi
 
 # ===== [3/4] 打包 fat-jar =====

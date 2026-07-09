@@ -385,8 +385,9 @@ public class DataCube {
             int code = p.waitFor();
             System.exit(code);
             return true;
-        } catch (URISyntaxException | InterruptedException | IOException e) {
-            System.err.println("  [warn] 自动配置 native dll 失败: " + e.getMessage());
+        } catch (Throwable e) {
+            System.err.println("  [warn] 自动配置 native dll 失败 (" + e.getClass().getName() + "): " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
