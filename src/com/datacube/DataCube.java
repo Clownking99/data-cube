@@ -3,9 +3,9 @@ package com.datacube;
 import com.datacube.cli.ConsoleLogger;
 import com.datacube.cli.ConsolePrompter;
 import com.datacube.core.ConnectionHelper;
-import com.datacube.source.OracleExporter;
-import com.datacube.target.PgImporter;
-import com.datacube.target.PgVerifier;
+import com.datacube.migration.OracleExporter;
+import com.datacube.migration.PgImporter;
+import com.datacube.migration.PgVerifier;
 
 import java.io.File;
 import java.io.IOException;

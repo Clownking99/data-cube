@@ -42,10 +42,13 @@ javac -d build-out \
     src/com/datacube/DataCube.java \
     src/com/datacube/cli/*.java \
     src/com/datacube/core/*.java \
-    src/com/datacube/fx/*.java \
+    src/com/datacube/spi/*.java \
+    src/com/datacube/spi/model/*.java \
+    src/com/datacube/config/*.java \
+    src/com/datacube/service/*.java \
+    src/com/datacube/provider/postgres/*.java \
+    src/com/datacube/migration/*.java \
     src/com/datacube/sqleditor/*.java \
-    src/com/datacube/source/*.java \
-    src/com/datacube/target/*.java \
     $JAVAFX_FILES
 
 # ===== [2/4] 解压依赖到 staging =====

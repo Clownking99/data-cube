@@ -1,28 +1,30 @@
 @echo off
-rem JavaFX GUI 模式启动脚本
-rem 自动检测 fat-jar（内嵌 JavaFX 类）vs 瘦 jar（外部 JavaFX 模块）
-rem 自动添加 JDK 17+ 所需的 --enable-native-access=ALL-UNNAMED
+rem JavaFX GUI launcher
+rem Auto-detect fat-jar (embedded JavaFX) vs thin-jar (external JavaFX modules)
+rem Auto-add JDK 17+ required --enable-native-access=ALL-UNNAMED
 
-setlocal
+setlocal enabledelayedexpansion
 
-rem 探测 java
+rem Ensure working directory is the script directory (safe for double-click / run-as-admin)
+cd /d "%~dp0"
+
+rem Detect java
 if exist "jre" (
     set "JAVA=.\jre\bin\java.exe"
 ) else (
     set "JAVA=java"
 )
 
-rem ===== 公共参数：JDK 17+ 必须解锁 native access =====
+rem Common opts: JDK 17+ needs native access unlocked
 set "JDK17_OPTS=--enable-native-access=ALL-UNNAMED"
 
-rem ===== 自动追加 native lib 路径 =====
+rem Auto-append native lib path
 set "NATIVE_OPTS="
 if exist "lib\native\win" (
     set "NATIVE_OPTS=-Djava.library.path=lib\native\win"
-    if exist "lib\native\win\prism_d3d.dll" set "NATIVE_OPTS=-Djava.library.path=lib\native\win"
 )
 
-rem 探测 fat-jar（含 javafx.application.Application 类）
+rem Detect fat-jar (contains javafx.application.Application class)
 set "FAT=0"
 if exist "DataCube.jar" (
     jar tf DataCube.jar 2>nul | findstr /R "javafx[/\\]application[/\\]Application\.class" >nul 2>&1
@@ -30,28 +32,36 @@ if exist "DataCube.jar" (
 )
 
 if "%FAT%"=="1" (
-    rem 内嵌 JavaFX 的 fat-jar
+    rem Fat-jar with embedded JavaFX
     if defined NATIVE_OPTS (
-        "%JAVA%" %JDK17_OPTS% %NATIVE_OPTS% -jar DataCube.jar --gui
+        "%JAVA%" %JDK17_OPTS% !NATIVE_OPTS! -jar DataCube.jar --gui
     ) else (
         "%JAVA%" %JDK17_OPTS% -jar DataCube.jar --gui
     )
 ) else (
-    rem 瘦 jar：需要外部 lib\javafx*.jar
+    rem Thin-jar: needs external lib\javafx*.jar
     if exist "lib\javafx*.jar" (
         set "JAVAFX_OPTS=--module-path lib --add-modules javafx.controls,javafx.fxml"
         if defined NATIVE_OPTS (
-            "%JAVA%" %JDK17_OPTS% %JAVAFX_OPTS% %NATIVE_OPTS% -jar DataCube.jar --gui
+            "%JAVA%" %JDK17_OPTS% !JAVAFX_OPTS! !NATIVE_OPTS! -jar DataCube.jar --gui
         ) else (
-            "%JAVA%" %JDK17_OPTS% %JAVAFX_OPTS% -jar DataCube.jar --gui
+            "%JAVA%" %JDK17_OPTS% !JAVAFX_OPTS! -jar DataCube.jar --gui
         )
     ) else (
-        echo [ERR] 未检测到 JavaFX SDK jar 或 native dll。请将以下任一放入 lib\ 目录：
-        echo   - 方式 A（推荐）：下载 openjfx-21.0.7 SDK 并解压到 lib\javafx-sdk\，然后执行 build.sh 重新打包。
-        echo   - 方式 B（最小）：下载 javafx-*.jar 和 Windows native dll 到 lib\。
-        echo 下载地址: https://gluonhq.com/products/javafx/
+        echo [ERR] JavaFX SDK jar or native dll not found. Put one of the following into lib\:
+        echo   - Option A ^(recommended^): download openjfx SDK, unzip, then run build.sh to repackage.
+        echo   - Option B ^(minimal^): download javafx-*.jar and Windows native dll into lib\.
+        echo Download: https://gluonhq.com/products/javafx/
+        pause
         exit /b 1
     )
+)
+
+rem If launch failed (java not found, jar missing, class load error, etc.) keep window open
+if errorlevel 1 (
+    echo.
+    echo [ERR] Non-zero exit code. If the window should have appeared but did not, check the error above.
+    pause
 )
 
 endlocal

@@ -1,13 +1,11 @@
 package com.datacube;
 
-import com.datacube.fx.MainController;
+import com.datacube.fx.AppShell;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
-import javafx.scene.control.ScrollPane;
-import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
 
@@ -15,26 +13,21 @@ public class DataCubeFx extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        MainController controller;
+        AppShell appShell;
         try {
-            controller = new MainController();
-            VBox root = controller.createUI();
+            appShell = new AppShell();
 
-            ScrollPane scrollPane = new ScrollPane(root);
-            scrollPane.setFitToWidth(true);
-            scrollPane.setFitToHeight(true);
-
-            Scene scene = new Scene(scrollPane, 950, 780);
-            primaryStage.setTitle("DataCube 迁移工具");
+            Scene scene = new Scene(appShell.getRoot(), 1200, 800);
+            primaryStage.setTitle("DataCube 数据库管理工具");
             primaryStage.setScene(scene);
-            primaryStage.setMinWidth(700);
-            primaryStage.setMinHeight(560);
+            primaryStage.setMinWidth(900);
+            primaryStage.setMinHeight(600);
 
-            // 窗口关闭事件：任务进行中提示确认
+            // 窗口关闭事件：迁移任务进行中提示确认
             primaryStage.setOnCloseRequest((WindowEvent e) -> {
-                if (controller.isRunning()) {
+                if (appShell.isRunning()) {
                     Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                            "任务正在执行中，强制关闭可能导致数据不完整。\n确定关闭？",
+                            "迁移任务正在执行中，强制关闭可能导致数据不完整。\n确定关闭？",
                             ButtonType.YES, ButtonType.NO);
                     alert.setHeaderText(null);
                     alert.showAndWait();
@@ -44,10 +37,10 @@ public class DataCubeFx extends Application {
                     }
                     // 用户确认：调用取消逻辑并清理资源
                     Platform.runLater(() -> {
-                        controller.shutdown();
+                        appShell.shutdown();
                     });
                 } else {
-                    controller.shutdown();
+                    appShell.shutdown();
                 }
             });
 

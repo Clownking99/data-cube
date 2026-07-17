@@ -1,0 +1,392 @@
+package com.datacube.fx;
+
+import com.datacube.service.ConnectionManager;
+import com.datacube.service.ObjectTreeService;
+import com.datacube.sqleditor.SqlFormatter;
+import com.datacube.spi.SqlRunner;
+import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.QueryResult;
+import com.datacube.spi.model.SchemaInfo;
+import com.datacube.spi.model.ScriptOutcome;
+import com.datacube.spi.model.TableInfo;
+import com.datacube.spi.model.ViewInfo;
+
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.control.*;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.*;
+import javafx.scene.text.Font;
+
+import java.sql.Connection;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+/**
+ * SQL 编辑器面板：绑定 {@link SessionContext} 活动连接，经 {@link SqlRunner} 执行。
+ *
+ * <p>升级自原 {@code SqlEditorController}：连接不再手工注入，而是取自活动连接；
+ * 执行委托 provider 的 {@link SqlRunner}，方言差异（schema 切换）由 provider 处理。
+ */
+public final class SqlEditorPane {
+
+    /** 常见 SQL 关键字（大写形式，补全时展示）。 */
+    private static final List<String> SQL_KEYWORDS = Arrays.asList(
+            "SELECT", "FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING", "LIMIT", "OFFSET",
+            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP",
+            "TABLE", "VIEW", "INDEX", "SEQUENCE", "JOIN", "INNER", "LEFT", "RIGHT", "FULL",
+            "OUTER", "CROSS", "ON", "AS", "AND", "OR", "NOT", "NULL", "IS", "IN", "EXISTS",
+            "BETWEEN", "LIKE", "ILIKE", "DISTINCT", "UNION", "ALL", "CASE", "WHEN", "THEN",
+            "ELSE", "END", "ASC", "DESC", "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE",
+            "CAST", "WITH", "RETURNING", "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "DEFAULT",
+            "CONSTRAINT", "UNIQUE", "CHECK", "TRUE", "FALSE", "BEGIN", "COMMIT", "ROLLBACK");
+
+    private final SessionContext session;
+    private final ConnectionManager connections;
+    private final ObjectTreeService treeSvc;
+
+    /** 预热的元数据名称（表/视图/schema），线程安全。 */
+    private final Set<String> metaNames = ConcurrentHashMap.newKeySet();
+    /** 已预热的 connId（每连接只预热一次）。 */
+    private final Set<String> prewarmed = ConcurrentHashMap.newKeySet();
+    private final ExecutorService metaPool = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "SqlMeta-Prewarm");
+        t.setDaemon(true);
+        return t;
+    });
+
+    private final VBox root = new VBox(8);
+    private TextArea editorArea;
+    private TableView<ObservableList<String>> resultTable;
+    private Label statusLabel;
+    private TextField schemaField;
+    private Button executeBtn, formatBtn, clearBtn;
+
+    private volatile boolean running = false;
+
+    public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc) {
+        this.session = session;
+        this.connections = connections;
+        this.treeSvc = treeSvc;
+        build();
+    }
+
+    public Node getNode() {
+        return root;
+    }
+
+    private void build() {
+        root.setPadding(new Insets(10));
+        root.setStyle("-fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; -fx-font-size: 13px;");
+        VBox container = resultContainer();
+        root.getChildren().addAll(toolbar(), editor(), container, statusBar());
+        VBox.setVgrow(container, Priority.ALWAYS);
+    }
+
+    private Node toolbar() {
+        HBox box = new HBox(8);
+        box.setAlignment(Pos.CENTER_LEFT);
+
+        schemaField = new TextField();
+        schemaField.setPromptText("schema（可选）");
+        schemaField.setPrefWidth(160);
+
+        executeBtn = new Button("执行 (F5)");
+        executeBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
+        executeBtn.setOnAction(e -> onExecute());
+
+        formatBtn = new Button("美化 SQL");
+        formatBtn.setOnAction(e -> onFormat());
+
+        clearBtn = new Button("清空");
+        clearBtn.setOnAction(e -> {
+            editorArea.clear();
+            resultTable.getItems().clear();
+            resultTable.getColumns().clear();
+            statusLabel.setText("就绪");
+        });
+
+        box.getChildren().addAll(new Label("Schema:"), schemaField, executeBtn, formatBtn, clearBtn);
+        return box;
+    }
+
+    private Node editor() {
+        editorArea = new TextArea();
+        editorArea.setPromptText("-- 在此输入 SQL，支持多条以分号分隔\nSELECT 1;");
+        editorArea.setFont(Font.font("Consolas", 14));
+        editorArea.setWrapText(false);
+        editorArea.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 14px; -fx-background-color: #fafafa;");
+        editorArea.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() == KeyCode.F5) {
+                e.consume();
+                onExecute();
+            }
+        });
+        // 自动补全：关键字 + 预热的元数据名称（Ctrl+Space 强制触发）。
+        new SqlAutoComplete(editorArea, this::completionCandidates);
+        installMetadataPrewarm();
+        TitledPane pane = new TitledPane("SQL 编辑器", editorArea);
+        pane.setCollapsible(true);
+        pane.setExpanded(true);
+        pane.setPrefHeight(240);
+        return pane;
+    }
+
+    private VBox resultContainer() {
+        resultTable = new TableView<>();
+        resultTable.setPlaceholder(new Label("（无结果）"));
+        // UNCONSTRAINED：保留列自然宽度与底部横向滚动条（宽表友好）。
+        resultTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
+        TitledPane pane = new TitledPane("结果", resultTable);
+        pane.setCollapsible(false);
+        VBox box = new VBox(pane);
+        VBox.setVgrow(pane, Priority.ALWAYS);
+        return box;
+    }
+
+    private Node statusBar() {
+        statusLabel = new Label("就绪");
+        statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
+        HBox box = new HBox(statusLabel);
+        box.setPadding(new Insets(4, 0, 0, 0));
+        return box;
+    }
+
+    private void onFormat() {
+        String sql = editorArea.getText();
+        if (sql.trim().isEmpty()) return;
+        try {
+            editorArea.setText(SqlFormatter.format(sql));
+            statusLabel.setText("已美化");
+        } catch (Exception e) {
+            showAlert("美化失败：" + e.getMessage());
+        }
+    }
+
+    private void onExecute() {
+        if (running) return;
+        String sql = editorArea.getText();
+        if (sql.trim().isEmpty()) {
+            showAlert("请输入 SQL");
+            return;
+        }
+        ConnConfig active = session.getActiveConnection();
+        if (active == null) {
+            showAlert("请先在左侧选择一个活动连接");
+            return;
+        }
+        final String connId = active.id();
+        final String schema = schemaField.getText().trim();
+
+        running = true;
+        setButtonsRunning(true);
+        statusLabel.setText("执行中...");
+        statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
+
+        new Thread(() -> doExecute(connId, sql, schema), "SqlEditor-Worker").start();
+    }
+
+    private void doExecute(String connId, String sql, String schema) {
+        long t0 = System.currentTimeMillis();
+        List<ScriptOutcome> outcomes = null;
+        String errMsg = null;
+        try {
+            Connection conn = connections.acquire(connId);
+            SqlRunner runner = connections.provider(connId).sqlRunner();
+            outcomes = runner.executeScript(conn, sql, schema.isEmpty() ? null : schema);
+        } catch (Exception e) {
+            errMsg = e.getMessage();
+        }
+        long elapsed = System.currentTimeMillis() - t0;
+        final List<ScriptOutcome> fOutcomes = outcomes;
+        final String fErr = errMsg;
+        Platform.runLater(() -> {
+            running = false;
+            setButtonsRunning(false);
+            if (fErr != null) {
+                showError(fErr, elapsed);
+            } else {
+                showScriptResults(fOutcomes, elapsed);
+            }
+        });
+    }
+
+    private void showError(String msg, long elapsed) {
+        resultTable.getColumns().clear();
+        resultTable.getItems().clear();
+        TableColumn<ObservableList<String>, String> col = new TableColumn<>("错误");
+        col.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue().get(0)));
+        resultTable.getColumns().add(col);
+        ObservableList<ObservableList<String>> rows = FXCollections.observableArrayList();
+        rows.add(FXCollections.observableArrayList(msg));
+        resultTable.setItems(rows);
+        statusLabel.setText("ERROR - " + elapsed + "ms");
+        statusLabel.setStyle("-fx-text-fill: #d32f2f; -fx-font-size: 12px;");
+    }
+
+    private void showScriptResults(List<ScriptOutcome> outcomes, long totalElapsed) {
+        resultTable.getColumns().clear();
+        resultTable.getItems().clear();
+        if (outcomes == null || outcomes.isEmpty()) {
+            statusLabel.setText("无结果");
+            return;
+        }
+        if (outcomes.size() > 1) {
+            addColumn("#", 0);
+            addColumn("类型", 1);
+            addColumn("耗时", 2);
+            addColumn("结果", 3);
+            ObservableList<ObservableList<String>> data = FXCollections.observableArrayList();
+            for (ScriptOutcome o : outcomes) {
+                QueryResult r = o.result();
+                data.add(FXCollections.observableArrayList(
+                        String.valueOf(o.index()), r.kind.name(), r.elapsedMillis + "ms", summarize(r)));
+            }
+            resultTable.setItems(data);
+            statusLabel.setText("共 " + outcomes.size() + " 条语句 - " + totalElapsed + "ms");
+            statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+        } else {
+            QueryResult r = outcomes.get(0).result();
+            switch (r.kind) {
+                case QUERY -> {
+                    showQueryResult(r);
+                    statusLabel.setText("OK - " + r.rows.size() + " rows - " + r.elapsedMillis + "ms");
+                    statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+                }
+                case UPDATE -> {
+                    statusLabel.setText("OK - " + r.updateCount + " rows affected - " + r.elapsedMillis + "ms");
+                    statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+                }
+                case ERROR -> showError(r.errorMessage, r.elapsedMillis);
+            }
+        }
+    }
+
+    private static String summarize(QueryResult r) {
+        return switch (r.kind) {
+            case QUERY -> r.rows.size() + " rows";
+            case UPDATE -> r.updateCount + " affected";
+            case ERROR -> "ERR: " + truncate(r.errorMessage, 80);
+        };
+    }
+
+    private void addColumn(String title, int idx) {
+        TableColumn<ObservableList<String>, String> c = new TableColumn<>(title);
+        c.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(
+                idx < d.getValue().size() ? d.getValue().get(idx) : ""));
+        resultTable.getColumns().add(c);
+    }
+
+    private void showQueryResult(QueryResult r) {
+        ObservableList<ObservableList<String>> data = FXCollections.observableArrayList();
+        for (List<Object> row : r.rows) {
+            ObservableList<String> rowData = FXCollections.observableArrayList();
+            for (Object cell : row) {
+                rowData.add(cell == null ? "" : cell.toString());
+            }
+            data.add(rowData);
+        }
+        resultTable.getColumns().clear();
+        for (int i = 0; i < r.columns.size(); i++) {
+            addColumn(r.columns.get(i), i);
+            resultTable.getColumns().get(i).setPrefWidth(estimateColumnWidth(r.columns.get(i), r.rows, i));
+        }
+        resultTable.setItems(data);
+    }
+
+    /** 估算列宽：取表头与前若干行内容的最大字符数，换算像素并裁剪到 [60, 360]。 */
+    private static double estimateColumnWidth(String header, List<List<Object>> rows, int idx) {
+        int maxLen = header == null ? 0 : header.length();
+        int sample = Math.min(rows.size(), 100);
+        for (int r = 0; r < sample; r++) {
+            List<Object> row = rows.get(r);
+            if (idx < row.size() && row.get(idx) != null) {
+                int len = row.get(idx).toString().length();
+                if (len > maxLen) maxLen = len;
+            }
+        }
+        double px = maxLen * 8.0 + 24;
+        return Math.max(60, Math.min(360, px));
+    }
+
+    private void setButtonsRunning(boolean isRunning) {
+        executeBtn.setDisable(isRunning);
+        formatBtn.setDisable(isRunning);
+        clearBtn.setDisable(isRunning);
+    }
+
+    // ---------- 自动补全：候选词 + 元数据预热 ----------
+
+    /** 补全候选：SQL 关键字 + 已预热的元数据名称。 */
+    private Collection<String> completionCandidates() {
+        List<String> all = new ArrayList<>(SQL_KEYWORDS.size() + metaNames.size());
+        all.addAll(SQL_KEYWORDS);
+        all.addAll(metaNames);
+        return all;
+    }
+
+    /** 监听活动连接变化，在后台预热元数据名称（每连接一次）。 */
+    private void installMetadataPrewarm() {
+        session.activeConnectionProperty().addListener((obs, o, c) -> {
+            if (c != null) prewarm(c);
+        });
+        ConnConfig cur = session.getActiveConnection();
+        if (cur != null) prewarm(cur);
+    }
+
+    /**
+     * 后台加载 schema/表/视图名称并入库。best-effort：与连接树共享同一 JDBC 连接，
+     * 若并发冲突或失败则静默跳过并允许下次重试，不影响关键字补全。
+     */
+    private void prewarm(ConnConfig cfg) {
+        final String connId = cfg.id();
+        final String database = cfg.database();
+        if (!prewarmed.add(connId)) return;
+        metaPool.submit(() -> {
+            try {
+                List<String> schemas = new ArrayList<>();
+                if (treeSvc.hasSchemaLevel(connId)) {
+                    for (SchemaInfo s : treeSvc.schemas(connId, database)) schemas.add(s.name());
+                } else {
+                    schemas.add(null);
+                }
+                List<String> collected = new ArrayList<>();
+                for (String s : schemas) {
+                    if (s != null) collected.add(s);
+                    try {
+                        for (TableInfo t : treeSvc.tables(connId, s)) collected.add(t.name());
+                        for (ViewInfo v : treeSvc.views(connId, s)) collected.add(v.name());
+                    } catch (Exception ignore) {
+                        // 单个 schema 读取失败不阻断其余
+                    }
+                    if (collected.size() > 5000) break;
+                }
+                metaNames.addAll(collected);
+            } catch (Exception e) {
+                prewarmed.remove(connId); // 允许下次重试
+            }
+        });
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max) + "...";
+    }
+
+    private void showAlert(String msg) {
+        Alert alert = new Alert(Alert.AlertType.WARNING, msg, ButtonType.OK);
+        alert.setHeaderText(null);
+        alert.showAndWait();
+    }
+}

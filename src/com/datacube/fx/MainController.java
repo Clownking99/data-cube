@@ -2,9 +2,9 @@ package com.datacube.fx;
 
 import com.datacube.cli.ConsoleLogger;
 import com.datacube.core.ConnectionHelper;
-import com.datacube.source.OracleExporter;
-import com.datacube.target.PgImporter;
-import com.datacube.target.PgVerifier;
+import com.datacube.migration.OracleExporter;
+import com.datacube.migration.PgImporter;
+import com.datacube.migration.PgVerifier;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
@@ -38,31 +38,12 @@ public class MainController {
     private PgImporter importer;
     private PgVerifier verifier;
 
-    // SQL 窗口（解耦依赖：通过 setConnectionInfo/setSchema 注入）
-    private final SqlEditorController sqlEditor = new SqlEditorController();
-
     private Connection oraConn;
     private String oraUrl, oraUser, oraPass, pgUrl, pgUser, pgPass, pgSchema;
     private volatile boolean shuttingDown = false;
 
-    public VBox createUI() {
-        VBox root = new VBox();
-        root.setStyle("-fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; -fx-font-size: 13px;");
-
-        TabPane tabPane = new TabPane();
-        tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
-
-        Tab migrationTab = new Tab("数据迁移", createMigrationContent());
-        Tab sqlTab = new Tab("SQL 窗口", sqlEditor.createUI());
-        tabPane.getTabs().addAll(migrationTab, sqlTab);
-
-        root.getChildren().add(tabPane);
-        VBox.setVgrow(tabPane, Priority.ALWAYS);
-        return root;
-    }
-
-    /** 迁移 Tab 内容：原 UI 拆出。 */
-    private VBox createMigrationContent() {
+    /** 迁移 Tab 内容：原 UI 拆出。作为独立面板嵌入 AppShell。 */
+    public VBox createMigrationContent() {
         VBox content = new VBox(10);
         content.setPadding(new Insets(15));
 
@@ -248,8 +229,6 @@ public class MainController {
             return false;
         }
 
-        // 连接验证成功后同步给 SQL 窗口（解耦注入）
-        sqlEditor.setConnectionInfo(pgUrl, pgUser, pgPass, pgSchema);
         return true;
     }
 

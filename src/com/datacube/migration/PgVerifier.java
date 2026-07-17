@@ -1,4 +1,4 @@
-package com.datacube.target;
+package com.datacube.migration;
 
 import com.datacube.core.MigrationLogger;
 
