@@ -1,19 +1,26 @@
 name: Build and Release
 
+# 推送到 main（或手动触发）时，用 Gradle + jpackage 打出两种 Windows 产物并发布 Release：
+#   1. 免安装绿色版（app-image 目录，压缩为 zip，解压后双击 DataCube.exe 运行）
+#   2. exe 安装程序（jpackage installer，需 WiX Toolset v5）
+# 均内置运行时（jlink），终端用户无需安装 Java。
+
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
-  JAVA_VERSION: '21'
-  JAVAFX_VERSION: '21.0.7'
+  JAVA_VERSION: '25'
+  WIX_VERSION: '5.0.2'
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # 必须在 Windows 上运行：jpackage 生成的是 Windows 原生 app-image 与 exe 安装包。
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,96 +32,62 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
+          cache: 'gradle'
 
-      - name: Version
+      - name: Compute version
         id: version
+        shell: bash
         run: |
           LATEST=$(git tag --sort=-v:refname | grep '^v[0-9]' | head -1)
           if [ -z "$LATEST" ]; then
-            NEXT="v1.0.0"
+            NEXT="v3.0.0"
           else
             V=${LATEST#v}
-            MAJOR=$(echo $V | cut -d. -f1)
-            MINOR=$(echo $V | cut -d. -f2)
-            PATCH=$(echo $V | cut -d. -f3)
+            MAJOR=$(echo "$V" | cut -d. -f1)
+            MINOR=$(echo "$V" | cut -d. -f2)
+            PATCH=$(echo "$V" | cut -d. -f3)
             NEXT="v${MAJOR}.${MINOR}.$((PATCH+1))"
           fi
-          echo "tag=$NEXT" >> $GITHUB_OUTPUT
-          echo "Build version: $NEXT"
+          echo "tag=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "app_version=${NEXT#v}" >> "$GITHUB_OUTPUT"
+          echo "Build version: $NEXT (appVersion ${NEXT#v})"
 
-      - name: Download OpenJFX
+      - name: Install WiX Toolset (v5)
+        shell: pwsh
         run: |
-          curl -sL "https://download2.gluonhq.com/openjfx/${JAVAFX_VERSION}/openjfx-${JAVAFX_VERSION}_linux-x64_bin-sdk.zip" -o javafx-sdk.zip
-          unzip -q javafx-sdk.zip
-          mkdir -p lib
-          cp javafx-sdk-${JAVAFX_VERSION}/lib/javafx.base.jar lib/
-          cp javafx-sdk-${JAVAFX_VERSION}/lib/javafx.controls.jar lib/
-          cp javafx-sdk-${JAVAFX_VERSION}/lib/javafx.fxml.jar lib/
-          cp javafx-sdk-${JAVAFX_VERSION}/lib/javafx.graphics.jar lib/
-          rm -rf javafx-sdk-${JAVAFX_VERSION} javafx-sdk.zip
+          # jpackage 官方支持 WiX v4/v5；v6/v7 需接受 OSMF 付费协议，故锁定 v5。
+          dotnet tool install --global wix --version $env:WIX_VERSION
+          $tools = Join-Path $env:USERPROFILE ".dotnet\tools"
+          # 将 dotnet 全局工具目录加入后续步骤的 PATH，供 jpackage 调用 wix.exe。
+          $tools | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          & "$tools\wix.exe" extension add --global WixToolset.Util.wixext/$env:WIX_VERSION
+          & "$tools\wix.exe" extension add --global WixToolset.UI.wixext/$env:WIX_VERSION
+          & "$tools\wix.exe" --version
 
-      - name: Compile
+      - name: Build app-image and exe installer
+        shell: pwsh
         run: |
-          JAVAFX_CP=""
-          for jar in lib/javafx*.jar; do JAVAFX_CP="$JAVAFX_CP:$jar"; done
-          javac -sourcepath src \
-            -cp "drivers/ojdbc17-23.26.1.0.0.jar:drivers/postgresql-42.7.10.jar$JAVAFX_CP" \
-            src/com/datacube/*.java src/com/datacube/*/*.java src/com/datacube/fx/*.java src/com/datacube/DataCubeFx.java
+          $app = "${{ steps.version.outputs.app_version }}"
+          # 绿色版：先产出 app-image 目录 build/jpackage/DataCube/
+          .\gradlew.bat jpackageImage "-PappVersion=$app" --no-daemon --console=plain
+          if ($LASTEXITCODE -ne 0) { throw "jpackageImage failed ($LASTEXITCODE)" }
+          # 安装包：复用上一步的 app-image，产出 build/jpackage/DataCube-$app.exe
+          .\gradlew.bat jpackage -PinstallerType=exe "-PappVersion=$app" --no-daemon --console=plain
+          if ($LASTEXITCODE -ne 0) { throw "jpackage failed ($LASTEXITCODE)" }
 
-      - name: Fat JAR
+      - name: Assemble artifacts
+        shell: pwsh
         run: |
-          mkdir -p fat-jar
-          # 解压驱动到 fat-jar
-          cd fat-jar
-          jar xf ../drivers/ojdbc17-23.26.1.0.0.jar
-          jar xf ../drivers/postgresql-42.7.10.jar
-          rm -rf META-INF
-          cd ..
-          # 解压 JavaFX 到 fat-jar
-          for jar in lib/javafx*.jar; do
-            (cd fat-jar && jar xf ../$jar)
-          done
-          rm -rf fat-jar/META-INF
-          # 复制编译后的 class 文件
-          cp -r src/com fat-jar/
-          find fat-jar/com -name "*.java" -delete
-          # 创建 manifest
-          cat > MANIFEST.MF << 'EOF'
-          Manifest-Version: 1.0
-          Main-Class: com.datacube.DataCube
-          EOF
-          # 打包 fat JAR
-          jar cfm DataCube.jar MANIFEST.MF -C fat-jar .
+          $tag = "${{ steps.version.outputs.tag }}"
+          $app = "${{ steps.version.outputs.app_version }}"
+          # 绿色版：压缩整个 DataCube 目录（zip 内含 DataCube/，解压后双击其中 DataCube.exe）
+          Compress-Archive -Path "build/jpackage/DataCube" -DestinationPath "DataCube-$tag-win64-portable.zip" -Force
+          # 安装包：重命名为带版本与平台标识
+          Copy-Item "build/jpackage/DataCube-$app.exe" "DataCube-$tag-win64-setup.exe"
+          Get-ChildItem "DataCube-$tag-*" | Select-Object Name, @{N='MB';E={"{0:N1}" -f ($_.Length/1MB)}}
 
-      - name: Minimal JRE
-        run: |
-          # 收集 JavaFX 模块
-          JAVAFX_MODS=""
-          for jar in lib/javafx*.jar; do
-            JAVAFX_MODS="$JAVAFX_MODS:$jar"
-          done
-          jlink \
-            --module-path "$JAVA_HOME/jmods${JAVAFX_MODS}" \
-            --add-modules java.base,java.sql,java.naming,java.management,java.security.jgss,javafx.controls,javafx.fxml \
-            --output jre \
-            --strip-debug \
-            --no-header-files \
-            --no-man-pages \
-            --compress=zip-6
-
-      - name: Package
-        run: |
-          VERSION="${{ steps.version.outputs.tag }}"
-          # 纯 JAR 包（含 GUI 支持）
-          zip "data-cube-${VERSION}.zip" DataCube.jar
-          # JAR + JRE 包
-          mkdir -p "data-cube-jre/data-cube-${VERSION}"
-          cp DataCube.jar "data-cube-jre/data-cube-${VERSION}/"
-          cp -r jre "data-cube-jre/data-cube-${VERSION}/"
-          cp run.sh run.bat run-gui.sh run-gui.bat "data-cube-jre/data-cube-${VERSION}/"
-          cd data-cube-jre && zip -r "../data-cube-${VERSION}-win64-jre.zip" "data-cube-${VERSION}"
-
-      - name: Create Tag
+      - name: Create tag
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -127,33 +100,24 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "Release ${{ steps.version.outputs.tag }}"
           body: |
-            ## data-cube ${{ steps.version.outputs.tag }}
+            ## DataCube ${{ steps.version.outputs.tag }}
 
             | 文件 | 说明 |
             |------|------|
-            | `data-cube-${{ steps.version.outputs.tag }}.zip` | 纯 JAR（需 Java 21+，已内置 GUI） |
-            | `data-cube-${{ steps.version.outputs.tag }}-win64-jre.zip` | 内置 JRE（无需安装 Java，仅 Windows x64） |
-
-            ### 运行方式
-            ```bash
-            # CLI 模式
-            java -jar DataCube.jar
-
-            # GUI 模式
-            java -jar DataCube.jar --gui
-
-            # 内置 JRE 版（解压后直接运行）
-            ./run.sh          # CLI
-            ./run-gui.sh      # GUI
-            ```
+            | `DataCube-${{ steps.version.outputs.tag }}-win64-portable.zip` | 免安装绿色版（Windows x64）。解压后进入 `DataCube` 文件夹，双击 `DataCube.exe` 启动图形界面；`DataCubeCli.exe` 为命令行迁移工具。已内置运行时，无需安装 Java。 |
+            | `DataCube-${{ steps.version.outputs.tag }}-win64-setup.exe` | 安装程序（Windows x64）。运行后按向导安装，可选安装目录，并创建开始菜单项与桌面快捷方式。 |
           files: |
-            data-cube-${{ steps.version.outputs.tag }}.zip
-            data-cube-${{ steps.version.outputs.tag }}-win64-jre.zip
+            DataCube-${{ steps.version.outputs.tag }}-win64-portable.zip
+            DataCube-${{ steps.version.outputs.tag }}-win64-setup.exe
 
       - name: Summary
+        shell: bash
         run: |
           VERSION="${{ steps.version.outputs.tag }}"
-          echo "### Release ${VERSION}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- [纯 JAR](https://github.com/${{ github.repository }}/releases/download/${VERSION}/data-cube-${VERSION}.zip)" >> $GITHUB_STEP_SUMMARY
-          echo "- [内置 JRE](https://github.com/${{ github.repository }}/releases/download/${VERSION}/data-cube-${VERSION}-win64-jre.zip)" >> $GITHUB_STEP_SUMMARY
+          REPO="${{ github.repository }}"
+          {
+            echo "### Release ${VERSION}"
+            echo ""
+            echo "- [免安装绿色版](https://github.com/${REPO}/releases/download/${VERSION}/DataCube-${VERSION}-win64-portable.zip)"
+            echo "- [exe 安装程序](https://github.com/${REPO}/releases/download/${VERSION}/DataCube-${VERSION}-win64-setup.exe)"
+          } >> "$GITHUB_STEP_SUMMARY"

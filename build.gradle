@@ -7,8 +7,9 @@
 // 常用命令：
 //   gradlew run            —— 模块化运行 GUI（验证警告已消失）
 //   gradlew jpackageImage  —— 生成 app-image 免安装目录：build/jpackage/DataCube/
-//   gradlew jpackage       —— 生成安装包（默认 msi；需 WiX Toolset v3）
+//   gradlew jpackage       —— 生成安装包（默认 msi；需 WiX Toolset v5）
 //   gradlew jpackage -PinstallerType=exe  —— 生成 exe 安装包
+//   以上任务可用 -PappVersion=X.Y.Z 指定版本（CI 中与 release tag 对齐）。
 //
 // 首次构建需联网下载 Gradle 发行版、插件与 JavaFX 25 模块。
 
@@ -19,7 +20,9 @@ plugins {
 }
 
 group   = 'com.datacube'
-version = '3.0.0'   // 注意：msi/exe 的 appVersion 要求为数字版本（major.minor.patch）
+// 版本号：默认 3.0.0，可由 -PappVersion=X.Y.Z 覆盖（CI 中传入与 release tag 一致的版本）。
+// 注意：msi/exe 的 appVersion 要求为数字版本（major.minor.patch）。
+version = project.findProperty('appVersion') ?: '3.0.0'
 
 repositories {
     mavenCentral()
@@ -105,9 +108,12 @@ jlink {
         imageName  = 'DataCube'
         appVersion = project.version.toString()
         vendor     = 'DataCube'
-        // 安装包类型：默认 msi，可用 -PinstallerType=exe 切换；两者均需 WiX Toolset v3。
+        // 安装包类型：默认 msi，可用 -PinstallerType=exe 切换；两者均需 WiX Toolset v5。
         installerType = project.findProperty('installerType') ?: 'msi'
         installerName = 'DataCube'
+        // 安装包附加项（仅对 msi/exe 生效，不影响 app-image）：安装目录可选、
+        // 开始菜单项、桌面快捷方式。
+        installerOptions = ['--win-dir-chooser', '--win-menu', '--win-shortcut']
 
         if (iconFile.exists()) {
             icon = iconFile.toString()
