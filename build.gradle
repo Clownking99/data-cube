@@ -1,0 +1,116 @@
+// DataCube — Gradle + jpackage 模块化打包
+//
+// 与现有 build.sh（fat-jar / CLI）并存：本脚本复用 src 源目录，以“模块化运行时”
+// 打包，消除 fat-jar 方式下的两条 JavaFX 警告（unnamed module + JavaFX 版本旧的
+// sun.misc.Unsafe），并产出 app-image（免安装）与 msi/exe（安装包）。
+//
+// 常用命令：
+//   gradlew run            —— 模块化运行 GUI（验证警告已消失）
+//   gradlew jpackageImage  —— 生成 app-image 免安装目录：build/jpackage/DataCube/
+//   gradlew jpackage       —— 生成安装包（默认 msi；需 WiX Toolset v3）
+//   gradlew jpackage -PinstallerType=exe  —— 生成 exe 安装包
+//
+// 首次构建需联网下载 Gradle 发行版、插件与 JavaFX 25 模块。
+
+plugins {
+    id 'application'
+    id 'org.openjfx.javafxplugin' version '0.1.0'
+    id 'org.beryx.jlink'         version '4.1.0'   // 4.x 起要求 Gradle 8.14.4+，支持 Java 17-26（含 JDK 25）
+}
+
+group   = 'com.datacube'
+version = '3.0.0'   // 注意：msi/exe 的 appVersion 要求为数字版本（major.minor.patch）
+
+repositories {
+    mavenCentral()
+}
+
+// JDK 25 工具链（与 build.sh 使用的 Temurin 25 对齐）
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+// 复用现有 src 目录（与 build.sh 共存）；src/module-info.java 使其成为模块化构建。
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src']
+        }
+    }
+}
+
+// JavaFX 25：消除旧版 Marlin 的 sun.misc.Unsafe 警告（JDK-8334137 于 jfx25 用 FFM API 修复）。
+// 仅声明实际使用的最小模块集（无 FXML）。
+javafx {
+    version = '25'
+    modules = ['javafx.controls']
+}
+
+// 非模块依赖用本地 jar，避免版本漂移；与 build.sh 引用同一批文件。
+dependencies {
+    implementation files(
+        'drivers/ojdbc17-23.26.1.0.0.jar',
+        'drivers/postgresql-42.7.10.jar',
+        'lib/jsqlparser-4.9.jar'
+    )
+}
+
+application {
+    mainModule = 'com.datacube'
+    mainClass  = 'com.datacube.DataCubeFx'
+}
+
+// JDBC 驱动为自动模块，未被 module-info 直接 requires；模块图默认不解析它们。
+// 为使 gradlew run 时 DriverManager 的 ServiceLoader 能发现驱动，把模块路径上的
+// 全部模块加入根集合。（打包路径由下方 jlink mergedModule 处理，不依赖此项。）
+run {
+    jvmArgs += ['--add-modules', 'ALL-MODULE-PATH']
+}
+
+// 可选应用图标：存在时使用，缺省则用 Java 默认图标（不阻断打包）。
+def iconFile = file('packaging/DataCube.ico')
+
+jlink {
+    // 稳定、跨 JDK 版本无歧义的裁剪选项（不含 --compress，避免不同 JDK 语法差异）。
+    options = ['--strip-debug', '--no-header-files', '--no-man-pages']
+
+    // 将 JDBC 驱动 / jsqlparser 等自动模块合并为单一模块，并补齐 jdeps 可能漏掉的
+    // JDK 依赖与 java.sql.Driver 服务发现。（此块为“按需迭代”项，驱动如报缺模块可增补。）
+    mergedModule {
+        requires 'java.naming'
+        requires 'java.security.jgss'
+        requires 'java.security.sasl'
+        requires 'java.sql'
+        requires 'java.management'
+        requires 'java.transaction.xa'
+        requires 'java.xml'
+        uses 'java.sql.Driver'
+    }
+
+    // GUI 主启动器（对应 application.mainClass = com.datacube.DataCubeFx）。
+    launcher {
+        name = 'DataCube'
+    }
+
+    // 可选 CLI 启动器：保留控制台迁移工具入口（com.datacube.DataCube）。
+    secondaryLauncher {
+        name       = 'DataCubeCli'
+        moduleName = 'com.datacube'
+        mainClass  = 'com.datacube.DataCube'
+    }
+
+    jpackage {
+        imageName  = 'DataCube'
+        appVersion = project.version.toString()
+        vendor     = 'DataCube'
+        // 安装包类型：默认 msi，可用 -PinstallerType=exe 切换；两者均需 WiX Toolset v3。
+        installerType = project.findProperty('installerType') ?: 'msi'
+        installerName = 'DataCube'
+
+        if (iconFile.exists()) {
+            icon = iconFile.toString()
+        }
+    }
+}
