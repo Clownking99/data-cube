@@ -2,6 +2,7 @@ package com.datacube.fx;
 
 import com.datacube.config.AppSettings;
 import com.datacube.config.AppSettings.CommentMode;
+import com.datacube.export.XlsxWriter;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.ObjectTreeService;
 import com.datacube.sqleditor.SqlFormatter;
@@ -25,6 +26,10 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.*;
 import javafx.scene.text.Font;
+import javafx.stage.FileChooser;
+import javafx.stage.Window;
+
+import java.io.File;
 
 import java.sql.Connection;
 import java.util.ArrayList;
@@ -78,6 +83,7 @@ public final class SqlEditorPane {
     private Label statusLabel;
     private TextField schemaField;
     private Button executeBtn, explainBtn, formatBtn, clearBtn;
+    private Button exportResultBtn;
     private CheckBox analyzeCheck;
 
     private volatile boolean running = false;
@@ -136,10 +142,15 @@ public final class SqlEditorPane {
             planArea.clear();
             useTable();
             lastQueryResult = null;
+            exportResultBtn.setDisable(true);
             statusLabel.setText("就绪");
         });
 
-        box.getChildren().addAll(new Label("Schema:"), schemaField, executeBtn, explainBtn, analyzeCheck, formatBtn, clearBtn);
+        exportResultBtn = new Button("导出结果");
+        exportResultBtn.setDisable(true);
+        exportResultBtn.setOnAction(e -> onExportResult());
+
+        box.getChildren().addAll(new Label("Schema:"), schemaField, executeBtn, explainBtn, analyzeCheck, formatBtn, exportResultBtn, clearBtn);
         return box;
     }
 
@@ -325,6 +336,7 @@ public final class SqlEditorPane {
 
     private void showPlan(String planText, long elapsed, int totalStmts) {
         lastQueryResult = null;
+        exportResultBtn.setDisable(true);
         planArea.setText(planText);
         usePlan();
         String status = "执行计划 - " + elapsed + "ms";
@@ -358,6 +370,7 @@ public final class SqlEditorPane {
     private void showError(String msg, long elapsed) {
         lastQueryResult = null;
         useTable();
+        exportResultBtn.setDisable(true);
         resultTable.getColumns().clear();
         resultTable.getItems().clear();
         TableColumn<ObservableList<String>, String> col = new TableColumn<>("错误");
@@ -373,6 +386,7 @@ public final class SqlEditorPane {
     private void showScriptResults(List<ScriptOutcome> outcomes, long totalElapsed) {
         lastQueryResult = null;
         useTable();
+        exportResultBtn.setDisable(true);
         resultTable.getColumns().clear();
         resultTable.getItems().clear();
         if (outcomes == null || outcomes.isEmpty()) {
@@ -445,6 +459,49 @@ public final class SqlEditorPane {
             resultTable.getColumns().add(col);
         }
         resultTable.setItems(data);
+        exportResultBtn.setDisable(r.rows.isEmpty());
+    }
+
+    /** 将当前查询结果导出为 Excel(.xlsx)。 */
+    private void onExportResult() {
+        QueryResult r = lastQueryResult;
+        if (r == null || r.kind != QueryResult.Kind.QUERY || r.rows.isEmpty()) {
+            showAlert("没有可导出的查询结果");
+            return;
+        }
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("导出结果到 Excel");
+        chooser.setInitialFileName("query_result.xlsx");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel 文件", "*.xlsx"));
+        Window owner = root.getScene() == null ? null : root.getScene().getWindow();
+        File out = chooser.showSaveDialog(owner);
+        if (out == null) return;
+
+        final List<String> columns = r.columns;
+        final List<List<Object>> rows = r.rows;
+        statusLabel.setText("导出中...");
+        statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
+        new Thread(() -> {
+            String err = null;
+            try {
+                XlsxWriter.write(out, columns, sink -> {
+                    for (List<Object> row : rows) sink.row(row);
+                });
+            } catch (Exception e) {
+                err = e.getMessage() == null ? e.toString() : e.getMessage();
+                if (out.exists()) out.delete();
+            }
+            final String fErr = err;
+            Platform.runLater(() -> {
+                if (fErr == null) {
+                    statusLabel.setText("已导出: " + out.getAbsolutePath());
+                    statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+                } else {
+                    statusLabel.setText("导出失败: " + fErr);
+                    statusLabel.setStyle("-fx-text-fill: #d32f2f; -fx-font-size: 12px;");
+                }
+            });
+        }, "Result-Export").start();
     }
 
     /** 构建带注释表头的查询列，表头展现方式由当前 {@link CommentMode} 决定。 */

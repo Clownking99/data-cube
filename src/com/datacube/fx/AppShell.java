@@ -115,6 +115,12 @@ public final class AppShell {
         }
 
         @Override
+        public void exportTable(String connId, TableRef table) {
+            ExportDialog.show(connMgr, connId, table,
+                    root.getScene() == null ? null : root.getScene().getWindow());
+        }
+
+        @Override
         public void openDdl(String connId, ConnectionTreePane.NodeData node) {
             String schema = node.schema();
             String name = node.name();

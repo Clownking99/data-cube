@@ -49,6 +49,7 @@ javac -d build-out \
     src/com/datacube/provider/postgres/*.java \
     src/com/datacube/migration/*.java \
     src/com/datacube/sqleditor/*.java \
+    src/com/datacube/export/*.java \
     $JAVAFX_FILES
 
 # ===== [2/4] 解压依赖到 staging =====

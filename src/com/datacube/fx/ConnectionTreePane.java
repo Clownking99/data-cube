@@ -36,6 +36,7 @@ public final class ConnectionTreePane {
         void openSqlEditor(ConnConfig conn);
         void openDataGrid(String connId, TableRef table);
         void openDdl(String connId, NodeData node);
+        void exportTable(String connId, TableRef table);
     }
 
     enum Kind { CONNECTION, SCHEMA, TABLES, VIEWS, ROUTINES, SEQUENCES, TABLE, VIEW, ROUTINE, SEQUENCE }
@@ -345,9 +346,11 @@ public final class ConnectionTreePane {
                     data.setOnAction(e -> actions.openDataGrid(d.connId, new TableRef(d.schema, d.name)));
                     MenuItem ddl = new MenuItem("查看 DDL");
                     ddl.setOnAction(e -> actions.openDdl(d.connId, d));
+                    MenuItem export = new MenuItem("导出...");
+                    export.setOnAction(e -> actions.exportTable(d.connId, new TableRef(d.schema, d.name)));
                     MenuItem sql = new MenuItem("打开 SQL 编辑器");
                     sql.setOnAction(e -> actions.openSqlEditor(connOf(getTreeItem())));
-                    menu.getItems().addAll(data, ddl, sql);
+                    menu.getItems().addAll(data, ddl, export, sql);
                 }
                 case VIEW, ROUTINE, SEQUENCE -> {
                     MenuItem ddl = new MenuItem("查看 DDL");
