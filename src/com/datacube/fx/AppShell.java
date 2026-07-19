@@ -1,5 +1,6 @@
 package com.datacube.fx;
 
+import com.datacube.config.AppSettings;
 import com.datacube.config.ConnectionStore;
 import com.datacube.config.CredentialCipher;
 import com.datacube.service.ConnectionManager;
@@ -11,6 +12,7 @@ import com.datacube.spi.model.RoutineRef;
 import com.datacube.spi.model.TableRef;
 
 import javafx.geometry.Insets;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.SplitPane;
 import javafx.scene.layout.BorderPane;
@@ -32,6 +34,7 @@ public final class AppShell {
 
     private final CredentialCipher cipher = new CredentialCipher();
     private final ConnectionStore store = new ConnectionStore();
+    private final AppSettings settings = new AppSettings();
     private final ConnectionManager connMgr = new ConnectionManager(cipher);
     private final ObjectTreeService treeSvc = new ObjectTreeService(connMgr);
     private final DataBrowseService browseSvc = new DataBrowseService(connMgr);
@@ -71,7 +74,10 @@ public final class AppShell {
         active.setStyle("-fx-text-fill: #666;");
         session.activeConnectionProperty().addListener((obs, o, c) ->
                 active.setText(c == null ? "" : "  |  活动连接: " + c.name()));
-        HBox bar = new HBox(6, title, active);
+        Button settingsBtn = new Button("⚙ 设置");
+        settingsBtn.setOnAction(e ->
+                SettingsDialog.show(settings, root.getScene() == null ? null : root.getScene().getWindow()));
+        HBox bar = new HBox(6, title, active, settingsBtn);
         bar.setPadding(new Insets(8, 12, 8, 12));
         bar.setStyle("-fx-background-color: #eceff4; -fx-border-color: transparent transparent #d8dee9 transparent;");
         HBox.setHgrow(active, Priority.ALWAYS);
@@ -97,7 +103,7 @@ public final class AppShell {
         @Override
         public void openSqlEditor(ConnConfig conn) {
             if (conn != null) session.setActiveConnection(conn);
-            SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc);
+            SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings);
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
             contentTabs.openTab(name, pane.getNode());
         }

@@ -1,5 +1,7 @@
 package com.datacube.fx;
 
+import com.datacube.config.AppSettings;
+import com.datacube.config.AppSettings.CommentMode;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.ObjectTreeService;
 import com.datacube.sqleditor.SqlFormatter;
@@ -55,6 +57,7 @@ public final class SqlEditorPane {
     private final SessionContext session;
     private final ConnectionManager connections;
     private final ObjectTreeService treeSvc;
+    private final AppSettings settings;
 
     /** 预热的元数据名称（表/视图/schema），线程安全。 */
     private final Set<String> metaNames = ConcurrentHashMap.newKeySet();
@@ -74,12 +77,20 @@ public final class SqlEditorPane {
     private Button executeBtn, formatBtn, clearBtn;
 
     private volatile boolean running = false;
+    /** 最近一次单条查询结果（用于注释显示模式切换后即时重渲染表头）；非查询视图时为 null。 */
+    private QueryResult lastQueryResult;
 
-    public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc) {
+    public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
+                         AppSettings settings) {
         this.session = session;
         this.connections = connections;
         this.treeSvc = treeSvc;
+        this.settings = settings;
         build();
+        // 注释显示模式变化 → 对当前查询结果即时重渲染表头（不重跑 SQL）
+        settings.commentModeProperty().addListener((obs, o, n) -> {
+            if (lastQueryResult != null) showQueryResult(lastQueryResult);
+        });
     }
 
     public Node getNode() {
@@ -114,6 +125,7 @@ public final class SqlEditorPane {
             editorArea.clear();
             resultTable.getItems().clear();
             resultTable.getColumns().clear();
+            lastQueryResult = null;
             statusLabel.setText("就绪");
         });
 
@@ -223,6 +235,7 @@ public final class SqlEditorPane {
     }
 
     private void showError(String msg, long elapsed) {
+        lastQueryResult = null;
         resultTable.getColumns().clear();
         resultTable.getItems().clear();
         TableColumn<ObservableList<String>, String> col = new TableColumn<>("错误");
@@ -236,6 +249,7 @@ public final class SqlEditorPane {
     }
 
     private void showScriptResults(List<ScriptOutcome> outcomes, long totalElapsed) {
+        lastQueryResult = null;
         resultTable.getColumns().clear();
         resultTable.getItems().clear();
         if (outcomes == null || outcomes.isEmpty()) {
@@ -289,6 +303,7 @@ public final class SqlEditorPane {
     }
 
     private void showQueryResult(QueryResult r) {
+        lastQueryResult = r;
         ObservableList<ObservableList<String>> data = FXCollections.observableArrayList();
         for (List<Object> row : r.rows) {
             ObservableList<String> rowData = FXCollections.observableArrayList();
@@ -298,11 +313,51 @@ public final class SqlEditorPane {
             data.add(rowData);
         }
         resultTable.getColumns().clear();
+        List<String> comments = r.columnComments;
         for (int i = 0; i < r.columns.size(); i++) {
-            addColumn(r.columns.get(i), i);
-            resultTable.getColumns().get(i).setPrefWidth(estimateColumnWidth(r.columns.get(i), r.rows, i));
+            String name = r.columns.get(i);
+            String comment = (comments != null && i < comments.size()) ? comments.get(i) : null;
+            TableColumn<ObservableList<String>, String> col = buildQueryColumn(name, comment, i);
+            col.setPrefWidth(estimateColumnWidth(name, r.rows, i));
+            resultTable.getColumns().add(col);
         }
         resultTable.setItems(data);
+    }
+
+    /** 构建带注释表头的查询列，表头展现方式由当前 {@link CommentMode} 决定。 */
+    private TableColumn<ObservableList<String>, String> buildQueryColumn(String name, String comment, int idx) {
+        TableColumn<ObservableList<String>, String> c = new TableColumn<>();
+        c.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(
+                idx < d.getValue().size() ? d.getValue().get(idx) : ""));
+        applyColumnHeader(c, name, comment);
+        return c;
+    }
+
+    /** 根据当前注释显示模式设置列头（纯文本 / 悬停 Tooltip / 固定两行）。 */
+    private void applyColumnHeader(TableColumn<ObservableList<String>, String> c, String name, String comment) {
+        boolean hasComment = comment != null && !comment.isEmpty();
+        CommentMode mode = settings.getCommentMode();
+        if (!hasComment || mode == CommentMode.OFF) {
+            c.setGraphic(null);
+            c.setText(name);
+            return;
+        }
+        if (mode == CommentMode.INLINE) {
+            Label nameLabel = new Label(name);
+            Label commentLabel = new Label(comment);
+            commentLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
+            VBox box = new VBox(1, nameLabel, commentLabel);
+            c.setText("");
+            c.setGraphic(box);
+        } else { // HOVER
+            Label nameLabel = new Label(name);
+            Tooltip tip = new Tooltip(name + "\n" + comment);
+            tip.setWrapText(true);
+            tip.setMaxWidth(360);
+            Tooltip.install(nameLabel, tip);
+            c.setText("");
+            c.setGraphic(nameLabel);
+        }
     }
 
     /** 估算列宽：取表头与前若干行内容的最大字符数，换算像素并裁剪到 [60, 360]。 */

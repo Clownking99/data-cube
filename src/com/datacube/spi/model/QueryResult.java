@@ -26,6 +26,8 @@ public final class QueryResult {
     public final Kind kind;
     /** 列名（仅 QUERY 有） */
     public final List<String> columns;
+    /** 列注释（仅 QUERY 有；与 {@link #columns} 平行，元素可为 null；由 provider best-effort 填充） */
+    public final List<String> columnComments;
     /** 数据行（仅 QUERY 有；每个 List<Object> 对应一行） */
     public final List<List<Object>> rows;
     /** 受影响行数（仅 UPDATE 有；-1 表示无信息） */
@@ -35,10 +37,11 @@ public final class QueryResult {
     /** 错误信息（仅 ERROR 有） */
     public final String errorMessage;
 
-    private QueryResult(Kind kind, List<String> columns, List<List<Object>> rows,
-                        int updateCount, long elapsedMillis, String errorMessage) {
+    private QueryResult(Kind kind, List<String> columns, List<String> columnComments,
+                        List<List<Object>> rows, int updateCount, long elapsedMillis, String errorMessage) {
         this.kind = kind;
         this.columns = columns != null ? columns : Collections.emptyList();
+        this.columnComments = columnComments != null ? columnComments : Collections.emptyList();
         this.rows = rows != null ? rows : Collections.emptyList();
         this.updateCount = updateCount;
         this.elapsedMillis = elapsedMillis;
@@ -46,15 +49,23 @@ public final class QueryResult {
     }
 
     public static QueryResult query(List<String> columns, List<List<Object>> rows, long elapsedMillis) {
-        return new QueryResult(Kind.QUERY, columns, rows, -1, elapsedMillis, null);
+        return new QueryResult(Kind.QUERY, columns, null, rows, -1, elapsedMillis, null);
     }
 
     public static QueryResult update(long elapsedMillis, int updateCount) {
-        return new QueryResult(Kind.UPDATE, null, null, updateCount, elapsedMillis, null);
+        return new QueryResult(Kind.UPDATE, null, null, null, updateCount, elapsedMillis, null);
     }
 
     public static QueryResult error(String errorMessage, long elapsedMillis) {
-        return new QueryResult(Kind.ERROR, null, null, -1, elapsedMillis, errorMessage);
+        return new QueryResult(Kind.ERROR, null, null, null, -1, elapsedMillis, errorMessage);
+    }
+
+    /**
+     * 返回一个附加了列注释的副本（不改动行数据）。注释列表与 {@link #columns} 平行，
+     * 元素可为 null（该列取不到注释）。仅对 QUERY 结果有意义。
+     */
+    public QueryResult withColumnComments(List<String> comments) {
+        return new QueryResult(kind, columns, comments, rows, updateCount, elapsedMillis, errorMessage);
     }
 
     /**

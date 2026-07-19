@@ -39,7 +39,11 @@ public final class PgSqlRunner implements SqlRunner {
                 long elapsed = System.currentTimeMillis() - t0;
                 if (hasResult) {
                     try (var rs = stmt.getResultSet()) {
-                        return QueryResult.fromResultSet(rs, elapsed);
+                        java.sql.ResultSetMetaData md = rs.getMetaData();
+                        QueryResult r = QueryResult.fromResultSet(rs, elapsed);
+                        // best-effort 解析列注释；失败或无表列时返回 null，不影响结果展示
+                        List<String> comments = PgColumnComments.resolve(conn, md);
+                        return comments == null ? r : r.withColumnComments(comments);
                     }
                 } else {
                     return QueryResult.update(elapsed, stmt.getUpdateCount());
