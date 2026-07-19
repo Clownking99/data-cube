@@ -5,6 +5,7 @@ import com.datacube.config.AppSettings.CommentMode;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.ObjectTreeService;
 import com.datacube.sqleditor.SqlFormatter;
+import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.spi.SqlRunner;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.QueryResult;
@@ -72,9 +73,12 @@ public final class SqlEditorPane {
     private final VBox root = new VBox(8);
     private TextArea editorArea;
     private TableView<ObservableList<String>> resultTable;
+    private TextArea planArea;
+    private TitledPane resultPane;
     private Label statusLabel;
     private TextField schemaField;
-    private Button executeBtn, formatBtn, clearBtn;
+    private Button executeBtn, explainBtn, formatBtn, clearBtn;
+    private CheckBox analyzeCheck;
 
     private volatile boolean running = false;
     /** 最近一次单条查询结果（用于注释显示模式切换后即时重渲染表头）；非查询视图时为 null。 */
@@ -117,6 +121,10 @@ public final class SqlEditorPane {
         executeBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
         executeBtn.setOnAction(e -> onExecute());
 
+        explainBtn = new Button("执行计划");
+        explainBtn.setOnAction(e -> onExplain());
+        analyzeCheck = new CheckBox("ANALYZE(实际执行)");
+
         formatBtn = new Button("美化 SQL");
         formatBtn.setOnAction(e -> onFormat());
 
@@ -125,11 +133,13 @@ public final class SqlEditorPane {
             editorArea.clear();
             resultTable.getItems().clear();
             resultTable.getColumns().clear();
+            planArea.clear();
+            useTable();
             lastQueryResult = null;
             statusLabel.setText("就绪");
         });
 
-        box.getChildren().addAll(new Label("Schema:"), schemaField, executeBtn, formatBtn, clearBtn);
+        box.getChildren().addAll(new Label("Schema:"), schemaField, executeBtn, explainBtn, analyzeCheck, formatBtn, clearBtn);
         return box;
     }
 
@@ -160,10 +170,15 @@ public final class SqlEditorPane {
         resultTable.setPlaceholder(new Label("（无结果）"));
         // UNCONSTRAINED：保留列自然宽度与底部横向滚动条（宽表友好）。
         resultTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
-        TitledPane pane = new TitledPane("结果", resultTable);
-        pane.setCollapsible(false);
-        VBox box = new VBox(pane);
-        VBox.setVgrow(pane, Priority.ALWAYS);
+        // 执行计划文本区（等宽、只读、不换行）；与结果表格共用同一 TitledPane，按需切换。
+        planArea = new TextArea();
+        planArea.setEditable(false);
+        planArea.setWrapText(false);
+        planArea.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 13px;");
+        resultPane = new TitledPane("结果", resultTable);
+        resultPane.setCollapsible(false);
+        VBox box = new VBox(resultPane);
+        VBox.setVgrow(resultPane, Priority.ALWAYS);
         return box;
     }
 
@@ -234,8 +249,115 @@ public final class SqlEditorPane {
         });
     }
 
+    // ---------- 执行计划（EXPLAIN / EXPLAIN ANALYZE） ----------
+
+    private void onExplain() {
+        if (running) return;
+        String text = editorArea.getText();
+        if (text.trim().isEmpty()) {
+            showAlert("请输入 SQL");
+            return;
+        }
+        ConnConfig active = session.getActiveConnection();
+        if (active == null) {
+            showAlert("请先在左侧选择一个活动连接");
+            return;
+        }
+        List<String> stmts = SqlScriptSplitter.split(text);
+        if (stmts.isEmpty()) {
+            showAlert("请输入 SQL");
+            return;
+        }
+        final String sql = stmts.get(0);
+        final int total = stmts.size();
+        final boolean analyze = analyzeCheck.isSelected();
+        // 写类语句勾 ANALYZE 会实际执行，二次确认
+        if (analyze && isWriteStatement(sql)) {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "EXPLAIN ANALYZE 会实际执行该语句（可能产生写入）。确定继续？",
+                    ButtonType.OK, ButtonType.CANCEL);
+            confirm.setHeaderText(null);
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+        }
+        final String connId = active.id();
+        final String schema = schemaField.getText().trim();
+
+        running = true;
+        setButtonsRunning(true);
+        statusLabel.setText(analyze ? "执行计划(ANALYZE)中..." : "生成执行计划中...");
+        statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
+
+        new Thread(() -> doExplain(connId, sql, schema, analyze, total), "SqlEditor-Explain").start();
+    }
+
+    private void doExplain(String connId, String sql, String schema, boolean analyze, int total) {
+        QueryResult result = null;
+        String errMsg = null;
+        try {
+            Connection conn = connections.acquire(connId);
+            var provider = connections.provider(connId);
+            String explainSql = provider.dialect().explainSql(sql, analyze);
+            result = provider.sqlRunner().execute(conn, explainSql, schema.isEmpty() ? null : schema);
+        } catch (Exception e) {
+            errMsg = e.getMessage();
+        }
+        final QueryResult fResult = result;
+        final String fErr = errMsg;
+        Platform.runLater(() -> {
+            running = false;
+            setButtonsRunning(false);
+            if (fErr != null) {
+                showError(fErr, 0);
+            } else if (fResult.kind == QueryResult.Kind.ERROR) {
+                showError(fResult.errorMessage, fResult.elapsedMillis);
+            } else if (fResult.kind == QueryResult.Kind.QUERY) {
+                StringBuilder sb = new StringBuilder();
+                for (List<Object> row : fResult.rows) {
+                    if (!row.isEmpty() && row.get(0) != null) sb.append(row.get(0));
+                    sb.append('\n');
+                }
+                showPlan(sb.toString(), fResult.elapsedMillis, total);
+            } else {
+                showError("未返回执行计划", fResult.elapsedMillis);
+            }
+        });
+    }
+
+    private void showPlan(String planText, long elapsed, int totalStmts) {
+        lastQueryResult = null;
+        planArea.setText(planText);
+        usePlan();
+        String status = "执行计划 - " + elapsed + "ms";
+        if (totalStmts > 1) status += "（已对第 1 条语句，共 " + totalStmts + " 条）";
+        statusLabel.setText(status);
+        statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+    }
+
+    /** 将结果区切回表格视图。 */
+    private void useTable() {
+        if (resultPane.getContent() != resultTable) resultPane.setContent(resultTable);
+        resultPane.setText("结果");
+    }
+
+    /** 将结果区切到执行计划文本视图。 */
+    private void usePlan() {
+        if (resultPane.getContent() != planArea) resultPane.setContent(planArea);
+        resultPane.setText("结果（执行计划）");
+    }
+
+    /** 启发式判断是否写类语句（非 SELECT/WITH/VALUES/SHOW/TABLE/EXPLAIN 开头）。 */
+    private static boolean isWriteStatement(String sql) {
+        String s = sql.trim();
+        int i = 0;
+        while (i < s.length() && (s.charAt(i) == '(' || Character.isWhitespace(s.charAt(i)))) i++;
+        s = s.substring(i).toUpperCase();
+        return !(s.startsWith("SELECT") || s.startsWith("WITH") || s.startsWith("VALUES")
+                || s.startsWith("SHOW") || s.startsWith("TABLE") || s.startsWith("EXPLAIN"));
+    }
+
     private void showError(String msg, long elapsed) {
         lastQueryResult = null;
+        useTable();
         resultTable.getColumns().clear();
         resultTable.getItems().clear();
         TableColumn<ObservableList<String>, String> col = new TableColumn<>("错误");
@@ -250,6 +372,7 @@ public final class SqlEditorPane {
 
     private void showScriptResults(List<ScriptOutcome> outcomes, long totalElapsed) {
         lastQueryResult = null;
+        useTable();
         resultTable.getColumns().clear();
         resultTable.getItems().clear();
         if (outcomes == null || outcomes.isEmpty()) {
@@ -377,6 +500,7 @@ public final class SqlEditorPane {
 
     private void setButtonsRunning(boolean isRunning) {
         executeBtn.setDisable(isRunning);
+        explainBtn.setDisable(isRunning);
         formatBtn.setDisable(isRunning);
         clearBtn.setDisable(isRunning);
     }

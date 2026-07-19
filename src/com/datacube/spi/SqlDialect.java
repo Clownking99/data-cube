@@ -22,4 +22,17 @@ public interface SqlDialect {
 
     /** 是否有 schema 层级（PG=true；某些库 user=schema 或无 schema）。 */
     boolean hasSchemaLevel();
+
+    /**
+     * 生成查看执行计划的 SQL（PG: {@code EXPLAIN <sql>} / {@code EXPLAIN ANALYZE <sql>}）。
+     *
+     * <p>默认实现适用于大多数数据库；{@code analyze=true} 会真正执行 SQL。
+     * 传入的 {@code sql} 应为单条语句（不含尾部分号）。
+     *
+     * @param sql     单条 SQL
+     * @param analyze 是否 ANALYZE（实际执行以获取真实耗时/行数）
+     */
+    default String explainSql(String sql, boolean analyze) {
+        return (analyze ? "EXPLAIN ANALYZE " : "EXPLAIN ") + sql;
+    }
 }
