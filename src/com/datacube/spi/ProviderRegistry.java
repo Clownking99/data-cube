@@ -1,5 +1,6 @@
 package com.datacube.spi;
 
+import com.datacube.provider.oracle.OracleProvider;
 import com.datacube.provider.postgres.PostgresProvider;
 import com.datacube.spi.model.DbType;
 
@@ -19,6 +20,7 @@ public final class ProviderRegistry {
 
     static {
         register(new PostgresProvider());
+        register(new OracleProvider());
     }
 
     private ProviderRegistry() {}

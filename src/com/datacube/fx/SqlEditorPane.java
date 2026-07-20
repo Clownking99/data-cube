@@ -307,8 +307,7 @@ public final class SqlEditorPane {
         try {
             Connection conn = connections.acquire(connId);
             var provider = connections.provider(connId);
-            String explainSql = provider.dialect().explainSql(sql, analyze);
-            result = provider.sqlRunner().execute(conn, explainSql, schema.isEmpty() ? null : schema);
+            result = provider.sqlRunner().explain(conn, sql, schema.isEmpty() ? null : schema, analyze);
         } catch (Exception e) {
             errMsg = e.getMessage();
         }

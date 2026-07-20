@@ -114,6 +114,17 @@ public final class QueryResult {
                 return sb.append("...(").append(b.length).append(" bytes)").toString();
             }
         }
+        // Oracle BLOB 返回 java.sql.Blob（而非 byte[]）：取前 64 字节 hex 预览
+        if (v instanceof java.sql.Blob) {
+            java.sql.Blob blob = (java.sql.Blob) v;
+            long len = blob.length();
+            byte[] b = blob.getBytes(1, (int) Math.min(64, len));
+            blob.free();
+            StringBuilder sb = new StringBuilder();
+            for (byte x : b) sb.append(String.format("%02x", x));
+            if (len > 64) sb.append("...(").append(len).append(" bytes)");
+            return sb.toString();
+        }
         return v;
     }
 

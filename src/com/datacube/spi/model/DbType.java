@@ -3,11 +3,12 @@ package com.datacube.spi.model;
 /**
  * 数据库类型枚举。
  *
- * <p>一期仅 {@link #POSTGRESQL}；未来接入新库在此追加枚举值，
- * 并新增对应的 {@code provider.<type>} 实现即可，业务层零改动。
+ * <p>接入新库在此追加枚举值，并新增对应的 {@code provider.<type>} 实现即可，
+ * 业务层零改动。
  */
 public enum DbType {
-    POSTGRESQL("PostgreSQL", "jdbc:postgresql:", 5432);
+    POSTGRESQL("PostgreSQL", "jdbc:postgresql:", 5432),
+    ORACLE("Oracle", "jdbc:oracle:thin:@", 1521);
 
     private final String displayName;
     private final String urlPrefix;

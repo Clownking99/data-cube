@@ -47,8 +47,10 @@ public final class ExportDialog {
         ToggleGroup formatGroup = new ToggleGroup();
         RadioButton fSql = radio(formatGroup, "SQL 脚本 (.sql)", ExportFormat.SQL);
         RadioButton fXlsx = radio(formatGroup, "Excel (.xlsx)", ExportFormat.XLSX);
-        RadioButton fDump = radio(formatGroup, "pg_dump 备份 (.sql)", ExportFormat.PG_DUMP);
         fSql.setSelected(true);
+        // pg_dump 备份仅 PostgreSQL 可用；其它库不提供该选项
+        boolean isPg = conns.config(connId).type() == com.datacube.spi.model.DbType.POSTGRESQL;
+        RadioButton fDump = isPg ? radio(formatGroup, "pg_dump 备份 (.sql)", ExportFormat.PG_DUMP) : null;
 
         Label xlsxHint = new Label("提示: Excel 仅导出数据。");
         xlsxHint.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
@@ -66,8 +68,11 @@ public final class ExportDialog {
         VBox box = new VBox(6,
                 bold("导出内容"), rStructure, rData, rBoth,
                 new Label(" "),
-                bold("导出格式"), fSql, fXlsx, fDump,
+                bold("导出格式"), fSql, fXlsx,
                 xlsxHint);
+        if (fDump != null) {
+            box.getChildren().add(box.getChildren().indexOf(xlsxHint), fDump);
+        }
         box.setPadding(new Insets(12));
         dialog.getDialogPane().setContent(box);
 

@@ -47,6 +47,7 @@ javac -d build-out \
     src/com/datacube/config/*.java \
     src/com/datacube/service/*.java \
     src/com/datacube/provider/postgres/*.java \
+    src/com/datacube/provider/oracle/*.java \
     src/com/datacube/migration/*.java \
     src/com/datacube/sqleditor/*.java \
     src/com/datacube/export/*.java \

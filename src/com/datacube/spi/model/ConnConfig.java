@@ -24,10 +24,12 @@ public record ConnConfig(
         props = props == null ? Collections.emptyMap() : Map.copyOf(props);
     }
 
-    /** 拼装 JDBC URL（按数据库类型）。一期仅 PG。 */
+    /** 拼装 JDBC URL（按数据库类型）。 */
     public String jdbcUrl() {
         return switch (type) {
             case POSTGRESQL -> "jdbc:postgresql://" + host + ":" + port + "/" + database;
+            // Oracle ：database 字段承载 Service Name
+            case ORACLE -> "jdbc:oracle:thin:@//" + host + ":" + port + "/" + database;
         };
     }
 

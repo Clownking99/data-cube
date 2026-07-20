@@ -69,4 +69,10 @@ public final class PgSqlRunner implements SqlRunner {
         }
         return outcomes;
     }
+
+    @Override
+    public QueryResult explain(Connection conn, String sql, String schema, boolean analyze) {
+        // PG：单条 EXPLAIN [ANALYZE] <sql>，直接复用 execute。
+        return execute(conn, dialect.explainSql(sql, analyze), schema);
+    }
 }

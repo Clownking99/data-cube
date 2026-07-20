@@ -81,7 +81,7 @@ public final class SqlScriptExporter {
                 w.write("  (");
                 for (int i = 0; i < values.size(); i++) {
                     if (i > 0) w.write(", ");
-                    w.write(literal(values.get(i)));
+                    w.write(dialect.sqlLiteral(values.get(i)));
                 }
                 w.write(")");
                 inBatch[0]++;
@@ -102,24 +102,5 @@ public final class SqlScriptExporter {
         String name = dialect.quoteIdentifier(t.name());
         if (t.schema() == null || t.schema().isEmpty()) return name;
         return dialect.quoteIdentifier(t.schema()) + "." + name;
-    }
-
-    /** 值 → SQL 字面量。 */
-    static String literal(Object v) {
-        if (v == null) return "NULL";
-        if (v instanceof Number) return v.toString();
-        if (v instanceof Boolean b) return b ? "TRUE" : "FALSE";
-        if (v instanceof byte[] bytes) return "'\\x" + hex(bytes) + "'";
-        String s = v.toString();
-        return "'" + s.replace("'", "''") + "'";
-    }
-
-    private static String hex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder(bytes.length * 2);
-        for (byte b : bytes) {
-            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-            sb.append(Character.forDigit(b & 0xF, 16));
-        }
-        return sb.toString();
     }
 }

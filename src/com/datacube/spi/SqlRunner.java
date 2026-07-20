@@ -27,4 +27,16 @@ public interface SqlRunner {
      * 多语句逐条执行；遇错停止后续并把错误作为一条结果返回。
      */
     List<ScriptOutcome> executeScript(Connection conn, String script, String schema);
+
+    /**
+     * 生成执行计划，结果以单列多行文本承载（首列逐行拼接即计划文本）。
+     *
+     * <p>各库机制不同：PG 为单条 {@code EXPLAIN [ANALYZE] <sql>}；
+     * Oracle 为 {@code EXPLAIN PLAN FOR} + {@code DBMS_XPLAN} 两步。由具体实现自管流程。
+     * 失败时以 {@link QueryResult#error} 承载，不抛异常。
+     *
+     * @param sql     单条 SQL（不含尾部分号）
+     * @param analyze 是否实际执行以获取真实行数/耗时
+     */
+    QueryResult explain(Connection conn, String sql, String schema, boolean analyze);
 }

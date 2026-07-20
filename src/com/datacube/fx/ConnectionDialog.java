@@ -33,18 +33,47 @@ public final class ConnectionDialog {
                                             ConnectionManager connMgr) {
         Dialog<ConnConfig> dialog = new Dialog<>();
         dialog.setTitle(existing == null ? "新建连接" : "编辑连接");
-        dialog.setHeaderText("PostgreSQL 连接");
+        dialog.setHeaderText(null);
 
         ButtonType saveType = new ButtonType("保存", ButtonBar.ButtonData.OK_DONE);
         ButtonType testType = new ButtonType("测试连接", ButtonBar.ButtonData.OTHER);
         dialog.getDialogPane().getButtonTypes().addAll(testType, saveType, ButtonType.CANCEL);
 
+        ComboBox<DbType> typeBox = new ComboBox<>();
+        typeBox.getItems().addAll(DbType.POSTGRESQL, DbType.ORACLE);
+        typeBox.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(DbType t) { return t == null ? "" : t.displayName(); }
+            @Override public DbType fromString(String s) { return null; }
+        });
+        typeBox.setMaxWidth(Double.MAX_VALUE);
+
         TextField nameField = new TextField();
         TextField hostField = new TextField("127.0.0.1");
-        TextField portField = new TextField(String.valueOf(DbType.POSTGRESQL.defaultPort()));
-        TextField dbField = new TextField("postgres");
-        TextField userField = new TextField("postgres");
+        TextField portField = new TextField();
+        TextField dbField = new TextField();
+        TextField userField = new TextField();
         PasswordField passField = new PasswordField();
+        Label dbLabel = new Label("数据库:");
+
+        // 类型切换：联动默认端口、“数据库/服务名”标签与提示、标题
+        typeBox.valueProperty().addListener((obs, old, nv) -> {
+            if (nv == null) return;
+            dialog.setHeaderText(nv.displayName() + " 连接");
+            portField.setText(String.valueOf(nv.defaultPort()));
+            if (nv == DbType.ORACLE) {
+                dbLabel.setText("服务名:");
+                dbField.setText("");
+                dbField.setPromptText("Service Name");
+                userField.setText("");
+            } else {
+                dbLabel.setText("数据库:");
+                dbField.setText("postgres");
+                dbField.setPromptText("");
+                userField.setText("postgres");
+            }
+        });
+
+        typeBox.setValue(existing != null ? existing.type() : DbType.POSTGRESQL);
 
         if (existing != null) {
             nameField.setText(existing.name());
@@ -59,19 +88,20 @@ public final class ConnectionDialog {
         grid.setHgap(10);
         grid.setVgap(8);
         grid.setPadding(new Insets(15));
-        grid.addRow(0, new Label("名称:"), nameField);
-        grid.addRow(1, new Label("主机:"), hostField);
-        grid.addRow(2, new Label("端口:"), portField);
-        grid.addRow(3, new Label("数据库:"), dbField);
-        grid.addRow(4, new Label("用户名:"), userField);
-        grid.addRow(5, new Label("密码:"), passField);
+        grid.addRow(0, new Label("类型:"), typeBox);
+        grid.addRow(1, new Label("名称:"), nameField);
+        grid.addRow(2, new Label("主机:"), hostField);
+        grid.addRow(3, new Label("端口:"), portField);
+        grid.addRow(4, dbLabel, dbField);
+        grid.addRow(5, new Label("用户名:"), userField);
+        grid.addRow(6, new Label("密码:"), passField);
         dialog.getDialogPane().setContent(grid);
 
         // 测试连接：拦截 OTHER 按钮，不关闭对话框
         final Button testBtn = (Button) dialog.getDialogPane().lookupButton(testType);
         testBtn.addEventFilter(javafx.event.ActionEvent.ACTION, evt -> {
             evt.consume();
-            ConnConfig probe = build(existing, cipher, nameField, hostField, portField,
+            ConnConfig probe = build(existing, cipher, typeBox.getValue(), nameField, hostField, portField,
                     dbField, userField, passField);
             if (probe == null) return;
             String err = connMgr.test(probe);
@@ -83,7 +113,7 @@ public final class ConnectionDialog {
 
         dialog.setResultConverter(bt -> {
             if (bt == saveType) {
-                return build(existing, cipher, nameField, hostField, portField,
+                return build(existing, cipher, typeBox.getValue(), nameField, hostField, portField,
                         dbField, userField, passField);
             }
             return null;
@@ -92,7 +122,7 @@ public final class ConnectionDialog {
         return dialog.showAndWait();
     }
 
-    private static ConnConfig build(ConnConfig existing, CredentialCipher cipher,
+    private static ConnConfig build(ConnConfig existing, CredentialCipher cipher, DbType type,
                                     TextField nameField, TextField hostField, TextField portField,
                                     TextField dbField, TextField userField, PasswordField passField) {
         String name = nameField.getText().trim();
@@ -120,7 +150,7 @@ public final class ConnectionDialog {
         }
 
         String id = existing != null ? existing.id() : UUID.randomUUID().toString();
-        return new ConnConfig(id, name, DbType.POSTGRESQL, host, port, db, user, enc, Map.of());
+        return new ConnConfig(id, name, type, host, port, db, user, enc, Map.of());
     }
 
     private static void warn(String msg) {

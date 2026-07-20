@@ -35,4 +35,12 @@ public interface SqlDialect {
     default String explainSql(String sql, boolean analyze) {
         return (analyze ? "EXPLAIN ANALYZE " : "EXPLAIN ") + sql;
     }
+
+    /**
+     * 将一个值渲染为本方言的 SQL 字面量（用于导出 INSERT 脚本）。
+     *
+     * <p>收敛各库对 NULL / 数字 / 布尔 / 字符串 / 二进制 / 日期的字面量差异，
+     * 使 {@code export.SqlScriptExporter} 不出现任何数据库专属语法。
+     */
+    String sqlLiteral(Object v);
 }
