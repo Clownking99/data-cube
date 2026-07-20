@@ -1,0 +1,48 @@
+/*
+ * SQL 编辑器语法高亮样式（RichTextFX CodeArea）。
+ *
+ * 样式类名与 SqlHighlighter 计算 StyleSpans 时写入的类名一一对应；
+ * 通过 codeArea.getStylesheets() 加载。CodeArea 文本着色使用 -fx-fill。
+ */
+
+.code-area {
+    -fx-background-color: #fafafa;
+    -fx-font-family: 'Consolas', 'Courier New', monospace;
+    -fx-font-size: 14px;
+}
+
+/* 关键字：蓝色加粗 */
+.sql-keyword {
+    -fx-fill: #0033b3;
+    -fx-font-weight: bold;
+}
+
+/* 字符串字面量：绿色 */
+.sql-string {
+    -fx-fill: #008000;
+}
+
+/* 注释：灰色斜体 */
+.sql-comment {
+    -fx-fill: #8c8c8c;
+    -fx-font-style: italic;
+}
+
+/* 数字字面量：青蓝 */
+.sql-number {
+    -fx-fill: #1750eb;
+}
+
+/* 括号：暗红 */
+.sql-paren {
+    -fx-fill: #a31515;
+}
+
+/* 行号栏 */
+.lineno {
+    -fx-background-color: #f0f0f0;
+    -fx-text-fill: #999999;
+    -fx-font-family: 'Consolas', 'Courier New', monospace;
+    -fx-font-size: 13px;
+    -fx-padding: 0 6px 0 6px;
+}

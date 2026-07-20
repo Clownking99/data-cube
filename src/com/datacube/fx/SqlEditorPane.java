@@ -29,9 +29,11 @@ import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.*;
-import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
+import org.fxmisc.flowless.VirtualizedScrollPane;
+import org.fxmisc.richtext.CodeArea;
+import org.fxmisc.richtext.LineNumberFactory;
 
 import java.io.File;
 
@@ -95,7 +97,7 @@ public final class SqlEditorPane {
     });
 
     private final VBox root = new VBox(8);
-    private TextArea editorArea;
+    private CodeArea editorArea;
     private SqlAutoComplete autoComplete;
     private TableView<ObservableList<String>> resultTable;
     private TextArea planArea;
@@ -179,23 +181,31 @@ public final class SqlEditorPane {
     }
 
     private Node editor() {
-        editorArea = new TextArea();
-        editorArea.setPromptText("-- 在此输入 SQL，支持多条以分号分隔\nSELECT 1;");
-        editorArea.setFont(Font.font("Consolas", 14));
-        editorArea.setWrapText(false);
-        editorArea.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 14px; -fx-background-color: #fafafa;");
+        editorArea = new CodeArea();
+        editorArea.getStyleClass().add("code-area");
+        editorArea.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 14px;");
+        // 行号栏
+        editorArea.setParagraphGraphicFactory(LineNumberFactory.get(editorArea));
+        // 语法高亮：文本变化后单遍正则重算样式区间并应用到富文本
+        editorArea.textProperty().addListener((obs, o, n) ->
+                editorArea.setStyleSpans(0, SqlHighlighter.compute(n)));
         editorArea.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
             if (e.getCode() == KeyCode.F5) {
                 e.consume();
                 onExecute();
             }
         });
+        // 高亮样式表（类名与 SqlHighlighter 输出一致）
+        var css = getClass().getResource("/com/datacube/fx/sql-highlight.css");
+        if (css != null) editorArea.getStylesheets().add(css.toExternalForm());
         // 自动补全：关键字 + 预热的元数据名称（Ctrl+Space 强制触发）；
         // 并为「别名./表名.」提供列名成员补全。
         autoComplete = new SqlAutoComplete(editorArea, this::completionCandidates);
         autoComplete.setMemberProvider(this::membersFor);
         installMetadataPrewarm();
-        TitledPane pane = new TitledPane("SQL 编辑器", editorArea);
+        // 虚拟化滚动容器：为 CodeArea 提供垂直/水平滚动条（宽/长 SQL 友好）。
+        VirtualizedScrollPane<CodeArea> scroll = new VirtualizedScrollPane<>(editorArea);
+        TitledPane pane = new TitledPane("SQL 编辑器", scroll);
         // SplitPane 中不可折叠，改用分隔条调整高度；去除固定 prefHeight 以尊重用户拖拽。
         pane.setCollapsible(false);
         pane.setExpanded(true);
@@ -231,16 +241,25 @@ public final class SqlEditorPane {
         String sql = editorArea.getText();
         if (sql.trim().isEmpty()) return;
         try {
-            editorArea.setText(SqlFormatter.format(sql));
+            editorArea.replaceText(SqlFormatter.format(sql));
             statusLabel.setText("已美化");
         } catch (Exception e) {
             showAlert("美化失败：" + e.getMessage());
         }
     }
 
+    /**
+     * 待执行 SQL 文本：有非空文本选区时只取选区（“执行选中”），否则取全部内容。
+     */
+    private String selectedOrAllSql() {
+        String selected = editorArea.getSelectedText();
+        if (selected != null && !selected.trim().isEmpty()) return selected;
+        return editorArea.getText();
+    }
+
     private void onExecute() {
         if (running) return;
-        String sql = editorArea.getText();
+        String sql = selectedOrAllSql();
         if (sql.trim().isEmpty()) {
             showAlert("请输入 SQL");
             return;
@@ -290,7 +309,7 @@ public final class SqlEditorPane {
 
     private void onExplain() {
         if (running) return;
-        String text = editorArea.getText();
+        String text = selectedOrAllSql();
         if (text.trim().isEmpty()) {
             showAlert("请输入 SQL");
             return;

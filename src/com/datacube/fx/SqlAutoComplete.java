@@ -1,28 +1,30 @@
 package com.datacube.fx;
 
 import javafx.application.Platform;
+import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
 import javafx.scene.control.ListView;
-import javafx.scene.control.TextArea;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.text.Text;
+import javafx.scene.input.ScrollEvent;
 import javafx.stage.Popup;
+import org.fxmisc.richtext.CodeArea;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * 为 {@link TextArea} 提供轻量级自动补全：SQL 关键字 + 元数据名称（表/视图/schema）。
+ * 为 {@link CodeArea} 提供轻量级自动补全：SQL 关键字 + 元数据名称（表/视图/schema）。
  *
- * <p>无第三方依赖：用 {@link Popup} + {@link ListView} 呈现候选，前缀过滤，
+ * <p>无额外 UI 依赖：用 {@link Popup} + {@link ListView} 呈现候选，前缀过滤，
  * 方向键/Enter/Tab 选中，Ctrl+Space 强制触发，Esc 关闭。候选词由外部
  * {@link Supplier} 惰性提供（含后台预热的元数据名称）。
  *
- * <p>光标屏幕坐标基于等宽字体度量估算（行高 × 行号、字符宽 × 列号），
- * 并扣除滚动偏移；这是纯 JavaFX 无法精确取 caret bounds 的折中，够用即可。
+ * <p>光标屏幕坐标直接取自 {@link CodeArea#getCaretBounds()}（已为屏幕坐标），
+ * 无需字体度量估算，定位更精确。
  */
 final class SqlAutoComplete {
 
@@ -34,7 +36,7 @@ final class SqlAutoComplete {
         Collection<String> membersFor(String qualifier);
     }
 
-    private final TextArea area;
+    private final CodeArea area;
     private final Supplier<Collection<String>> candidateSupplier;
     private MemberProvider memberProvider;
     private final Popup popup = new Popup();
@@ -43,7 +45,7 @@ final class SqlAutoComplete {
     /** 抑制补全替换文本时触发的 textProperty 递归。 */
     private boolean mutating = false;
 
-    SqlAutoComplete(TextArea area, Supplier<Collection<String>> candidateSupplier) {
+    SqlAutoComplete(CodeArea area, Supplier<Collection<String>> candidateSupplier) {
         this.area = area;
         this.candidateSupplier = candidateSupplier;
         setup();
@@ -84,8 +86,9 @@ final class SqlAutoComplete {
                 });
             }
         });
-        area.scrollTopProperty().addListener((o, a, b) -> hide());
-        area.scrollLeftProperty().addListener((o, a, b) -> hide());
+        // 滚动时隐藏弹窗（避免锚点错位）；用 JavaFX ScrollEvent 而非 RichTextFX 的 reactfx
+        // Val 属性，后者的类型需 com.datacube requires reactfx（仅在 jlink 阶段合并）。
+        area.addEventFilter(ScrollEvent.SCROLL, e -> hide());
     }
 
     private void onKeyPressed(KeyEvent e) {
@@ -182,28 +185,15 @@ final class SqlAutoComplete {
 
     private Point2D caretScreenPos() {
         if (area.getScene() == null || area.getScene().getWindow() == null) return null;
-        Point2D origin = area.localToScreen(0, 0);
-        if (origin == null) return null;
-
-        int caret = Math.max(0, area.getCaretPosition());
-        String before = area.getText(0, Math.min(caret, area.getLength()));
-        int row = 0, lastNl = -1;
-        for (int i = 0; i < before.length(); i++) {
-            if (before.charAt(i) == '\n') { row++; lastNl = i; }
+        // CodeArea 直接给出光标外接框（屏幕坐标）；取其左下角作为弹窗锚点。
+        Optional<Bounds> caretBounds = area.getCaretBounds();
+        if (caretBounds.isPresent()) {
+            Bounds b = caretBounds.get();
+            return new Point2D(b.getMinX(), b.getMaxY());
         }
-        int col = before.length() - (lastNl + 1);
-
-        Text sample = new Text("M");
-        sample.setFont(area.getFont());
-        double charW = sample.getLayoutBounds().getWidth();
-        double lineH = sample.getLayoutBounds().getHeight();
-        if (charW <= 0) charW = 8;
-        if (lineH <= 0) lineH = 16;
-
-        double padX = 8, padY = 8;
-        double x = origin.getX() + padX + col * charW - area.getScrollLeft();
-        double y = origin.getY() + padY + (row + 1) * lineH - area.getScrollTop();
-        return new Point2D(x, y);
+        // 兜底：光标未布局（如刚聚焦）时锚定到编辑器左上角。
+        Point2D origin = area.localToScreen(0, 0);
+        return origin == null ? null : new Point2D(origin.getX() + 8, origin.getY() + 24);
     }
 
     private void applySelection() {
@@ -214,7 +204,7 @@ final class SqlAutoComplete {
         mutating = true;
         try {
             area.replaceText(start, caret, sel);
-            area.positionCaret(start + sel.length());
+            area.moveTo(start + sel.length());
         } finally {
             mutating = false;
         }

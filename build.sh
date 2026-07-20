@@ -37,8 +37,20 @@ else
     echo "  WARN: lib/jsqlparser*.jar 未找到，SQL 窗口美化功能不可用"
 fi
 
+# RichTextFX（SQL 编辑器语法高亮 CodeArea）及其传递依赖
+RICHTEXT_CP=""
+for jar in lib/richtextfx*.jar lib/reactfx*.jar lib/flowless*.jar lib/undofx*.jar lib/wellbehavedfx*.jar; do
+    [ -e "$jar" ] || continue
+    RICHTEXT_CP="$RICHTEXT_CP;$jar"
+done
+if [ -n "$RICHTEXT_CP" ]; then
+    echo "  RichTextFX: 已检测到，编译语法高亮模块"
+else
+    echo "  WARN: lib/richtextfx*.jar 未找到，SQL 语法高亮功能不可用"
+fi
+
 javac -d build-out \
-    -cp "drivers/ojdbc17-23.26.1.0.0.jar;drivers/postgresql-42.7.10.jar$JAVAFX_CP$JSQLPARSER_CP" \
+    -cp "drivers/ojdbc17-23.26.1.0.0.jar;drivers/postgresql-42.7.10.jar$JAVAFX_CP$JSQLPARSER_CP$RICHTEXT_CP" \
     src/com/datacube/DataCube.java \
     src/com/datacube/cli/*.java \
     src/com/datacube/core/*.java \
@@ -100,6 +112,20 @@ if ls lib/jsqlparser*.jar >/dev/null 2>&1; then
         (cd "$STAGE" && jar xf "../$jar")
         rm -f "$STAGE/META-INF/MANIFEST.MF"
     done
+fi
+
+# RichTextFX 类（SQL 语法高亮）及其传递依赖
+for jar in lib/richtextfx*.jar lib/reactfx*.jar lib/flowless*.jar lib/undofx*.jar lib/wellbehavedfx*.jar; do
+    [ -e "$jar" ] || continue
+    echo "  解压 RichTextFX: $jar"
+    (cd "$STAGE" && jar xf "../$jar")
+    rm -f "$STAGE/META-INF/MANIFEST.MF"
+done
+
+# 非代码资源（SQL 高亮样式表 sql-highlight.css 等）
+if [ -d resources ]; then
+    echo "  复制 resources 资源"
+    cp -r resources/* "$STAGE/"
 fi
 
 # ===== [3/4] 打包 fat-jar =====

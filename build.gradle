@@ -43,8 +43,9 @@ sourceSets {
         }
         // 版本资源（version.properties）由 generateVersionProperties 任务生成到此目录，
         // 作为类路径资源随 jlink/jpackage 进包，供运行时 AppVersion 读取。
+        // resources/ 目录承载 SQL 高亮样式表（sql-highlight.css）等非代码资源。
         resources {
-            srcDirs = ['build/generated/version']
+            srcDirs = ['build/generated/version', 'resources']
         }
     }
 }
@@ -72,12 +73,15 @@ javafx {
 }
 
 // 非模块依赖用本地 jar，避免版本漂移；与 build.sh 引用同一批文件。
+// RichTextFX（SQL 编辑器语法高亮）经 mavenCentral 解析；其及传递依赖
+//（reactfx/flowless/undofx/wellbehavedfx）均为非模块化 jar，由下方 jlink 合并处理。
 dependencies {
     implementation files(
         'drivers/ojdbc17-23.26.1.0.0.jar',
         'drivers/postgresql-42.7.10.jar',
         'lib/jsqlparser-4.9.jar'
     )
+    implementation 'org.fxmisc.richtext:richtextfx:0.11.5'
 }
 
 application {
@@ -99,6 +103,14 @@ jlink {
     // 稳定、跨 JDK 版本无歧义的裁剪选项（不含 --compress，避免不同 JDK 语法差异）。
     options = ['--strip-debug', '--no-header-files', '--no-man-pages']
 
+    // RichTextFX 及其传递依赖均为非模块化 jar，且存在自动模块互相引用（jlink 不支持），
+    // 强制合并到 merged module 中统一打包。
+    forceMerge 'richtextfx', 'reactfx', 'flowless', 'undofx', 'wellbehaved'
+
+    // 合并模块 module-info 会 requires javafx.*（RichTextFX 依赖），需让这些 JavaFX
+    // 制品在 createMergedModule 编译阶段可见，否则报“找不到模块: javafx.controls”。
+    addExtraDependencies 'javafx'
+
     // 将 JDBC 驱动 / jsqlparser 等自动模块合并为单一模块，并补齐 jdeps 可能漏掉的
     // JDK 依赖与 java.sql.Driver 服务发现。（此块为“按需迭代”项，驱动如报缺模块可增补。）
     mergedModule {
@@ -109,6 +121,10 @@ jlink {
         requires 'java.management'
         requires 'java.transaction.xa'
         requires 'java.xml'
+        // RichTextFX/ReactFX/Flowless 合并后依赖的 JavaFX 模块
+        requires 'javafx.controls'
+        requires 'javafx.graphics'
+        requires 'javafx.base'
         uses 'java.sql.Driver'
     }
 

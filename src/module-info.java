@@ -18,6 +18,8 @@ module com.datacube {
     requires java.management;   // ManagementFactory（DataCube CLI 的 native-access 自检）
     requires java.net.http;     // 自动更新：调用 GitHub Releases API 查最新版
     requires net.sf.jsqlparser; // SQL 美化（SqlFormatter，自动模块）
+    requires org.fxmisc.richtext; // SQL 编辑器语法高亮（CodeArea，自动模块，由 jlink forceMerge 合并）
+    requires org.fxmisc.flowless; // CodeArea 滚动容器 VirtualizedScrollPane（自动模块）
 
     // JavaFX 通过反射实例化 Application 子类（DataCubeFx），需向 javafx.graphics 开放入口包。
     opens com.datacube to javafx.graphics;
