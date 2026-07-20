@@ -24,6 +24,17 @@ public interface SqlDialect {
     boolean hasSchemaLevel();
 
     /**
+     * 折叠未加引号标识符的大小写以匹配数据字典中的实际存储形式。
+     *
+     * <p>Oracle 未加引号标识符默认大写、PG 默认小写。用户在 SQL 编辑器
+     * 手填 schema 或书写表/别名时不必关心大小写，业务层用本方法归一后再去
+     * 切 schema 或查元数据。默认原样返回。
+     */
+    default String foldUnquotedIdentifier(String ident) {
+        return ident;
+    }
+
+    /**
      * 生成查看执行计划的 SQL（PG: {@code EXPLAIN <sql>} / {@code EXPLAIN ANALYZE <sql>}）。
      *
      * <p>默认实现适用于大多数数据库；{@code analyze=true} 会真正执行 SQL。

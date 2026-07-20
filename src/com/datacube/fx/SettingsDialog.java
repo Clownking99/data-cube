@@ -2,14 +2,19 @@ package com.datacube.fx;
 
 import com.datacube.config.AppSettings;
 import com.datacube.config.AppSettings.CommentMode;
+import com.datacube.config.JvmOptions;
 
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.Spinner;
 import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToggleGroup;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
 
@@ -56,15 +61,56 @@ public final class SettingsDialog {
         hint.setStyle("-fx-text-fill: #888; -fx-font-size: 12px;");
         hint.setWrapText(true);
 
-        VBox content = new VBox(10, group1, hint);
+        // ---------- 性能与资源 ----------
+        Spinner<Integer> rowsSpinner = new Spinner<>(0, 1_000_000, settings.getMaxResultRows(), 500);
+        rowsSpinner.setEditable(true);
+        rowsSpinner.setPrefWidth(140);
+        HBox rowsRow = new HBox(8, new Label("最大结果行数："), rowsSpinner, new Label("（0 = 不限制）"));
+        rowsRow.setAlignment(Pos.CENTER_LEFT);
+
+        Spinner<Integer> heapSpinner = new Spinner<>(128, 8192, settings.getMaxHeapMb(), 128);
+        heapSpinner.setEditable(true);
+        heapSpinner.setPrefWidth(140);
+        HBox heapRow = new HBox(8, new Label("最大内存(MB)："), heapSpinner, new Label("（重启后生效）"));
+        heapRow.setAlignment(Pos.CENTER_LEFT);
+
+        Label memHint = new Label("最大内存写入启动器配置，需重启程序才能生效；开发环境（非安装/免安装包）不支持修改。");
+        memHint.setStyle("-fx-text-fill: #888; -fx-font-size: 12px;");
+        memHint.setWrapText(true);
+
+        VBox perfBox = new VBox(8, rowsRow, heapRow, memHint);
+        perfBox.setPadding(new Insets(10));
+        TitledPane group2 = new TitledPane("性能与资源", perfBox);
+        group2.setCollapsible(false);
+
+        VBox content = new VBox(10, group1, hint, group2);
         content.setPadding(new Insets(12));
-        content.setPrefWidth(360);
+        content.setPrefWidth(380);
         dialog.getDialogPane().setContent(content);
         dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
 
         dialog.showAndWait().ifPresent(bt -> {
-            if (bt == ButtonType.OK && group.getSelectedToggle() != null) {
-                settings.setCommentMode((CommentMode) group.getSelectedToggle().getUserData());
+            if (bt == ButtonType.OK) {
+                if (group.getSelectedToggle() != null) {
+                    settings.setCommentMode((CommentMode) group.getSelectedToggle().getUserData());
+                }
+                Integer rows = rowsSpinner.getValue();
+                if (rows != null) settings.setMaxResultRows(rows);
+                Integer heap = heapSpinner.getValue();
+                boolean heapChanged = heap != null && heap != settings.getMaxHeapMb();
+                if (heap != null) settings.setMaxHeapMb(heap);
+                // 将最大堆写入启动器配置（下次启动生效），仅在变更时提示
+                if (heapChanged) {
+                    boolean applied = JvmOptions.applyMaxHeap(settings.getMaxHeapMb());
+                    Alert info = new Alert(Alert.AlertType.INFORMATION,
+                            applied
+                                    ? "最大内存已写入启动器配置，重启程序后生效。"
+                                    : "当前为开发/非打包运行，无法写入启动器配置；已保存设置值。",
+                            ButtonType.OK);
+                    info.setHeaderText(null);
+                    if (owner != null) info.initOwner(owner);
+                    info.showAndWait();
+                }
             }
         });
     }

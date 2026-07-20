@@ -30,7 +30,7 @@ public final class OracleSqlRunner implements SqlRunner {
     }
 
     @Override
-    public QueryResult execute(Connection conn, String sql, String schema) {
+    public QueryResult execute(Connection conn, String sql, String schema, int maxRows) {
         long t0 = System.currentTimeMillis();
         try {
             applySchema(conn, schema);
@@ -40,7 +40,7 @@ public final class OracleSqlRunner implements SqlRunner {
                 if (hasResult) {
                     try (ResultSet rs = stmt.getResultSet()) {
                         ResultSetMetaData md = rs.getMetaData();
-                        QueryResult r = QueryResult.fromResultSet(rs, elapsed);
+                        QueryResult r = QueryResult.fromResultSet(rs, elapsed, maxRows);
                         // best-effort 解析列注释；失败或无表列时返回 null，不影响结果展示
                         List<String> comments = OracleColumnComments.resolve(conn, md);
                         return comments == null ? r : r.withColumnComments(comments);
@@ -55,12 +55,12 @@ public final class OracleSqlRunner implements SqlRunner {
     }
 
     @Override
-    public List<ScriptOutcome> executeScript(Connection conn, String script, String schema) {
+    public List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows) {
         List<String> stmts = SqlScriptSplitter.split(script);
         List<ScriptOutcome> outcomes = new ArrayList<>(stmts.size());
         for (int i = 0; i < stmts.size(); i++) {
             String sql = stmts.get(i);
-            QueryResult r = execute(conn, sql, schema);
+            QueryResult r = execute(conn, sql, schema, maxRows);
             outcomes.add(new ScriptOutcome(i + 1, sql, r));
             if (r.kind == QueryResult.Kind.ERROR) {
                 // 遇错停止后续，避免连锁报错
@@ -91,14 +91,14 @@ public final class OracleSqlRunner implements SqlRunner {
                 }
                 return execute(conn,
                         "SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR(NULL, NULL, 'ALLSTATS LAST'))",
-                        null);
+                        null, 0);
             } else {
                 try (Statement s = conn.createStatement()) {
                     s.execute("EXPLAIN PLAN FOR " + stmt);
                 }
                 return execute(conn,
                         "SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY())",
-                        null);
+                        null, 0);
             }
         } catch (SQLException e) {
             return QueryResult.error(e.getMessage(), System.currentTimeMillis() - t0);

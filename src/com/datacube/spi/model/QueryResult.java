@@ -72,6 +72,14 @@ public final class QueryResult {
      * 从 ResultSet 读取全部行（受保护的最大行数限制避免 OOM）。
      */
     public static QueryResult fromResultSet(ResultSet rs, long elapsedMillis) throws SQLException {
+        return fromResultSet(rs, elapsedMillis, 10_000);
+    }
+
+    /**
+     * 从 ResultSet 读取最多 {@code maxRows} 行（限制保留内存）。
+     * {@code maxRows <= 0} 视为不限制。
+     */
+    public static QueryResult fromResultSet(ResultSet rs, long elapsedMillis, int maxRows) throws SQLException {
         ResultSetMetaData md = rs.getMetaData();
         int colCount = md.getColumnCount();
         List<String> cols = new ArrayList<>(colCount);
@@ -79,7 +87,7 @@ public final class QueryResult {
             cols.add(md.getColumnLabel(i));
         }
         List<List<Object>> data = new ArrayList<>();
-        int max = 10_000;
+        int max = maxRows <= 0 ? Integer.MAX_VALUE : maxRows;
         int rowCount = 0;
         while (rs.next() && rowCount < max) {
             List<Object> row = new ArrayList<>(colCount);

@@ -28,8 +28,15 @@ final class SqlAutoComplete {
 
     private static final int MAX_ITEMS = 200;
 
+    /** 限定符成员供给：给定 {@code 别名/表名} 返回其列名候选（用于 {@code a.} 补全）。 */
+    @FunctionalInterface
+    interface MemberProvider {
+        Collection<String> membersFor(String qualifier);
+    }
+
     private final TextArea area;
     private final Supplier<Collection<String>> candidateSupplier;
+    private MemberProvider memberProvider;
     private final Popup popup = new Popup();
     private final ListView<String> list = new ListView<>();
 
@@ -40,6 +47,11 @@ final class SqlAutoComplete {
         this.area = area;
         this.candidateSupplier = candidateSupplier;
         setup();
+    }
+
+    /** 设置限定符成员供给（如列名）；为空时仅按前缀补全全局候选。 */
+    void setMemberProvider(MemberProvider provider) {
+        this.memberProvider = provider;
     }
 
     private void setup() {
@@ -103,11 +115,24 @@ final class SqlAutoComplete {
     }
 
     private void maybeShow() {
-        String prefix = currentWord();
-        if (prefix.length() < 1) { hide(); return; }
+        int caret = area.getCaretPosition();
+        int start = wordStart(caret);
+        String prefix = caret <= start ? "" : area.getText(start, caret);
+        String qualifier = qualifierBefore(start);
+
+        Collection<String> pool;
+        if (qualifier != null && memberProvider != null) {
+            // 限定符上下文（如 a.col）：即使前缀为空也展示该限定符的全部成员
+            pool = memberProvider.membersFor(qualifier);
+        } else {
+            if (prefix.length() < 1) { hide(); return; }
+            pool = candidateSupplier.get();
+        }
+        if (pool == null || pool.isEmpty()) { hide(); return; }
+
         String lower = prefix.toLowerCase();
         List<String> matches = new ArrayList<>();
-        for (String c : candidateSupplier.get()) {
+        for (String c : pool) {
             if (c == null) continue;
             if (c.toLowerCase().startsWith(lower) && !c.equalsIgnoreCase(prefix)) {
                 matches.add(c);
@@ -119,6 +144,34 @@ final class SqlAutoComplete {
         list.getItems().setAll(matches);
         list.getSelectionModel().select(0);
         showAtCaret();
+    }
+
+    /**
+     * 若光标前当前单词的紧邻左侧是 {@code .} 且其前为标识符，返回该标识符（限定符）；
+     * 否则返回 null。用于识别 {@code 别名./表名.} 的列补全上下文。
+     */
+    private String qualifierBefore(int wordStart) {
+        String text = area.getText();
+        if (wordStart <= 0 || wordStart > text.length()) return null;
+        if (text.charAt(wordStart - 1) != '.') return null;
+        int qEnd = wordStart - 1;
+        int qStart = qEnd;
+        while (qStart > 0) {
+            char ch = text.charAt(qStart - 1);
+            if (Character.isLetterOrDigit(ch) || ch == '_') qStart--;
+            else break;
+        }
+        return qStart < qEnd ? text.substring(qStart, qEnd) : null;
+    }
+
+    /**
+     * 异步数据（如后台加载的列名）就绪后重算候选：仅当编辑器仍聚焦时尝试重新展示，
+     * 由 {@link #maybeShow()} 自行决定是否弹出，避免打断用户。
+     */
+    void refresh() {
+        Platform.runLater(() -> {
+            if (area.isFocused()) maybeShow();
+        });
     }
 
     private void showAtCaret() {

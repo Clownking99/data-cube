@@ -17,16 +17,19 @@ public interface SqlRunner {
     /**
      * 执行单条 SQL。
      *
-     * @param conn   连接（调用方负责生命周期）
-     * @param sql    单条 SQL（不含尾部分号）
-     * @param schema 可选 schema；非空时先切换 search_path
+     * @param conn    连接（调用方负责生命周期）
+     * @param sql     单条 SQL（不含尾部分号）
+     * @param schema  可选 schema；非空时先切换 search_path
+     * @param maxRows 查询结果最大保留行数（{@code <=0} 不限制）
      */
-    QueryResult execute(Connection conn, String sql, String schema);
+    QueryResult execute(Connection conn, String sql, String schema, int maxRows);
 
     /**
      * 多语句逐条执行；遇错停止后续并把错误作为一条结果返回。
+     *
+     * @param maxRows 每条查询结果最大保留行数（{@code <=0} 不限制）
      */
-    List<ScriptOutcome> executeScript(Connection conn, String script, String schema);
+    List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows);
 
     /**
      * 生成执行计划，结果以单列多行文本承载（首列逐行拼接即计划文本）。

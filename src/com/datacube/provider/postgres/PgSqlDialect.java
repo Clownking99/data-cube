@@ -22,7 +22,13 @@ public final class PgSqlDialect implements SqlDialect {
     @Override
     public String currentSchemaSql(String schema) {
         if (schema == null || schema.isEmpty()) return null;
-        return "SET search_path TO " + quoteIdentifier(schema);
+        return "SET search_path TO " + quoteIdentifier(foldUnquotedIdentifier(schema));
+    }
+
+    @Override
+    public String foldUnquotedIdentifier(String ident) {
+        // PG 未加引号标识符默认小写
+        return ident == null ? null : ident.toLowerCase();
     }
 
     @Override

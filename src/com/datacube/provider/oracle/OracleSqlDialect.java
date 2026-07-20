@@ -25,7 +25,13 @@ public final class OracleSqlDialect implements SqlDialect {
     @Override
     public String currentSchemaSql(String schema) {
         if (schema == null || schema.isEmpty()) return null;
-        return "ALTER SESSION SET CURRENT_SCHEMA = " + quoteIdentifier(schema);
+        return "ALTER SESSION SET CURRENT_SCHEMA = " + quoteIdentifier(foldUnquotedIdentifier(schema));
+    }
+
+    @Override
+    public String foldUnquotedIdentifier(String ident) {
+        // Oracle 未加引号标识符默认大写
+        return ident == null ? null : ident.toUpperCase();
     }
 
     @Override

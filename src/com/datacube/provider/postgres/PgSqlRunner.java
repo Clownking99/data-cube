@@ -25,7 +25,7 @@ public final class PgSqlRunner implements SqlRunner {
     }
 
     @Override
-    public QueryResult execute(Connection conn, String sql, String schema) {
+    public QueryResult execute(Connection conn, String sql, String schema, int maxRows) {
         long t0 = System.currentTimeMillis();
         try {
             String schemaSql = dialect.currentSchemaSql(schema);
@@ -40,7 +40,7 @@ public final class PgSqlRunner implements SqlRunner {
                 if (hasResult) {
                     try (var rs = stmt.getResultSet()) {
                         java.sql.ResultSetMetaData md = rs.getMetaData();
-                        QueryResult r = QueryResult.fromResultSet(rs, elapsed);
+                        QueryResult r = QueryResult.fromResultSet(rs, elapsed, maxRows);
                         // best-effort 解析列注释；失败或无表列时返回 null，不影响结果展示
                         List<String> comments = PgColumnComments.resolve(conn, md);
                         return comments == null ? r : r.withColumnComments(comments);
@@ -55,12 +55,12 @@ public final class PgSqlRunner implements SqlRunner {
     }
 
     @Override
-    public List<ScriptOutcome> executeScript(Connection conn, String script, String schema) {
+    public List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows) {
         List<String> stmts = SqlScriptSplitter.split(script);
         List<ScriptOutcome> outcomes = new ArrayList<>(stmts.size());
         for (int i = 0; i < stmts.size(); i++) {
             String sql = stmts.get(i);
-            QueryResult r = execute(conn, sql, schema);
+            QueryResult r = execute(conn, sql, schema, maxRows);
             outcomes.add(new ScriptOutcome(i + 1, sql, r));
             if (r.kind == QueryResult.Kind.ERROR) {
                 // 遇错停止后续，避免连锁报错
@@ -72,7 +72,7 @@ public final class PgSqlRunner implements SqlRunner {
 
     @Override
     public QueryResult explain(Connection conn, String sql, String schema, boolean analyze) {
-        // PG：单条 EXPLAIN [ANALYZE] <sql>，直接复用 execute。
-        return execute(conn, dialect.explainSql(sql, analyze), schema);
+        // PG：单条 EXPLAIN [ANALYZE] <sql>，直接复用 execute（计划行数少，不限行）。
+        return execute(conn, dialect.explainSql(sql, analyze), schema, 0);
     }
 }

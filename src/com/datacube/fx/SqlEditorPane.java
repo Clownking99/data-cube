@@ -8,17 +8,21 @@ import com.datacube.service.ObjectTreeService;
 import com.datacube.sqleditor.SqlFormatter;
 import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.spi.SqlRunner;
+import com.datacube.spi.model.ColumnInfo;
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.DbType;
 import com.datacube.spi.model.QueryResult;
 import com.datacube.spi.model.SchemaInfo;
 import com.datacube.spi.model.ScriptOutcome;
 import com.datacube.spi.model.TableInfo;
+import com.datacube.spi.model.TableRef;
 import com.datacube.spi.model.ViewInfo;
 
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.*;
@@ -35,11 +39,15 @@ import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * SQL 编辑器面板：绑定 {@link SessionContext} 活动连接，经 {@link SqlRunner} 执行。
@@ -59,6 +67,13 @@ public final class SqlEditorPane {
             "ELSE", "END", "ASC", "DESC", "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE",
             "CAST", "WITH", "RETURNING", "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "DEFAULT",
             "CONSTRAINT", "UNIQUE", "CHECK", "TRUE", "FALSE", "BEGIN", "COMMIT", "ROLLBACK");
+     
+     /** 关键字集合（大写），用于别名解析时排除关键字被误判为别名。 */
+     private static final Set<String> KEYWORDS_UPPER = new java.util.HashSet<>(SQL_KEYWORDS);
+     
+     /** 匹配 FROM 子句区域（至下一个子句边界或语句结束），忽略大小写与换行。 */
+     private static final Pattern FROM_REGION = Pattern.compile(
+             "(?is)\\bfrom\\b(.*?)(?:\\bwhere\\b|\\bgroup\\b|\\border\\b|\\bhaving\\b|\\blimit\\b|\\bunion\\b|;|$)");
 
     private final SessionContext session;
     private final ConnectionManager connections;
@@ -69,6 +84,10 @@ public final class SqlEditorPane {
     private final Set<String> metaNames = ConcurrentHashMap.newKeySet();
     /** 已预热的 connId（每连接只预热一次）。 */
     private final Set<String> prewarmed = ConcurrentHashMap.newKeySet();
+    /** 列名缓存：key = folded(schema).folded(table)，value = 列名列表。 */
+    private final Map<String, List<String>> columnCache = new ConcurrentHashMap<>();
+    /** 正在后台加载列的 key，避免并发重复拉取。 */
+    private final Set<String> columnLoading = ConcurrentHashMap.newKeySet();
     private final ExecutorService metaPool = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "SqlMeta-Prewarm");
         t.setDaemon(true);
@@ -77,6 +96,7 @@ public final class SqlEditorPane {
 
     private final VBox root = new VBox(8);
     private TextArea editorArea;
+    private SqlAutoComplete autoComplete;
     private TableView<ObservableList<String>> resultTable;
     private TextArea planArea;
     private TitledPane resultPane;
@@ -110,9 +130,13 @@ public final class SqlEditorPane {
     private void build() {
         root.setPadding(new Insets(10));
         root.setStyle("-fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; -fx-font-size: 13px;");
-        VBox container = resultContainer();
-        root.getChildren().addAll(toolbar(), editor(), container, statusBar());
-        VBox.setVgrow(container, Priority.ALWAYS);
+        // 垂直可拖拽分隔：上为 SQL 编辑区，下为结果展示区，分隔条可手动上下拖拽。
+        SplitPane split = new SplitPane();
+        split.setOrientation(Orientation.VERTICAL);
+        split.getItems().addAll(editor(), resultContainer());
+        split.setDividerPositions(0.38);
+        root.getChildren().addAll(toolbar(), split, statusBar());
+        VBox.setVgrow(split, Priority.ALWAYS);
     }
 
     private Node toolbar() {
@@ -166,13 +190,15 @@ public final class SqlEditorPane {
                 onExecute();
             }
         });
-        // 自动补全：关键字 + 预热的元数据名称（Ctrl+Space 强制触发）。
-        new SqlAutoComplete(editorArea, this::completionCandidates);
+        // 自动补全：关键字 + 预热的元数据名称（Ctrl+Space 强制触发）；
+        // 并为「别名./表名.」提供列名成员补全。
+        autoComplete = new SqlAutoComplete(editorArea, this::completionCandidates);
+        autoComplete.setMemberProvider(this::membersFor);
         installMetadataPrewarm();
         TitledPane pane = new TitledPane("SQL 编辑器", editorArea);
-        pane.setCollapsible(true);
+        // SplitPane 中不可折叠，改用分隔条调整高度；去除固定 prefHeight 以尊重用户拖拽。
+        pane.setCollapsible(false);
         pane.setExpanded(true);
-        pane.setPrefHeight(240);
         return pane;
     }
 
@@ -232,17 +258,17 @@ public final class SqlEditorPane {
         statusLabel.setText("执行中...");
         statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
 
-        new Thread(() -> doExecute(connId, sql, schema), "SqlEditor-Worker").start();
+        new Thread(() -> doExecute(connId, sql, schema, settings.getMaxResultRows()), "SqlEditor-Worker").start();
     }
 
-    private void doExecute(String connId, String sql, String schema) {
+    private void doExecute(String connId, String sql, String schema, int maxRows) {
         long t0 = System.currentTimeMillis();
         List<ScriptOutcome> outcomes = null;
         String errMsg = null;
         try {
             Connection conn = connections.acquire(connId);
             SqlRunner runner = connections.provider(connId).sqlRunner();
-            outcomes = runner.executeScript(conn, sql, schema.isEmpty() ? null : schema);
+            outcomes = runner.executeScript(conn, sql, schema.isEmpty() ? null : schema, maxRows);
         } catch (Exception e) {
             errMsg = e.getMessage();
         }
@@ -411,7 +437,10 @@ public final class SqlEditorPane {
             switch (r.kind) {
                 case QUERY -> {
                     showQueryResult(r);
-                    statusLabel.setText("OK - " + r.rows.size() + " rows - " + r.elapsedMillis + "ms");
+                    int cap = settings.getMaxResultRows();
+                    String extra = (cap > 0 && r.rows.size() >= cap)
+                            ? "（已截断至上限 " + cap + " 行，可在设置中调整）" : "";
+                    statusLabel.setText("OK - " + r.rows.size() + " rows - " + r.elapsedMillis + "ms" + extra);
                     statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
                 }
                 case UPDATE -> {
@@ -612,6 +641,118 @@ public final class SqlEditorPane {
                 prewarmed.remove(connId); // 允许下次重试
             }
         });
+    }
+
+    // ---------- 列名成员补全（别名./表名. 上下文） ----------
+
+    /**
+     * 为限定符（别名或表名）提供列名候选：解析编辑器中 FROM/JOIN 的别名映射，
+     * 折叠标识符大小写（Oracle→大写）后按 schema.table 命中列缓存；未命中则触发
+     * 后台加载并先返回空，加载完成后回调 {@link SqlAutoComplete#refresh()}。
+     */
+    private Collection<String> membersFor(String qualifier) {
+        ConnConfig active = session.getActiveConnection();
+        if (active == null) return List.of();
+        String connId = active.id();
+        var dialect = connections.provider(connId).dialect();
+        String table = resolveAlias(qualifier);
+        if (table == null) table = qualifier; // 未命中别名则当作表名直接查
+        String tableName = dialect.foldUnquotedIdentifier(table);
+        if (tableName == null || tableName.isEmpty()) return List.of();
+
+        String rawSchema = schemaField.getText().trim();
+        String schema;
+        if (!rawSchema.isEmpty()) {
+            schema = dialect.foldUnquotedIdentifier(rawSchema);
+        } else if (active.type() == DbType.ORACLE
+                && active.username() != null && !active.username().isEmpty()) {
+            // Oracle 默认 schema 即登录用户名
+            schema = dialect.foldUnquotedIdentifier(active.username());
+        } else {
+            schema = null;
+        }
+
+        String key = (schema == null ? "" : schema + ".") + tableName;
+        List<String> cached = columnCache.get(key);
+        if (cached != null) return cached;
+        loadColumnsAsync(connId, schema, tableName, key);
+        return List.of();
+    }
+
+    /** 后台加载指定表的列名并入缓存，成功后触发补全刷新。 */
+    private void loadColumnsAsync(String connId, String schema, String tableName, String key) {
+        if (!columnLoading.add(key)) return;
+        metaPool.submit(() -> {
+            List<String> cols = new ArrayList<>();
+            try {
+                for (ColumnInfo c : treeSvc.columns(connId, new TableRef(schema, tableName))) {
+                    cols.add(c.name());
+                }
+            } catch (Exception ignore) {
+                // 读取失败静默：允许下次重试
+            } finally {
+                columnLoading.remove(key);
+            }
+            if (!cols.isEmpty()) {
+                columnCache.put(key, cols);
+                if (autoComplete != null) autoComplete.refresh();
+            }
+        });
+    }
+
+    /** 解析编辑器中 FROM/JOIN 的别名→表名映射，返回 qualifier 对应的表名（大小写不敏感）。 */
+    private String resolveAlias(String qualifier) {
+        if (qualifier == null || qualifier.isEmpty()) return null;
+        Map<String, String> map = parseAliases(editorArea.getText());
+        for (Map.Entry<String, String> e : map.entrySet()) {
+            if (e.getKey().equalsIgnoreCase(qualifier)) return e.getValue();
+        }
+        return null;
+    }
+
+    /** 扫描 FROM 子句区域，构建 别名/表名 → 表名 映射。 */
+    private Map<String, String> parseAliases(String sql) {
+        Map<String, String> map = new HashMap<>();
+        if (sql == null || sql.isBlank()) return map;
+        Matcher m = FROM_REGION.matcher(sql);
+        while (m.find()) {
+            String region = m.group(1);
+            if (region == null) continue;
+            // 将 JOIN 关键字规整为逗号分隔的引用段，并剔除 ON 条件
+            String normalized = region
+                    .replaceAll("(?is)\\b(inner|left|right|full|outer|cross)\\b", " ")
+                    .replaceAll("(?is)\\bjoin\\b", ",")
+                    .replaceAll("(?is)\\bon\\b[^,]*", "");
+            for (String seg : normalized.split(",")) {
+                addRef(map, seg);
+            }
+        }
+        return map;
+    }
+
+    private static final Pattern TABLE_TOKEN =
+            Pattern.compile("[A-Za-z_][\\w$]*(\\.[A-Za-z_][\\w$]*)?");
+    private static final Pattern IDENT_TOKEN =
+            Pattern.compile("[A-Za-z_][\\w$]*");
+
+    /** 解析单个引用段「表 [AS] 别名」，写入 alias→table 与 table→table。 */
+    private void addRef(Map<String, String> map, String seg) {
+        String s = seg.trim();
+        if (s.isEmpty()) return;
+        String[] parts = s.split("\\s+");
+        if (parts.length == 0) return;
+        String table = parts[0];
+        if (!TABLE_TOKEN.matcher(table).matches()) return;
+        String tableName = table.contains(".") ? table.substring(table.indexOf('.') + 1) : table;
+        // 别名：表名之后的下一个标识符（可含 AS）
+        if (parts.length >= 2) {
+            String cand = ("AS".equalsIgnoreCase(parts[1]) && parts.length >= 3) ? parts[2] : parts[1];
+            if (IDENT_TOKEN.matcher(cand).matches() && !KEYWORDS_UPPER.contains(cand.toUpperCase())) {
+                map.put(cand, tableName);
+            }
+        }
+        // 允许以表名本身作为限定符
+        map.put(tableName, tableName);
     }
 
     private static String truncate(String s, int max) {

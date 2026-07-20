@@ -115,6 +115,15 @@ jlink {
     // GUI 主启动器（对应 application.mainClass = com.datacube.DataCubeFx）。
     launcher {
         name = 'DataCube'
+        // 内存基线：默认最大堆 512m（可在设置页覆盖，写入 app cfg 下次启动生效）；
+        // G1 + 周期回收 + 低堆空闲比促使 JVM 归还内存给 OS，降低单库单查询时的常驻占用。
+        jvmArgs = [
+            '-Xmx512m',
+            '-XX:+UseG1GC',
+            '-XX:MaxHeapFreeRatio=25',
+            '-XX:MinHeapFreeRatio=10',
+            '-XX:G1PeriodicGCInterval=60000'
+        ]
     }
 
     // 可选 CLI 启动器：保留控制台迁移工具入口（com.datacube.DataCube）。
