@@ -41,7 +41,27 @@ sourceSets {
         java {
             srcDirs = ['src']
         }
+        // 版本资源（version.properties）由 generateVersionProperties 任务生成到此目录，
+        // 作为类路径资源随 jlink/jpackage 进包，供运行时 AppVersion 读取。
+        resources {
+            srcDirs = ['build/generated/version']
+        }
     }
+}
+
+// 生成版本资源：把 project.version 写入 com/datacube/version.properties。
+// CI 中 project.version 与 release tag 对齐，运行时据此判断是否有新版。
+tasks.register('generateVersionProperties') {
+    def outFile = file('build/generated/version/com/datacube/version.properties')
+    inputs.property('version', project.version.toString())
+    outputs.file(outFile)
+    doLast {
+        outFile.parentFile.mkdirs()
+        outFile.text = "version=${project.version}\n"
+    }
+}
+tasks.named('processResources') {
+    dependsOn 'generateVersionProperties'
 }
 
 // JavaFX 25：消除旧版 Marlin 的 sun.misc.Unsafe 警告（JDK-8334137 于 jfx25 用 FFM API 修复）。

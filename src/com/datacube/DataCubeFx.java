@@ -45,6 +45,8 @@ public class DataCubeFx extends Application {
             });
 
             primaryStage.show();
+            // 窗口显示后触发后台静默更新自检（失败不打扰用户）
+            appShell.checkForUpdatesOnStartup();
         } catch (Exception e) {
             // UI 初始化失败的兜底提示
             try {

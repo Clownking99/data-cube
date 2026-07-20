@@ -16,6 +16,7 @@ module com.datacube {
     requires java.sql;          // JDBC / DriverManager
     requires java.logging;      // java.util.logging.Logger
     requires java.management;   // ManagementFactory（DataCube CLI 的 native-access 自检）
+    requires java.net.http;     // 自动更新：调用 GitHub Releases API 查最新版
     requires net.sf.jsqlparser; // SQL 美化（SqlFormatter，自动模块）
 
     // JavaFX 通过反射实例化 Application 子类（DataCubeFx），需向 javafx.graphics 开放入口包。

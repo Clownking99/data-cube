@@ -53,6 +53,11 @@ javac -d build-out \
     src/com/datacube/export/*.java \
     $JAVAFX_FILES
 
+# 版本资源：fat-jar（本地开发）构建写入 dev 占位版本；
+# 运行时 AppVersion 读到 0.0.0-dev 会跳过启动自检（仅手动检查可用于联调）。
+mkdir -p build-out/com/datacube
+echo "version=0.0.0-dev" > build-out/com/datacube/version.properties
+
 # ===== [2/4] 解压依赖到 staging =====
 echo "===== [2/4] 解压依赖到 staging ====="
 STAGE=build-staging

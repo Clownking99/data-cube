@@ -10,7 +10,9 @@ import com.datacube.service.ObjectTreeService;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.RoutineRef;
 import com.datacube.spi.model.TableRef;
+import com.datacube.update.UpdateService;
 
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -43,6 +45,7 @@ public final class AppShell {
 
     private final ContentTabPane contentTabs = new ContentTabPane();
     private final MigrationPane migrationPane = new MigrationPane();
+    private final UpdateService updateService = new UpdateService();
 
     public AppShell() {
         build();
@@ -74,10 +77,13 @@ public final class AppShell {
         active.setStyle("-fx-text-fill: #666;");
         session.activeConnectionProperty().addListener((obs, o, c) ->
                 active.setText(c == null ? "" : "  |  活动连接: " + c.name()));
+        Button aboutBtn = new Button("ℹ 关于");
+        aboutBtn.setOnAction(e ->
+                AboutDialog.show(updateService, root.getScene() == null ? null : root.getScene().getWindow()));
         Button settingsBtn = new Button("⚙ 设置");
         settingsBtn.setOnAction(e ->
                 SettingsDialog.show(settings, root.getScene() == null ? null : root.getScene().getWindow()));
-        HBox bar = new HBox(6, title, active, settingsBtn);
+        HBox bar = new HBox(6, title, active, aboutBtn, settingsBtn);
         bar.setPadding(new Insets(8, 12, 8, 12));
         bar.setStyle("-fx-background-color: #eceff4; -fx-border-color: transparent transparent #d8dee9 transparent;");
         HBox.setHgrow(active, Priority.ALWAYS);
@@ -87,6 +93,13 @@ public final class AppShell {
     /** 是否有迁移任务在运行（供窗口关闭确认）。 */
     public boolean isRunning() {
         return migrationPane.isRunning();
+    }
+
+    /** 启动后台静默自检：仅在发现新版时在 UI 线程弹出更新提示（失败静默）。 */
+    public void checkForUpdatesOnStartup() {
+        updateService.checkInBackground(info ->
+                Platform.runLater(() -> UpdateUI.promptUpdate(updateService, info,
+                        root.getScene() == null ? null : root.getScene().getWindow())));
     }
 
     /** 释放全部资源：迁移资源 + 关闭所有活动连接。 */
