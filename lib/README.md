@@ -35,7 +35,7 @@ lib/javafx.graphics.jar
 
 ## 本地编译（无 JavaFX）
 
-如果不使用 GUI 功能，直接运行 `bash build.sh` 即可编译 CLI 版本。
+如不使用 GUI 功能，可用 `gradlew build` 编译（CLI 入口为 `com.datacube.DataCube`）。
 JavaFX 相关文件在无 SDK 时会自动跳过编译。# JavaFX SDK
 
 GUI 模式需要 JavaFX SDK。JDK 21+ 不含 JavaFX，需单独下载。
@@ -56,5 +56,5 @@ lib/
 
 ## 本地编译（无 JavaFX）
 
-如果不使用 GUI 功能，直接运行 `bash build.sh` 即可编译 CLI 版本。
+如不使用 GUI 功能，可用 `gradlew build` 编译（CLI 入口为 `com.datacube.DataCube`）。
 JavaFX 相关文件在无 SDK 时会自动跳过编译。

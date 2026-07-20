@@ -8,8 +8,8 @@ import java.util.Properties;
  * 并提供语义化版本（major.minor.patch）解析与比较。
  *
  * <p>版本资源由 {@code build.gradle} 的 {@code generateVersionProperties} 任务写入
- * 真实发布版本；{@code build.sh}（fat-jar 本地开发）写入占位 {@code 0.0.0-dev}。
- * 资源缺失或读取失败时回退 {@code 0.0.0-dev}。
+ * 真实发布版本；资源缺失或读取失败时回退 {@code 0.0.0-dev}（例如未经 Gradle 生成资源的
+ * 开发运行）。
  */
 public final class AppVersion {
 

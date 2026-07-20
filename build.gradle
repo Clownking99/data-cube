@@ -1,8 +1,8 @@
 // DataCube — Gradle + jpackage 模块化打包
 //
-// 与现有 build.sh（fat-jar / CLI）并存：本脚本复用 src 源目录，以“模块化运行时”
-// 打包，消除 fat-jar 方式下的两条 JavaFX 警告（unnamed module + JavaFX 版本旧的
-// sun.misc.Unsafe），并产出 app-image（免安装）与 msi/exe（安装包）。
+// 以“模块化运行时”打包，消除 fat-jar 方式下的两条 JavaFX 警告（unnamed
+// module + JavaFX 版本旧的 sun.misc.Unsafe），并产出 app-image（免安装）与
+// msi/exe（安装包）。
 //
 // 常用命令：
 //   gradlew run            —— 模块化运行 GUI（验证警告已消失）
@@ -28,14 +28,14 @@ repositories {
     mavenCentral()
 }
 
-// JDK 25 工具链（与 build.sh 使用的 Temurin 25 对齐）
+// JDK 25 工具链
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
-// 复用现有 src 目录（与 build.sh 共存）；src/module-info.java 使其成为模块化构建。
+// 复用现有 src 目录；src/module-info.java 使其成为模块化构建。
 sourceSets {
     main {
         java {
@@ -72,7 +72,7 @@ javafx {
     modules = ['javafx.controls']
 }
 
-// 非模块依赖用本地 jar，避免版本漂移；与 build.sh 引用同一批文件。
+// 非模块依赖用本地 jar，避免版本漂移。
 // RichTextFX（SQL 编辑器语法高亮）经 mavenCentral 解析；其及传递依赖
 //（reactfx/flowless/undofx/wellbehavedfx）均为非模块化 jar，由下方 jlink 合并处理。
 dependencies {

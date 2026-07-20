@@ -289,7 +289,8 @@ public class DataCube {
             System.err.println("  4. 禁用硬件加速（备选）:");
             System.err.println("     java --enable-native-access=ALL-UNNAMED -Dprism.disableD3D=true -jar DataCube.jar --gui");
             System.err.println();
-            System.err.println("  5. 重新执行 ./run-gui.bat / ./run-gui.sh 以查看 prism verbose 详细日志。");
+            System.err.println("  5. 查看 prism verbose 详细日志:");
+            System.err.println("     java --enable-native-access=ALL-UNNAMED -Dprism.verbose=true -jar DataCube.jar --gui");
             System.err.println("  ========================================");
         }
     }

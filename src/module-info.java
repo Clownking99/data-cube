@@ -1,11 +1,8 @@
 /**
  * DataCube 模块声明。
  *
- * <p>用于 Gradle + jlink/jpackage 的<b>模块化运行时</b>打包路径，消除 fat-jar 方式下的
- * {@code Unsupported JavaFX configuration: unnamed module} 警告。
- *
- * <p>注意：{@code build.sh} 的 javac 源清单<b>不含</b>本文件，故 classpath（fat-jar）
- * 构建方式不受影响，两种打包方式并存。
+ * <p>用于 Gradle + jlink/jpackage 的<b>模块化运行时</b>打包路径（CI 发布路径），消除
+ * fat-jar 方式下的 {@code Unsupported JavaFX configuration: unnamed module} 警告。
  *
  * <p>JDBC 驱动（Oracle ojdbc17 / PostgreSQL）通过 {@link java.sql.DriverManager} 的
  * ServiceLoader 机制加载，未在源码中直接 import，因此此处不 {@code requires} 其模块；

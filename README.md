@@ -1,104 +1,95 @@
-# DataCube - 数据库迁移工具
+# DataCube — 数据库管理与迁移工具
 
-将 Oracle 数据库完整迁移到 PostgreSQL，包括表结构、序列、索引、约束、存储过程、触发器和全量数据。
+面向 **Oracle** 与 **PostgreSQL** 的桌面数据库工具，提供图形界面（GUI）与命令行（CLI）两个入口：
 
-v3.0: 项目重构，主类更名为 DataCube，代码按职责拆分为多文件
+- **GUI（`DataCube.exe`）**：连接管理、对象树浏览、数据网格、DDL 查看、SQL 编辑器（语法高亮 / 自动补全 / PL/SQL 风格美化 / 执行计划）、结果导出（SQL / Excel / `pg_dump`）、Oracle→PostgreSQL 迁移、应用内自动更新。
+- **CLI（`DataCubeCli.exe`）**：将 Oracle 用户的表结构、序列、索引、约束、存储过程、触发器与全量数据迁移到 PostgreSQL。
 
-v2.4: 布尔转换可控（按字段注释判断）、导入流式读取（避免大表OOM）、SQL转义修正、DDL注释转义修正
+发布产物内置运行时（jlink），终端用户无需安装 Java。
 
-v2.3: 统一路径（DDL+数据均按PG schema命名）、导入失败表名日志、SQL错误不再静默吞掉
+## 功能特性
 
-v2.2: 并行导出（4线程）、流式读取（避免大表OOM）、日志文件、友好错误提示
+- **多数据库支持**：通过 SPI 抽象（`spi/`）+ 提供者实现（`provider/oracle`、`provider/postgres`）统一 Oracle 与 PostgreSQL 的元数据读取、DDL 生成、SQL 方言与执行。
+- **SQL 编辑器**：基于 RichTextFX 的语法高亮、别名感知的字段补全、PL/SQL Developer “河道”风格美化、执行选中片段、查看执行计划。
+- **对象浏览**：连接树、表/视图数据网格（分页、排序）、DDL 查看、列注释展示。
+- **导出**：查询结果或整表导出为 SQL 脚本 / Excel（xlsx）/ `pg_dump`。
+- **迁移**：Oracle→PostgreSQL 的完整/增量迁移与结果校验（CLI 与 GUI 均可）。
+- **应用内自动更新**：启动时检查 GitHub Release，支持安装版与免安装版就地更新。
 
 ## 目录结构
 
 ```
 朝花夕拾/
 ├── src/com/datacube/
-│   ├── DataCube.java                # 主入口：bootstrap + 菜单编排
-│   ├── cli/                         # CLI 交互层
-│   │   ├── ConsoleLogger.java       # MigrationLogger 的控制台实现
-│   │   └── ConsolePrompter.java     # 用户输入
-│   ├── core/                        # 核心层（与 UI 无关）
-│   │   ├── MigrationLogger.java     # 日志抽象接口（未来 GUI/Web 实现此接口）
-│   │   ├── ColumnInfo.java          # 列信息数据类
-│   │   ├── TypeConverter.java       # Oracle→PG 类型映射
-│   │   └── SqlUtils.java            # SQL 工具方法
-│   ├── source/                      # 数据源导出
-│   │   └── OracleExporter.java      # Oracle DDL + 多线程数据导出
-│   └── target/                      # 目标端导入
-│       ├── PgImporter.java          # PostgreSQL 完整/增量导入
-│       └── PgVerifier.java          # PostgreSQL 验证
-├── DataCube.jar                     # 可执行 JAR（CLI + GUI）
-├── build.sh                         # 编译打包脚本
-├── run.sh                           # CLI 启动脚本
-├── run-gui.sh                       # GUI 启动脚本（JavaFX）
-├── drivers/                         # JDBC 驱动（已内置）
+│   ├── DataCube.java             # CLI 入口（迁移工具）
+│   ├── DataCubeFx.java           # GUI 入口（JavaFX）
+│   ├── module-info.java          # 模块声明（模块化构建）
+│   ├── cli/                      # 控制台交互（Logger / Prompter）
+│   ├── config/                   # 应用设置、连接存储、凭据加密、JVM 选项
+│   ├── core/                     # 迁移核心：类型映射、SQL 工具、日志抽象
+│   ├── export/                   # 导出：SQL 脚本 / Excel / pg_dump / 表导出
+│   ├── fx/                       # JavaFX GUI（主壳、对话框、连接树、数据网格、
+│   │                             #   DDL 视图、SQL 编辑器、设置、关于、更新 UI）
+│   ├── migration/                # Oracle 导出 / PG 导入 / PG 校验
+│   ├── provider/oracle/          # Oracle 的 SPI 实现
+│   ├── provider/postgres/        # PostgreSQL 的 SPI 实现
+│   ├── service/                  # 编排层：连接管理、对象树、数据浏览、DDL 服务
+│   ├── spi/                      # 数据库提供者抽象接口
+│   │   └── model/                # 跨提供者的数据模型（DTO）
+│   ├── sqleditor/                # SQL 编辑器无 UI 逻辑（美化器、脚本切分、查询结果）
+│   └── update/                   # 应用内自动更新
+├── resources/com/datacube/fx/sql-highlight.css   # SQL 高亮样式
+├── drivers/                      # JDBC 驱动（已内置）
 │   ├── ojdbc17-23.26.1.0.0.jar
 │   └── postgresql-42.7.10.jar
-└── pg_migration/                    # 运行后生成的迁移脚本（统一按 PG schema 命名）
-    └── <pg_schema>/
-        ├── 01_sequences.sql
-        ├── 02_tables.sql
-        ├── 03_indexes.sql
-        ├── 04_constraints.sql
-        ├── 05_functions.sql
-        ├── 06_packages.sql
-        ├── 07_triggers.sql
-        └── data/*.sql               # 每张表一个文件
+├── lib/                          # 打包用的非模块化 jar 与 JavaFX native
+├── build.gradle / settings.gradle / gradlew      # Gradle 构建
+├── .github/workflows/release.yml # CI：Gradle + jpackage 打包并发布 Release
+└── docs/superpowers/specs/       # 设计文档
 ```
 
-## 运行
+分层约定：`spi/`（接口）+ `spi/model/`（DTO）→ `provider/{oracle,postgres}/`（实现）→ `service/`（编排）→ `fx/`（GUI）/ `cli/`（控制台）。
 
-### CLI 模式
+## 技术栈
+
+- Java 25（Gradle 工具链）
+- JavaFX 25（`javafx.controls`）
+- RichTextFX 0.11.6（SQL 编辑器）
+- Gradle + `org.beryx.jlink` 4.1.0（模块化运行时 + jpackage 打包）
+
+## 本地构建与运行
+
+需要联网首次下载 Gradle 发行版、插件与 JavaFX 25 模块。
 
 ```bash
-java -jar DataCube.jar
+# 模块化运行 GUI（开发调试）
+gradlew run
+
+# 生成免安装 app-image 目录：build/jpackage/DataCube/
+gradlew jpackageImage
+
+# 生成安装包（默认 msi；-PinstallerType=exe 生成 exe，均需 WiX Toolset v5）
+gradlew jpackage
+gradlew jpackage -PinstallerType=exe
+
+# 指定版本（CI 中与 release tag 对齐）
+gradlew jpackage -PappVersion=3.1.0
 ```
 
-程序会依次提示输入数据库连接信息，每个 Oracle 用户运行一次：
+## 下载发布
 
-```bash
-# 迁移 Oracle 用户 SCOTT → PG schema scott
-java -jar DataCube.jar
-```
+从 [Releases](https://github.com/Clownking99/data-cube/releases) 下载（Windows x64，均内置运行时）：
 
-### GUI 模式
+| 文件 | 说明 |
+|------|------|
+| `DataCube-vX.X.X-win64-portable.zip` | 免安装绿色版。解压后进入 `DataCube` 文件夹，双击 `DataCube.exe` 启动 GUI；`DataCubeCli.exe` 为命令行迁移工具。 |
+| `DataCube-vX.X.X-win64-setup.exe` | 安装程序。按向导安装（可选目录），创建开始菜单项与桌面快捷方式。 |
 
-```bash
-# 纯 JAR 版（JavaFX 已内置在 JAR 中）
-java -jar DataCube.jar --gui
+推送到 `main` 分支后，GitHub Actions（[release.yml](.github/workflows/release.yml)）自动用 Gradle + jpackage 打包并发布 Release，版本号在最新 tag 上递增 patch。
 
-# 内置 JRE 版（解压后直接运行）
-./run-gui.sh        # Linux/Mac
-run-gui.bat         # Windows
-```
+## CLI 迁移工具
 
-### 输入示例
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  第一步：Oracle 数据库连接信息
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-    (格式: jdbc:oracle:thin:@IP:端口/服务名)
-  Oracle JDBC URL [jdbc:oracle:thin:@127.0.0.1:1521/orcl]:
-    (将导出该用户下的所有对象)
-  Oracle 用户名 [scott]:
-  Oracle 密码:
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  第二步：PostgreSQL 数据库连接信息
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-    (格式: jdbc:postgresql://IP:端口/数据库名)
-  PostgreSQL JDBC URL [jdbc:postgresql://127.0.0.1:5432/postgres]:
-  PostgreSQL 用户名 [postgres]:
-  PostgreSQL 密码:
-  PostgreSQL Schema [scott]:
-```
-
-## 功能菜单
+`DataCubeCli.exe`（或 `gradlew run` 后以 `com.datacube.DataCube` 为主类）按提示输入 Oracle 与 PostgreSQL 连接信息，每个 Oracle 用户运行一次：
 
 ```
   ─────────────────────────────────────────────
@@ -113,17 +104,6 @@ run-gui.bat         # Windows
   0. 退出
 ```
 
-| 选项 | 功能 | 说明 |
-|------|------|------|
-| 1 | 导出 DDL | 从 Oracle 导出序列、表结构、索引、约束、存储过程、包、触发器 |
-| 2 | 导出数据 | 全量导出，每张表一个 SQL 文件，无行数限制 |
-| 3 | 完整导入 | 建表 → 修复缺失表 → 建序列 → 建索引 → 导入数据 |
-| 4 | 增量导入 | 跳过已存在的表，仅创建缺失表；跳过已有数据的表 |
-| 5 | 一键全部 | 依次执行 1→2→4→6（增量模式） |
-| 6 | 验证 | 检查表数量、总行数、序列数、函数数、TOP10 数据量 |
-
-## 增量 vs 完整
-
 | | 完整模式（选项3） | 增量模式（选项4/5） |
 |---|---|---|
 | 已存在的表 | 不删除，直接建（IF NOT EXISTS） | 跳过 |
@@ -131,67 +111,9 @@ run-gui.bat         # Windows
 | 已有数据的表 | 全量覆盖 | 跳过 |
 | 空表 | 导入数据 | 导入数据 |
 
-## 日志输出示例
+迁移脚本生成到 `pg_migration/<pg_schema>/`（序列、表、索引、约束、函数、包、触发器，以及每表一个的数据文件）。
 
-```
-  ─────────────────────────────────────────────
-  导出 DDL：SCOTT → scott
-  ─────────────────────────────────────────────
-  [19:30:01]  [OK] 序列: 127 个
-  [19:30:02]  导出表结构 [████████████████████] 100% (264/264)
-  [19:30:02]  [OK] 表: 264 个
-  [19:30:03]  [OK] 索引: 89 个
-  [19:30:03]  [OK] 约束: 156 个
-  [19:30:04]  [OK] 存储过程/函数: 12 个
-
-  ─────────────────────────────────────────────
-  DDL 导出统计 (3s)
-  ─────────────────────────────────────────────
-    ✓ 序列: 127
-    ✓ 表: 264
-    ✓ 索引: 89
-    ✓ 约束: 156
-    ✓ 存储过程/函数: 12
-  ─────────────────────────────────────────────
-```
-
-## 下载发布
-
-从 [Releases](https://github.com/Clownking99/data-cube/releases) 下载：
-
-| 包 | 说明 |
-|---|---|
-| `data-cube-vX.X.X.zip` | 纯 JAR（需本机安装 Java 21+） |
-| `data-cube-vX.X.X-win64-jre.zip` | 内置 JRE（无需安装 Java，仅 Windows x64） |
-
-驱动已内置在 JAR 中，无需额外下载。
-
-## 本地编译
-
-```bash
-bash build.sh
-```
-
-代码推送到 main 分支后，GitHub Actions 自动编译并发布 Release。
-
-## 已修复的 Bug
-
-- DDL 与数据导出路径不一致（统一使用 PG schema 命名目录）
-- 导入数据时 SQL 错误被静默吞掉，导致显示"成功"但实际 0 行
-- 导入失败未显示具体表名
-- `SYS_%` LIKE 过滤误删 `SYSTEM_*` 表（Oracle 中 `_` 是通配符，需用 `ESCAPE '\\'` 转义）
-- NVARCHAR2/NCLOB/BINARY_FLOAT 类型转换
-- 注释中分号导致 SQL 解析失败
-- `$$` 美元引用正确分割
-- 序列值溢出（改用 getString）
-- SYSDATE → CURRENT_TIMESTAMP
-- 缺失表自动检测并重建
-- NUMBER(1,0) 误转布尔值（改为按字段注释判断，用户可控）
-- 大表导入 OOM（改为流式逐行读取）
-- 单引号转义顺序错误导致 SQL 语法异常
-- DDL 注释中 `/*` `*/` 未转义导致 SQL 解析失败
-
-## 兼容性类型映射
+## Oracle → PostgreSQL 类型映射
 
 | Oracle | PostgreSQL |
 |--------|------------|
