@@ -187,8 +187,7 @@ public final class SqlEditorPane {
         // 行号栏
         editorArea.setParagraphGraphicFactory(LineNumberFactory.get(editorArea));
         // 语法高亮：文本变化后单遍正则重算样式区间并应用到富文本
-        editorArea.textProperty().addListener((obs, o, n) ->
-                editorArea.setStyleSpans(0, SqlHighlighter.compute(n)));
+        editorArea.textProperty().addListener((obs, o, n) -> applyHighlighting(n));
         editorArea.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
             if (e.getCode() == KeyCode.F5) {
                 e.consume();
@@ -209,6 +208,9 @@ public final class SqlEditorPane {
         // SplitPane 中不可折叠，改用分隔条调整高度；去除固定 prefHeight 以尊重用户拖拽。
         pane.setCollapsible(false);
         pane.setExpanded(true);
+        // TitledPane 默认 maxHeight 受 prefHeight 限制，Vgrow/分隔条无法将其拉高超过
+        // 首选高度；解除上限后分隔条才能自由分配上下两区高度。
+        pane.setMaxHeight(Double.MAX_VALUE);
         return pane;
     }
 
@@ -224,6 +226,9 @@ public final class SqlEditorPane {
         planArea.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 13px;");
         resultPane = new TitledPane("结果", resultTable);
         resultPane.setCollapsible(false);
+        // 同 editor()：解除 TitledPane 的 prefHeight 上限，使其在 VBox 中随 Vgrow 填满可用
+        // 空间（否则结果表只占 TableView 首选高度，下方留大片空白）。
+        resultPane.setMaxHeight(Double.MAX_VALUE);
         VBox box = new VBox(resultPane);
         VBox.setVgrow(resultPane, Priority.ALWAYS);
         return box;
@@ -241,11 +246,21 @@ public final class SqlEditorPane {
         String sql = editorArea.getText();
         if (sql.trim().isEmpty()) return;
         try {
-            editorArea.replaceText(SqlFormatter.format(sql));
+            String formatted = SqlFormatter.format(sql);
+            editorArea.replaceText(formatted);
+            // replaceText 为一次性整体替换，textProperty 监听在挂起更新周期内
+            // 应用的样式会被替换收尾重置为默认样式；此处在替换返回后再次
+            // 应用高亮，确保美化后色彩不丢失。
+            applyHighlighting(formatted);
             statusLabel.setText("已美化");
         } catch (Exception e) {
             showAlert("美化失败：" + e.getMessage());
         }
+    }
+
+    /** 依据当前文本重算并应用语法高亮样式区间（供文本监听与美化后复用）。 */
+    private void applyHighlighting(String text) {
+        editorArea.setStyleSpans(0, SqlHighlighter.compute(text));
     }
 
     /**

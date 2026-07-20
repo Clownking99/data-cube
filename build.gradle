@@ -78,10 +78,11 @@ javafx {
 dependencies {
     implementation files(
         'drivers/ojdbc17-23.26.1.0.0.jar',
-        'drivers/postgresql-42.7.10.jar',
-        'lib/jsqlparser-4.9.jar'
+        'drivers/postgresql-42.7.10.jar'
     )
-    implementation 'org.fxmisc.richtext:richtextfx:0.11.5'
+    // 0.11.6 修复 RichTextFX 与 JavaFX 25 的方法签名冲突（TextFlowExt 覆盖 final
+    // getUnderlineShape/getCaretShape 导致 IncompatibleClassChangeError，见 FXMisc#1284/#1285）。
+    implementation 'org.fxmisc.richtext:richtextfx:0.11.6'
 }
 
 application {
@@ -111,7 +112,7 @@ jlink {
     // 制品在 createMergedModule 编译阶段可见，否则报“找不到模块: javafx.controls”。
     addExtraDependencies 'javafx'
 
-    // 将 JDBC 驱动 / jsqlparser 等自动模块合并为单一模块，并补齐 jdeps 可能漏掉的
+    // 将 JDBC 驱动等自动模块合并为单一模块，并补齐 jdeps 可能漏掉的
     // JDK 依赖与 java.sql.Driver 服务发现。（此块为“按需迭代”项，驱动如报缺模块可增补。）
     mergedModule {
         requires 'java.naming'
