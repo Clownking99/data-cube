@@ -8,6 +8,7 @@ import com.datacube.service.ObjectTreeService;
 import com.datacube.sqleditor.SqlFormatter;
 import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.spi.SqlRunner;
+import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.model.ColumnInfo;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.DbType;
@@ -34,6 +35,7 @@ import javafx.stage.Window;
 import org.fxmisc.flowless.VirtualizedScrollPane;
 import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.LineNumberFactory;
+import org.fxmisc.richtext.model.TwoDimensional;
 
 import java.io.File;
 
@@ -192,6 +194,11 @@ public final class SqlEditorPane {
             if (e.getCode() == KeyCode.F5) {
                 e.consume();
                 onExecute();
+            } else if (e.isControlDown() && e.getCode() == KeyCode.SLASH) {
+                // Ctrl+/ 行注释切换；Ctrl+Shift+/ 块注释切换
+                e.consume();
+                if (e.isShiftDown()) toggleBlockComment();
+                else toggleLineComment();
             }
         });
         // 高亮样式表（类名与 SqlHighlighter 输出一致）
@@ -302,7 +309,8 @@ public final class SqlEditorPane {
         try {
             Connection conn = connections.acquire(connId);
             SqlRunner runner = connections.provider(connId).sqlRunner();
-            outcomes = runner.executeScript(conn, sql, schema.isEmpty() ? null : schema, maxRows);
+            outcomes = runner.executeScript(conn, sql, schema.isEmpty() ? null : schema, maxRows,
+                    this::askScriptError);
         } catch (Exception e) {
             errMsg = e.getMessage();
         }
@@ -318,6 +326,42 @@ public final class SqlEditorPane {
                 showScriptResults(fOutcomes, elapsed);
             }
         });
+    }
+
+    /**
+     * 脚本遇错处置回调：在 worker 线程被 runner 调用，切到 FX 线程弹三按钮框
+     * （继续 / 全部继续 / 取消）并以 {@link CountDownLatch} 阻塞等待用户选择。
+     */
+    private ScriptErrorPolicy.Decision askScriptError(int index, String sql, String message) {
+        final java.util.concurrent.atomic.AtomicReference<ScriptErrorPolicy.Decision> ref =
+                new java.util.concurrent.atomic.AtomicReference<>(ScriptErrorPolicy.Decision.ABORT);
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        Platform.runLater(() -> {
+            try {
+                ButtonType cont = new ButtonType("继续");
+                ButtonType contAll = new ButtonType("全部继续");
+                ButtonType abort = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+                Alert a = new Alert(Alert.AlertType.ERROR,
+                        "第 " + index + " 条语句失败：\n" + truncate(message, 300)
+                                + "\n\n是否继续执行剩余语句？",
+                        cont, contAll, abort);
+                a.setHeaderText(null);
+                a.setTitle("执行遇错");
+                ButtonType chosen = a.showAndWait().orElse(abort);
+                if (chosen == cont) ref.set(ScriptErrorPolicy.Decision.CONTINUE);
+                else if (chosen == contAll) ref.set(ScriptErrorPolicy.Decision.CONTINUE_ALL);
+                else ref.set(ScriptErrorPolicy.Decision.ABORT);
+            } finally {
+                latch.countDown();
+            }
+        });
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return ScriptErrorPolicy.Decision.ABORT;
+        }
+        return ref.get();
     }
 
     // ---------- 执行计划（EXPLAIN / EXPLAIN ANALYZE） ----------
@@ -792,6 +836,82 @@ public final class SqlEditorPane {
     private static String truncate(String s, int max) {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max) + "...";
+    }
+
+    // ---------- 注释切换（Ctrl+/ 行注释；Ctrl+Shift+/ 块注释） ----------
+
+    /**
+     * 行注释切换：选区跨越的整行（无选区取光标行）若非空行全部以 {@code --} 开头则去注释，
+     * 否则每行行首加 {@code -- }。空行在添加时跳过，判定时忽略。
+     */
+    private void toggleLineComment() {
+        IndexRange sel = editorArea.getSelection();
+        int startPar = editorArea.offsetToPosition(sel.getStart(), TwoDimensional.Bias.Forward).getMajor();
+        int endPar = editorArea.offsetToPosition(sel.getEnd(), TwoDimensional.Bias.Backward).getMajor();
+        // 选区跨行且末尾恰在行首时，末行不计入
+        if (endPar > startPar
+                && editorArea.offsetToPosition(sel.getEnd(), TwoDimensional.Bias.Forward).getMinor() == 0) {
+            endPar--;
+        }
+        List<String> lines = new ArrayList<>();
+        for (int p = startPar; p <= endPar; p++) lines.add(editorArea.getParagraph(p).getText());
+
+        boolean allCommented = true;
+        for (String ln : lines) {
+            if (ln.trim().isEmpty()) continue;
+            if (!ln.stripLeading().startsWith("--")) { allCommented = false; break; }
+        }
+
+        List<String> out = new ArrayList<>(lines.size());
+        for (String ln : lines) {
+            if (ln.trim().isEmpty()) { out.add(ln); continue; }
+            if (allCommented) {
+                int idx = ln.indexOf("--");
+                String after = ln.substring(idx + 2);
+                if (after.startsWith(" ")) after = after.substring(1);
+                out.add(ln.substring(0, idx) + after);
+            } else {
+                out.add("-- " + ln);
+            }
+        }
+
+        int repStart = editorArea.getAbsolutePosition(startPar, 0);
+        int repEnd = editorArea.getAbsolutePosition(endPar, editorArea.getParagraph(endPar).length());
+        String joined = String.join("\n", out);
+        editorArea.replaceText(repStart, repEnd, joined);
+        editorArea.selectRange(repStart, repStart + joined.length());
+        applyHighlighting(editorArea.getText());
+    }
+
+    /**
+     * 块注释切换：有选区且被 {@code /*}{@code *}{@code /} 包裹则去壳，否则包裹；
+     * 无选区在光标处插入 {@code /*  *}{@code /} 并将光标置于中间。
+     */
+    private void toggleBlockComment() {
+        IndexRange sel = editorArea.getSelection();
+        if (sel.getLength() > 0) {
+            String text = editorArea.getSelectedText();
+            String trimmed = text.strip();
+            String rep;
+            if (trimmed.length() >= 4 && trimmed.startsWith("/*") && trimmed.endsWith("*/")) {
+                int s = text.indexOf("/*");
+                int e = text.lastIndexOf("*/");
+                String inner = text.substring(s + 2, e);
+                if (inner.startsWith(" ")) inner = inner.substring(1);
+                if (inner.endsWith(" ")) inner = inner.substring(0, inner.length() - 1);
+                rep = text.substring(0, s) + inner + text.substring(e + 2);
+            } else {
+                rep = "/* " + text + " */";
+            }
+            int start = sel.getStart();
+            editorArea.replaceText(start, sel.getEnd(), rep);
+            editorArea.selectRange(start, start + rep.length());
+        } else {
+            int pos = editorArea.getCaretPosition();
+            editorArea.replaceText(pos, pos, "/*  */");
+            editorArea.moveTo(pos + 3);
+        }
+        applyHighlighting(editorArea.getText());
     }
 
     private void showAlert(String msg) {

@@ -1,6 +1,8 @@
 package com.datacube.sqleditor;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -19,7 +21,9 @@ import java.util.Set;
  *   <li>SELECT / SET 列表逐列换行，续行左对齐到河道右侧一格；</li>
  *   <li>JOIN 子句独立成行，{@code ON} 另起一行并右对齐；</li>
  *   <li>WHERE / HAVING / ON 中的 AND / OR 右对齐到河道另起一行；</li>
- *   <li>括号内（函数参数、IN 列表、子查询）保持行内排版，避免破坏函数调用可读性；</li>
+ *   <li>子查询括号（{@code (} 后紧跟 SELECT / WITH）内部另起一行并逐层缩进，
+ *       形成多层嵌套的可读排版；其余普通括号（函数参数、IN 列表、VALUES 元组）
+ *       保持行内排版，避免破坏函数调用可读性；</li>
  *   <li>关键字统一大写；多语句以分号分隔并各自成段。</li>
  * </ul>
  *
@@ -148,38 +152,115 @@ public final class SqlFormatter {
     private static final class Renderer {
         private final List<String> tokens;
         private final StringBuilder sb = new StringBuilder();
-        private int paren = 0;         // 括号深度
-        private String clause = "";    // 顶层子句（仅在 paren==0 更新）
+        private int indent = 0;        // 当前块河道的前导缩进（顶层为 0）
+        private int plainParenDepth = 0; // 普通括号深度（>0 时挂起子句处理，保持行内）
+        private final Deque<Boolean> parenStack = new ArrayDeque<>(); // true=子查询括号
+        private final Deque<Ctx> ctxStack = new ArrayDeque<>();        // 进入子查询时保存的外层上下文
+        private String clause = "";    // 顶层子句（仅在未处于普通括号内时更新）
         private boolean joinLineOpen;  // 当前行是否已由 JOIN 引导词开启
         private boolean betweenPending; // 处于 BETWEEN ... AND 之间，该 AND 不换行
         private boolean deleteInlineFrom; // DELETE 之后紧随的 FROM 保持同一行
         private boolean atLineStart = true;
         private String prev;
 
+        /** 进入子查询括号时保存的外层排版上下文，出括号时恢复。 */
+        private static final class Ctx {
+            final int indent;
+            final String clause;
+            final boolean joinLineOpen, betweenPending, deleteInlineFrom;
+            Ctx(int indent, String clause, boolean joinLineOpen,
+                boolean betweenPending, boolean deleteInlineFrom) {
+                this.indent = indent;
+                this.clause = clause;
+                this.joinLineOpen = joinLineOpen;
+                this.betweenPending = betweenPending;
+                this.deleteInlineFrom = deleteInlineFrom;
+            }
+        }
+
         Renderer(List<String> tokens) { this.tokens = tokens; }
 
         String render() {
-            for (String tok : tokens) {
+            for (int idx = 0; idx < tokens.size(); idx++) {
+                String tok = tokens.get(idx);
                 String u = tok.toUpperCase(Locale.ROOT);
                 boolean kw = KEYWORDS.contains(u);
                 String out = kw ? u : tok;
 
-                if (paren == 0 && kw && handleClause(u, out)) continue;
-                if (paren == 0 && tok.equals(";")) { endStatement(); continue; }
-                if (paren == 0 && tok.equals(",")
+                // 仅在未处于普通括号内时处理子句（子查询括号内仍需排版）。
+                boolean clauseActive = plainParenDepth == 0;
+
+                if (clauseActive && kw && handleClause(u, out)) continue;
+                if (clauseActive && tok.equals(";")) { endStatement(); continue; }
+                if (clauseActive && tok.equals(",")
                         && (clause.equals("SELECT") || clause.equals("SET"))) {
                     emit(",", false);
                     contLine();
                     prev = ",";
                     continue;
                 }
-                if (tok.equals("(")) { emit("(", false); paren++; prev = "("; continue; }
-                if (tok.equals(")")) { emit(")", false); if (paren > 0) paren--; prev = ")"; continue; }
+                if (tok.equals("(")) { openParen(idx); continue; }
+                if (tok.equals(")")) { closeParen(); continue; }
 
                 emit(out, needSpaceBefore(prev, tok));
                 prev = out;
             }
             return sb.toString().strip();
+        }
+
+        /** 开括号：后紧跟 SELECT/WITH 则为子查询括号（换行缩进），否则为普通括号（行内）。 */
+        private void openParen(int idx) {
+            if (isSubqueryAhead(idx)) {
+                boolean space = !atLineStart && prev != null && !prev.equals("(");
+                emit("(", space);
+                ctxStack.push(new Ctx(indent, clause, joinLineOpen, betweenPending, deleteInlineFrom));
+                parenStack.push(Boolean.TRUE);
+                indent += RIVER + 2;
+                clause = "";
+                joinLineOpen = false;
+                betweenPending = false;
+                deleteInlineFrom = false;
+                prev = "(";
+            } else {
+                emit("(", false);
+                parenStack.push(Boolean.FALSE);
+                plainParenDepth++;
+                prev = "(";
+            }
+        }
+
+        /** 闭括号：子查询括号另起一行并对齐到外层河道、恢复外层上下文；普通括号行内收尾。 */
+        private void closeParen() {
+            if (parenStack.isEmpty()) { emit(")", false); prev = ")"; return; }
+            boolean subquery = parenStack.pop();
+            if (subquery) {
+                Ctx c = ctxStack.pop();
+                sb.append('\n');
+                int pad = c.indent + RIVER;
+                for (int i = 0; i < pad; i++) sb.append(' ');
+                sb.append(')');
+                atLineStart = false;
+                indent = c.indent;
+                clause = c.clause;
+                joinLineOpen = c.joinLineOpen;
+                betweenPending = c.betweenPending;
+                deleteInlineFrom = c.deleteInlineFrom;
+            } else {
+                if (plainParenDepth > 0) plainParenDepth--;
+                emit(")", false);
+            }
+            prev = ")";
+        }
+
+        /** 向前看：跳过注释 token 后，首个 token 为 SELECT/WITH 则当前括号为子查询括号。 */
+        private boolean isSubqueryAhead(int idx) {
+            for (int j = idx + 1; j < tokens.size(); j++) {
+                String t = tokens.get(j);
+                if (t.startsWith("--") || t.startsWith("/*")) continue;
+                String u = t.toUpperCase(Locale.ROOT);
+                return u.equals("SELECT") || u.equals("WITH");
+            }
+            return false;
         }
 
         /** 处理顶层子句关键字；已消费返回 true。 */
@@ -292,19 +373,20 @@ public final class SqlFormatter {
             prev = ";";
         }
 
-        /** 主子句起新行：前导关键字右对齐到河道列，形成 PL/SQL 风格的竖直对齐。 */
+        /** 主子句起新行：前导关键字右对齐到河道列（含当前缩进），形成 PL/SQL 风格的竖直对齐。 */
         private void startClause(String lead) {
             if (sb.length() > 0) sb.append('\n');
-            int pad = Math.max(0, RIVER - lead.length());
+            int pad = Math.max(0, (indent + RIVER) - lead.length());
             for (int i = 0; i < pad; i++) sb.append(' ');
             sb.append(lead);
             atLineStart = false; // 其后内容以空格续接同一行
         }
 
-        /** 列表续行：缩进到河道右侧一格，使续行与首项左对齐。 */
+        /** 列表续行：缩进到河道右侧一格（含当前缩进），使续行与首项左对齐。 */
         private void contLine() {
             sb.append('\n');
-            for (int i = 0; i <= RIVER; i++) sb.append(' '); // RIVER + 1 个空格
+            int spaces = indent + RIVER + 1;
+            for (int i = 0; i < spaces; i++) sb.append(' ');
             atLineStart = true; // 下一 token 无前导空格
         }
 

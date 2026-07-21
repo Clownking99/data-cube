@@ -3,6 +3,7 @@ package com.datacube.provider.oracle;
 import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.spi.SqlDialect;
 import com.datacube.spi.SqlRunner;
+import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.model.QueryResult;
 import com.datacube.spi.model.ScriptOutcome;
 
@@ -55,16 +56,21 @@ public final class OracleSqlRunner implements SqlRunner {
     }
 
     @Override
-    public List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows) {
+    public List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows,
+                                             ScriptErrorPolicy policy) {
         List<String> stmts = SqlScriptSplitter.split(script);
         List<ScriptOutcome> outcomes = new ArrayList<>(stmts.size());
+        boolean continueAll = false;
         for (int i = 0; i < stmts.size(); i++) {
             String sql = stmts.get(i);
             QueryResult r = execute(conn, sql, schema, maxRows);
             outcomes.add(new ScriptOutcome(i + 1, sql, r));
-            if (r.kind == QueryResult.Kind.ERROR) {
-                // 遇错停止后续，避免连锁报错
-                break;
+            if (r.kind == QueryResult.Kind.ERROR && !continueAll) {
+                ScriptErrorPolicy.Decision d = policy == null
+                        ? ScriptErrorPolicy.Decision.ABORT
+                        : policy.onError(i + 1, sql, r.errorMessage);
+                if (d == ScriptErrorPolicy.Decision.ABORT) break;
+                if (d == ScriptErrorPolicy.Decision.CONTINUE_ALL) continueAll = true;
             }
         }
         return outcomes;

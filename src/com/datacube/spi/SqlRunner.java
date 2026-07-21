@@ -25,11 +25,14 @@ public interface SqlRunner {
     QueryResult execute(Connection conn, String sql, String schema, int maxRows);
 
     /**
-     * 多语句逐条执行；遇错停止后续并把错误作为一条结果返回。
+     * 多语句逐条执行；遇失败语句时通过 {@code policy} 决定继续/全部继续/中止，
+     * 每条结果（含失败）作为一条 {@link ScriptOutcome} 返回。
      *
      * @param maxRows 每条查询结果最大保留行数（{@code <=0} 不限制）
+     * @param policy  遇错处置回调；{@code null} 时遇错即中止（等价历史行为）
      */
-    List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows);
+    List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows,
+                                      ScriptErrorPolicy policy);
 
     /**
      * 生成执行计划，结果以单列多行文本承载（首列逐行拼接即计划文本）。
