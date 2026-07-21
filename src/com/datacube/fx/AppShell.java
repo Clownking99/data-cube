@@ -5,6 +5,7 @@ import com.datacube.config.ConnectionStore;
 import com.datacube.config.CredentialCipher;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.DataBrowseService;
+import com.datacube.service.DataEditService;
 import com.datacube.service.DdlService;
 import com.datacube.service.ObjectTreeService;
 import com.datacube.spi.model.ConnConfig;
@@ -40,6 +41,7 @@ public final class AppShell {
     private final ConnectionManager connMgr = new ConnectionManager(cipher);
     private final ObjectTreeService treeSvc = new ObjectTreeService(connMgr);
     private final DataBrowseService browseSvc = new DataBrowseService(connMgr);
+    private final DataEditService editSvc = new DataEditService(connMgr);
     private final DdlService ddlSvc = new DdlService(connMgr);
     private final SessionContext session = new SessionContext();
 
@@ -123,7 +125,7 @@ public final class AppShell {
 
         @Override
         public void openDataGrid(String connId, TableRef table) {
-            DataGridPane pane = new DataGridPane(browseSvc, connId, table);
+            DataGridPane pane = new DataGridPane(browseSvc, editSvc, connId, table);
             contentTabs.openTab("数据: " + table.name(), pane.getNode());
         }
 

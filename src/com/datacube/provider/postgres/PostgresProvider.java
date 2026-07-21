@@ -2,12 +2,15 @@ package com.datacube.provider.postgres;
 
 import com.datacube.spi.ConnectionFactory;
 import com.datacube.spi.DataAccessor;
+import com.datacube.spi.DataEditor;
 import com.datacube.spi.DatabaseProvider;
 import com.datacube.spi.DdlGenerator;
 import com.datacube.spi.MetadataReader;
 import com.datacube.spi.SqlDialect;
 import com.datacube.spi.SqlRunner;
 import com.datacube.spi.model.DbType;
+
+import com.datacube.provider.jdbc.JdbcDataEditor;
 
 import java.sql.Connection;
 
@@ -61,5 +64,10 @@ public final class PostgresProvider implements DatabaseProvider {
     @Override
     public DataAccessor dataAccessor(Connection c) {
         return new PgDataAccessor(c, dialect);
+    }
+
+    @Override
+    public DataEditor dataEditor(Connection c) {
+        return new JdbcDataEditor(c, dialect);
     }
 }

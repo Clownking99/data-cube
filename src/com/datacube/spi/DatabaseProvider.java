@@ -39,4 +39,7 @@ public interface DatabaseProvider {
 
     /** 绑定连接的数据访问器。 */
     DataAccessor dataAccessor(Connection c);
+
+    /** 绑定连接的数据编辑器（行级 INSERT/UPDATE/DELETE）。 */
+    DataEditor dataEditor(Connection c);
 }

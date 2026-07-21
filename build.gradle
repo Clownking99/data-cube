@@ -48,6 +48,12 @@ sourceSets {
             srcDirs = ['build/generated/version', 'resources']
         }
     }
+    // 单元测试源码目录（仅测试 JdbcDataEditor 的纯函数）。
+    test {
+        java {
+            srcDirs = ['test']
+        }
+    }
 }
 
 // 生成版本资源：把 project.version 写入 com/datacube/version.properties。
@@ -83,6 +89,21 @@ dependencies {
     // 0.11.6 修复 RichTextFX 与 JavaFX 25 的方法签名冲突（TextFlowExt 覆盖 final
     // getUnderlineShape/getCaretShape 导致 IncompatibleClassChangeError，见 FXMisc#1284/#1285）。
     implementation 'org.fxmisc.richtext:richtextfx:0.11.6'
+
+    // 单元测试：JUnit 5。测试在类路径（非模块路径）编译运行，可访问包内私有纯函数。
+    testImplementation platform('org.junit:junit-bom:5.11.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// 测试与主模块化构建隔离：关闭测试的模块路径推断，使主类与测试类同处未命名模块，
+// 允许测试类以同包方式访问 JdbcDataEditor 的包内私有静态纯函数；不影响 jlink/主模块。
+tasks.named('compileTestJava') {
+    modularity.inferModulePath = false
+}
+tasks.named('test') {
+    modularity.inferModulePath = false
+    useJUnitPlatform()
 }
 
 application {
