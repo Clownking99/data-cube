@@ -6,7 +6,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -92,12 +92,31 @@ public final class UpdateApplier {
         String exe = appDir.resolve("DataCube.exe").toString();
         String cmd = buildPortableScript(pid, zip.toString(), appDir.toString(),
                 staging.toString(), exe);
-        Files.writeString(script, cmd, StandardCharsets.US_ASCII);
+        // 用系统本地编码写入：脚本正文为纯 ASCII，但路径可能含非 ASCII（中文用户名/安装目录）。
+        // 本地编码与 cmd.exe 读取批处理所用的活动代码页一致，避免 US_ASCII 下遇非 ASCII 抛
+        // UnmappableCharacterException（"Input length = 1"）。
+        Files.writeString(script, cmd, nativeCharset());
 
         // start 以独立控制台启动脚本，与 JVM 解绑；JVM 退出后脚本继续执行替换。
         new ProcessBuilder("cmd.exe", "/c", "start", "", "/min",
                 "cmd.exe", "/c", script.toAbsolutePath().toString())
                 .start();
+    }
+
+    /**
+     * cmd.exe 读取批处理所用的活动代码页对应的字符集：优先系统 {@code native.encoding}
+     * （JDK 18+ 提供，Windows 上即 ANSI/OEM 代码页，如中文的 GBK/936），回退平台默认字符集。
+     */
+    private static Charset nativeCharset() {
+        String enc = System.getProperty("native.encoding");
+        if (enc != null && !enc.isBlank()) {
+            try {
+                return Charset.forName(enc);
+            } catch (Exception ignored) {
+                // 无法识别的编码名，回退默认
+            }
+        }
+        return Charset.defaultCharset();
     }
 
     /** 生成绿色版自替换批处理脚本（备份换入，崩溃可回滚）。 */
@@ -116,7 +135,7 @@ public final class UpdateApplier {
                 "set \"NEWDIR=" + newDir + "\"",
                 "set \"EXE=" + exe + "\"",
                 "",
-                "rem 1. 等待主进程退出",
+                "rem 1. wait for the main process to exit",
                 ":waitloop",
                 "tasklist /FI \"PID eq %PID%\" 2>nul | find \"%PID%\" >nul",
                 "if not errorlevel 1 (",
@@ -124,14 +143,14 @@ public final class UpdateApplier {
                 "    goto waitloop",
                 ")",
                 "",
-                "rem 2. 解压到 staging",
+                "rem 2. extract to staging",
                 "if exist \"%STAGING%\" rmdir /s /q \"%STAGING%\"",
                 "mkdir \"%STAGING%\"",
                 "powershell -NoProfile -Command \"Expand-Archive -Path '%ZIP%' -DestinationPath '%STAGING%' -Force\"",
                 "if errorlevel 1 goto fail",
                 "if not exist \"%NEWDIR%\" goto fail",
                 "",
-                "rem 3. 备份换入（失败回滚）",
+                "rem 3. swap in with backup (rollback on failure)",
                 "if exist \"%BAKDIR%\" rmdir /s /q \"%BAKDIR%\"",
                 "move \"%APPDIR%\" \"%BAKDIR%\"",
                 "if errorlevel 1 goto fail",
@@ -139,7 +158,7 @@ public final class UpdateApplier {
                 "if errorlevel 1 goto rollback",
                 "rmdir /s /q \"%BAKDIR%\"",
                 "",
-                "rem 4. 重启 + 清理",
+                "rem 4. restart and cleanup",
                 "start \"\" \"%EXE%\"",
                 "rmdir /s /q \"%STAGING%\" 2>nul",
                 "del \"%ZIP%\" 2>nul",

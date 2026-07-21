@@ -157,9 +157,11 @@ jlink {
         // 安装包类型：默认 msi，可用 -PinstallerType=exe 切换；两者均需 WiX Toolset v5。
         installerType = project.findProperty('installerType') ?: 'msi'
         installerName = 'DataCube'
-        // 安装包附加项（仅对 msi/exe 生效，不影响 app-image）：per-user 安装（装到用户
-        // 目录、无需管理员）、安装目录可选、开始菜单项、桌面快捷方式。
-        installerOptions = ['--win-per-user-install', '--win-dir-chooser', '--win-menu', '--win-shortcut']
+        // 安装包附加项（仅对 msi/exe 生效，不影响 app-image）：per-machine 全机器安装
+        // （默认装到 Program Files，安装/卸载需管理员提权，可干净装到任意盘，包括 D: 等
+        // 非系统盘——避免 per-user 无提权时在盘根 Config.Msi 设 ACL 被拒的卸载报错）、
+        // 安装目录可选、开始菜单项、桌面快捷方式。
+        installerOptions = ['--win-dir-chooser', '--win-menu', '--win-shortcut']
 
         if (iconFile.exists()) {
             icon = iconFile.toString()

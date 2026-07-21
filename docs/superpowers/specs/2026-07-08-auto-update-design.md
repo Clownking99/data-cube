@@ -7,7 +7,7 @@
 ## 背景与约束
 
 - **发布架构现状**（`.github/workflows/release.yml`）：推送 main 由 CI 用 Gradle + jpackage 打两种 Windows 产物并发 GitHub Release：
-  - `DataCube-<tag>-win64-setup.exe`：jpackage exe 安装程序，**per-user 安装**（`--win-per-user-install --win-dir-chooser --win-menu --win-shortcut`），WiX v5，内置 jlink 运行时。
+  - `DataCube-<tag>-win64-setup.exe`：jpackage exe 安装程序，**per-machine 全机器安装**（`--win-dir-chooser --win-menu --win-shortcut`，安装/卸载需管理员提权），WiX v5，内置 jlink 运行时。
   - `DataCube-<tag>-win64-portable.zip`：免安装绿色版（app-image 目录压缩）。
   - 版本号由 git tag 递增计算（`vMAJOR.MINOR.PATCH`），传入 `-PappVersion`；仓库 `Clownking99/data-cube`（公开）。
 - **运行时无版本号**：源码中不存在任何版本常量或"关于"对话框——自动更新的首要前提是把版本号打进包并在运行时读到。
@@ -108,5 +108,5 @@
 - 目标平台为 Windows x64（现有 CI 唯一产物平台）；其它平台暂不支持自动更新。
 - GitHub Releases API 匿名访问（公开仓库，60 次/小时/IP 足够）。
 - Release 资产命名遵循现有约定（`...setup.exe` / `...portable.zip`），JSON 解析据此匹配。
-- per-user 安装包同 UpgradeCode 支持运行新版 setup.exe 原地升级（jpackage 依 app 名生成稳定 UpgradeCode）。
+- 安装包同 UpgradeCode 支持运行新版 setup.exe 原地升级（jpackage 依 app 名生成稳定 UpgradeCode）。
 - 绿色版目录对当前用户可写（自替换脚本需写权限）。
