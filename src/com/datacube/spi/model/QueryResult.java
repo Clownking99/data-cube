@@ -110,9 +110,10 @@ public final class QueryResult {
         // 大字段截断
         if (v instanceof java.sql.Clob) {
             java.sql.Clob c = (java.sql.Clob) v;
-            String s = c.getSubString(1, (int) Math.min(500, c.length()));
+            long len = c.length();
+            String s = c.getSubString(1, (int) Math.min(500, len));
             c.free();
-            return s + (c.length() > 500 ? "..." : "");
+            return s + (len > 500 ? "..." : "");
         }
         if (v instanceof byte[]) {
             byte[] b = (byte[]) v;

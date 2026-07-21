@@ -11,13 +11,17 @@ import com.datacube.spi.model.TableInfo;
 import com.datacube.spi.model.TableRef;
 import com.datacube.spi.model.ViewInfo;
 
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.util.Duration;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -77,6 +81,11 @@ public final class ConnectionTreePane {
     private final VBox root = new VBox(6);
     private final TreeView<NodeData> tree = new TreeView<>();
 
+    // 快速检索：直接键入字母即在可见行内增量定位（不含 WHERE 那种搜索框）。
+    private final Label searchHint = new Label();
+    private final StringBuilder searchBuffer = new StringBuilder();
+    private final PauseTransition searchReset = new PauseTransition(Duration.seconds(1.2));
+
     public ConnectionTreePane(ConnectionStore store, ConnectionManager connMgr,
                               ObjectTreeService treeSvc, SessionContext session, Actions actions) {
         this.store = store;
@@ -122,8 +131,9 @@ public final class ConnectionTreePane {
             }
         });
 
-        root.getChildren().addAll(toolbar, tree);
+        root.getChildren().addAll(toolbar, tree, searchHint);
         VBox.setVgrow(tree, Priority.ALWAYS);
+        installQuickSearch();
         reload();
     }
 
@@ -304,6 +314,89 @@ public final class ConnectionTreePane {
             cur = cur.getParent();
         }
         return null;
+    }
+
+    // ---------- 快速检索（键入即定位可见行） ----------
+
+    /** 安装键入型快速检索：直接敲字母累积成关键字，在可见行内忽略大小写做“包含”匹配。 */
+    private void installQuickSearch() {
+        searchHint.setManaged(false);
+        searchHint.setVisible(false);
+        searchHint.setPadding(new Insets(2, 6, 2, 6));
+        searchReset.setOnFinished(e -> clearSearch());
+
+        // Esc 清除当前查找串（仅在检索进行中拦截，不影响其它场景）。
+        tree.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() == KeyCode.ESCAPE && searchBuffer.length() > 0) {
+                clearSearch();
+                e.consume();
+            }
+        });
+
+        // 可打印字符累积；退格删字符；Enter/Tab 等控制键交默认处理（不拦截方向键导航）。
+        tree.addEventFilter(KeyEvent.KEY_TYPED, e -> {
+            String s = e.getCharacter();
+            if (s == null || s.isEmpty()) return;
+            char c = s.charAt(0);
+            if (c == '\b') {                       // 退格
+                if (searchBuffer.length() > 0) {
+                    searchBuffer.deleteCharAt(searchBuffer.length() - 1);
+                    if (searchBuffer.length() == 0) {
+                        clearSearch();
+                    } else {
+                        showHint(runSearch());
+                        searchReset.playFromStart();
+                    }
+                }
+                e.consume();
+                return;
+            }
+            if (Character.isISOControl(c)) return;  // Enter/Tab/Esc 等不参与检索
+            searchBuffer.append(c);
+            showHint(runSearch());
+            searchReset.playFromStart();
+            e.consume();
+        });
+    }
+
+    /**
+     * 在当前可见行（展开链）内从选中项起环形查找，命中即选中并滚动定位。
+     *
+     * @return 是否命中
+     */
+    private boolean runSearch() {
+        int n = tree.getExpandedItemCount();
+        if (n == 0) return false;
+        int sel = tree.getSelectionModel().getSelectedIndex();
+        int start = sel < 0 ? 0 : sel;
+        String needle = searchBuffer.toString().toLowerCase();
+        for (int off = 0; off < n; off++) {
+            int idx = (start + off) % n;
+            TreeItem<NodeData> it = tree.getTreeItem(idx);
+            NodeData d = it == null ? null : it.getValue();
+            if (d != null && d.label != null && d.label.toLowerCase().contains(needle)) {
+                tree.getSelectionModel().select(idx);
+                tree.scrollTo(idx);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void showHint(boolean matched) {
+        searchHint.setText(matched ? "查找: " + searchBuffer : "查找: " + searchBuffer + "  (无匹配)");
+        searchHint.setStyle(matched
+                ? "-fx-background-color:#fff3cd; -fx-border-color:#ffe08a; -fx-text-fill:#664d03; -fx-background-radius:3; -fx-border-radius:3;"
+                : "-fx-background-color:#f8d7da; -fx-border-color:#f1aeb5; -fx-text-fill:#842029; -fx-background-radius:3; -fx-border-radius:3;");
+        searchHint.setManaged(true);
+        searchHint.setVisible(true);
+    }
+
+    private void clearSearch() {
+        searchBuffer.setLength(0);
+        searchReset.stop();
+        searchHint.setVisible(false);
+        searchHint.setManaged(false);
     }
 
     // ---------- 自定义单元格（含右键菜单） ----------
