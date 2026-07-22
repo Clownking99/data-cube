@@ -33,9 +33,18 @@ public final class AppSettings {
         INLINE
     }
 
+    /** 界面明暗主题。 */
+    public enum Theme {
+        /** 亮色主题（近 Modena 默认 + 品牌强调色）。 */
+        LIGHT,
+        /** 暗色主题（品牌深色调）。 */
+        DARK
+    }
+
     private static final String KEY_COMMENT_MODE = "sql.result.commentMode";
     private static final String KEY_MAX_RESULT_ROWS = "sql.result.maxRows";
     private static final String KEY_MAX_HEAP_MB = "jvm.maxHeapMb";
+    private static final String KEY_THEME = "ui.theme";
 
     /** 结果集默认最大保留行数（0 表示不限制）。 */
     public static final int DEFAULT_MAX_RESULT_ROWS = 2000;
@@ -49,6 +58,8 @@ public final class AppSettings {
             new SimpleIntegerProperty(DEFAULT_MAX_RESULT_ROWS);
     private final IntegerProperty maxHeapMb =
             new SimpleIntegerProperty(DEFAULT_MAX_HEAP_MB);
+    private final ObjectProperty<Theme> theme =
+            new SimpleObjectProperty<>(Theme.DARK);
 
     public AppSettings() {
         this(Path.of(System.getProperty("user.home"), ".datacube", "settings.properties"));
@@ -61,6 +72,7 @@ public final class AppSettings {
         commentMode.addListener((obs, o, n) -> save());
         maxResultRows.addListener((obs, o, n) -> save());
         maxHeapMb.addListener((obs, o, n) -> save());
+        theme.addListener((obs, o, n) -> save());
     }
 
     public ObjectProperty<CommentMode> commentModeProperty() {
@@ -85,6 +97,18 @@ public final class AppSettings {
 
     public void setMaxResultRows(int rows) {
         maxResultRows.set(Math.max(0, rows));
+    }
+
+    public ObjectProperty<Theme> themeProperty() {
+        return theme;
+    }
+
+    public Theme getTheme() {
+        return theme.get();
+    }
+
+    public void setTheme(Theme t) {
+        if (t != null) theme.set(t);
     }
 
     public IntegerProperty maxHeapMbProperty() {
@@ -121,6 +145,14 @@ public final class AppSettings {
         }
         maxResultRows.set(parseInt(p.getProperty(KEY_MAX_RESULT_ROWS), DEFAULT_MAX_RESULT_ROWS));
         maxHeapMb.set(parseInt(p.getProperty(KEY_MAX_HEAP_MB), DEFAULT_MAX_HEAP_MB));
+        String themeName = p.getProperty(KEY_THEME);
+        if (themeName != null) {
+            try {
+                theme.set(Theme.valueOf(themeName.trim()));
+            } catch (IllegalArgumentException ignored) {
+                // 未知值，保留默认
+            }
+        }
     }
 
     private static int parseInt(String s, int def) {
@@ -137,6 +169,7 @@ public final class AppSettings {
         p.setProperty(KEY_COMMENT_MODE, commentMode.get().name());
         p.setProperty(KEY_MAX_RESULT_ROWS, Integer.toString(maxResultRows.get()));
         p.setProperty(KEY_MAX_HEAP_MB, Integer.toString(maxHeapMb.get()));
+        p.setProperty(KEY_THEME, theme.get().name());
         try {
             Files.createDirectories(file.getParent());
             try (OutputStream out = Files.newOutputStream(file)) {

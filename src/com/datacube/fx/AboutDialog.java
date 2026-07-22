@@ -9,9 +9,6 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
-import javafx.scene.layout.Background;
-import javafx.scene.layout.BackgroundFill;
-import javafx.scene.layout.CornerRadii;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
@@ -34,7 +31,7 @@ final class AboutDialog {
     private AboutDialog() {
     }
 
-    static void show(UpdateService svc, Window owner) {
+    static void show(UpdateService svc, Window owner, ThemeManager themeManager) {
         Stage dialog = new Stage();
         if (owner != null) {
             dialog.initOwner(owner);
@@ -51,23 +48,23 @@ final class AboutDialog {
         header.setAlignment(Pos.CENTER_LEFT);
 
         Label version = new Label("版本 " + AppVersion.current());
-        version.setStyle("-fx-text-fill: #6B6B80;");
+        version.setStyle("-fx-text-fill: -brand-fg-muted;");
 
         Label desc = new Label(
                 "DataCube 是一款面向数据库开发者与管理员的专业工具，"
                 + "目前支持 PostgreSQL 与 Oracle，涵盖对象浏览、SQL 编辑、"
                 + "表设计、数据编辑与库间迁移。");
         desc.setWrapText(true);
-        desc.setStyle("-fx-text-fill: #A8A8B8;");
+        desc.setStyle("-fx-text-fill: -brand-fg-dim;");
 
         FlowPane tags = new FlowPane(6, 6, tag("PostgreSQL"), tag("Oracle"), tag("SQL 编辑"), tag("数据迁移"));
 
         Text slogan = new Text(BrandLogo.SLOGAN_CN + "  ·  " + BrandLogo.SLOGAN_EN);
         slogan.setFont(Font.font("Microsoft YaHei", FontWeight.NORMAL, 12));
-        slogan.setFill(BrandLogo.FG_DEEP_MUTED);
+        slogan.getStyleClass().add("brand-slogan");
 
         Hyperlink repo = new Hyperlink("项目主页");
-        repo.setStyle("-fx-text-fill: #9B8CFF;");
+        repo.setStyle("-fx-text-fill: -brand-accent;");
         repo.setOnAction(e -> UpdateUI.openUrl(PROJECT_URL));
 
         Button check = new Button("检查更新");
@@ -83,25 +80,22 @@ final class AboutDialog {
         Region divider = new Region();
         divider.setPrefHeight(1);
         divider.setMaxWidth(Double.MAX_VALUE);
-        divider.setBackground(new Background(new BackgroundFill(BrandLogo.BORDER, null, null)));
+        divider.setStyle("-fx-background-color: -brand-border;");
 
         VBox box = new VBox(14, header, version, desc, tags, divider, slogan, buttons);
         box.setPadding(new Insets(22, 24, 20, 24));
         box.setPrefWidth(420);
-        box.setBackground(new Background(new BackgroundFill(BrandLogo.BG, CornerRadii.EMPTY, null)));
+        box.getStyleClass().add("about-card");
 
-        dialog.setScene(new Scene(box));
+        Scene scene = new Scene(box);
+        if (themeManager != null) themeManager.applyTo(scene);
+        dialog.setScene(scene);
         dialog.showAndWait();
     }
 
     private static Label tag(String text) {
         Label l = new Label(text);
-        l.setStyle(
-                "-fx-text-fill: #9B8CFF;"
-                + "-fx-background-color: rgba(108,92,231,0.12);"
-                + "-fx-border-color: rgba(108,92,231,0.25);"
-                + "-fx-border-radius: 4; -fx-background-radius: 4;"
-                + "-fx-padding: 3 10 3 10; -fx-font-size: 11px;");
+        l.getStyleClass().add("tag-chip");
         return l;
     }
 }

@@ -40,6 +40,7 @@ public final class AppShell {
     private final CredentialCipher cipher = new CredentialCipher();
     private final ConnectionStore store = new ConnectionStore();
     private final AppSettings settings = new AppSettings();
+    private final ThemeManager themeManager = new ThemeManager(settings);
     private final ConnectionManager connMgr = new ConnectionManager(cipher);
     private final ObjectTreeService treeSvc = new ObjectTreeService(connMgr);
     private final DataBrowseService browseSvc = new DataBrowseService(connMgr);
@@ -60,6 +61,11 @@ public final class AppShell {
         return root;
     }
 
+    /** 主题管理器：供外层（{@link com.datacube.DataCubeFx}）注册主窗口场景。 */
+    public ThemeManager getThemeManager() {
+        return themeManager;
+    }
+
     private void build() {
         root.setStyle("-fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; -fx-font-size: 13px;");
         root.setTop(topBar());
@@ -77,22 +83,28 @@ public final class AppShell {
 
     private HBox topBar() {
         Label title = new Label("DataCube 数据库管理工具");
-        title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #2e3440;");
+        title.getStyleClass().add("brand-title");
         HBox brand = new HBox(8, BrandLogo.cube(22), title);
         brand.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         Label active = new Label();
-        active.setStyle("-fx-text-fill: #666;");
+        active.setStyle("-fx-text-fill: -brand-fg-muted;");
         session.activeConnectionProperty().addListener((obs, o, c) ->
                 active.setText(c == null ? "" : "  |  活动连接: " + c.name()));
+        Button themeBtn = new Button();
+        Runnable syncThemeBtn = () -> themeBtn.setText(
+                settings.getTheme() == AppSettings.Theme.DARK ? "☀ 亮色" : "🌙 暗色");
+        syncThemeBtn.run();
+        settings.themeProperty().addListener((obs, o, n) -> syncThemeBtn.run());
+        themeBtn.setOnAction(e -> themeManager.toggle());
         Button aboutBtn = new Button("ℹ 关于");
         aboutBtn.setOnAction(e ->
-                AboutDialog.show(updateService, root.getScene() == null ? null : root.getScene().getWindow()));
+                AboutDialog.show(updateService, root.getScene() == null ? null : root.getScene().getWindow(), themeManager));
         Button settingsBtn = new Button("⚙ 设置");
         settingsBtn.setOnAction(e ->
-                SettingsDialog.show(settings, root.getScene() == null ? null : root.getScene().getWindow()));
-        HBox bar = new HBox(6, brand, active, aboutBtn, settingsBtn);
+                SettingsDialog.show(settings, root.getScene() == null ? null : root.getScene().getWindow(), themeManager));
+        HBox bar = new HBox(6, brand, active, themeBtn, aboutBtn, settingsBtn);
         bar.setPadding(new Insets(8, 12, 8, 12));
-        bar.setStyle("-fx-background-color: #eceff4; -fx-border-color: transparent transparent #d8dee9 transparent;");
+        bar.getStyleClass().add("top-bar");
         HBox.setHgrow(active, Priority.ALWAYS);
         return bar;
     }

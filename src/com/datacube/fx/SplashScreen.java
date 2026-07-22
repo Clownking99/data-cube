@@ -33,6 +33,7 @@ public final class SplashScreen {
         stage.initStyle(StageStyle.TRANSPARENT);
 
         Text word = BrandLogo.wordmark(30);
+        word.setFill(BrandLogo.FG);
         Text cn = BrandLogo.subtitle(14);
         cn.setFill(BrandLogo.FG_DIM);
 

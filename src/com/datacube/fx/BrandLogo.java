@@ -15,6 +15,11 @@ import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 品牌视觉工厂：datacube「数据魔方」紫蓝渐变立方体 + 字标。
  *
@@ -79,25 +84,59 @@ public final class BrandLogo {
         return img;
     }
 
-    /** 为窗口注入多尺寸品牌图标（任务栏/标题栏/Alt-Tab 各取所需尺寸）。 */
+    /** 窗口图标尺寸集（与 buildSrc IcoGenerator/打包 .ico 一致）。 */
+    private static final int[] ICON_SIZES = {16, 24, 32, 48, 64, 128, 256};
+
+    /**
+     * 为窗口注入多尺寸品牌图标（任务栏/标题栏/Alt-Tab 各取所需尺寸）。
+     *
+     * <p>优先用构建期生成的 PNG 资源（{@code /com/datacube/fx/icon-<size>.png}，
+     * 与打包 .ico 同一 Java2D 渲染），资源缺失时回退到矢量快照。
+     */
     public static void applyIcons(Stage stage) {
-        stage.getIcons().addAll(
-                icon(16), icon(24), icon(32), icon(48), icon(64), icon(128), icon(256));
+        List<Image> icons = new ArrayList<>();
+        for (int s : ICON_SIZES) {
+            Image img = loadIconResource(s);
+            if (img != null && !img.isError()) {
+                icons.add(img);
+            }
+        }
+        if (icons.isEmpty()) {
+            for (int s : ICON_SIZES) {
+                icons.add(icon(s));
+            }
+        }
+        stage.getIcons().setAll(icons);
     }
 
-    /** 英文字标 {@code datacube}（品牌小写锁定形态）。 */
+    /** 从 classpath 加载构建期生成的图标 PNG（缺失返回 {@code null}）。 */
+    private static Image loadIconResource(int size) {
+        try (InputStream in = BrandLogo.class.getResourceAsStream("icon-" + size + ".png")) {
+            return in == null ? null : new Image(in);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 英文字标 {@code datacube}（品牌小写锁定形态）。
+     *
+     * <p>不在代码里 {@code setFill}，而是挂样式类 {@code brand-wordmark}，
+     * 由主题样式表提供颜色（随明暗主题变色）；无主题的独立场景
+     * （如启动闪屏）需自行 {@code setFill}。
+     */
     static Text wordmark(double fontSize) {
         Text t = new Text("datacube");
         t.setFont(Font.font("Segoe UI", FontWeight.SEMI_BOLD, fontSize));
-        t.setFill(FG);
+        t.getStyleClass().add("brand-wordmark");
         return t;
     }
 
-    /** 中文副标 {@code 数据魔方}。 */
+    /** 中文副标 {@code 数据魔方}（颜色同 {@link #wordmark(double)} 由主题提供）。 */
     static Text subtitle(double fontSize) {
         Text t = new Text("数据魔方");
         t.setFont(Font.font("Microsoft YaHei", FontWeight.NORMAL, fontSize));
-        t.setFill(FG_MUTED);
+        t.getStyleClass().add("brand-subtitle");
         return t;
     }
 

@@ -45,7 +45,7 @@ sourceSets {
         // 作为类路径资源随 jlink/jpackage 进包，供运行时 AppVersion 读取。
         // resources/ 目录承载 SQL 高亮样式表（sql-highlight.css）等非代码资源。
         resources {
-            srcDirs = ['build/generated/version', 'resources']
+            srcDirs = ['build/generated/version', 'build/generated/brand', 'resources']
         }
     }
     // 单元测试源码目录（仅测试 JdbcDataEditor 的纯函数）。
@@ -69,6 +69,19 @@ tasks.register('generateVersionProperties') {
 }
 tasks.named('processResources') {
     dependsOn 'generateVersionProperties'
+    dependsOn 'generateBrandIcons'
+}
+
+// 运行时品牌图标：用 buildSrc IcoGenerator 生成各尺寸 PNG 到 generated 资源目录，
+// 打进模块后由 BrandLogo.applyIcons 从 classpath 加载为窗口/任务栏图标
+// （与打包 .ico 同一渲染，像素一致）。
+tasks.register('generateBrandIcons') {
+    description = '生成运行时窗口图标 PNG 资源'
+    def outDir = file('build/generated/brand/com/datacube/fx')
+    outputs.dir(outDir)
+    doLast {
+        datacube.build.IcoGenerator.writePngs(outDir.toPath())
+    }
 }
 
 // JavaFX 25：消除旧版 Marlin 的 sun.misc.Unsafe 警告（JDK-8334137 于 jfx25 用 FFM API 修复）。

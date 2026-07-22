@@ -1,0 +1,65 @@
+/*
+ * 暗色主题：在 .root 定义品牌语义色 + 代码编辑器色，并覆盖 Modena 基础色，
+ * 使 TableView/TreeView/TabPane/Button/输入框等标准控件整体暗化。
+ * 与 theme-base.css 一并加载。
+ */
+
+.root {
+    /* 品牌语义色（供 theme-base.css 与内联样式以查找色引用） */
+    -brand-bg:            #0E0E14;
+    -brand-surface:       #151520;
+    -brand-border:        #252538;
+    -brand-fg:            #E8E8ED;
+    -brand-fg-dim:        #A8A8B8;
+    -brand-fg-muted:      #8A8AA0;
+    -brand-accent:        #9B8CFF;
+    -brand-accent-solid:  #6C5CE7;
+
+    /* 状态/提示色 */
+    -status-ok:    #66BB6A;
+    -status-error: #EF5350;
+    -warn-fg:      #FFCC66;
+    -warn-bg:      rgba(255, 193, 7, 0.14);
+    -danger-fg:    #EF9A9A;
+    -danger-bg:    rgba(239, 83, 80, 0.16);
+    -cell-modified-bg: rgba(255, 213, 79, 0.16);
+    -cell-new-bg:      rgba(102, 187, 106, 0.16);
+
+    /* 代码编辑器（sql-highlight.css 以查找色引用） */
+    -code-bg:         #14141C;
+    -code-fg:         #E8E8ED;
+    -code-keyword:    #7AA2F7;
+    -code-string:     #9ECE6A;
+    -code-comment:    #6B6B80;
+    -code-number:     #E0AF68;
+    -code-paren:      #F7768E;
+    -code-gutter-bg:  #1A1A24;
+    -code-gutter-fg:  #565676;
+
+    /* Modena 基础色覆盖 → 标准控件整体暗化 */
+    -fx-base:                       #1E1E2A;
+    -fx-background:                 #14141C;
+    -fx-control-inner-background:   #14141C;
+    -fx-control-inner-background-alt: derive(-fx-control-inner-background, 4%);
+    -fx-accent:                     #6C5CE7;
+    -fx-default-button:             #6C5CE7;
+    -fx-focus-color:                #9B8CFF;
+    -fx-faint-focus-color:          #9B8CFF22;
+    -fx-selection-bar:              #6C5CE7;
+    -fx-selection-bar-non-focused:  #3A3A55;
+    -fx-text-background-color:      #E8E8ED;
+    -fx-text-fill:                  #E8E8ED;
+    -fx-mark-color:                 #E8E8ED;
+    -fx-mark-highlight-color:       derive(-fx-mark-color, 20%);
+}
+
+/* 只读文本区/文本域在暗色下的背景与前景 */
+.text-area .content {
+    -fx-background-color: -fx-control-inner-background;
+}
+
+/* 工具提示 */
+.tooltip {
+    -fx-background-color: #22222E;
+    -fx-text-fill: -brand-fg;
+}

@@ -81,7 +81,7 @@ public final class DataGridPane {
         hintLabel = new Label();
         hintLabel.setVisible(false);
         hintLabel.setManaged(false);
-        hintLabel.setStyle("-fx-text-fill: #8a6d00; -fx-background-color: #fff8e1; -fx-padding: 4 8; -fx-background-radius: 4;");
+        hintLabel.setStyle("-fx-text-fill: -warn-fg; -fx-background-color: -warn-bg; -fx-padding: 4 8; -fx-background-radius: 4;");
 
         root.getChildren().addAll(toolbar(), hintLabel, grid, statusBar());
         VBox.setVgrow(grid, Priority.ALWAYS);
@@ -114,7 +114,7 @@ public final class DataGridPane {
         addBtn.setOnAction(e -> addRow());
 
         deleteBtn = new Button("🗑 删除行");
-        deleteBtn.setStyle("-fx-text-fill: #d32f2f;");
+        deleteBtn.setStyle("-fx-text-fill: -status-error;");
         deleteBtn.setOnAction(e -> deleteSelectedRows());
 
         Region spacer = new Region();
@@ -126,7 +126,7 @@ public final class DataGridPane {
 
     private Node statusBar() {
         statusLabel = new Label("就绪");
-        statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
         HBox box = new HBox(statusLabel);
         box.setPadding(new Insets(4, 0, 0, 0));
         return box;
@@ -509,10 +509,10 @@ public final class DataGridPane {
             }
             if (c.isNull()) {
                 setText("(NULL)");
-                setStyle("-fx-text-fill: #999; -fx-font-style: italic;");
+                setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-style: italic;");
             } else {
                 setText(c.text());
-                setStyle(editableCell() ? "" : "-fx-text-fill: #777;");
+                setStyle(editableCell() ? "" : "-fx-text-fill: -brand-fg-muted;");
             }
         }
     }
@@ -527,8 +527,8 @@ public final class DataGridPane {
                 return;
             }
             switch (item.state()) {
-                case MODIFIED -> setStyle("-fx-background-color: #fffde7;");
-                case NEW -> setStyle("-fx-background-color: #e8f5e9;");
+                case MODIFIED -> setStyle("-fx-background-color: -cell-modified-bg;");
+                case NEW -> setStyle("-fx-background-color: -cell-new-bg;");
                 default -> setStyle("");
             }
         }
@@ -547,12 +547,12 @@ public final class DataGridPane {
 
     private void info(String msg) {
         statusLabel.setText(msg);
-        statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
     }
 
     private void error(String msg) {
         statusLabel.setText(msg);
-        statusLabel.setStyle("-fx-text-fill: #d32f2f; -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
         Alert a = new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK);
         a.setHeaderText(null);
         a.setTitle("操作失败");

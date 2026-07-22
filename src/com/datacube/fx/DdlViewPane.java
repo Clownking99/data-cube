@@ -61,7 +61,7 @@ public final class DdlViewPane {
         textArea.setFont(Font.font("Consolas", 13));
         textArea.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 13px;");
 
-        statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
         root.getChildren().addAll(toolbar, textArea, statusLabel);
         VBox.setVgrow(textArea, Priority.ALWAYS);
@@ -83,11 +83,11 @@ public final class DdlViewPane {
                 if (fErr != null) {
                     textArea.setText("-- 获取 DDL 失败: " + fErr);
                     statusLabel.setText("错误");
-                    statusLabel.setStyle("-fx-text-fill: #d32f2f; -fx-font-size: 12px;");
+                    statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
                 } else {
                     textArea.setText(fDdl);
                     statusLabel.setText("就绪");
-                    statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+                    statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
                 }
             });
         }, "DdlView-Worker").start();

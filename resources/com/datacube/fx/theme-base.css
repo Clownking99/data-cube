@@ -1,0 +1,46 @@
+/*
+ * 主题基座样式：明暗两套主题共享的结构性规则。
+ *
+ * 仅在此定义"用到哪些颜色变量"，具体色值由 theme-light.css / theme-dark.css
+ * 在 .root 上以查找色（looked-up color）形式提供，从而同一套规则随主题变化。
+ * 通过 Scene.getStylesheets() 与对应主题文件一并加载（见 ThemeManager）。
+ */
+
+.root {
+    -fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+    -fx-font-size: 13px;
+}
+
+/* ── 顶部工具栏 ── */
+.top-bar {
+    -fx-background-color: -brand-surface;
+    -fx-border-color: transparent transparent -brand-border transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.brand-title {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -brand-fg;
+}
+
+/* ── 品牌文字（Text 节点用 -fx-fill）──
+ * 注意：由代码 setFill 设定的值优先级高于 CSS，故这些 Text 不得再 setFill。 */
+.brand-wordmark { -fx-fill: -brand-fg; }
+.brand-subtitle { -fx-fill: -brand-fg-muted; }
+.brand-slogan   { -fx-fill: -brand-fg-muted; }
+
+/* ── "关于"对话框卡片 ── */
+.about-card {
+    -fx-background-color: -brand-bg;
+}
+
+.tag-chip {
+    -fx-text-fill: -brand-accent;
+    -fx-background-color: rgba(108, 92, 231, 0.14);
+    -fx-border-color: rgba(108, 92, 231, 0.25);
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 3 10 3 10;
+    -fx-font-size: 11px;
+}

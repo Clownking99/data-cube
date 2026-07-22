@@ -255,7 +255,7 @@ public final class TableDesignerPane {
 
     private Node statusBar() {
         statusLabel = new Label("就绪");
-        statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
         HBox box = new HBox(statusLabel);
         box.setPadding(new Insets(4, 0, 0, 0));
         return box;
@@ -286,7 +286,7 @@ public final class TableDesignerPane {
     // ---------- 载入现有表 ----------
 
     private void reload() {
-        setStatus("载入中...", "#666");
+        setStatus("载入中...", "-brand-fg-muted");
         new Thread(() -> {
             TableDraft d = null;
             String err = null;
@@ -299,12 +299,12 @@ public final class TableDesignerPane {
             final String fErr = err;
             Platform.runLater(() -> {
                 if (fErr != null) {
-                    setStatus("载入失败: " + fErr, "#d32f2f");
+                    setStatus("载入失败: " + fErr, "-status-error");
                     return;
                 }
                 original = fd;
                 populate(fd);
-                setStatus("就绪", "#2e7d32");
+                setStatus("就绪", "-status-ok");
             });
         }, "TableDesigner-Load").start();
     }
@@ -409,7 +409,7 @@ public final class TableDesignerPane {
 
         running = true;
         applyBtn.setDisable(true);
-        setStatus("执行中...", "#666");
+        setStatus("执行中...", "-brand-fg-muted");
         new Thread(() -> {
             List<ScriptOutcome> outcomes = null;
             String execErr = null;
@@ -424,14 +424,14 @@ public final class TableDesignerPane {
                 running = false;
                 applyBtn.setDisable(false);
                 if (fErr != null) {
-                    setStatus("执行失败: " + fErr, "#d32f2f");
+                    setStatus("执行失败: " + fErr, "-status-error");
                     return;
                 }
                 String failed = firstError(fOut);
                 if (failed != null) {
-                    setStatus("执行完成但有失败: " + failed, "#d32f2f");
+                    setStatus("执行完成但有失败: " + failed, "-status-error");
                 } else {
-                    setStatus("执行成功（" + (fOut == null ? 0 : fOut.size()) + " 条语句）", "#2e7d32");
+                    setStatus("执行成功（" + (fOut == null ? 0 : fOut.size()) + " 条语句）", "-status-ok");
                     if (!isNew) reload();  // 编辑现有表：重载原始态
                 }
             });

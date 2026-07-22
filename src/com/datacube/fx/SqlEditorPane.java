@@ -252,7 +252,7 @@ public final class SqlEditorPane {
 
     private Node statusBar() {
         statusLabel = new Label("就绪");
-        statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
         HBox box = new HBox(statusLabel);
         box.setPadding(new Insets(4, 0, 0, 0));
         return box;
@@ -306,7 +306,7 @@ public final class SqlEditorPane {
         running = true;
         setButtonsRunning(true);
         statusLabel.setText("执行中...");
-        statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
         new Thread(() -> doExecute(connId, sql, schema, settings.getMaxResultRows()), "SqlEditor-Worker").start();
     }
@@ -493,7 +493,7 @@ public final class SqlEditorPane {
         running = true;
         setButtonsRunning(true);
         statusLabel.setText(analyze ? "执行计划(ANALYZE)中..." : "生成执行计划中...");
-        statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
         new Thread(() -> doExplain(connId, sql, schema, analyze, total), "SqlEditor-Explain").start();
     }
@@ -538,7 +538,7 @@ public final class SqlEditorPane {
         String status = "执行计划 - " + elapsed + "ms";
         if (totalStmts > 1) status += "（已对第 1 条语句，共 " + totalStmts + " 条）";
         statusLabel.setText(status);
-        statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
     }
 
     /** 将结果区切回表格视图。 */
@@ -576,7 +576,7 @@ public final class SqlEditorPane {
         rows.add(FXCollections.observableArrayList(msg));
         resultTable.setItems(rows);
         statusLabel.setText("ERROR - " + elapsed + "ms");
-        statusLabel.setStyle("-fx-text-fill: #d32f2f; -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
     }
 
     private void showScriptResults(List<ScriptOutcome> outcomes, long totalElapsed) {
@@ -602,7 +602,7 @@ public final class SqlEditorPane {
             }
             resultTable.setItems(data);
             statusLabel.setText("共 " + outcomes.size() + " 条语句 - " + totalElapsed + "ms");
-            statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+            statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
         } else {
             QueryResult r = outcomes.get(0).result();
             switch (r.kind) {
@@ -612,11 +612,11 @@ public final class SqlEditorPane {
                     String extra = (cap > 0 && r.rows.size() >= cap)
                             ? "（已截断至上限 " + cap + " 行，可在设置中调整）" : "";
                     statusLabel.setText("OK - " + r.rows.size() + " rows - " + r.elapsedMillis + "ms" + extra);
-                    statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+                    statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
                 }
                 case UPDATE -> {
                     statusLabel.setText("OK - " + r.updateCount + " rows affected - " + r.elapsedMillis + "ms");
-                    statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+                    statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
                 }
                 case ERROR -> showError(r.errorMessage, r.elapsedMillis);
             }
@@ -679,7 +679,7 @@ public final class SqlEditorPane {
         final List<String> columns = r.columns;
         final List<List<Object>> rows = r.rows;
         statusLabel.setText("导出中...");
-        statusLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px;");
+        statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
         new Thread(() -> {
             String err = null;
             try {
@@ -694,10 +694,10 @@ public final class SqlEditorPane {
             Platform.runLater(() -> {
                 if (fErr == null) {
                     statusLabel.setText("已导出: " + out.getAbsolutePath());
-                    statusLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-size: 12px;");
+                    statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
                 } else {
                     statusLabel.setText("导出失败: " + fErr);
-                    statusLabel.setStyle("-fx-text-fill: #d32f2f; -fx-font-size: 12px;");
+                    statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
                 }
             });
         }, "Result-Export").start();
@@ -724,7 +724,7 @@ public final class SqlEditorPane {
         if (mode == CommentMode.INLINE) {
             Label nameLabel = new Label(name);
             Label commentLabel = new Label(comment);
-            commentLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
+            commentLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 11px;");
             VBox box = new VBox(1, nameLabel, commentLabel);
             c.setText("");
             c.setGraphic(box);

@@ -26,6 +26,7 @@ public class DataCubeFx extends Application {
             AppShell appShell = new AppShell();
 
             Scene scene = new Scene(appShell.getRoot(), 1200, 800);
+            appShell.getThemeManager().register(scene);
             primaryStage.setTitle("DataCube 数据库管理工具");
             primaryStage.setScene(scene);
             primaryStage.setMinWidth(900);

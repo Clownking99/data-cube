@@ -29,7 +29,7 @@ public final class SettingsDialog {
     private SettingsDialog() {}
 
     /** 打开模态设置对话框。 */
-    public static void show(AppSettings settings, Window owner) {
+    public static void show(AppSettings settings, Window owner, ThemeManager themeManager) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle("设置");
         dialog.setHeaderText(null);
@@ -83,14 +83,37 @@ public final class SettingsDialog {
         TitledPane group2 = new TitledPane("性能与资源", perfBox);
         group2.setCollapsible(false);
 
-        VBox content = new VBox(10, group1, hint, group2);
+        // ---------- 外观主题 ----------
+        ToggleGroup themeGroup = new ToggleGroup();
+        RadioButton darkTheme = new RadioButton("暗色");
+        darkTheme.setUserData(AppSettings.Theme.DARK);
+        darkTheme.setToggleGroup(themeGroup);
+        RadioButton lightTheme = new RadioButton("亮色");
+        lightTheme.setUserData(AppSettings.Theme.LIGHT);
+        lightTheme.setToggleGroup(themeGroup);
+        if (settings.getTheme() == AppSettings.Theme.LIGHT) {
+            lightTheme.setSelected(true);
+        } else {
+            darkTheme.setSelected(true);
+        }
+        HBox themeRow = new HBox(16, darkTheme, lightTheme);
+        themeRow.setAlignment(Pos.CENTER_LEFT);
+        themeRow.setPadding(new Insets(10));
+        TitledPane themePane = new TitledPane("外观主题", themeRow);
+        themePane.setCollapsible(false);
+
+        VBox content = new VBox(10, themePane, group1, hint, group2);
         content.setPadding(new Insets(12));
         content.setPrefWidth(380);
         dialog.getDialogPane().setContent(content);
         dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        if (themeManager != null) themeManager.applyTo(dialog.getDialogPane());
 
         dialog.showAndWait().ifPresent(bt -> {
             if (bt == ButtonType.OK) {
+                if (themeGroup.getSelectedToggle() != null) {
+                    settings.setTheme((AppSettings.Theme) themeGroup.getSelectedToggle().getUserData());
+                }
                 if (group.getSelectedToggle() != null) {
                     settings.setCommentMode((CommentMode) group.getSelectedToggle().getUserData());
                 }

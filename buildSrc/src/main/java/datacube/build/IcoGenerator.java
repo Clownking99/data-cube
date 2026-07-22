@@ -61,6 +61,17 @@ public final class IcoGenerator {
         Files.write(out, ico);
     }
 
+    /**
+     * 生成各尺寸独立 PNG 到 {@code dir}（文件名 {@code icon-<size>.png}），
+     * 供运行时作为 classpath 资源加载为窗口/任务栏图标。
+     */
+    public static void writePngs(Path dir) throws IOException {
+        Files.createDirectories(dir);
+        for (int s : SIZES) {
+            Files.write(dir.resolve("icon-" + s + ".png"), toPng(render(s)));
+        }
+    }
+
     /** 渲染指定尺寸的透明底立方体位图。 */
     static BufferedImage render(int size) {
         BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);

@@ -388,8 +388,8 @@ public final class ConnectionTreePane {
     private void showHint(boolean matched) {
         searchHint.setText(matched ? "查找: " + searchBuffer : "查找: " + searchBuffer + "  (无匹配)");
         searchHint.setStyle(matched
-                ? "-fx-background-color:#fff3cd; -fx-border-color:#ffe08a; -fx-text-fill:#664d03; -fx-background-radius:3; -fx-border-radius:3;"
-                : "-fx-background-color:#f8d7da; -fx-border-color:#f1aeb5; -fx-text-fill:#842029; -fx-background-radius:3; -fx-border-radius:3;");
+                ? "-fx-background-color:-warn-bg; -fx-border-color:-warn-fg; -fx-text-fill:-warn-fg; -fx-background-radius:3; -fx-border-radius:3;"
+                : "-fx-background-color:-danger-bg; -fx-border-color:-danger-fg; -fx-text-fill:-danger-fg; -fx-background-radius:3; -fx-border-radius:3;");
         searchHint.setManaged(true);
         searchHint.setVisible(true);
     }
