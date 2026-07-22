@@ -18,7 +18,6 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
-import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
@@ -102,14 +101,18 @@ public final class ConnectionTreePane {
         return root;
     }
 
+    /** 新建连接（供上方应用头工具栏调用）。 */
+    public void newConnection() {
+        onAddConnection();
+    }
+
+    /** 刷新连接树（供上方应用头工具栏调用）。 */
+    public void refresh() {
+        reload();
+    }
+
     private void build() {
         root.setPadding(new Insets(6));
-
-        Button addBtn = new Button("新建连接");
-        addBtn.setOnAction(e -> onAddConnection());
-        Button refreshBtn = new Button("刷新");
-        refreshBtn.setOnAction(e -> reload());
-        HBox toolbar = new HBox(6, addBtn, refreshBtn);
 
         tree.setShowRoot(false);
         tree.setRoot(new TreeItem<>(new NodeData(Kind.CONNECTION, "root", null, null, null, null)));
@@ -133,7 +136,7 @@ public final class ConnectionTreePane {
             }
         });
 
-        root.getChildren().addAll(toolbar, tree, searchHint);
+        root.getChildren().addAll(tree, searchHint);
         VBox.setVgrow(tree, Priority.ALWAYS);
         installQuickSearch();
         reload();

@@ -36,4 +36,18 @@ public final class ContentTabPane {
         tabPane.getTabs().add(tab);
         tabPane.getSelectionModel().select(tab);
     }
+
+    /**
+     * 打开单例标签：若已存在承载同一 {@code content} 的标签则直接选中，
+     * 否则新建一个可关闭标签。适用于迁移页等单实例面板（避免重复标签与节点被转移）。
+     */
+    public void openSingletonTab(String title, Node content) {
+        for (Tab t : tabPane.getTabs()) {
+            if (t.getContent() == content) {
+                tabPane.getSelectionModel().select(t);
+                return;
+            }
+        }
+        openTab(title, content);
+    }
 }

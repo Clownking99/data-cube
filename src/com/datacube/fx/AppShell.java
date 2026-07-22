@@ -17,12 +17,16 @@ import com.datacube.update.UpdateService;
 
 import javafx.application.Platform;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
-import javafx.scene.control.Label;
+import javafx.scene.control.Separator;
 import javafx.scene.control.SplitPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 
 import java.util.concurrent.Callable;
 
@@ -66,14 +70,26 @@ public final class AppShell {
         return themeManager;
     }
 
+    /**
+     * 让 Windows 原生标题栏跟随明暗主题（非 Windows 静默 no-op）。
+     *
+     * <p>应在主窗口 {@code show()} 之后调用（此时按标题定位 HWND 才有效）；
+     * 内部同时订阅主题变化，切换时实时重刷标题栏配色。
+     *
+     * @param windowTitle 主窗口标题（须与 {@code Stage.setTitle} 一致）
+     */
+    public void enableNativeTitleBarTheming(String windowTitle) {
+        Runnable apply = () -> NativeTitleBar.apply(windowTitle,
+                settings.getTheme() == AppSettings.Theme.DARK);
+        apply.run();
+        settings.themeProperty().addListener((obs, o, n) -> apply.run());
+    }
+
     private void build() {
         root.setStyle("-fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; -fx-font-size: 13px;");
-        root.setTop(topBar());
 
         ConnectionTreePane treePane = new ConnectionTreePane(store, connMgr, treeSvc, session, new TreeActions());
-
-        // 迁移功能常驻标签
-        contentTabs.addPermanentTab("数据迁移", migrationPane.getNode());
+        root.setTop(topBar(treePane));
 
         SplitPane split = new SplitPane(treePane.getNode(), contentTabs.getNode());
         split.setDividerPositions(0.24);
@@ -81,31 +97,40 @@ public final class AppShell {
         root.setCenter(split);
     }
 
-    private HBox topBar() {
-        Label title = new Label("DataCube 数据库管理工具");
-        title.getStyleClass().add("brand-title");
-        HBox brand = new HBox(8, BrandLogo.cube(22), title);
-        brand.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-        Label active = new Label();
-        active.setStyle("-fx-text-fill: -brand-fg-muted;");
-        session.activeConnectionProperty().addListener((obs, o, c) ->
-                active.setText(c == null ? "" : "  |  活动连接: " + c.name()));
+    private HBox topBar(ConnectionTreePane treePane) {
+        // 品牌以小立方体图标呈现（标题文字与系统标题栏重复，故省略）
+        Node logo = BrandLogo.cube(20);
+
+        Button addConnBtn = new Button("＋ 新建连接");
+        addConnBtn.setOnAction(e -> treePane.newConnection());
+        Button refreshBtn = new Button("⟳ 刷新");
+        refreshBtn.setOnAction(e -> treePane.refresh());
+        Separator sep = new Separator(Orientation.VERTICAL);
+
+        // 弹性留白：把右侧功能按钮推向右端（“活动连接”不再在头部展示，改由各页面自行标识）
+        Region spacer = new Region();
+
         Button themeBtn = new Button();
         Runnable syncThemeBtn = () -> themeBtn.setText(
                 settings.getTheme() == AppSettings.Theme.DARK ? "☀ 亮色" : "🌙 暗色");
         syncThemeBtn.run();
         settings.themeProperty().addListener((obs, o, n) -> syncThemeBtn.run());
         themeBtn.setOnAction(e -> themeManager.toggle());
+        Button migrationBtn = new Button("🔄 数据迁移");
+        migrationBtn.setOnAction(e -> contentTabs.openSingletonTab("数据迁移", migrationPane.getNode()));
         Button aboutBtn = new Button("ℹ 关于");
         aboutBtn.setOnAction(e ->
                 AboutDialog.show(updateService, root.getScene() == null ? null : root.getScene().getWindow(), themeManager));
         Button settingsBtn = new Button("⚙ 设置");
         settingsBtn.setOnAction(e ->
                 SettingsDialog.show(settings, root.getScene() == null ? null : root.getScene().getWindow(), themeManager));
-        HBox bar = new HBox(6, brand, active, themeBtn, aboutBtn, settingsBtn);
-        bar.setPadding(new Insets(8, 12, 8, 12));
+
+        HBox bar = new HBox(6, logo, addConnBtn, refreshBtn, sep, spacer,
+                migrationBtn, themeBtn, aboutBtn, settingsBtn);
+        bar.setAlignment(Pos.CENTER_LEFT);
+        bar.setPadding(new Insets(6, 12, 6, 12));
         bar.getStyleClass().add("top-bar");
-        HBox.setHgrow(active, Priority.ALWAYS);
+        HBox.setHgrow(spacer, Priority.ALWAYS);
         return bar;
     }
 
@@ -135,28 +160,31 @@ public final class AppShell {
         @Override
         public void openSqlEditor(ConnConfig conn) {
             if (conn != null) session.setActiveConnection(conn);
-            SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings, this::openTableDesigner);
+            SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings, this::openTableDesigner, conn);
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
             contentTabs.openTab(name, pane.getNode());
         }
 
         @Override
         public void openDataGrid(String connId, TableRef table) {
-            DataGridPane pane = new DataGridPane(browseSvc, editSvc, connId, table);
+            String connName = connMgr.config(connId).name();
+            DataGridPane pane = new DataGridPane(browseSvc, editSvc, connId, connName, table, settings);
             contentTabs.openTab("数据: " + table.name(), pane.getNode());
         }
 
         @Override
         public void openTableDesigner(String connId, TableRef table) {
             DbType dbType = connMgr.provider(connId).type();
-            TableDesignerPane pane = new TableDesignerPane(designSvc, connId, table, table.schema(), dbType);
+            String connName = connMgr.config(connId).name();
+            TableDesignerPane pane = new TableDesignerPane(designSvc, connId, connName, table, table.schema(), dbType);
             contentTabs.openTab("设计: " + table.name(), pane.getNode());
         }
 
         @Override
         public void newTable(String connId, String schema) {
             DbType dbType = connMgr.provider(connId).type();
-            TableDesignerPane pane = new TableDesignerPane(designSvc, connId, null, schema, dbType);
+            String connName = connMgr.config(connId).name();
+            TableDesignerPane pane = new TableDesignerPane(designSvc, connId, connName, null, schema, dbType);
             contentTabs.openTab("新建表", pane.getNode());
         }
 

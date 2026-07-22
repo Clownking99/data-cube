@@ -23,6 +23,7 @@ import javafx.scene.control.cell.ComboBoxTableCell;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Window;
 import org.fxmisc.flowless.VirtualizedScrollPane;
@@ -58,6 +59,7 @@ public final class TableDesignerPane {
 
     private final TableDesignService svc;
     private final String connId;
+    private final String connName;
     private final TableRef table;   // null = 新建
     private final String schema;
     private final DbType dbType;
@@ -82,10 +84,11 @@ public final class TableDesignerPane {
     private volatile TableDraft original;
     private volatile boolean running = false;
 
-    public TableDesignerPane(TableDesignService svc, String connId, TableRef table,
+    public TableDesignerPane(TableDesignService svc, String connId, String connName, TableRef table,
                              String schema, DbType dbType) {
         this.svc = svc;
         this.connId = connId;
+        this.connName = connName;
         this.table = table;
         this.schema = schema;
         this.dbType = dbType;
@@ -124,7 +127,13 @@ public final class TableDesignerPane {
         refreshBtn.setOnAction(e -> reload());
         refreshBtn.setDisable(isNew);
 
-        HBox box = new HBox(8, schemaLabel, nameLabel, nameField, applyBtn, refreshBtn);
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        Label connLabel = new Label();
+        connLabel.setStyle("-fx-text-fill: -brand-fg-muted;");
+        if (connName != null && !connName.isEmpty()) connLabel.setText("🔗 " + connName);
+
+        HBox box = new HBox(8, schemaLabel, nameLabel, nameField, applyBtn, refreshBtn, spacer, connLabel);
         box.setAlignment(Pos.CENTER_LEFT);
         return box;
     }

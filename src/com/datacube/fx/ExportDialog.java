@@ -86,6 +86,8 @@ public final class ExportDialog {
         // 选择输出文件
         FileChooser chooser = new FileChooser();
         chooser.setTitle("保存到");
+        File initDir = FxFiles.defaultSaveDir();
+        if (initDir != null) chooser.setInitialDirectory(initDir);
         String ext = format == ExportFormat.XLSX ? "xlsx" : "sql";
         chooser.setInitialFileName(table.name() + "." + ext);
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(

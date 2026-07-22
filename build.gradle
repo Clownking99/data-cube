@@ -128,7 +128,9 @@ application {
 // 为使 gradlew run 时 DriverManager 的 ServiceLoader 能发现驱动，把模块路径上的
 // 全部模块加入根集合。（打包路径由下方 jlink mergedModule 处理，不依赖此项。）
 run {
-    jvmArgs += ['--add-modules', 'ALL-MODULE-PATH']
+    jvmArgs += ['--add-modules', 'ALL-MODULE-PATH',
+               // NativeTitleBar 用 FFM 调用 dwmapi/user32（Windows 标题栏明暗），授权原生访问以消除告警
+               '--enable-native-access=com.datacube']
 }
 
 // 应用图标：由 generateIcon 任务用 buildSrc 的 IcoGenerator（Java2D）从品牌立方体
@@ -189,7 +191,9 @@ jlink {
             '-XX:+UseG1GC',
             '-XX:MaxHeapFreeRatio=25',
             '-XX:MinHeapFreeRatio=10',
-            '-XX:G1PeriodicGCInterval=60000'
+            '-XX:G1PeriodicGCInterval=60000',
+            // NativeTitleBar 用 FFM 调用 dwmapi/user32（Windows 标题栏明暗），授权原生访问以消除告警
+            '--enable-native-access=com.datacube'
         ]
     }
 

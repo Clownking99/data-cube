@@ -32,6 +32,7 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
+import javafx.util.Duration;
 import org.fxmisc.flowless.VirtualizedScrollPane;
 import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.LineNumberFactory;
@@ -85,6 +86,11 @@ public final class SqlEditorPane {
     private final AppSettings settings;
     /** Ctrl+点击表名时打开表设计器（connId, 表引用）；由 AppShell 注入。 */
     private final java.util.function.BiConsumer<String, TableRef> openDesigner;
+    /**
+     * 本编辑页绑定的连接（打开时确定）。不为 null 时，执行/补全/跳转均使用它，
+     * 与全局“活动连接”解耦，避免切到其它连接后旧页去错连接执行；为 null 时回退到全局活动连接。
+     */
+    private final ConnConfig boundConn;
 
     /** 预热的元数据名称（表/视图/schema），线程安全。 */
     private final Set<String> metaNames = ConcurrentHashMap.newKeySet();
@@ -118,16 +124,28 @@ public final class SqlEditorPane {
 
     public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
                          AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner) {
+        this(session, connections, treeSvc, settings, openDesigner, null);
+    }
+
+    public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
+                         AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
+                         ConnConfig boundConn) {
         this.session = session;
         this.connections = connections;
         this.treeSvc = treeSvc;
         this.settings = settings;
         this.openDesigner = openDesigner;
+        this.boundConn = boundConn;
         build();
         // 注释显示模式变化 → 对当前查询结果即时重渲染表头（不重跑 SQL）
         settings.commentModeProperty().addListener((obs, o, n) -> {
             if (lastQueryResult != null) showQueryResult(lastQueryResult);
         });
+    }
+
+    /** 本编辑页当前应执行的连接：优先用绑定连接，否则回退到全局活动连接。 */
+    private ConnConfig currentConn() {
+        return boundConn != null ? boundConn : session.getActiveConnection();
     }
 
     public Node getNode() {
@@ -182,6 +200,13 @@ public final class SqlEditorPane {
         exportResultBtn.setOnAction(e -> onExportResult());
 
         box.getChildren().addAll(new Label("Schema:"), schemaField, executeBtn, explainBtn, analyzeCheck, formatBtn, exportResultBtn, clearBtn);
+        if (boundConn != null) {
+            Region spacer = new Region();
+            HBox.setHgrow(spacer, Priority.ALWAYS);
+            Label connLabel = new Label("🔗 " + boundConn.name());
+            connLabel.setStyle("-fx-text-fill: -brand-fg-muted;");
+            box.getChildren().addAll(spacer, connLabel);
+        }
         return box;
     }
 
@@ -295,7 +320,7 @@ public final class SqlEditorPane {
             showAlert("请输入 SQL");
             return;
         }
-        ConnConfig active = session.getActiveConnection();
+        ConnConfig active = currentConn();
         if (active == null) {
             showAlert("请先在左侧选择一个活动连接");
             return;
@@ -386,7 +411,7 @@ public final class SqlEditorPane {
      */
     private void onCtrlClick(javafx.scene.input.MouseEvent e) {
         if (openDesigner == null) return;
-        ConnConfig active = session.getActiveConnection();
+        ConnConfig active = currentConn();
         if (active == null) return;
         var hit = editorArea.hit(e.getX(), e.getY()).getCharacterIndex();
         if (hit.isEmpty()) return;
@@ -466,7 +491,7 @@ public final class SqlEditorPane {
             showAlert("请输入 SQL");
             return;
         }
-        ConnConfig active = session.getActiveConnection();
+        ConnConfig active = currentConn();
         if (active == null) {
             showAlert("请先在左侧选择一个活动连接");
             return;
@@ -649,6 +674,7 @@ public final class SqlEditorPane {
             data.add(rowData);
         }
         resultTable.getColumns().clear();
+        resultTable.getColumns().add(buildSeqColumn());
         List<String> comments = r.columnComments;
         for (int i = 0; i < r.columns.size(); i++) {
             String name = r.columns.get(i);
@@ -670,6 +696,8 @@ public final class SqlEditorPane {
         }
         FileChooser chooser = new FileChooser();
         chooser.setTitle("导出结果到 Excel");
+        File initDir = FxFiles.defaultSaveDir();
+        if (initDir != null) chooser.setInitialDirectory(initDir);
         chooser.setInitialFileName("query_result.xlsx");
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel 文件", "*.xlsx"));
         Window owner = root.getScene() == null ? null : root.getScene().getWindow();
@@ -703,6 +731,28 @@ public final class SqlEditorPane {
         }, "Result-Export").start();
     }
 
+    /** 行号列（序号）：显示 1..N，不参与排序，不映射数据。 */
+    private TableColumn<ObservableList<String>, String> buildSeqColumn() {
+        TableColumn<ObservableList<String>, String> seq = new TableColumn<>("#");
+        seq.setSortable(false);
+        seq.setResizable(false);
+        seq.setPrefWidth(56);
+        seq.setCellFactory(tc -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getIndex() < 0) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(String.valueOf(getIndex() + 1));
+                    setStyle("-fx-alignment: CENTER_RIGHT; -fx-text-fill: -brand-fg-muted;");
+                }
+            }
+        });
+        return seq;
+    }
+
     /** 构建带注释表头的查询列，表头展现方式由当前 {@link CommentMode} 决定。 */
     private TableColumn<ObservableList<String>, String> buildQueryColumn(String name, String comment, int idx) {
         TableColumn<ObservableList<String>, String> c = new TableColumn<>();
@@ -730,10 +780,14 @@ public final class SqlEditorPane {
             c.setGraphic(box);
         } else { // HOVER
             Label nameLabel = new Label(name);
+            // 让标题 Label 撜满整个表头宽度，悬停表头任意处均可触发 Tooltip
+            nameLabel.setMaxWidth(Double.MAX_VALUE);
+            nameLabel.prefWidthProperty().bind(c.widthProperty());
             Tooltip tip = new Tooltip(name + "\n" + comment);
             tip.setWrapText(true);
             tip.setMaxWidth(360);
-            Tooltip.install(nameLabel, tip);
+            tip.setShowDelay(Duration.millis(300));
+            nameLabel.setTooltip(tip);
             c.setText("");
             c.setGraphic(nameLabel);
         }
@@ -771,8 +825,12 @@ public final class SqlEditorPane {
         return all;
     }
 
-    /** 监听活动连接变化，在后台预热元数据名称（每连接一次）。 */
+    /** 预热元数据名称（每连接一次）：绑定连接只预热它；未绑定时监听全局活动连接变化。 */
     private void installMetadataPrewarm() {
+        if (boundConn != null) {
+            prewarm(boundConn);
+            return;
+        }
         session.activeConnectionProperty().addListener((obs, o, c) -> {
             if (c != null) prewarm(c);
         });
@@ -822,7 +880,7 @@ public final class SqlEditorPane {
      * 后台加载并先返回空，加载完成后回调 {@link SqlAutoComplete#refresh()}。
      */
     private Collection<String> membersFor(String qualifier) {
-        ConnConfig active = session.getActiveConnection();
+        ConnConfig active = currentConn();
         if (active == null) return List.of();
         String connId = active.id();
         var dialect = connections.provider(connId).dialect();

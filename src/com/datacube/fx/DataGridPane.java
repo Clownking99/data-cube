@@ -1,5 +1,7 @@
 package com.datacube.fx;
 
+import com.datacube.config.AppSettings;
+import com.datacube.config.AppSettings.CommentMode;
 import com.datacube.service.DataBrowseService;
 import com.datacube.service.DataEditService;
 import com.datacube.spi.model.EditableColumn;
@@ -16,7 +18,9 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
+import javafx.util.Duration;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -34,7 +38,9 @@ public final class DataGridPane {
     private final DataBrowseService browse;
     private final DataEditService edit;
     private final String connId;
+    private final String connName;
     private final TableRef table;
+    private final AppSettings settings;
 
     private final VBox root = new VBox(8);
     private TableView<EditableGridModel.Row> grid;
@@ -49,13 +55,19 @@ public final class DataGridPane {
     private volatile boolean busy = false;
     /** 程序化替换 items 期间抑制行离开提交（避免重载引发的误提交）。 */
     private boolean suppressCommit = false;
+    /** 当前渲染的数据列（不含序号列），供注释模式切换时重刷表头。 */
+    private final List<TableColumn<EditableGridModel.Row, String>> dataColumns = new ArrayList<>();
 
-    public DataGridPane(DataBrowseService browse, DataEditService edit, String connId, TableRef table) {
+    public DataGridPane(DataBrowseService browse, DataEditService edit, String connId, String connName,
+                        TableRef table, AppSettings settings) {
         this.browse = browse;
         this.edit = edit;
         this.connId = connId;
+        this.connName = connName;
         this.table = table;
+        this.settings = settings;
         build();
+        settings.commentModeProperty().addListener((o, a, b) -> reapplyHeaders());
         load();
     }
 
@@ -94,6 +106,10 @@ public final class DataGridPane {
         Label title = new Label(table.qualified());
         title.setStyle("-fx-font-weight: bold;");
 
+        Label connLabel = new Label();
+        connLabel.setStyle("-fx-text-fill: -brand-fg-muted;");
+        if (connName != null && !connName.isEmpty()) connLabel.setText("🔗 " + connName);
+
         filterField = new TextField();
         filterField.setPromptText("WHERE 过滤（不含 WHERE，如 id > 100）");
         filterField.setPrefWidth(280);
@@ -120,7 +136,7 @@ public final class DataGridPane {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        box.getChildren().addAll(title, filterField, reloadBtn, prevBtn, nextBtn, spacer, addBtn, deleteBtn);
+        box.getChildren().addAll(title, connLabel, filterField, reloadBtn, prevBtn, nextBtn, spacer, addBtn, deleteBtn);
         return box;
     }
 
@@ -177,10 +193,13 @@ public final class DataGridPane {
         List<EditableColumn> cols = model.columns();
 
         grid.getColumns().clear();
+        grid.getColumns().add(buildSeqColumn());
+        dataColumns.clear();
         for (int i = 0; i < cols.size(); i++) {
             final int idx = i;
             EditableColumn ec = cols.get(i);
-            TableColumn<EditableGridModel.Row, String> c = new TableColumn<>(ec.name());
+            TableColumn<EditableGridModel.Row, String> c = new TableColumn<>();
+            applyColumnHeader(c, ec.name(), ec.comment());
             c.setCellValueFactory(d -> {
                 EditableGridModel.Cell cell = d.getValue().cell(idx);
                 return new javafx.beans.property.SimpleStringProperty(cell.isNull() ? "" : cell.text());
@@ -188,6 +207,7 @@ public final class DataGridPane {
             c.setCellFactory(tc -> new EditCell(idx));
             c.setEditable(model.canLocateRow() && ec.editable());
             c.setPrefWidth(estimateColumnWidth(ec.name(), result.rows(), idx));
+            dataColumns.add(c);
             grid.getColumns().add(c);
         }
 
@@ -206,6 +226,69 @@ public final class DataGridPane {
         info("第 " + from + "–" + to + " 行" + (hasMore ? "（还有更多）" : ""));
         prevBtn.setDisable(offset == 0);
         nextBtn.setDisable(!hasMore);
+    }
+
+    /** 行号列（序号）：显示分页全局序号（offset+行内序号+1），不可编辑、不参与排序。 */
+    private TableColumn<EditableGridModel.Row, String> buildSeqColumn() {
+        TableColumn<EditableGridModel.Row, String> seq = new TableColumn<>("#");
+        seq.setSortable(false);
+        seq.setEditable(false);
+        seq.setResizable(false);
+        seq.setPrefWidth(56);
+        seq.setCellFactory(tc -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getIndex() < 0) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(String.valueOf(offset + getIndex() + 1));
+                    setStyle("-fx-alignment: CENTER_RIGHT; -fx-text-fill: -brand-fg-muted;");
+                }
+            }
+        });
+        return seq;
+    }
+
+    /** 根据当前注释显示模式设置列头（纯文本 / 悬停 Tooltip / 固定两行）。 */
+    private void applyColumnHeader(TableColumn<EditableGridModel.Row, String> c, String name, String comment) {
+        boolean hasComment = comment != null && !comment.isEmpty();
+        CommentMode mode = settings.getCommentMode();
+        if (!hasComment || mode == CommentMode.OFF) {
+            c.setGraphic(null);
+            c.setText(name);
+            return;
+        }
+        if (mode == CommentMode.INLINE) {
+            Label nameLabel = new Label(name);
+            Label commentLabel = new Label(comment);
+            commentLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 11px;");
+            VBox box = new VBox(1, nameLabel, commentLabel);
+            c.setText("");
+            c.setGraphic(box);
+        } else { // HOVER
+            Label nameLabel = new Label(name);
+            // 让标题 Label 撜满整个表头宽度，悬停表头任意处均可触发 Tooltip
+            nameLabel.setMaxWidth(Double.MAX_VALUE);
+            nameLabel.prefWidthProperty().bind(c.widthProperty());
+            Tooltip tip = new Tooltip(name + "\n" + comment);
+            tip.setWrapText(true);
+            tip.setMaxWidth(360);
+            tip.setShowDelay(Duration.millis(300));
+            nameLabel.setTooltip(tip);
+            c.setText("");
+            c.setGraphic(nameLabel);
+        }
+    }
+
+    /** 注释显示模式切换时，按当前列元数据重刷数据列表头（不重载数据）。 */
+    private void reapplyHeaders() {
+        if (model == null) return;
+        List<EditableColumn> cols = model.columns();
+        for (int i = 0; i < dataColumns.size() && i < cols.size(); i++) {
+            applyColumnHeader(dataColumns.get(i), cols.get(i).name(), cols.get(i).comment());
+        }
     }
 
     private void updateHint() {
