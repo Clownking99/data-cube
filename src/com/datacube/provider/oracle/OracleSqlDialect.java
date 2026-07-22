@@ -2,6 +2,13 @@ package com.datacube.provider.oracle;
 
 import com.datacube.spi.SqlDialect;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Oracle 方言实现。
  *
@@ -53,6 +60,25 @@ public final class OracleSqlDialect implements SqlDialect {
         }
         String s = v.toString();
         return "'" + s.replace("'", "''") + "'";
+    }
+
+    @Override
+    public Map<String, String> columnComments(Connection conn, String schema, String table) throws SQLException {
+        Map<String, String> out = new HashMap<>();
+        if (schema == null || table == null) return out;
+        String sql = "SELECT COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS "
+                + "WHERE OWNER = ? AND TABLE_NAME = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, schema);
+            ps.setString(2, table);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String d = rs.getString("COMMENTS");
+                    if (d != null && !d.isEmpty()) out.put(rs.getString("COLUMN_NAME"), d);
+                }
+            }
+        }
+        return out;
     }
 
     private static String hex(byte[] bytes) {

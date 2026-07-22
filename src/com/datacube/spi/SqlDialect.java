@@ -1,5 +1,10 @@
 package com.datacube.spi;
 
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.Collections;
+import java.util.Map;
+
 /**
  * SQL 方言能力：收敛所有数据库专属的 SQL 片段。
  *
@@ -54,4 +59,14 @@ public interface SqlDialect {
      * 使 {@code export.SqlScriptExporter} 不出现任何数据库专属语法。
      */
     String sqlLiteral(Object v);
+
+    /**
+     * 查询指定表的列注释（列名 → 注释）；无注释或不支持时返回空 Map。
+     *
+     * <p>默认空实现；各方言按数据字典（Oracle {@code ALL_COL_COMMENTS} /
+     * PG {@code col_description}）覆盖。键为数据字典中存储的列名形式（Oracle 大写、PG 小写）。
+     */
+    default Map<String, String> columnComments(Connection conn, String schema, String table) throws SQLException {
+        return Collections.emptyMap();
+    }
 }

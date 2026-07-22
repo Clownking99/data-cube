@@ -14,6 +14,7 @@ package com.datacube.spi.model;
  * @param primaryKey    是否主键列
  * @param autoIncrement 是否自增/标识列（INSERT 时可省略）
  * @param editable      是否可在网格内编辑（LOB/二进制/ROWID/只读列为 false）
+ * @param comment       列注释（best-effort；无则为 null）
  */
 public record EditableColumn(
         String name,
@@ -22,5 +23,6 @@ public record EditableColumn(
         boolean nullable,
         boolean primaryKey,
         boolean autoIncrement,
-        boolean editable) {
+        boolean editable,
+        String comment) {
 }

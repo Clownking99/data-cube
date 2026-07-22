@@ -43,7 +43,7 @@ public final class OracleSqlRunner implements SqlRunner {
                         ResultSetMetaData md = rs.getMetaData();
                         QueryResult r = QueryResult.fromResultSet(rs, elapsed, maxRows);
                         // best-effort 解析列注释；失败或无表列时返回 null，不影响结果展示
-                        List<String> comments = OracleColumnComments.resolve(conn, md);
+                        List<String> comments = OracleColumnComments.resolve(conn, md, sql, schema);
                         return comments == null ? r : r.withColumnComments(comments);
                     }
                 } else {

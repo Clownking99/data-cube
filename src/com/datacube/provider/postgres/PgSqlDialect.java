@@ -2,6 +2,13 @@ package com.datacube.provider.postgres;
 
 import com.datacube.spi.SqlDialect;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * PostgreSQL 方言实现。
  */
@@ -44,6 +51,28 @@ public final class PgSqlDialect implements SqlDialect {
         if (v instanceof byte[] bytes) return "'\\x" + hex(bytes) + "'";
         String s = v.toString();
         return "'" + s.replace("'", "''") + "'";
+    }
+
+    @Override
+    public Map<String, String> columnComments(Connection conn, String schema, String table) throws SQLException {
+        Map<String, String> out = new HashMap<>();
+        if (schema == null || table == null) return out;
+        String sql = "SELECT a.attname AS c, col_description(a.attrelid, a.attnum) AS d "
+                + "FROM pg_attribute a "
+                + "JOIN pg_class cl ON cl.oid = a.attrelid "
+                + "JOIN pg_namespace n ON n.oid = cl.relnamespace "
+                + "WHERE n.nspname = ? AND cl.relname = ? AND a.attnum > 0 AND NOT a.attisdropped";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, schema);
+            ps.setString(2, table);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String d = rs.getString("d");
+                    if (d != null && !d.isEmpty()) out.put(rs.getString("c"), d);
+                }
+            }
+        }
+        return out;
     }
 
     private static String hex(byte[] bytes) {

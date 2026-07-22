@@ -76,6 +76,12 @@ public final class JdbcDataEditor implements DataEditor {
         if (cached != null) return cached;
 
         Set<String> pk = primaryKeys(t);
+        Map<String, String> comments;
+        try {
+            comments = dialect.columnComments(conn, t.schema(), t.name());
+        } catch (SQLException e) {
+            comments = java.util.Collections.emptyMap();
+        }
         String sql = "SELECT * FROM " + qualified(t) + " WHERE 1=0";
         List<EditableColumn> list = new ArrayList<>();
         try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
@@ -89,7 +95,7 @@ public final class JdbcDataEditor implements DataEditor {
                 boolean readOnly = md.isReadOnly(i);
                 boolean isPk = pk.contains(name);
                 boolean editable = !readOnly && !isBinaryOrLob(type);
-                list.add(new EditableColumn(name, type, typeName, nullable, isPk, auto, editable));
+                list.add(new EditableColumn(name, type, typeName, nullable, isPk, auto, editable, comments.get(name)));
             }
         }
         List<EditableColumn> result = List.copyOf(list);
