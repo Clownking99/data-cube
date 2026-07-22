@@ -17,8 +17,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -89,6 +91,7 @@ public final class PgMetadataReader implements MetadataReader {
     @Override
     public List<ColumnInfo> columns(TableRef t) throws SQLException {
         Set<String> pkCols = primaryKeyColumns(t);
+        Map<String, String> comments = columnComments(t);
         List<ColumnInfo> out = new ArrayList<>();
         String sql = "SELECT column_name, data_type, is_nullable, column_default, ordinal_position "
                 + "FROM information_schema.columns WHERE table_schema = ? AND table_name = ? "
@@ -106,7 +109,30 @@ public final class PgMetadataReader implements MetadataReader {
                             rs.getString("column_default"),
                             rs.getInt("ordinal_position"),
                             pkCols.contains(name),
-                            null));
+                            comments.get(name)));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** 批量取回列注释（{@code col_description}）：列名 → 注释（空注释不入图）。 */
+    private Map<String, String> columnComments(TableRef t) throws SQLException {
+        Map<String, String> out = new HashMap<>();
+        String sql = "SELECT a.attname AS column_name, col_description(a.attrelid, a.attnum) AS comment "
+                + "FROM pg_attribute a "
+                + "JOIN pg_class c ON c.oid = a.attrelid "
+                + "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                + "WHERE n.nspname = ? AND c.relname = ? AND a.attnum > 0 AND NOT a.attisdropped";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, t.schema());
+            ps.setString(2, t.name());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String comment = rs.getString("comment");
+                    if (comment != null && !comment.isEmpty()) {
+                        out.put(rs.getString("column_name"), comment);
+                    }
                 }
             }
         }

@@ -17,8 +17,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -85,6 +87,7 @@ public final class OracleMetadataReader implements MetadataReader {
     @Override
     public List<ColumnInfo> columns(TableRef t) throws SQLException {
         Set<String> pkCols = primaryKeyColumns(t);
+        Map<String, String> comments = columnComments(t);
         List<ColumnInfo> out = new ArrayList<>();
         // DATA_DEFAULT 为 LONG，置于末列并最后读取
         String sql = "SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, "
@@ -107,7 +110,27 @@ public final class OracleMetadataReader implements MetadataReader {
                             def == null ? null : def.trim(),
                             ordinal,
                             pkCols.contains(name),
-                            null));
+                            comments.get(name)));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** 批量取回列注释（{@code ALL_COL_COMMENTS}）：列名 → 注释（空注释不入图）。 */
+    private Map<String, String> columnComments(TableRef t) throws SQLException {
+        Map<String, String> out = new HashMap<>();
+        String sql = "SELECT COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS "
+                + "WHERE OWNER = ? AND TABLE_NAME = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, t.schema());
+            ps.setString(2, t.name());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String comment = rs.getString("COMMENTS");
+                    if (comment != null && !comment.isEmpty()) {
+                        out.put(rs.getString("COLUMN_NAME"), comment);
+                    }
                 }
             }
         }
