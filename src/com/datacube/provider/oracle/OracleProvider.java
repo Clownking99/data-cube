@@ -8,6 +8,7 @@ import com.datacube.spi.DdlGenerator;
 import com.datacube.spi.MetadataReader;
 import com.datacube.spi.SqlDialect;
 import com.datacube.spi.SqlRunner;
+import com.datacube.spi.TableDdlBuilder;
 import com.datacube.spi.model.DbType;
 
 import com.datacube.provider.jdbc.JdbcDataEditor;
@@ -25,6 +26,7 @@ public final class OracleProvider implements DatabaseProvider {
     private final OracleConnectionFactory connectionFactory = new OracleConnectionFactory();
     private final OracleSqlDialect dialect = new OracleSqlDialect();
     private final OracleSqlRunner sqlRunner = new OracleSqlRunner(dialect);
+    private final OracleTableDdlBuilder tableDdlBuilder = new OracleTableDdlBuilder();
 
     @Override
     public DbType type() {
@@ -49,6 +51,11 @@ public final class OracleProvider implements DatabaseProvider {
     @Override
     public SqlRunner sqlRunner() {
         return sqlRunner;
+    }
+
+    @Override
+    public TableDdlBuilder tableDdlBuilder() {
+        return tableDdlBuilder;
     }
 
     @Override

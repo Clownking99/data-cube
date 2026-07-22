@@ -8,6 +8,8 @@ import com.datacube.service.DataBrowseService;
 import com.datacube.service.DataEditService;
 import com.datacube.service.DdlService;
 import com.datacube.service.ObjectTreeService;
+import com.datacube.service.TableDesignService;
+import com.datacube.spi.model.DbType;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.RoutineRef;
 import com.datacube.spi.model.TableRef;
@@ -43,6 +45,7 @@ public final class AppShell {
     private final DataBrowseService browseSvc = new DataBrowseService(connMgr);
     private final DataEditService editSvc = new DataEditService(connMgr);
     private final DdlService ddlSvc = new DdlService(connMgr);
+    private final TableDesignService designSvc = new TableDesignService(connMgr);
     private final SessionContext session = new SessionContext();
 
     private final ContentTabPane contentTabs = new ContentTabPane();
@@ -75,6 +78,8 @@ public final class AppShell {
     private HBox topBar() {
         Label title = new Label("DataCube 数据库管理工具");
         title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #2e3440;");
+        HBox brand = new HBox(8, BrandLogo.cube(22), title);
+        brand.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         Label active = new Label();
         active.setStyle("-fx-text-fill: #666;");
         session.activeConnectionProperty().addListener((obs, o, c) ->
@@ -85,7 +90,7 @@ public final class AppShell {
         Button settingsBtn = new Button("⚙ 设置");
         settingsBtn.setOnAction(e ->
                 SettingsDialog.show(settings, root.getScene() == null ? null : root.getScene().getWindow()));
-        HBox bar = new HBox(6, title, active, aboutBtn, settingsBtn);
+        HBox bar = new HBox(6, brand, active, aboutBtn, settingsBtn);
         bar.setPadding(new Insets(8, 12, 8, 12));
         bar.setStyle("-fx-background-color: #eceff4; -fx-border-color: transparent transparent #d8dee9 transparent;");
         HBox.setHgrow(active, Priority.ALWAYS);
@@ -118,7 +123,7 @@ public final class AppShell {
         @Override
         public void openSqlEditor(ConnConfig conn) {
             if (conn != null) session.setActiveConnection(conn);
-            SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings);
+            SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings, this::openTableDesigner);
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
             contentTabs.openTab(name, pane.getNode());
         }
@@ -127,6 +132,20 @@ public final class AppShell {
         public void openDataGrid(String connId, TableRef table) {
             DataGridPane pane = new DataGridPane(browseSvc, editSvc, connId, table);
             contentTabs.openTab("数据: " + table.name(), pane.getNode());
+        }
+
+        @Override
+        public void openTableDesigner(String connId, TableRef table) {
+            DbType dbType = connMgr.provider(connId).type();
+            TableDesignerPane pane = new TableDesignerPane(designSvc, connId, table, table.schema(), dbType);
+            contentTabs.openTab("设计: " + table.name(), pane.getNode());
+        }
+
+        @Override
+        public void newTable(String connId, String schema) {
+            DbType dbType = connMgr.provider(connId).type();
+            TableDesignerPane pane = new TableDesignerPane(designSvc, connId, null, schema, dbType);
+            contentTabs.openTab("新建表", pane.getNode());
         }
 
         @Override

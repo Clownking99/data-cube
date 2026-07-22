@@ -175,13 +175,14 @@ public class DataCube {
 
     private static void printBanner() {
         System.out.println();
-        System.out.println("  ╔═══════════════════════════════════════════════╗");
-        System.out.println("  ║            DataCube 迁移工具 v3.0             ║");
-        System.out.println("  ╠═══════════════════════════════════════════════╣");
-        System.out.println("  ║  导出: DDL + 全量数据（并行导出）             ║");
-        System.out.println("  ║  导入: 完整模式 / 增量模式                    ║");
-        System.out.println("  ║  兼容: NVARCHAR2/NCLOB/BLOB/NUMBER/SYSDATE    ║");
-        System.out.println("  ╚═══════════════════════════════════════════════╝");
+        System.out.println("       ______            datacube  \u00b7  \u6570\u636e\u9b54\u65b9");
+        System.out.println("      /\\     \\           DataCube \u6570\u636e\u5e93\u7ba1\u7406\u5de5\u5177 v3.0");
+        System.out.println("     /  \\     \\");
+        System.out.println("    /____\\_____\\         \u6bcf\u4e00\u9762\uff0c\u7686\u662f\u6570\u636e\u65b0\u7ef4\u5ea6");
+        System.out.println("    \\    /     /         Every Face, A New Dimension of Data");
+        System.out.println("     \\  /     /");
+        System.out.println("      \\/_____/");
+        System.out.println();
     }
 
     /** Java 主版本号（JDK 9+ 适用；JDK 8 返回 8） */

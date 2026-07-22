@@ -83,6 +83,8 @@ public final class SqlEditorPane {
     private final ConnectionManager connections;
     private final ObjectTreeService treeSvc;
     private final AppSettings settings;
+    /** Ctrl+点击表名时打开表设计器（connId, 表引用）；由 AppShell 注入。 */
+    private final java.util.function.BiConsumer<String, TableRef> openDesigner;
 
     /** 预热的元数据名称（表/视图/schema），线程安全。 */
     private final Set<String> metaNames = ConcurrentHashMap.newKeySet();
@@ -115,11 +117,12 @@ public final class SqlEditorPane {
     private QueryResult lastQueryResult;
 
     public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
-                         AppSettings settings) {
+                         AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner) {
         this.session = session;
         this.connections = connections;
         this.treeSvc = treeSvc;
         this.settings = settings;
+        this.openDesigner = openDesigner;
         build();
         // 注释显示模式变化 → 对当前查询结果即时重渲染表头（不重跑 SQL）
         settings.commentModeProperty().addListener((obs, o, n) -> {
@@ -204,6 +207,12 @@ public final class SqlEditorPane {
         // 高亮样式表（类名与 SqlHighlighter 输出一致）
         var css = getClass().getResource("/com/datacube/fx/sql-highlight.css");
         if (css != null) editorArea.getStylesheets().add(css.toExternalForm());
+        // Ctrl+点击标识符 -> 若为存在的表则打开表设计器（后台校验存在性）
+        editorArea.addEventHandler(javafx.scene.input.MouseEvent.MOUSE_CLICKED, e -> {
+            if (e.isControlDown() && e.getButton() == javafx.scene.input.MouseButton.PRIMARY) {
+                onCtrlClick(e);
+            }
+        });
         // 自动补全：关键字 + 预热的元数据名称（Ctrl+Space 强制触发）；
         // 并为「别名./表名.」提供列名成员补全。
         autoComplete = new SqlAutoComplete(editorArea, this::completionCandidates);
@@ -362,6 +371,90 @@ public final class SqlEditorPane {
             return ScriptErrorPolicy.Decision.ABORT;
         }
         return ref.get();
+    }
+
+    // ---------- Ctrl+点击跳转表设计器 ----------
+
+    /** 允许出现在标识符中的字符（含 {@code .} 与双引号，以支持 schema.table 与引用名）。 */
+    private static boolean isIdentChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '_' || c == '$' || c == '.' || c == '"';
+    }
+
+    /**
+     * Ctrl+点击：定位点击处标识符，解析 {@code schema.table} 或裸名，
+     * 后台校验表是否存在，存在则回主线程打开表设计器。
+     */
+    private void onCtrlClick(javafx.scene.input.MouseEvent e) {
+        if (openDesigner == null) return;
+        ConnConfig active = session.getActiveConnection();
+        if (active == null) return;
+        var hit = editorArea.hit(e.getX(), e.getY()).getCharacterIndex();
+        if (hit.isEmpty()) return;
+        String token = identifierAt(editorArea.getText(), hit.getAsInt());
+        if (token == null || token.isEmpty()) return;
+        e.consume();
+
+        final String connId = active.id();
+        var dialect = connections.provider(connId).dialect();
+        // 解析 schema.table / 裸名（取最后两段作为 schema.table）
+        String[] parts = token.split("\\.");
+        String rawName = parts[parts.length - 1];
+        String rawSchema = parts.length >= 2 ? parts[parts.length - 2] : null;
+        final String name = foldIdentifier(dialect, rawName);
+        if (name.isEmpty()) return;
+        final String schema = resolveSchema(active, dialect, rawSchema);
+
+        new Thread(() -> {
+            boolean exists = false;
+            try {
+                for (TableInfo t : treeSvc.tables(connId, schema)) {
+                    if (t.name().equalsIgnoreCase(name)) { exists = true; break; }
+                }
+            } catch (Exception ignore) {
+                // 校验失败静默：不跳转
+            }
+            if (exists) {
+                Platform.runLater(() -> openDesigner.accept(connId, new TableRef(schema, name)));
+            } else {
+                Platform.runLater(() -> statusLabel.setText("未找到表: "
+                        + (schema == null ? "" : schema + ".") + name));
+            }
+        }, "SqlEditor-GotoTable").start();
+    }
+
+    /** 从 text 的 pos 处向两侧扩展取标识符（含 {@code .} 与引号）。 */
+    private static String identifierAt(String text, int pos) {
+        if (text == null || text.isEmpty() || pos < 0 || pos >= text.length()) return null;
+        int start = pos;
+        while (start > 0 && isIdentChar(text.charAt(start - 1))) start--;
+        int end = pos;
+        while (end < text.length() && isIdentChar(text.charAt(end))) end++;
+        String s = text.substring(start, end).trim();
+        // 修剪首尾多余的点
+        while (s.startsWith(".")) s = s.substring(1);
+        while (s.endsWith(".")) s = s.substring(0, s.length() - 1);
+        return s;
+    }
+
+    /** 去引号后折叠未引用标识符（Oracle → 大写）；已引用则保留原大小写。 */
+    private static String foldIdentifier(com.datacube.spi.SqlDialect dialect, String ident) {
+        if (ident == null) return "";
+        String s = ident.trim();
+        if (s.length() >= 2 && s.startsWith("\"") && s.endsWith("\"")) {
+            return s.substring(1, s.length() - 1).replace("\"\"", "\"");
+        }
+        return dialect.foldUnquotedIdentifier(s);
+    }
+
+    /** 解析 schema：限定名用其 schema 段；裸名用 schemaField（空则 Oracle 取登录名）。 */
+    private String resolveSchema(ConnConfig active, com.datacube.spi.SqlDialect dialect, String rawSchema) {
+        if (rawSchema != null && !rawSchema.isEmpty()) return foldIdentifier(dialect, rawSchema);
+        String fieldSchema = schemaField.getText().trim();
+        if (!fieldSchema.isEmpty()) return dialect.foldUnquotedIdentifier(fieldSchema);
+        if (active.type() == DbType.ORACLE && active.username() != null && !active.username().isEmpty()) {
+            return dialect.foldUnquotedIdentifier(active.username());
+        }
+        return null;
     }
 
     // ---------- 执行计划（EXPLAIN / EXPLAIN ANALYZE） ----------

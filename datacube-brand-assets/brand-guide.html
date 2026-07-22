@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>datacube 数据魔方 — Brand Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0E0E14;
+      --surface: #151520;
+      --surface-2: #1C1C2C;
+      --border: #252538;
+      --border-light: #30304A;
+      --fg: #E8E8ED;
+      --fg-dim: #A8A8B8;
+      --fg-muted: #6B6B80;
+      --brand-purple: #6C5CE7;
+      --brand-purple-light: #9B8CFF;
+      --brand-blue: #0984E3;
+      --brand-blue-dark: #0659A8;
+      --brand-accent: #00D2D3;
+      --brand-dark-purple: #5241CC;
+      --mono-light: #D0D0DC;
+      --mono-mid: #ACACB8;
+      --mono-dark: #8A8A9E;
+      --surface-deep: #0A0A12;
+      --surface-panel: #111118;
+      --surface-panel-alt: #18181F;
+      --surface-deep-border: #1E1E30;
+      --border-panel: #2A2A3A;
+      --dot-red: #FF5F57;
+      --dot-yellow: #FFBD2E;
+      --dot-green: #28CA42;
+      --code-comment: #4A4A5E;
+      --text-deep-muted: #505068;
+      --font-display: 'Space Grotesk', 'Inter', 'Segoe UI', sans-serif;
+      --font-body: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      --font-cn: 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+      --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    }
+
+    /* ─── SVG CUBE FACE CLASSES ─── */
+    .face-t { fill: var(--brand-purple-light); }
+    .face-r { fill: var(--brand-blue); }
+    .face-l { fill: var(--brand-dark-purple); }
+    .face-t-grad { stop-color: var(--brand-purple-light); }
+    .face-t-grad-end { stop-color: var(--brand-purple); }
+    .face-r-grad { stop-color: var(--brand-purple); }
+    .face-r-grad-end { stop-color: var(--brand-blue); }
+    .face-l-grad { stop-color: var(--brand-dark-purple); }
+    .face-l-grad-end { stop-color: var(--brand-blue-dark); }
+    .txt-brand { fill: var(--fg); }
+    .txt-cn { fill: var(--fg-muted); }
+    .face-mono-t { fill: var(--mono-light); }
+    .face-mono-r { fill: var(--mono-mid); }
+    .face-mono-l { fill: var(--mono-dark); }
+    .txt-mono { fill: var(--mono-light); }
+    .txt-mono-cn { fill: var(--mono-dark); }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── NAV ─── */
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(14, 14, 20, 0.95);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 40px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-brand {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+      color: var(--fg);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .nav-brand svg { width: 22px; height: 22px; }
+    .nav-links {
+      display: flex;
+      gap: 28px;
+      list-style: none;
+    }
+    .nav-links a {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--fg-muted);
+      text-decoration: none;
+      letter-spacing: 0.02em;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--fg); }
+
+    /* ─── SECTIONS ─── */
+    .section {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 40px;
+    }
+    .section-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 400;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--fg-muted);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--fg);
+      margin-bottom: 16px;
+    }
+    .section-desc {
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--fg-dim);
+      max-width: 560px;
+      margin-bottom: 48px;
+    }
+
+    /* ─── HERO ─── */
+    .hero {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 100px 40px 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .hero-cube {
+      width: 140px;
+      height: 140px;
+      margin-bottom: 48px;
+    }
+    .hero-wordmark {
+      font-family: var(--font-display);
+      font-size: 56px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      line-height: 1.0;
+      color: var(--fg);
+      margin-bottom: 12px;
+    }
+    .hero-cn {
+      font-family: var(--font-cn);
+      font-size: 20px;
+      font-weight: 300;
+      letter-spacing: 4px;
+      color: var(--fg-muted);
+      margin-bottom: 48px;
+    }
+    .hero-divider {
+      width: 48px;
+      height: 1px;
+      background: var(--border-light);
+      margin-bottom: 40px;
+    }
+    .hero-slogan {
+      font-family: var(--font-cn);
+      font-size: 18px;
+      font-weight: 300;
+      letter-spacing: 3px;
+      color: var(--fg-dim);
+      margin-bottom: 12px;
+    }
+    .hero-slogan-en {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--fg-muted);
+    }
+
+    /* ─── CARDS GRID ─── */
+    .card-grid {
+      display: grid;
+      gap: 16px;
+    }
+    .card-grid-4 { grid-template-columns: repeat(4, 1fr); }
+    .card-grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .card-grid-2 { grid-template-columns: repeat(2, 1fr); }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: border-color 0.25s;
+    }
+    .card:hover { border-color: var(--border-light); }
+    .card-preview {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 24px;
+      min-height: 180px;
+    }
+    .card-preview svg { max-width: 100%; height: auto; }
+    .card-preview-deep { background: var(--surface-deep); }
+    .card-meta {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .card-name {
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      color: var(--fg);
+    }
+    .card-desc {
+      font-size: 12px;
+      color: var(--fg-muted);
+      letter-spacing: 0.01em;
+    }
+
+    /* ─── COLOR PALETTE ─── */
+    .color-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .color-swatch {
+      flex: 1;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .color-fill {
+      height: 80px;
+    }
+    .color-info {
+      background: var(--surface);
+      padding: 14px 16px;
+    }
+    .color-name {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--fg);
+      margin-bottom: 4px;
+    }
+    .color-hex {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--fg-muted);
+      letter-spacing: 0.02em;
+    }
+    .color-group-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--fg-muted);
+      margin-bottom: 12px;
+      margin-top: 32px;
+    }
+    .color-group-label:first-child { margin-top: 0; }
+
+    /* ─── TYPOGRAPHY ─── */
+    .type-specimen {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      margin-bottom: 16px;
+    }
+    .type-specimen-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--fg-muted);
+      margin-bottom: 16px;
+    }
+    .type-display-en {
+      font-family: var(--font-display);
+      font-size: 56px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      color: var(--fg);
+      margin-bottom: 8px;
+    }
+    .type-display-cn {
+      font-family: var(--font-cn);
+      font-size: 40px;
+      font-weight: 500;
+      letter-spacing: 2px;
+      line-height: 1.2;
+      color: var(--fg);
+      margin-bottom: 8px;
+    }
+    .type-h2-en {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--fg);
+    }
+    .type-body {
+      font-family: var(--font-body);
+      font-size: 16px;
+      font-weight: 400;
+      line-height: 1.6;
+      color: var(--fg-dim);
+    }
+    .type-small {
+      font-size: 13px;
+      color: var(--fg-muted);
+      letter-spacing: 0.01em;
+    }
+    .type-mono {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--fg-dim);
+      letter-spacing: 0.02em;
+    }
+    .type-meta {
+      display: flex;
+      gap: 24px;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .type-meta-item {
+      font-size: 12px;
+      color: var(--fg-muted);
+    }
+    .type-meta-item span {
+      font-family: var(--font-mono);
+      color: var(--fg-dim);
+    }
+
+    /* ─── SLOGAN ─── */
+    .slogan-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 56px 48px;
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .slogan-main {
+      font-family: var(--font-cn);
+      font-size: 28px;
+      font-weight: 300;
+      letter-spacing: 4px;
+      color: var(--fg);
+      margin-bottom: 16px;
+    }
+    .slogan-sub {
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 400;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--fg-muted);
+    }
+    .slogan-story {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .slogan-story-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+    }
+    .slogan-story-title {
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--fg);
+      margin-bottom: 10px;
+      letter-spacing: -0.01em;
+    }
+    .slogan-story-text {
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--fg-dim);
+    }
+
+    /* ─── SCENARIOS ─── */
+    .scenario-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .scenario-preview {
+      min-height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      position: relative;
+    }
+    .scenario-preview-deep { background: var(--surface-deep); }
+    .scenario-info {
+      padding: 20px 24px;
+      border-top: 1px solid var(--border);
+    }
+    .scenario-name {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--fg);
+      margin-bottom: 4px;
+      letter-spacing: -0.01em;
+    }
+    .scenario-detail {
+      font-size: 13px;
+      color: var(--fg-muted);
+    }
+
+    /* Icon sizes */
+    .icon-sizes {
+      display: flex;
+      align-items: flex-end;
+      gap: 24px;
+    }
+    .icon-size-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .icon-size-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--fg-muted);
+    }
+
+    /* Console mockup */
+    .console-mock {
+      background: var(--surface-panel);
+      border: 1px solid var(--border-panel);
+      border-radius: 8px;
+      width: 100%;
+      max-width: 380px;
+      overflow: hidden;
+    }
+    .console-titlebar {
+      height: 32px;
+      background: var(--surface-panel-alt);
+      border-bottom: 1px solid var(--border-panel);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 8px;
+    }
+    .console-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .console-dot-red { background: var(--dot-red); }
+    .console-dot-yellow { background: var(--dot-yellow); }
+    .console-dot-green { background: var(--dot-green); }
+    .console-title {
+      font-family: var(--font-body);
+      font-size: 12px;
+      color: var(--fg-muted);
+      margin-left: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .console-title svg { width: 14px; height: 14px; }
+    .console-body {
+      padding: 16px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--fg-dim);
+      line-height: 1.7;
+    }
+    .console-body .kw { color: var(--brand-purple); }
+    .console-body .fn { color: var(--brand-blue); }
+    .console-body .str { color: var(--brand-accent); }
+    .console-body .cm { color: var(--code-comment); }
+
+    /* Splash mockup */
+    .splash-mock {
+      background: var(--surface-deep);
+      border: 1px solid var(--surface-deep-border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 320px;
+      padding: 60px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .splash-mock::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: var(--border);
+      pointer-events: none;
+    }
+    .splash-mock svg { width: 80px; height: 80px; margin-bottom: 20px; }
+    .splash-mock-title {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--fg);
+      margin-bottom: 4px;
+    }
+    .splash-mock-cn {
+      font-family: var(--font-cn);
+      font-size: 12px;
+      font-weight: 300;
+      letter-spacing: 3px;
+      color: var(--fg-muted);
+      margin-bottom: 24px;
+    }
+    .splash-mock-slogan {
+      font-family: var(--font-cn);
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: var(--text-deep-muted);
+    }
+
+    /* About mockup */
+    .about-mock {
+      background: var(--surface-panel);
+      border: 1px solid var(--border-panel);
+      border-radius: 8px;
+      width: 100%;
+      max-width: 360px;
+      overflow: hidden;
+    }
+    .about-header {
+      padding: 24px 24px 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .about-header svg { width: 36px; height: 36px; }
+    .about-header-text h3 {
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--fg);
+      letter-spacing: -0.02em;
+    }
+    .about-header-text p {
+      font-size: 11px;
+      color: var(--fg-muted);
+      letter-spacing: 1px;
+    }
+    .about-body {
+      padding: 20px 24px 24px;
+    }
+    .about-body p {
+      font-size: 12px;
+      color: var(--fg-dim);
+      line-height: 1.7;
+      margin-bottom: 12px;
+    }
+    .about-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .about-tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.02em;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: rgba(108, 92, 231, 0.1);
+      color: var(--brand-purple-light);
+      border: 1px solid rgba(108, 92, 231, 0.15);
+    }
+
+    /* ─── LOGO SPEC ─── */
+    .spec-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      margin-bottom: 16px;
+    }
+    .safe-space-demo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+    }
+    .safe-space-box {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .safe-space-box svg { width: 80px; height: 80px; }
+    .safe-space-border {
+      position: absolute;
+      inset: -24px;
+      border: 1px dashed rgba(108, 92, 231, 0.3);
+      border-radius: 4px;
+    }
+    .safe-space-arrow {
+      position: absolute;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--brand-purple-light);
+    }
+    .safe-space-arrow.top { top: -20px; left: 50%; transform: translateX(-50%); }
+    .safe-space-arrow.left { left: -22px; top: 50%; transform: translateY(-50%); }
+    .min-sizes {
+      display: flex;
+      align-items: flex-end;
+      gap: 48px;
+      justify-content: center;
+      padding: 32px;
+    }
+    .min-size-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .min-size-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--fg-muted);
+    }
+    .spec-note {
+      font-size: 14px;
+      color: var(--fg-dim);
+      line-height: 1.6;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ─── FOOTER ─── */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 0;
+      margin-top: 40px;
+    }
+    .footer-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .footer-text {
+      font-size: 13px;
+      color: var(--fg-muted);
+    }
+    .footer-version {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--fg-muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* ─── SPACING ─── */
+    .spacer-xl { height: 120px; }
+    .spacer-lg { height: 96px; }
+    .spacer-md { height: 64px; }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 768px) {
+      .card-grid-4 { grid-template-columns: repeat(2, 1fr); }
+      .card-grid-3 { grid-template-columns: 1fr; }
+      .card-grid-2 { grid-template-columns: 1fr; }
+      .hero-wordmark { font-size: 36px; }
+      .hero-cn { font-size: 16px; }
+      .hero-slogan { font-size: 15px; }
+      .section-title { font-size: 24px; }
+      .type-display-en { font-size: 36px; }
+      .type-display-cn { font-size: 28px; }
+      .slogan-main { font-size: 22px; }
+      .slogan-story { grid-template-columns: 1fr; }
+      .color-row { flex-wrap: wrap; }
+      .nav-links { display: none; }
+      .section { padding: 0 20px; }
+      .hero { padding: 60px 20px 80px; }
+      .footer-inner { flex-direction: column; gap: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══ NAV ═══ -->
+  <nav class="nav" data-component="navigation">
+    <div class="nav-inner">
+      <span class="nav-brand">
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="50,14 83,33 50,52 17,33" class="face-t"/>
+          <polygon points="17,33 50,52 50,88 17,69" class="face-l"/>
+          <polygon points="83,33 50,52 50,88 83,69" class="face-r"/>
+        </svg>
+        datacube
+      </span>
+      <ul class="nav-links">
+        <li><a href="#logo">Logo</a></li>
+        <li><a href="#palette">Palette</a></li>
+        <li><a href="#typography">Type</a></li>
+        <li><a href="#slogan">Slogan</a></li>
+        <li><a href="#scenarios">Scenarios</a></li>
+        <li><a href="#spec">Spec</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main data-component="content">
+
+  <!-- ═══ HERO ═══ -->
+  <section class="hero" data-component="hero">
+    <svg class="hero-cube" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="h-top" x1="0.5" y1="0" x2="0.5" y2="1">
+          <stop offset="0%" class="face-t-grad"/>
+          <stop offset="100%" class="face-t-grad-end"/>
+        </linearGradient>
+        <linearGradient id="h-right" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" class="face-r-grad"/>
+          <stop offset="100%" class="face-r-grad-end"/>
+        </linearGradient>
+        <linearGradient id="h-left" x1="1" y1="0" x2="0" y2="1">
+          <stop offset="0%" class="face-l-grad"/>
+          <stop offset="100%" class="face-l-grad-end"/>
+        </linearGradient>
+      </defs>
+      <polygon points="50,14 83,33 50,52 17,33" fill="url(#h-top)"/>
+      <polygon points="17,33 50,52 50,88 17,69" fill="url(#h-left)"/>
+      <polygon points="83,33 50,52 50,88 83,69" fill="url(#h-right)"/>
+      <line x1="50" y1="52" x2="50" y2="88" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+      <line x1="50" y1="52" x2="17" y2="33" stroke="rgba(255,255,255,0.06)" stroke-width="0.5"/>
+      <line x1="50" y1="52" x2="83" y2="33" stroke="rgba(255,255,255,0.06)" stroke-width="0.5"/>
+    </svg>
+    <h1 class="hero-wordmark">DataCube</h1>
+    <p class="hero-cn">数据魔方</p>
+    <div class="hero-divider"></div>
+    <p class="hero-slogan">每一面，皆是数据新维度</p>
+    <p class="hero-slogan-en">Every Face, A New Dimension of Data</p>
+  </section>
+
+  <div class="spacer-xl"></div>
+
+  <!-- ═══ LOGO VARIANTS ═══ -->
+  <section class="section" id="logo" data-component="logo-variants">
+    <p class="section-label">01 / Identity</p>
+    <h2 class="section-title">Logo 变体</h2>
+    <p class="section-desc">datacube 品牌标识包含四种标准形态，分别适配不同使用场景。所有 Logo 均为 SVG 矢量格式，确保在任意分辨率下清晰呈现。</p>
+
+    <div class="card-grid card-grid-4">
+      <!-- Icon -->
+      <div class="card">
+        <div class="card-preview card-preview-deep">
+          <svg viewBox="0 0 100 100" width="72" height="72" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="v1-top" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="var(--brand-purple-light)"/><stop offset="100%" stop-color="var(--brand-purple)"/></linearGradient>
+              <linearGradient id="v1-right" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--brand-purple)"/><stop offset="100%" stop-color="var(--brand-blue)"/></linearGradient>
+              <linearGradient id="v1-left" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--brand-dark-purple)"/><stop offset="100%" stop-color="var(--brand-blue-dark)"/></linearGradient>
+            </defs>
+            <polygon points="50,14 83,33 50,52 17,33" fill="url(#v1-top)"/>
+            <polygon points="17,33 50,52 50,88 17,69" fill="url(#v1-left)"/>
+            <polygon points="83,33 50,52 50,88 83,69" fill="url(#v1-right)"/>
+          </svg>
+        </div>
+        <div class="card-meta">
+          <span class="card-name">Icon</span>
+          <span class="card-desc">程序图标 / Favicon</span>
+        </div>
+      </div>
+
+      <!-- Primary -->
+      <div class="card">
+        <div class="card-preview card-preview-deep">
+          <svg viewBox="0 0 240 170" width="160" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="v2-top" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="var(--brand-purple-light)"/><stop offset="100%" stop-color="var(--brand-purple)"/></linearGradient>
+              <linearGradient id="v2-right" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--brand-purple)"/><stop offset="100%" stop-color="var(--brand-blue)"/></linearGradient>
+              <linearGradient id="v2-left" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--brand-dark-purple)"/><stop offset="100%" stop-color="var(--brand-blue-dark)"/></linearGradient>
+            </defs>
+            <polygon points="120,16 156,35 120,54 84,35" fill="url(#v2-top)"/>
+            <polygon points="84,35 120,54 120,92 84,73" fill="url(#v2-left)"/>
+            <polygon points="156,35 120,54 120,92 156,73" fill="url(#v2-right)"/>
+            <text x="120" y="128" text-anchor="middle" font-family="'Space Grotesk','Inter','Segoe UI',sans-serif" font-size="30" font-weight="600" letter-spacing="-0.6" class="txt-brand">datacube</text>
+            <text x="120" y="153" text-anchor="middle" font-family="'Noto Sans SC','Microsoft YaHei','PingFang SC',sans-serif" font-size="13" font-weight="400" letter-spacing="2" class="txt-cn">数据魔方</text>
+          </svg>
+        </div>
+        <div class="card-meta">
+          <span class="card-name">Primary</span>
+          <span class="card-desc">主标识 / 纵向</span>
+        </div>
+      </div>
+
+      <!-- Horizontal -->
+      <div class="card">
+        <div class="card-preview card-preview-deep">
+          <svg viewBox="0 0 340 56" width="220" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="v3-top" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="var(--brand-purple-light)"/><stop offset="100%" stop-color="var(--brand-purple)"/></linearGradient>
+              <linearGradient id="v3-right" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--brand-purple)"/><stop offset="100%" stop-color="var(--brand-blue)"/></linearGradient>
+              <linearGradient id="v3-left" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--brand-dark-purple)"/><stop offset="100%" stop-color="var(--brand-blue-dark)"/></linearGradient>
+            </defs>
+            <g transform="translate(6,3) scale(0.52)">
+              <polygon points="50,14 83,33 50,52 17,33" fill="url(#v3-top)"/>
+              <polygon points="17,33 50,52 50,88 17,69" fill="url(#v3-left)"/>
+              <polygon points="83,33 50,52 50,88 83,69" fill="url(#v3-right)"/>
+            </g>
+            <text x="62" y="26" font-family="'Space Grotesk','Inter','Segoe UI',sans-serif" font-size="24" font-weight="600" letter-spacing="-0.5" class="txt-brand">datacube</text>
+            <text x="62" y="44" font-family="'Noto Sans SC','Microsoft YaHei','PingFang SC',sans-serif" font-size="11" font-weight="400" letter-spacing="1.5" class="txt-cn">数据魔方</text>
+          </svg>
+        </div>
+        <div class="card-meta">
+          <span class="card-name">Horizontal</span>
+          <span class="card-desc">导航栏 / 控制台</span>
+        </div>
+      </div>
+
+      <!-- Mono -->
+      <div class="card">
+        <div class="card-preview card-preview-deep">
+          <svg viewBox="0 0 240 170" width="160" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="120,16 156,35 120,54 84,35" class="face-mono-t"/>
+            <polygon points="84,35 120,54 120,92 84,73" class="face-mono-l"/>
+            <polygon points="156,35 120,54 120,92 156,73" class="face-mono-r"/>
+            <text x="120" y="128" text-anchor="middle" font-family="'Space Grotesk','Inter','Segoe UI',sans-serif" font-size="30" font-weight="600" letter-spacing="-0.6" class="txt-mono">datacube</text>
+            <text x="120" y="153" text-anchor="middle" font-family="'Noto Sans SC','Microsoft YaHei','PingFang SC',sans-serif" font-size="13" font-weight="400" letter-spacing="2" class="txt-mono-cn">数据魔方</text>
+          </svg>
+        </div>
+        <div class="card-meta">
+          <span class="card-name">Monochrome</span>
+          <span class="card-desc">水印 / 单色场景</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="spacer-xl"></div>
+
+  <!-- ═══ COLOR PALETTE ═══ -->
+  <section class="section" id="palette" data-component="palette">
+    <p class="section-label">02 / Palette</p>
+    <h2 class="section-title">品牌色板</h2>
+    <p class="section-desc">datacube 以紫蓝渐变为核心色彩语言。主色从深紫 #6C5CE7 过渡至亮蓝 #0984E3，传达专业、现代、充满探索感的品牌调性。</p>
+
+    <p class="color-group-label">Brand Colors / 品牌色</p>
+    <div class="color-row">
+      <div class="color-swatch">
+        <div class="color-fill" style="background: var(--brand-purple-light);"></div>
+        <div class="color-info">
+          <div class="color-name">Purple Light</div>
+          <div class="color-hex">#9B8CFF</div>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-fill" style="background: var(--brand-purple);"></div>
+        <div class="color-info">
+          <div class="color-name">Primary Purple</div>
+          <div class="color-hex">#6C5CE7</div>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-fill" style="background: var(--brand-dark-purple);"></div>
+        <div class="color-info">
+          <div class="color-name">Purple Deep</div>
+          <div class="color-hex">#5241CC</div>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-fill" style="background: var(--brand-blue);"></div>
+        <div class="color-info">
+          <div class="color-name">Primary Blue</div>
+          <div class="color-hex">#0984E3</div>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-fill" style="background: var(--brand-blue-dark);"></div>
+        <div class="color-info">
+          <div class="color-name">Blue Deep</div>
+          <div class="color-hex">#0659A8</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="color-group-label">Accent / 点缀色</p>
+    <div class="color-row" style="max-width: 33%;">
+      <div class="color-swatch">
+        <div class="color-fill" style="background: var(--brand-accent);"></div>
+        <div class="color-info">
+          <div class="color-name">Cyan Accent</div>
+          <div class="color-hex">#00D2D3</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="color-group-label">Neutrals / 中性色</p>
+    <div class="color-row">
+      <div class="color-swatch">
+        <div class="color-fill" style="background: var(--bg);"></div>
+        <div class="color-info">
+          <div class="color-name">Background</div>
+          <div class="color-hex">#0E0E14</div>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-fill" style="background: var(--surface);"></div>
+        <div class="color-info">
+          <div class="color-name">Surface</div>
+          <div class="color-hex">#151520</div>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-fill" style="background: var(--border); border-bottom: 1px solid var(--border-light);"></div>
+        <div class="color-info">
+          <div class="color-name">Border</div>
+          <div class="color-hex">#252538</div>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-fill" style="background: var(--fg-muted);"></div>
+        <div class="color-info">
+          <div class="color-name">Muted</div>
+          <div class="color-hex">#6B6B80</div>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <div class="color-fill" style="background: var(--fg);"></div>
+        <div class="color-info">
+          <div class="color-name">Foreground</div>
+          <div class="color-hex">#E8E8ED</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="color-group-label">Gradient / 品牌渐变</p>
+    <div class="color-row" style="max-width: 50%;">
+      <div class="color-swatch">
+        <svg class="color-fill" viewBox="0 0 200 100" preserveAspectRatio="none" style="height: 100px; width: 100%; display: block;">
+          <defs><linearGradient id="grad-brand" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" style="stop-color: var(--brand-purple);"/><stop offset="100%" style="stop-color: var(--brand-blue);"/></linearGradient></defs>
+          <rect width="200" height="100" fill="url(#grad-brand)"/>
+        </svg>
+        <div class="color-info">
+          <div class="color-name">Brand Gradient</div>
+          <div class="color-hex">#6C5CE7 → #0984E3 / 135deg</div>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <svg class="color-fill" viewBox="0 0 200 100" preserveAspectRatio="none" style="height: 100px; width: 100%; display: block;">
+          <defs><linearGradient id="grad-top" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" style="stop-color: var(--brand-purple-light);"/><stop offset="100%" style="stop-color: var(--brand-purple);"/></linearGradient></defs>
+          <rect width="200" height="100" fill="url(#grad-top)"/>
+        </svg>
+        <div class="color-info">
+          <div class="color-name">Cube Top Face</div>
+          <div class="color-hex">#9B8CFF → #6C5CE7</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="spacer-xl"></div>
+
+  <!-- ═══ TYPOGRAPHY ═══ -->
+  <section class="section" id="typography" data-component="typography">
+    <p class="section-label">03 / Typography</p>
+    <h2 class="section-title">字体规范</h2>
+    <p class="section-desc">英文采用 Space Grotesk 几何无衬线体，中文采用思源黑体。三档字重体系：400 阅读、500 强调、600 宣告。</p>
+
+    <div class="card-grid card-grid-2">
+      <!-- English -->
+      <div class="type-specimen">
+        <p class="type-specimen-label">English / Space Grotesk</p>
+        <p class="type-display-en">datacube</p>
+        <p class="type-h2-en" style="margin-top: 16px;">Database Management</p>
+        <p class="type-body" style="margin-top: 16px; max-width: 65ch;">The modern tool for exploring, querying, and managing PostgreSQL, Oracle, and beyond. Built for developers who think in schemas.</p>
+        <p class="type-small" style="margin-top: 12px;">SELECT * FROM connections WHERE status = 'active';</p>
+        <div class="type-meta">
+          <div class="type-meta-item">Display <span>56px / -0.03em</span></div>
+          <div class="type-meta-item">H2 <span>32px / -0.02em</span></div>
+          <div class="type-meta-item">Body <span>16px / 0</span></div>
+        </div>
+      </div>
+
+      <!-- Chinese -->
+      <div class="type-specimen">
+        <p class="type-specimen-label">中文 / Noto Sans SC</p>
+        <p class="type-display-cn">数据魔方</p>
+        <p style="font-family: var(--font-cn); font-size: 24px; font-weight: 500; color: var(--fg); margin-top: 16px; letter-spacing: 1px;">数据库管理新范式</p>
+        <p style="font-family: var(--font-cn); font-size: 16px; color: var(--fg-dim); margin-top: 16px; line-height: 1.75; max-width: 65ch;">面向 PostgreSQL、Oracle 及未来主流关系型和 NoSQL 数据库的专业管理工具。为 DBA 和开发者打造高效、直观的数据管理体验。</p>
+        <p style="font-family: var(--font-cn); font-size: 13px; color: var(--fg-muted); margin-top: 12px;">每一面，皆是数据新维度</p>
+        <div class="type-meta">
+          <div class="type-meta-item">Display <span>40px / 2px</span></div>
+          <div class="type-meta-item">H2 <span>24px / 1px</span></div>
+          <div class="type-meta-item">Body <span>16px / 0</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="type-specimen" style="margin-top: 16px;">
+      <p class="type-specimen-label">Weight System / 字重体系</p>
+      <div style="display: flex; gap: 48px; align-items: baseline; flex-wrap: wrap;">
+        <div>
+          <p style="font-family: var(--font-display); font-size: 28px; font-weight: 400; letter-spacing: -0.01em; color: var(--fg);">Read — 400</p>
+          <p style="font-size: 12px; color: var(--fg-muted); margin-top: 6px;">正文、说明文字</p>
+        </div>
+        <div>
+          <p style="font-family: var(--font-display); font-size: 28px; font-weight: 500; letter-spacing: -0.01em; color: var(--fg);">Emphasize — 500</p>
+          <p style="font-size: 12px; color: var(--fg-muted); margin-top: 6px;">导航、标签、按钮</p>
+        </div>
+        <div>
+          <p style="font-family: var(--font-display); font-size: 28px; font-weight: 600; letter-spacing: -0.01em; color: var(--fg);">Announce — 600</p>
+          <p style="font-size: 12px; color: var(--fg-muted); margin-top: 6px;">标题、Logo 文字</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="spacer-xl"></div>
+
+  <!-- ═══ SLOGAN ═══ -->
+  <section class="section" id="slogan" data-component="slogan">
+    <p class="section-label">04 / Voice</p>
+    <h2 class="section-title">品牌 Slogan</h2>
+    <p class="section-desc">Slogan 从"魔方"意象出发，将立方体的多面性与数据库多维管理的理念融合，传达探索与发现的品牌精神。</p>
+
+    <div class="slogan-block">
+      <p class="slogan-main">每一面，皆是数据新维度</p>
+      <p class="slogan-sub">Every Face, A New Dimension of Data</p>
+    </div>
+
+    <div class="slogan-story">
+      <div class="slogan-story-card">
+        <p class="slogan-story-title">「每一面」— 探索的起点</p>
+        <p class="slogan-story-text">魔方的魅力在于它的多面性。就像 datacube 支持 PostgreSQL、Oracle 以及更多数据库引擎——每一次切换视角，都是一次新的探索。无论是查询优化、数据迁移还是架构审查，每一面都等待被发现。</p>
+      </div>
+      <div class="slogan-story-card">
+        <p class="slogan-story-title">「新维度」— 价值的承诺</p>
+        <p class="slogan-story-text">datacube 不仅是一个工具，更是一种新的认知方式。它将分散在不同数据库中的数据统一呈现，让 DBA 和开发者在同一个界面中获得全局视野——从平面到立体，从碎片到维度。</p>
+      </div>
+      <div class="slogan-story-card">
+        <p class="slogan-story-title">「皆是」— 确信的表达</p>
+        <p class="slogan-story-text">不用"可能"、不用"或许"。datacube 对每一面数据的呈现都是确定的、完整的。这是产品能力的自信，也是对用户的承诺：无论数据多复杂，datacube 都能将其清晰呈现。</p>
+      </div>
+      <div class="slogan-story-card">
+        <p class="slogan-story-title">备选 Slogan</p>
+        <p class="slogan-story-text" style="line-height: 2;">
+          「多维数据，一触即达」<br>
+          「转一面，见不同」<br>
+          「数据万象，尽在掌握」
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="spacer-xl"></div>
+
+  <!-- ═══ SCENARIOS ═══ -->
+  <section class="section" id="scenarios" data-component="scenarios">
+    <p class="section-label">05 / In Context</p>
+    <h2 class="section-title">应用场景</h2>
+    <p class="section-desc">展示 Logo 在四种核心产品场景中的应用效果：程序图标、控制台界面、启动页和说明页。</p>
+
+    <div class="card-grid card-grid-2">
+      <!-- App Icons -->
+      <div class="scenario-card">
+        <div class="scenario-preview scenario-preview-deep">
+          <div class="icon-sizes">
+            <div class="icon-size-item">
+              <svg viewBox="0 0 100 100" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="50,14 83,33 50,52 17,33" class="face-t"/>
+                <polygon points="17,33 50,52 50,88 17,69" class="face-l"/>
+                <polygon points="83,33 50,52 50,88 83,69" class="face-r"/>
+              </svg>
+              <span class="icon-size-label">16px</span>
+            </div>
+            <div class="icon-size-item">
+              <svg viewBox="0 0 100 100" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="50,14 83,33 50,52 17,33" class="face-t"/>
+                <polygon points="17,33 50,52 50,88 17,69" class="face-l"/>
+                <polygon points="83,33 50,52 50,88 83,69" class="face-r"/>
+              </svg>
+              <span class="icon-size-label">32px</span>
+            </div>
+            <div class="icon-size-item">
+              <svg viewBox="0 0 100 100" width="48" height="48" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="50,14 83,33 50,52 17,33" class="face-t"/>
+                <polygon points="17,33 50,52 50,88 17,69" class="face-l"/>
+                <polygon points="83,33 50,52 50,88 83,69" class="face-r"/>
+              </svg>
+              <span class="icon-size-label">48px</span>
+            </div>
+            <div class="icon-size-item">
+              <svg viewBox="0 0 100 100" width="72" height="72" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="s1-top" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="var(--brand-purple-light)"/><stop offset="100%" stop-color="var(--brand-purple)"/></linearGradient>
+                  <linearGradient id="s1-right" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--brand-purple)"/><stop offset="100%" stop-color="var(--brand-blue)"/></linearGradient>
+                  <linearGradient id="s1-left" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--brand-dark-purple)"/><stop offset="100%" stop-color="var(--brand-blue-dark)"/></linearGradient>
+                </defs>
+                <polygon points="50,14 83,33 50,52 17,33" fill="url(#s1-top)"/>
+                <polygon points="17,33 50,52 50,88 17,69" fill="url(#s1-left)"/>
+                <polygon points="83,33 50,52 50,88 83,69" fill="url(#s1-right)"/>
+              </svg>
+              <span class="icon-size-label">72px</span>
+            </div>
+          </div>
+        </div>
+        <div class="scenario-info">
+          <p class="scenario-name">程序图标 / Favicon</p>
+          <p class="scenario-detail">16-72px 多尺寸适配，小尺寸使用纯色面以保持清晰度</p>
+        </div>
+      </div>
+
+      <!-- Console -->
+      <div class="scenario-card">
+        <div class="scenario-preview scenario-preview-deep">
+          <div class="console-mock">
+            <div class="console-titlebar">
+              <div class="console-dot console-dot-red"></div>
+              <div class="console-dot console-dot-yellow"></div>
+              <div class="console-dot console-dot-green"></div>
+              <span class="console-title">
+                <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                  <polygon points="50,14 83,33 50,52 17,33" class="face-t"/>
+                  <polygon points="17,33 50,52 50,88 17,69" class="face-l"/>
+                  <polygon points="83,33 50,52 50,88 83,69" class="face-r"/>
+                </svg>
+                datacube — SQL Console
+              </span>
+            </div>
+            <div class="console-body">
+              <span class="cm">-- Query: active users</span><br>
+              <span class="kw">SELECT</span> u.name, u.email<br>
+              <span class="kw">FROM</span> <span class="fn">users</span> u<br>
+              <span class="kw">WHERE</span> u.status = <span class="str">'active'</span><br>
+              <span class="kw">ORDER BY</span> u.created_at <span class="kw">DESC</span>;
+            </div>
+          </div>
+        </div>
+        <div class="scenario-info">
+          <p class="scenario-name">控制台界面</p>
+          <p class="scenario-detail">横版 Logo 用于窗口标题栏，14px 图标搭配产品名</p>
+        </div>
+      </div>
+
+      <!-- Splash Page -->
+      <div class="scenario-card">
+        <div class="scenario-preview scenario-preview-deep">
+          <div class="splash-mock">
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="s3-top" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="var(--brand-purple-light)"/><stop offset="100%" stop-color="var(--brand-purple)"/></linearGradient>
+                <linearGradient id="s3-right" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--brand-purple)"/><stop offset="100%" stop-color="var(--brand-blue)"/></linearGradient>
+                <linearGradient id="s3-left" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--brand-dark-purple)"/><stop offset="100%" stop-color="var(--brand-blue-dark)"/></linearGradient>
+              </defs>
+              <polygon points="50,14 83,33 50,52 17,33" fill="url(#s3-top)"/>
+              <polygon points="17,33 50,52 50,88 17,69" fill="url(#s3-left)"/>
+              <polygon points="83,33 50,52 50,88 83,69" fill="url(#s3-right)"/>
+            </svg>
+            <p class="splash-mock-title">datacube</p>
+            <p class="splash-mock-cn">数据魔方</p>
+            <p class="splash-mock-slogan">每一面，皆是数据新维度</p>
+          </div>
+        </div>
+        <div class="scenario-info">
+          <p class="scenario-name">应用启动页</p>
+          <p class="scenario-detail">启动页 Logo 组合：立方体 + 产品名 + 中文名 + Slogan</p>
+        </div>
+      </div>
+
+      <!-- About Page -->
+      <div class="scenario-card">
+        <div class="scenario-preview scenario-preview-deep">
+          <div class="about-mock">
+            <div class="about-header">
+              <svg viewBox="0 0 100 100" width="36" height="36" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="s4-top" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="var(--brand-purple-light)"/><stop offset="100%" stop-color="var(--brand-purple)"/></linearGradient>
+                  <linearGradient id="s4-right" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--brand-purple)"/><stop offset="100%" stop-color="var(--brand-blue)"/></linearGradient>
+                  <linearGradient id="s4-left" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--brand-dark-purple)"/><stop offset="100%" stop-color="var(--brand-blue-dark)"/></linearGradient>
+                </defs>
+                <polygon points="50,14 83,33 50,52 17,33" fill="url(#s4-top)"/>
+                <polygon points="17,33 50,52 50,88 17,69" fill="url(#s4-left)"/>
+                <polygon points="83,33 50,52 50,88 83,69" fill="url(#s4-right)"/>
+              </svg>
+              <div class="about-header-text">
+                <h3>datacube</h3>
+                <p>数据魔方</p>
+              </div>
+            </div>
+            <div class="about-body">
+              <p>datacube 是一款面向数据库开发者和管理员的专业工具，目前支持 PostgreSQL 和 Oracle，未来将覆盖主流关系型数据库与 NoSQL 数据库。</p>
+              <p>从 SQL 编写到性能调优，从数据迁移到架构审查，datacube 为你提供全方位的数据库管理能力。</p>
+              <div class="about-tags">
+                <span class="about-tag">PostgreSQL</span>
+                <span class="about-tag">Oracle</span>
+                <span class="about-tag">MySQL</span>
+                <span class="about-tag">MongoDB</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="scenario-info">
+          <p class="scenario-name">关于 / 说明页</p>
+          <p class="scenario-detail">说明页使用主 Logo 搭配产品描述和数据库支持标签</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="spacer-xl"></div>
+
+  <!-- ═══ LOGO SPEC ═══ -->
+  <section class="section" id="spec" data-component="spec">
+    <p class="section-label">06 / Specification</p>
+    <h2 class="section-title">Logo 规范</h2>
+    <p class="section-desc">确保 Logo 在所有场景下保持一致的品牌呈现。请严格遵守以下安全区域和最小尺寸规范。</p>
+
+    <div class="card-grid card-grid-2">
+      <!-- Safe Space -->
+      <div class="spec-block">
+        <p class="type-specimen-label">Safe Space / 安全区域</p>
+        <div class="safe-space-demo">
+          <div class="safe-space-box">
+            <div class="safe-space-border"></div>
+            <span class="safe-space-arrow top">x</span>
+            <span class="safe-space-arrow left">x</span>
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="sp-top" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="var(--brand-purple-light)"/><stop offset="100%" stop-color="var(--brand-purple)"/></linearGradient>
+                <linearGradient id="sp-right" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--brand-purple)"/><stop offset="100%" stop-color="var(--brand-blue)"/></linearGradient>
+                <linearGradient id="sp-left" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--brand-dark-purple)"/><stop offset="100%" stop-color="var(--brand-blue-dark)"/></linearGradient>
+              </defs>
+              <polygon points="50,14 83,33 50,52 17,33" fill="url(#sp-top)"/>
+              <polygon points="17,33 50,52 50,88 17,69" fill="url(#sp-left)"/>
+              <polygon points="83,33 50,52 50,88 83,69" fill="url(#sp-right)"/>
+            </svg>
+          </div>
+        </div>
+        <p class="spec-note">安全区域为 Logo 高度的 30%（标记为 x）。在此区域内不得放置任何其他文字、图形或视觉元素。</p>
+      </div>
+
+      <!-- Minimum Size -->
+      <div class="spec-block">
+        <p class="type-specimen-label">Minimum Size / 最小尺寸</p>
+        <div class="min-sizes">
+          <div class="min-size-item">
+            <svg viewBox="0 0 100 100" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+              <polygon points="50,14 83,33 50,52 17,33" class="face-t"/>
+              <polygon points="17,33 50,52 50,88 17,69" class="face-l"/>
+              <polygon points="83,33 50,52 50,88 83,69" class="face-r"/>
+            </svg>
+            <span class="min-size-label">16 × 16 px</span>
+          </div>
+          <div class="min-size-item">
+            <svg viewBox="0 0 240 170" width="80" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="ms-top" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="var(--brand-purple-light)"/><stop offset="100%" stop-color="var(--brand-purple)"/></linearGradient>
+                <linearGradient id="ms-right" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--brand-purple)"/><stop offset="100%" stop-color="var(--brand-blue)"/></linearGradient>
+                <linearGradient id="ms-left" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--brand-dark-purple)"/><stop offset="100%" stop-color="var(--brand-blue-dark)"/></linearGradient>
+              </defs>
+              <polygon points="120,16 156,35 120,54 84,35" fill="url(#ms-top)"/>
+              <polygon points="84,35 120,54 120,92 84,73" fill="url(#ms-left)"/>
+              <polygon points="156,35 120,54 120,92 156,73" fill="url(#ms-right)"/>
+              <text x="120" y="128" text-anchor="middle" font-family="'Space Grotesk','Inter','Segoe UI',sans-serif" font-size="30" font-weight="600" letter-spacing="-0.6" class="txt-brand">datacube</text>
+              <text x="120" y="153" text-anchor="middle" font-family="'Noto Sans SC','Microsoft YaHei','PingFang SC',sans-serif" font-size="13" font-weight="400" letter-spacing="2" class="txt-cn">数据魔方</text>
+            </svg>
+            <span class="min-size-label">80px wide (Primary)</span>
+          </div>
+          <div class="min-size-item">
+            <svg viewBox="0 0 340 56" width="120" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="mh-top" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="var(--brand-purple-light)"/><stop offset="100%" stop-color="var(--brand-purple)"/></linearGradient>
+                <linearGradient id="mh-right" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--brand-purple)"/><stop offset="100%" stop-color="var(--brand-blue)"/></linearGradient>
+                <linearGradient id="mh-left" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--brand-dark-purple)"/><stop offset="100%" stop-color="var(--brand-blue-dark)"/></linearGradient>
+              </defs>
+              <g transform="translate(6,3) scale(0.52)">
+                <polygon points="50,14 83,33 50,52 17,33" fill="url(#mh-top)"/>
+                <polygon points="17,33 50,52 50,88 17,69" fill="url(#mh-left)"/>
+                <polygon points="83,33 50,52 50,88 83,69" fill="url(#mh-right)"/>
+              </g>
+              <text x="62" y="26" font-family="'Space Grotesk','Inter','Segoe UI',sans-serif" font-size="24" font-weight="600" letter-spacing="-0.5" class="txt-brand">datacube</text>
+              <text x="62" y="44" font-family="'Noto Sans SC','Microsoft YaHei','PingFang SC',sans-serif" font-size="11" font-weight="400" letter-spacing="1.5" class="txt-cn">数据魔方</text>
+            </svg>
+            <span class="min-size-label">120px wide (Horizontal)</span>
+          </div>
+        </div>
+        <p class="spec-note">Icon 最小尺寸 16 × 16px。含文字版本：Primary 最小宽度 80px，Horizontal 最小宽度 120px。低于此尺寸时请使用纯 Icon 版本。</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="spacer-lg"></div>
+
+  </main>
+
+  <!-- ═══ FOOTER ═══ -->
+  <footer class="footer" data-component="footer">
+    <div class="footer-inner">
+      <p class="footer-text">datacube 数据魔方 — Brand Guide v1.0</p>
+      <p class="footer-version">2026 / Confidential</p>
+    </div>
+  </footer>
+
+</body>
+</html>

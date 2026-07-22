@@ -9,14 +9,23 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.BackgroundFill;
+import javafx.scene.layout.CornerRadii;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import javafx.scene.text.Text;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 
 /**
- * “关于”对话框：展示当前版本、项目仓库链接，并提供手动“检查更新”入口。
+ * “关于”对话框：品牌立方体 + 字标 + 简介 + 数据库标签 + Slogan，
+ * 展示当前版本、项目仓库链接，并提供手动“检查更新”入口。
  */
 final class AboutDialog {
 
@@ -33,29 +42,66 @@ final class AboutDialog {
         }
         dialog.setTitle("关于 DataCube");
         dialog.setResizable(false);
+        BrandLogo.applyIcons(dialog);
 
-        Label name = new Label("DataCube 数据库管理工具");
-        name.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2e3440;");
+        // 头部：立方体 + datacube / 数据魔方
+        VBox nameBox = new VBox(1, BrandLogo.wordmark(20), BrandLogo.subtitle(11));
+        nameBox.setAlignment(Pos.CENTER_LEFT);
+        HBox header = new HBox(14, BrandLogo.cube(44), nameBox);
+        header.setAlignment(Pos.CENTER_LEFT);
 
         Label version = new Label("版本 " + AppVersion.current());
-        version.setStyle("-fx-text-fill: #666;");
+        version.setStyle("-fx-text-fill: #6B6B80;");
+
+        Label desc = new Label(
+                "DataCube 是一款面向数据库开发者与管理员的专业工具，"
+                + "目前支持 PostgreSQL 与 Oracle，涵盖对象浏览、SQL 编辑、"
+                + "表设计、数据编辑与库间迁移。");
+        desc.setWrapText(true);
+        desc.setStyle("-fx-text-fill: #A8A8B8;");
+
+        FlowPane tags = new FlowPane(6, 6, tag("PostgreSQL"), tag("Oracle"), tag("SQL 编辑"), tag("数据迁移"));
+
+        Text slogan = new Text(BrandLogo.SLOGAN_CN + "  ·  " + BrandLogo.SLOGAN_EN);
+        slogan.setFont(Font.font("Microsoft YaHei", FontWeight.NORMAL, 12));
+        slogan.setFill(BrandLogo.FG_DEEP_MUTED);
 
         Hyperlink repo = new Hyperlink("项目主页");
+        repo.setStyle("-fx-text-fill: #9B8CFF;");
         repo.setOnAction(e -> UpdateUI.openUrl(PROJECT_URL));
 
         Button check = new Button("检查更新");
         check.setOnAction(e -> UpdateUI.checkManually(svc, dialog));
-
         Button close = new Button("关闭");
         close.setOnAction(e -> dialog.close());
 
-        HBox buttons = new HBox(8, check, close);
-        buttons.setAlignment(Pos.CENTER_RIGHT);
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
+        HBox buttons = new HBox(8, repo, spacer, check, close);
+        buttons.setAlignment(Pos.CENTER_LEFT);
 
-        VBox box = new VBox(10, name, version, repo, buttons);
-        box.setPadding(new Insets(18));
-        box.setPrefWidth(360);
+        Region divider = new Region();
+        divider.setPrefHeight(1);
+        divider.setMaxWidth(Double.MAX_VALUE);
+        divider.setBackground(new Background(new BackgroundFill(BrandLogo.BORDER, null, null)));
+
+        VBox box = new VBox(14, header, version, desc, tags, divider, slogan, buttons);
+        box.setPadding(new Insets(22, 24, 20, 24));
+        box.setPrefWidth(420);
+        box.setBackground(new Background(new BackgroundFill(BrandLogo.BG, CornerRadii.EMPTY, null)));
+
         dialog.setScene(new Scene(box));
         dialog.showAndWait();
+    }
+
+    private static Label tag(String text) {
+        Label l = new Label(text);
+        l.setStyle(
+                "-fx-text-fill: #9B8CFF;"
+                + "-fx-background-color: rgba(108,92,231,0.12);"
+                + "-fx-border-color: rgba(108,92,231,0.25);"
+                + "-fx-border-radius: 4; -fx-background-radius: 4;"
+                + "-fx-padding: 3 10 3 10; -fx-font-size: 11px;");
+        return l;
     }
 }

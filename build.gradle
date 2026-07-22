@@ -118,8 +118,24 @@ run {
     jvmArgs += ['--add-modules', 'ALL-MODULE-PATH']
 }
 
-// 可选应用图标：存在时使用，缺省则用 Java 默认图标（不阻断打包）。
+// 应用图标：由 generateIcon 任务用 buildSrc 的 IcoGenerator（Java2D）从品牌立方体
+// 生成到 packaging/DataCube.ico；jpackage/jpackageImage 打包前自动重新生成。
 def iconFile = file('packaging/DataCube.ico')
+
+tasks.register('generateIcon') {
+    description = '用 buildSrc IcoGenerator 生成品牌 .ico 图标'
+    group = 'build'
+    outputs.file(iconFile)
+    doLast {
+        datacube.build.IcoGenerator.write(iconFile.toPath())
+        println "Generated icon: ${iconFile}"
+    }
+}
+
+// 打包前确保图标就绪（jpackage 执行时 iconFile 已由 generateIcon 生成）。
+tasks.matching { it.name in ['jpackage', 'jpackageImage'] }.configureEach {
+    dependsOn 'generateIcon'
+}
 
 jlink {
     // 稳定、跨 JDK 版本无歧义的裁剪选项（不含 --compress，避免不同 JDK 语法差异）。
@@ -184,8 +200,7 @@ jlink {
         // 安装目录可选、开始菜单项、桌面快捷方式。
         installerOptions = ['--win-dir-chooser', '--win-menu', '--win-shortcut']
 
-        if (iconFile.exists()) {
-            icon = iconFile.toString()
-        }
+        // 图标由 generateIcon 任务保证在 jpackage 执行前生成。
+        icon = iconFile.toString()
     }
 }

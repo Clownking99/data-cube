@@ -31,6 +31,9 @@ public interface DatabaseProvider {
     /** SQL 执行器（无状态，可复用）。 */
     SqlRunner sqlRunner();
 
+    /** 表 DDL 构建器（无状态，可复用）。 */
+    TableDdlBuilder tableDdlBuilder();
+
     /** 绑定连接的元数据读取器。 */
     MetadataReader metadataReader(Connection c);
 
