@@ -1,13 +1,17 @@
 name: Build and Release
 
-# 推送到 main（或手动触发）时，用 Gradle + jpackage 打出两种 Windows 产物并发布 Release：
+# 推送 tag（v* 形如 v3.1.0）或手动触发时，用 Gradle + jpackage 打出两种 Windows 产物并发布 Release：
 #   1. 免安装绿色版（app-image 目录，压缩为 zip，解压后双击 DataCube.exe 运行）
 #   2. exe 安装程序（jpackage installer，需 WiX Toolset v5）
 # 均内置运行时（jlink），终端用户无需安装 Java。
+#
+# 说明：日常提交到 main 不再触发打包；只有推送 v* tag 才发布对应版本。
+# 手动触发（workflow_dispatch）会在最新 tag 基础上自增补丁号并创建新 tag。
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -38,15 +42,23 @@ jobs:
         id: version
         shell: bash
         run: |
-          LATEST=$(git tag --sort=-v:refname | grep '^v[0-9]' | head -1)
-          if [ -z "$LATEST" ]; then
-            NEXT="v3.0.0"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # tag 触发：直接采用推送的 tag 作为版本
+            NEXT="${GITHUB_REF#refs/tags/}"
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
           else
-            V=${LATEST#v}
-            MAJOR=$(echo "$V" | cut -d. -f1)
-            MINOR=$(echo "$V" | cut -d. -f2)
-            PATCH=$(echo "$V" | cut -d. -f3)
-            NEXT="v${MAJOR}.${MINOR}.$((PATCH+1))"
+            # 手动触发：在最新 tag 基础上自增补丁号
+            LATEST=$(git tag --sort=-v:refname | grep '^v[0-9]' | head -1)
+            if [ -z "$LATEST" ]; then
+              NEXT="v3.0.0"
+            else
+              V=${LATEST#v}
+              MAJOR=$(echo "$V" | cut -d. -f1)
+              MINOR=$(echo "$V" | cut -d. -f2)
+              PATCH=$(echo "$V" | cut -d. -f3)
+              NEXT="v${MAJOR}.${MINOR}.$((PATCH+1))"
+            fi
+            echo "is_tag=false" >> "$GITHUB_OUTPUT"
           fi
           echo "tag=$NEXT" >> "$GITHUB_OUTPUT"
           echo "app_version=${NEXT#v}" >> "$GITHUB_OUTPUT"
@@ -87,6 +99,8 @@ jobs:
           Get-ChildItem "DataCube-$tag-*" | Select-Object Name, @{N='MB';E={"{0:N1}" -f ($_.Length/1MB)}}
 
       - name: Create tag
+        # tag 触发时 tag 已存在，无需再创建；仅手动触发时创建并推送计算出的 tag
+        if: steps.version.outputs.is_tag != 'true'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
