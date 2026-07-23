@@ -8,6 +8,7 @@ import com.datacube.spi.DdlGenerator;
 import com.datacube.spi.MetadataReader;
 import com.datacube.spi.SqlDialect;
 import com.datacube.spi.SqlRunner;
+import com.datacube.spi.SequenceDdlBuilder;
 import com.datacube.spi.TableDdlBuilder;
 import com.datacube.spi.model.DbType;
 
@@ -27,6 +28,7 @@ public final class PostgresProvider implements DatabaseProvider {
     private final PgSqlDialect dialect = new PgSqlDialect();
     private final PgSqlRunner sqlRunner = new PgSqlRunner(dialect);
     private final PgTableDdlBuilder tableDdlBuilder = new PgTableDdlBuilder();
+    private final PgSequenceDdlBuilder sequenceDdlBuilder = new PgSequenceDdlBuilder();
 
     @Override
     public DbType type() {
@@ -56,6 +58,11 @@ public final class PostgresProvider implements DatabaseProvider {
     @Override
     public TableDdlBuilder tableDdlBuilder() {
         return tableDdlBuilder;
+    }
+
+    @Override
+    public SequenceDdlBuilder sequenceDdlBuilder() {
+        return sequenceDdlBuilder;
     }
 
     @Override

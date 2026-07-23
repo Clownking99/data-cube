@@ -45,6 +45,52 @@ public final class OracleDdlGenerator implements DdlGenerator {
         return getDdl("SEQUENCE", name, schema, "-- 序列定义不可用: " + name);
     }
 
+    @Override
+    public String packageDdl(String schema, String name) throws SQLException {
+        // 规格说明 + 包体（包体可能不存在，仅规格说明的包不作错误处理）
+        String spec = getDdl("PACKAGE", name, schema, "-- 程序包定义不可用: " + name);
+        String body = packageBody(schema, name);
+        return body == null ? spec : spec + "\n/\n\n" + body;
+    }
+
+    /** 取包体 DDL；无包体时返回 {@code null}（仅规格说明）。 */
+    private String packageBody(String schema, String name) throws SQLException {
+        return optionalDdl("PACKAGE_BODY", schema, name);
+    }
+
+    @Override
+    public String triggerDdl(String schema, String name) throws SQLException {
+        return getDdl("TRIGGER", name, schema, "-- 触发器定义不可用: " + name);
+    }
+
+    @Override
+    public String typeDdl(String schema, String name) throws SQLException {
+        // 类型规格说明 + 可选类型体（无体的类型不报错）
+        String spec = getDdl("TYPE", name, schema, "-- 类型定义不可用: " + name);
+        String body = optionalDdl("TYPE_BODY", schema, name);
+        return body == null ? spec : spec + "\n/\n\n" + body;
+    }
+
+    /** 取可选对象体 DDL（PACKAGE_BODY / TYPE_BODY）；不存在时返回 {@code null}。 */
+    private String optionalDdl(String objectType, String schema, String name) throws SQLException {
+        String sql = "SELECT DBMS_METADATA.GET_DDL(?, ?, ?) FROM DUAL";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, objectType);
+            ps.setString(2, name);
+            ps.setString(3, schema);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String ddl = rs.getString(1);
+                    if (ddl != null && !ddl.isBlank()) return ddl.strip();
+                }
+            }
+        } catch (SQLException e) {
+            // 对象体不存在时 GET_DDL 会报错，视为“仅规格说明”
+            return null;
+        }
+        return null;
+    }
+
     /** 探测对象类型（用于函数/过程/包的 GET_DDL 类型名）。 */
     private String objectType(String schema, String name) throws SQLException {
         String sql = "SELECT OBJECT_TYPE FROM ALL_OBJECTS WHERE OWNER = ? AND OBJECT_NAME = ? "

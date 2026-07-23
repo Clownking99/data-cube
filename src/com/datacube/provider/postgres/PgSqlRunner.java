@@ -58,7 +58,8 @@ public final class PgSqlRunner implements SqlRunner {
     @Override
     public List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows,
                                              ScriptErrorPolicy policy) {
-        List<String> stmts = SqlScriptSplitter.split(script);
+        // PG 显式使用非 PL/SQL 模式：函数体靠 dollar-quote + ; 切分，行为与历史一致
+        List<String> stmts = SqlScriptSplitter.split(script, false);
         List<ScriptOutcome> outcomes = new ArrayList<>(stmts.size());
         boolean continueAll = false;
         for (int i = 0; i < stmts.size(); i++) {

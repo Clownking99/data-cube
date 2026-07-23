@@ -5,11 +5,15 @@ import com.datacube.spi.model.CatalogInfo;
 import com.datacube.spi.model.ColumnInfo;
 import com.datacube.spi.model.ConstraintInfo;
 import com.datacube.spi.model.IndexInfo;
+import com.datacube.spi.model.PackageInfo;
 import com.datacube.spi.model.RoutineInfo;
 import com.datacube.spi.model.SchemaInfo;
+import com.datacube.spi.model.SequenceDraft;
 import com.datacube.spi.model.SequenceInfo;
 import com.datacube.spi.model.TableInfo;
 import com.datacube.spi.model.TableRef;
+import com.datacube.spi.model.TriggerInfo;
+import com.datacube.spi.model.TypeInfo;
 import com.datacube.spi.model.ViewInfo;
 
 import java.sql.Connection;
@@ -247,6 +251,24 @@ public final class PgMetadataReader implements MetadataReader {
     }
 
     @Override
+    public List<PackageInfo> packages(String schema) throws SQLException {
+        // PostgreSQL 无程序包概念
+        return List.of();
+    }
+
+    @Override
+    public List<TriggerInfo> triggers(String schema) throws SQLException {
+        // 触发器暂不在 PG 对象树展示
+        return List.of();
+    }
+
+    @Override
+    public List<TypeInfo> types(String schema) throws SQLException {
+        // 自定义类型暂不在 PG 对象树展示
+        return List.of();
+    }
+
+    @Override
     public List<SequenceInfo> sequences(String schema) throws SQLException {
         List<SequenceInfo> out = new ArrayList<>();
         String sql = "SELECT sequence_name FROM information_schema.sequences "
@@ -258,5 +280,37 @@ public final class PgMetadataReader implements MetadataReader {
             }
         }
         return out;
+    }
+
+    @Override
+    public SequenceDraft sequence(String schema, String name) throws SQLException {
+        // pg_sequences（PG10+）一次取齐属性；nextValue 由 last_value 推算（未使用时为 start_value）
+        String sql = "SELECT start_value, min_value, max_value, increment_by, cycle, cache_size, last_value "
+                + "FROM pg_sequences WHERE schemaname = ? AND sequencename = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, schema);
+            ps.setString(2, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String start = rs.getString("start_value");
+                    String inc = rs.getString("increment_by");
+                    String lastValue = rs.getString("last_value");
+                    boolean lastNull = rs.wasNull();
+                    String next = (lastNull || lastValue == null)
+                            ? start
+                            : new java.math.BigInteger(lastValue.trim())
+                                    .add(new java.math.BigInteger(inc.trim())).toString();
+                    return new SequenceDraft(schema, name,
+                            rs.getString("min_value"),
+                            rs.getString("max_value"),
+                            inc,
+                            next,
+                            (int) rs.getLong("cache_size"),
+                            rs.getBoolean("cycle"),
+                            false);  // PG 无 ORDER 概念
+                }
+            }
+        }
+        throw new SQLException("序列不存在: " + schema + "." + name);
     }
 }

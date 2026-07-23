@@ -16,5 +16,11 @@ public interface DdlGenerator {
 
     String routineDdl(RoutineRef r) throws SQLException;
 
+    String packageDdl(String schema, String name) throws SQLException;
+
+    String triggerDdl(String schema, String name) throws SQLException;
+
+    String typeDdl(String schema, String name) throws SQLException;
+
     String sequenceDdl(String schema, String name) throws SQLException;
 }

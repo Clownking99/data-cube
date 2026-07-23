@@ -3,14 +3,18 @@ package com.datacube.fx;
 import com.datacube.config.AppSettings;
 import com.datacube.config.AppSettings.CommentMode;
 import com.datacube.config.JvmOptions;
+import com.datacube.config.ShortcutSettings;
 
+import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Spinner;
 import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToggleGroup;
@@ -29,7 +33,7 @@ public final class SettingsDialog {
     private SettingsDialog() {}
 
     /** 打开模态设置对话框。 */
-    public static void show(AppSettings settings, Window owner, ThemeManager themeManager) {
+    public static void show(AppSettings settings, ShortcutSettings shortcuts, Window owner, ThemeManager themeManager) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle("设置");
         dialog.setHeaderText(null);
@@ -102,15 +106,37 @@ public final class SettingsDialog {
         TitledPane themePane = new TitledPane("外观主题", themeRow);
         themePane.setCollapsible(false);
 
-        VBox content = new VBox(10, themePane, group1, hint, group2);
+        // ---------- 键盘快捷键 ----------
+        ShortcutSettingsPane scPane = new ShortcutSettingsPane(shortcuts);
+        TitledPane shortcutPane = new TitledPane("键盘快捷键", scPane.getNode());
+        shortcutPane.setCollapsible(false);
+
+        VBox content = new VBox(10, themePane, group1, hint, group2, shortcutPane);
         content.setPadding(new Insets(12));
-        content.setPrefWidth(380);
-        dialog.getDialogPane().setContent(content);
+        content.setPrefWidth(460);
+        ScrollPane scroll = new ScrollPane(content);
+        scroll.setFitToWidth(true);
+        scroll.setPrefViewportHeight(560);
+        dialog.getDialogPane().setContent(scroll);
         dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         if (themeManager != null) themeManager.applyTo(dialog.getDialogPane());
 
+        // 保存前拦截：存在快捷键冲突则阻止关闭并提示
+        final Button okBtn = (Button) dialog.getDialogPane().lookupButton(ButtonType.OK);
+        okBtn.addEventFilter(ActionEvent.ACTION, ev -> {
+            if (scPane.hasConflict()) {
+                ev.consume();
+                Alert warn = new Alert(Alert.AlertType.WARNING,
+                        "存在快捷键冲突，请先解决后再保存。", ButtonType.OK);
+                warn.setHeaderText(null);
+                if (owner != null) warn.initOwner(owner);
+                warn.showAndWait();
+            }
+        });
+
         dialog.showAndWait().ifPresent(bt -> {
             if (bt == ButtonType.OK) {
+                scPane.apply();
                 if (themeGroup.getSelectedToggle() != null) {
                     settings.setTheme((AppSettings.Theme) themeGroup.getSelectedToggle().getUserData());
                 }

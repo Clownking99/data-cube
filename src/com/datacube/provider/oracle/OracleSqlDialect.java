@@ -47,6 +47,21 @@ public final class OracleSqlDialect implements SqlDialect {
     }
 
     @Override
+    public boolean supportsPackages() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsTriggers() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsTypes() {
+        return true;
+    }
+
+    @Override
     public String sqlLiteral(Object v) {
         if (v == null) return "NULL";
         if (v instanceof Number) return v.toString();

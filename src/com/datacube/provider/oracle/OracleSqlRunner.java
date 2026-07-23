@@ -14,6 +14,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Oracle SQL 执行器：与 {@code PgSqlRunner} 对等，schema 切换委托 {@link SqlDialect}。
@@ -58,7 +59,7 @@ public final class OracleSqlRunner implements SqlRunner {
     @Override
     public List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows,
                                              ScriptErrorPolicy policy) {
-        List<String> stmts = SqlScriptSplitter.split(script);
+        List<String> stmts = SqlScriptSplitter.split(script, true);
         List<ScriptOutcome> outcomes = new ArrayList<>(stmts.size());
         boolean continueAll = false;
         for (int i = 0; i < stmts.size(); i++) {
@@ -123,9 +124,19 @@ public final class OracleSqlRunner implements SqlRunner {
     /** 剥离语句首尾空白与尾部分号（Oracle 单语句执行不接受尾分号）。 */
     private static String strip(String sql) {
         String s = sql.strip();
+        // PL/SQL 块（CREATE ... PROCEDURE/PACKAGE/... 或 DECLARE/BEGIN）末尾 ; 是语法的一部分，保留
+        if (isPlSqlBlock(s)) return s;
         while (s.endsWith(";")) {
             s = s.substring(0, s.length() - 1).strip();
         }
         return s;
+    }
+
+    private static final Pattern PLSQL_BLOCK = Pattern.compile(
+            "(?is)^(?:DECLARE|BEGIN|CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:EDITIONABLE\\s+|NONEDITIONABLE\\s+)?"
+                    + "(?:PROCEDURE|FUNCTION|PACKAGE\\s+BODY|PACKAGE|TRIGGER|TYPE\\s+BODY|TYPE))\\b.*");
+
+    private static boolean isPlSqlBlock(String sql) {
+        return PLSQL_BLOCK.matcher(sql).matches();
     }
 }

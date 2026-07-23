@@ -168,4 +168,19 @@ public final class PgDdlGenerator implements DdlGenerator {
         }
         return "CREATE SEQUENCE " + qualified(schema, name) + ";";
     }
+
+    @Override
+    public String packageDdl(String schema, String name) throws SQLException {
+        return "-- PostgreSQL 不支持程序包（package）";
+    }
+
+    @Override
+    public String triggerDdl(String schema, String name) throws SQLException {
+        return "-- PostgreSQL 触发器 DDL 暂未支持";
+    }
+
+    @Override
+    public String typeDdl(String schema, String name) throws SQLException {
+        return "-- PostgreSQL 自定义类型 DDL 暂未支持";
+    }
 }

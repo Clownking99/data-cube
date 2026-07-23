@@ -29,12 +29,13 @@ public final class ContentTabPane {
         tabPane.getTabs().add(tab);
     }
 
-    /** 打开一个可关闭标签并选中它。 */
-    public void openTab(String title, Node content) {
+    /** 打开一个可关闭标签并选中它，返回该标签（便于调用方挂 onClosed 等）。 */
+    public Tab openTab(String title, Node content) {
         Tab tab = new Tab(title, content);
         tab.setClosable(true);
         tabPane.getTabs().add(tab);
         tabPane.getSelectionModel().select(tab);
+        return tab;
     }
 
     /**

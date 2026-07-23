@@ -4,11 +4,15 @@ import com.datacube.spi.model.CatalogInfo;
 import com.datacube.spi.model.ColumnInfo;
 import com.datacube.spi.model.ConstraintInfo;
 import com.datacube.spi.model.IndexInfo;
+import com.datacube.spi.model.PackageInfo;
 import com.datacube.spi.model.RoutineInfo;
 import com.datacube.spi.model.SchemaInfo;
+import com.datacube.spi.model.SequenceDraft;
 import com.datacube.spi.model.SequenceInfo;
 import com.datacube.spi.model.TableInfo;
 import com.datacube.spi.model.TableRef;
+import com.datacube.spi.model.TriggerInfo;
+import com.datacube.spi.model.TypeInfo;
 import com.datacube.spi.model.ViewInfo;
 
 import java.sql.SQLException;
@@ -38,5 +42,14 @@ public interface MetadataReader {
 
     List<RoutineInfo> routines(String schema) throws SQLException;
 
+    List<PackageInfo> packages(String schema) throws SQLException;
+
+    List<TriggerInfo> triggers(String schema) throws SQLException;
+
+    List<TypeInfo> types(String schema) throws SQLException;
+
     List<SequenceInfo> sequences(String schema) throws SQLException;
+
+    /** 读取单个序列的完整属性（最小/最大/递增/缓存/循环/有序/下一个数字）。 */
+    SequenceDraft sequence(String schema, String name) throws SQLException;
 }

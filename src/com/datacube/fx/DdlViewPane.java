@@ -6,23 +6,25 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
-import javafx.scene.control.TextArea;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
-import javafx.scene.text.Font;
+
+import org.fxmisc.flowless.VirtualizedScrollPane;
+import org.fxmisc.richtext.CodeArea;
 
 import java.util.concurrent.Callable;
 
 /**
  * DDL 查看面板（只读）：异步获取对象的 CREATE 语句，提供复制按钮。
+ * 使用高亮 {@link CodeArea}（行号 + SQL 语法着色）展示。
  */
 public final class DdlViewPane {
 
     private final VBox root = new VBox(8);
-    private final TextArea textArea = new TextArea();
+    private final CodeArea codeArea = HighlightedSqlArea.create(false);
     private final Label statusLabel = new Label("加载中...");
 
     /**
@@ -48,7 +50,7 @@ public final class DdlViewPane {
         Button copyBtn = new Button("复制");
         copyBtn.setOnAction(e -> {
             ClipboardContent content = new ClipboardContent();
-            content.putString(textArea.getText());
+            content.putString(codeArea.getText());
             Clipboard.getSystemClipboard().setContent(content);
             statusLabel.setText("已复制到剪贴板");
         });
@@ -56,15 +58,11 @@ public final class DdlViewPane {
         HBox toolbar = new HBox(8, titleLabel, copyBtn);
         toolbar.setAlignment(Pos.CENTER_LEFT);
 
-        textArea.setEditable(false);
-        textArea.setWrapText(false);
-        textArea.setFont(Font.font("Consolas", 13));
-        textArea.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 13px;");
-
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
-        root.getChildren().addAll(toolbar, textArea, statusLabel);
-        VBox.setVgrow(textArea, Priority.ALWAYS);
+        VirtualizedScrollPane<CodeArea> scroll = new VirtualizedScrollPane<>(codeArea);
+        root.getChildren().addAll(toolbar, scroll, statusLabel);
+        VBox.setVgrow(scroll, Priority.ALWAYS);
     }
 
     private void load(Callable<String> fetch) {
@@ -81,11 +79,11 @@ public final class DdlViewPane {
             final String fErr = err;
             Platform.runLater(() -> {
                 if (fErr != null) {
-                    textArea.setText("-- 获取 DDL 失败: " + fErr);
+                    codeArea.replaceText("-- 获取 DDL 失败: " + fErr);
                     statusLabel.setText("错误");
                     statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
                 } else {
-                    textArea.setText(fDdl);
+                    codeArea.replaceText(fDdl == null ? "" : fDdl);
                     statusLabel.setText("就绪");
                     statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
                 }

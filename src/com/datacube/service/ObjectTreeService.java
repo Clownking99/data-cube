@@ -5,11 +5,14 @@ import com.datacube.spi.model.CatalogInfo;
 import com.datacube.spi.model.ColumnInfo;
 import com.datacube.spi.model.ConstraintInfo;
 import com.datacube.spi.model.IndexInfo;
+import com.datacube.spi.model.PackageInfo;
 import com.datacube.spi.model.RoutineInfo;
 import com.datacube.spi.model.SchemaInfo;
 import com.datacube.spi.model.SequenceInfo;
 import com.datacube.spi.model.TableInfo;
 import com.datacube.spi.model.TableRef;
+import com.datacube.spi.model.TriggerInfo;
+import com.datacube.spi.model.TypeInfo;
 import com.datacube.spi.model.ViewInfo;
 
 import java.sql.Connection;
@@ -38,6 +41,18 @@ public final class ObjectTreeService {
         return connections.provider(connId).dialect().hasSchemaLevel();
     }
 
+    public boolean supportsPackages(String connId) {
+        return connections.provider(connId).dialect().supportsPackages();
+    }
+
+    public boolean supportsTriggers(String connId) {
+        return connections.provider(connId).dialect().supportsTriggers();
+    }
+
+    public boolean supportsTypes(String connId) {
+        return connections.provider(connId).dialect().supportsTypes();
+    }
+
     public List<CatalogInfo> catalogs(String connId) throws SQLException {
         return reader(connId).catalogs();
     }
@@ -56,6 +71,18 @@ public final class ObjectTreeService {
 
     public List<RoutineInfo> routines(String connId, String schema) throws SQLException {
         return reader(connId).routines(schema);
+    }
+
+    public List<PackageInfo> packages(String connId, String schema) throws SQLException {
+        return reader(connId).packages(schema);
+    }
+
+    public List<TriggerInfo> triggers(String connId, String schema) throws SQLException {
+        return reader(connId).triggers(schema);
+    }
+
+    public List<TypeInfo> types(String connId, String schema) throws SQLException {
+        return reader(connId).types(schema);
     }
 
     public List<SequenceInfo> sequences(String connId, String schema) throws SQLException {

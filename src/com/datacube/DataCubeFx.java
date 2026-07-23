@@ -27,6 +27,8 @@ public class DataCubeFx extends Application {
 
             Scene scene = new Scene(appShell.getRoot(), 1200, 800);
             appShell.getThemeManager().register(scene);
+            // 全局窗口钩子：二级弹窗（关于/设置/导出/更新/Alert）自动跟随主题（含原生标题栏）
+            appShell.getThemeManager().installWindowHook();
             primaryStage.setTitle("DataCube 数据库管理工具");
             primaryStage.setScene(scene);
             primaryStage.setMinWidth(900);

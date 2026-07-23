@@ -28,7 +28,14 @@ final class SqlHighlighter {
             "BETWEEN", "LIKE", "ILIKE", "DISTINCT", "UNION", "ALL", "CASE", "WHEN", "THEN",
             "ELSE", "END", "ASC", "DESC", "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE",
             "CAST", "WITH", "RETURNING", "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "DEFAULT",
-            "CONSTRAINT", "UNIQUE", "CHECK", "TRUE", "FALSE", "BEGIN", "COMMIT", "ROLLBACK"
+            "CONSTRAINT", "UNIQUE", "CHECK", "TRUE", "FALSE", "BEGIN", "COMMIT", "ROLLBACK",
+            // PL/SQL / 存储对象常见关键字
+            "REPLACE", "PROCEDURE", "FUNCTION", "PACKAGE", "BODY", "TRIGGER", "TYPE",
+            "DECLARE", "LOOP", "WHILE", "FOR", "IF", "ELSIF", "EXCEPTION", "RETURN",
+            "CURSOR", "OUT", "INOUT", "OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE",
+            "BEFORE", "AFTER", "EACH", "ROW", "OF", "REF", "PIPELINED", "PRAGMA",
+            "RAISE", "OPEN", "FETCH", "CLOSE", "EXIT", "CONTINUE", "GOTO", "NEW", "OLD",
+            "VARCHAR2", "NUMBER", "INTEGER", "DATE", "TIMESTAMP", "BOOLEAN", "CLOB", "BLOB"
     };
 
     private static final String KEYWORD_PATTERN = "\\b(?:" + String.join("|", KEYWORDS) + ")\\b";

@@ -1,5 +1,8 @@
 package com.datacube.fx;
 
+import com.datacube.config.ShortcutAction;
+import com.datacube.config.ShortcutSettings;
+
 import javafx.application.Platform;
 import javafx.geometry.Bounds;
 import javafx.geometry.Point2D;
@@ -38,6 +41,7 @@ final class SqlAutoComplete {
 
     private final CodeArea area;
     private final Supplier<Collection<String>> candidateSupplier;
+    private final ShortcutSettings shortcuts;
     private MemberProvider memberProvider;
     private final Popup popup = new Popup();
     private final ListView<String> list = new ListView<>();
@@ -45,9 +49,10 @@ final class SqlAutoComplete {
     /** 抑制补全替换文本时触发的 textProperty 递归。 */
     private boolean mutating = false;
 
-    SqlAutoComplete(CodeArea area, Supplier<Collection<String>> candidateSupplier) {
+    SqlAutoComplete(CodeArea area, Supplier<Collection<String>> candidateSupplier, ShortcutSettings shortcuts) {
         this.area = area;
         this.candidateSupplier = candidateSupplier;
+        this.shortcuts = shortcuts;
         setup();
     }
 
@@ -92,7 +97,7 @@ final class SqlAutoComplete {
     }
 
     private void onKeyPressed(KeyEvent e) {
-        if (e.isControlDown() && e.getCode() == KeyCode.SPACE) {
+        if (shortcuts.get(ShortcutAction.SQL_COMPLETE).match(e)) {
             e.consume();
             maybeShow();
             return;

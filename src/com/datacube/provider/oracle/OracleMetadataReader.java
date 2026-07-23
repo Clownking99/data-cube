@@ -5,11 +5,15 @@ import com.datacube.spi.model.CatalogInfo;
 import com.datacube.spi.model.ColumnInfo;
 import com.datacube.spi.model.ConstraintInfo;
 import com.datacube.spi.model.IndexInfo;
+import com.datacube.spi.model.PackageInfo;
 import com.datacube.spi.model.RoutineInfo;
 import com.datacube.spi.model.SchemaInfo;
+import com.datacube.spi.model.SequenceDraft;
 import com.datacube.spi.model.SequenceInfo;
 import com.datacube.spi.model.TableInfo;
 import com.datacube.spi.model.TableRef;
+import com.datacube.spi.model.TriggerInfo;
+import com.datacube.spi.model.TypeInfo;
 import com.datacube.spi.model.ViewInfo;
 
 import java.sql.Connection;
@@ -256,6 +260,46 @@ public final class OracleMetadataReader implements MetadataReader {
     }
 
     @Override
+    public List<PackageInfo> packages(String schema) throws SQLException {
+        List<PackageInfo> out = new ArrayList<>();
+        String sql = "SELECT OBJECT_NAME FROM ALL_OBJECTS "
+                + "WHERE OWNER = ? AND OBJECT_TYPE = 'PACKAGE' ORDER BY OBJECT_NAME";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, schema);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(new PackageInfo(schema, rs.getString(1)));
+            }
+        }
+        return out;
+    }
+
+    @Override
+    public List<TriggerInfo> triggers(String schema) throws SQLException {
+        List<TriggerInfo> out = new ArrayList<>();
+        String sql = "SELECT TRIGGER_NAME FROM ALL_TRIGGERS WHERE OWNER = ? ORDER BY TRIGGER_NAME";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, schema);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(new TriggerInfo(schema, rs.getString(1)));
+            }
+        }
+        return out;
+    }
+
+    @Override
+    public List<TypeInfo> types(String schema) throws SQLException {
+        List<TypeInfo> out = new ArrayList<>();
+        String sql = "SELECT TYPE_NAME FROM ALL_TYPES WHERE OWNER = ? ORDER BY TYPE_NAME";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, schema);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(new TypeInfo(schema, rs.getString(1)));
+            }
+        }
+        return out;
+    }
+
+    @Override
     public List<SequenceInfo> sequences(String schema) throws SQLException {
         List<SequenceInfo> out = new ArrayList<>();
         String sql = "SELECT SEQUENCE_NAME FROM ALL_SEQUENCES WHERE SEQUENCE_OWNER = ? ORDER BY SEQUENCE_NAME";
@@ -266,5 +310,28 @@ public final class OracleMetadataReader implements MetadataReader {
             }
         }
         return out;
+    }
+
+    @Override
+    public SequenceDraft sequence(String schema, String name) throws SQLException {
+        String sql = "SELECT MIN_VALUE, MAX_VALUE, INCREMENT_BY, CYCLE_FLAG, ORDER_FLAG, CACHE_SIZE, LAST_NUMBER "
+                + "FROM ALL_SEQUENCES WHERE SEQUENCE_OWNER = ? AND SEQUENCE_NAME = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, schema);
+            ps.setString(2, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return new SequenceDraft(schema, name,
+                            rs.getString("MIN_VALUE"),
+                            rs.getString("MAX_VALUE"),
+                            rs.getString("INCREMENT_BY"),
+                            rs.getString("LAST_NUMBER"),
+                            rs.getInt("CACHE_SIZE"),
+                            "Y".equalsIgnoreCase(rs.getString("CYCLE_FLAG")),
+                            "Y".equalsIgnoreCase(rs.getString("ORDER_FLAG")));
+                }
+            }
+        }
+        throw new SQLException("序列不存在: " + schema + "." + name);
     }
 }

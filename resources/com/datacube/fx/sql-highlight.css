@@ -26,30 +26,36 @@
     -fx-stroke: -brand-fg;
 }
 
+/*
+ * 高亮 span 选择器统一限定在 .code-area .text 之下，使其特指度(0,3,0)
+ * 高于上面的基准规则 .code-area .text(0,2,0)，否则基准前景色 -code-fg 会
+ * 覆盖各 span 的 -fx-fill，导致只余加粗/斜体而无着色（RichTextFX 常见坑）。
+ */
+
 /* 关键字：加粗 */
-.sql-keyword {
+.code-area .text.sql-keyword {
     -fx-fill: -code-keyword;
     -fx-font-weight: bold;
 }
 
 /* 字符串字面量 */
-.sql-string {
+.code-area .text.sql-string {
     -fx-fill: -code-string;
 }
 
 /* 注释：斜体 */
-.sql-comment {
+.code-area .text.sql-comment {
     -fx-fill: -code-comment;
     -fx-font-style: italic;
 }
 
 /* 数字字面量 */
-.sql-number {
+.code-area .text.sql-number {
     -fx-fill: -code-number;
 }
 
 /* 括号 */
-.sql-paren {
+.code-area .text.sql-paren {
     -fx-fill: -code-paren;
 }
 

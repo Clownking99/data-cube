@@ -34,6 +34,9 @@ public interface DatabaseProvider {
     /** 表 DDL 构建器（无状态，可复用）。 */
     TableDdlBuilder tableDdlBuilder();
 
+    /** 序列 DDL 构建器（无状态，可复用）。 */
+    SequenceDdlBuilder sequenceDdlBuilder();
+
     /** 绑定连接的元数据读取器。 */
     MetadataReader metadataReader(Connection c);
 

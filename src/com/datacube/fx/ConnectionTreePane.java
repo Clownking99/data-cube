@@ -4,11 +4,14 @@ import com.datacube.config.ConnectionStore;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.ObjectTreeService;
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.PackageInfo;
 import com.datacube.spi.model.RoutineInfo;
 import com.datacube.spi.model.SchemaInfo;
 import com.datacube.spi.model.SequenceInfo;
 import com.datacube.spi.model.TableInfo;
 import com.datacube.spi.model.TableRef;
+import com.datacube.spi.model.TriggerInfo;
+import com.datacube.spi.model.TypeInfo;
 import com.datacube.spi.model.ViewInfo;
 
 import javafx.animation.PauseTransition;
@@ -36,15 +39,17 @@ public final class ConnectionTreePane {
 
     /** 树操作回调（由 AppShell 实现，打开对应内容标签）。 */
     public interface Actions {
-        void openSqlEditor(ConnConfig conn);
-        void openDataGrid(String connId, TableRef table);
+        void openSqlEditor(ConnConfig conn, String schema);
+        void openDataGrid(String connId, TableRef table, boolean readOnly);
         void openDdl(String connId, NodeData node);
+        void editObject(String connId, NodeData node);
+        void editSequence(String connId, NodeData node);
         void exportTable(String connId, TableRef table);
         void openTableDesigner(String connId, TableRef table);
         void newTable(String connId, String schema);
     }
 
-    enum Kind { CONNECTION, SCHEMA, TABLES, VIEWS, ROUTINES, SEQUENCES, TABLE, VIEW, ROUTINE, SEQUENCE }
+    enum Kind { CONNECTION, SCHEMA, TABLES, VIEWS, ROUTINES, PACKAGES, TRIGGERS, TYPES, SEQUENCES, TABLE, VIEW, ROUTINE, PACKAGE, TRIGGER, TYPE, SEQUENCE }
 
     /** 树节点数据。 */
     public static final class NodeData {
@@ -125,13 +130,13 @@ public final class ConnectionTreePane {
             if (c != null) session.setActiveConnection(c);
         });
 
-        // 双击表 -> 打开数据浏览
+        // 双击表/视图 -> 打开数据浏览（视图只读）
         tree.setOnMouseClicked(e -> {
             if (e.getClickCount() == 2) {
                 TreeItem<NodeData> sel = tree.getSelectionModel().getSelectedItem();
-                if (sel != null && sel.getValue().kind == Kind.TABLE) {
+                if (sel != null && (sel.getValue().kind == Kind.TABLE || sel.getValue().kind == Kind.VIEW)) {
                     NodeData d = sel.getValue();
-                    actions.openDataGrid(d.connId, new TableRef(d.schema, d.name));
+                    actions.openDataGrid(d.connId, new TableRef(d.schema, d.name), d.kind == Kind.VIEW);
                 }
             }
         });
@@ -232,6 +237,18 @@ public final class ConnectionTreePane {
                 () -> viewItems(connId, schema)));
         out.add(lazyItem(new NodeData(Kind.ROUTINES, "函数/过程", null, connId, schema, null),
                 () -> routineItems(connId, schema)));
+        if (treeSvc.supportsPackages(connId)) {
+            out.add(lazyItem(new NodeData(Kind.PACKAGES, "程序包", null, connId, schema, null),
+                    () -> packageItems(connId, schema)));
+        }
+        if (treeSvc.supportsTriggers(connId)) {
+            out.add(lazyItem(new NodeData(Kind.TRIGGERS, "触发器", null, connId, schema, null),
+                    () -> triggerItems(connId, schema)));
+        }
+        if (treeSvc.supportsTypes(connId)) {
+            out.add(lazyItem(new NodeData(Kind.TYPES, "类型", null, connId, schema, null),
+                    () -> typeItems(connId, schema)));
+        }
         out.add(lazyItem(new NodeData(Kind.SEQUENCES, "序列", null, connId, schema, null),
                 () -> sequenceItems(connId, schema)));
         return out;
@@ -257,6 +274,30 @@ public final class ConnectionTreePane {
         List<TreeItem<NodeData>> out = new ArrayList<>();
         for (RoutineInfo r : treeSvc.routines(connId, schema)) {
             out.add(new TreeItem<>(new NodeData(Kind.ROUTINE, r.name(), null, connId, schema, r.name())));
+        }
+        return out;
+    }
+
+    private List<TreeItem<NodeData>> packageItems(String connId, String schema) throws Exception {
+        List<TreeItem<NodeData>> out = new ArrayList<>();
+        for (PackageInfo p : treeSvc.packages(connId, schema)) {
+            out.add(new TreeItem<>(new NodeData(Kind.PACKAGE, p.name(), null, connId, schema, p.name())));
+        }
+        return out;
+    }
+
+    private List<TreeItem<NodeData>> triggerItems(String connId, String schema) throws Exception {
+        List<TreeItem<NodeData>> out = new ArrayList<>();
+        for (TriggerInfo t : treeSvc.triggers(connId, schema)) {
+            out.add(new TreeItem<>(new NodeData(Kind.TRIGGER, t.name(), null, connId, schema, t.name())));
+        }
+        return out;
+    }
+
+    private List<TreeItem<NodeData>> typeItems(String connId, String schema) throws Exception {
+        List<TreeItem<NodeData>> out = new ArrayList<>();
+        for (TypeInfo t : treeSvc.types(connId, schema)) {
+            out.add(new TreeItem<>(new NodeData(Kind.TYPE, t.name(), null, connId, schema, t.name())));
         }
         return out;
     }
@@ -424,7 +465,7 @@ public final class ConnectionTreePane {
             switch (d.kind) {
                 case CONNECTION -> {
                     MenuItem sql = new MenuItem("打开 SQL 编辑器");
-                    sql.setOnAction(e -> actions.openSqlEditor(d.conn));
+                    sql.setOnAction(e -> actions.openSqlEditor(d.conn, null));
                     MenuItem edit = new MenuItem("编辑连接");
                     edit.setOnAction(e -> onEditConnection(d.conn));
                     MenuItem del = new MenuItem("删除连接");
@@ -439,6 +480,11 @@ public final class ConnectionTreePane {
                         menu.getItems().add(1, disconnect);
                     }
                 }
+                case SCHEMA -> {
+                    MenuItem sql = new MenuItem("打开 SQL 编辑器");
+                    sql.setOnAction(e -> actions.openSqlEditor(connOf(getTreeItem()), d.schema));
+                    menu.getItems().add(sql);
+                }
                 case TABLES -> {
                     MenuItem create = new MenuItem("新建表");
                     create.setOnAction(e -> actions.newTable(d.connId, d.schema));
@@ -446,7 +492,7 @@ public final class ConnectionTreePane {
                 }
                 case TABLE -> {
                     MenuItem data = new MenuItem("查看数据");
-                    data.setOnAction(e -> actions.openDataGrid(d.connId, new TableRef(d.schema, d.name)));
+                    data.setOnAction(e -> actions.openDataGrid(d.connId, new TableRef(d.schema, d.name), false));
                     MenuItem design = new MenuItem("设计表");
                     design.setOnAction(e -> actions.openTableDesigner(d.connId, new TableRef(d.schema, d.name)));
                     MenuItem ddl = new MenuItem("查看 DDL");
@@ -454,13 +500,33 @@ public final class ConnectionTreePane {
                     MenuItem export = new MenuItem("导出...");
                     export.setOnAction(e -> actions.exportTable(d.connId, new TableRef(d.schema, d.name)));
                     MenuItem sql = new MenuItem("打开 SQL 编辑器");
-                    sql.setOnAction(e -> actions.openSqlEditor(connOf(getTreeItem())));
+                    sql.setOnAction(e -> actions.openSqlEditor(connOf(getTreeItem()), d.schema));
                     menu.getItems().addAll(data, design, ddl, export, sql);
                 }
-                case VIEW, ROUTINE, SEQUENCE -> {
+                case VIEW -> {
+                    MenuItem data = new MenuItem("查看数据");
+                    data.setOnAction(e -> actions.openDataGrid(d.connId, new TableRef(d.schema, d.name), true));
                     MenuItem ddl = new MenuItem("查看 DDL");
                     ddl.setOnAction(e -> actions.openDdl(d.connId, d));
-                    menu.getItems().add(ddl);
+                    MenuItem edit = new MenuItem("编辑");
+                    edit.setOnAction(e -> actions.editObject(d.connId, d));
+                    menu.getItems().addAll(data, ddl, edit);
+                }
+                case ROUTINE, PACKAGE, TRIGGER, TYPE -> {
+                    MenuItem ddl = new MenuItem("查看 DDL");
+                    ddl.setOnAction(e -> actions.openDdl(d.connId, d));
+                    MenuItem edit = new MenuItem("编辑");
+                    edit.setOnAction(e -> actions.editObject(d.connId, d));
+                    menu.getItems().addAll(ddl, edit);
+                }
+                case SEQUENCE -> {
+                    MenuItem ddl = new MenuItem("查看 DDL");
+                    ddl.setOnAction(e -> actions.openDdl(d.connId, d));
+                    MenuItem edit = new MenuItem("编辑");
+                    edit.setOnAction(e -> actions.editSequence(d.connId, d));
+                    MenuItem editSql = new MenuItem("编辑 SQL");
+                    editSql.setOnAction(e -> actions.editObject(d.connId, d));
+                    menu.getItems().addAll(ddl, edit, editSql);
                 }
                 default -> {
                     return null;

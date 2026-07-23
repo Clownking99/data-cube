@@ -41,6 +41,8 @@ public final class DataGridPane {
     private final String connName;
     private final TableRef table;
     private final AppSettings settings;
+    /** 是否强制只读（如视图）：禁用新增/删除/编辑，仅查看数据。 */
+    private final boolean readOnly;
 
     private final VBox root = new VBox(8);
     private TableView<EditableGridModel.Row> grid;
@@ -60,12 +62,18 @@ public final class DataGridPane {
 
     public DataGridPane(DataBrowseService browse, DataEditService edit, String connId, String connName,
                         TableRef table, AppSettings settings) {
+        this(browse, edit, connId, connName, table, settings, false);
+    }
+
+    public DataGridPane(DataBrowseService browse, DataEditService edit, String connId, String connName,
+                        TableRef table, AppSettings settings, boolean readOnly) {
         this.browse = browse;
         this.edit = edit;
         this.connId = connId;
         this.connName = connName;
         this.table = table;
         this.settings = settings;
+        this.readOnly = readOnly;
         build();
         settings.commentModeProperty().addListener((o, a, b) -> reapplyHeaders());
         load();
@@ -165,7 +173,7 @@ public final class DataGridPane {
             try {
                 if (m == null) {
                     List<EditableColumn> cols = edit.columns(connId, table);
-                    m = new EditableGridModel(cols);
+                    m = new EditableGridModel(cols, readOnly);
                 }
                 result = browse.page(connId, table, reqOffset, PAGE_SIZE, null,
                         filter.isEmpty() ? null : filter);

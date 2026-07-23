@@ -28,6 +28,21 @@ public interface SqlDialect {
     /** 是否有 schema 层级（PG=true；某些库 user=schema 或无 schema）。 */
     boolean hasSchemaLevel();
 
+    /** 是否支持程序包（Oracle PL/SQL package）；默认不支持。 */
+    default boolean supportsPackages() {
+        return false;
+    }
+
+    /** 是否支持触发器；默认不支持。 */
+    default boolean supportsTriggers() {
+        return false;
+    }
+
+    /** 是否支持自定义类型（Oracle object/collection type）；默认不支持。 */
+    default boolean supportsTypes() {
+        return false;
+    }
+
     /**
      * 折叠未加引号标识符的大小写以匹配数据字典中的实际存储形式。
      *

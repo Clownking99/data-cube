@@ -108,6 +108,14 @@ public final class EditableGridModel {
     private final String readOnlyReason;
 
     public EditableGridModel(List<EditableColumn> columns) {
+        this(columns, false);
+    }
+
+    /**
+     * @param forceReadOnly 为 {@code true} 时整对象强制只读（如视图）：忽略主键/可匹配列的推断，
+     *                      直接禁用新增/删除/单元格编辑。
+     */
+    public EditableGridModel(List<EditableColumn> columns, boolean forceReadOnly) {
         this.columns = List.copyOf(columns);
         List<String> pk = new ArrayList<>();
         for (EditableColumn c : columns) {
@@ -123,9 +131,14 @@ public final class EditableGridModel {
             }
             this.keyColumns = List.copyOf(matchable);
         }
-        this.canLocate = !keyColumns.isEmpty();
-        this.readOnlyReason = canLocate ? null
-                : "无法定位行：该表无主键，且所有列均为大字段/二进制/时间戳，不能安全匹配，故只读";
+        if (forceReadOnly) {
+            this.canLocate = false;
+            this.readOnlyReason = "视图为只读对象，仅支持查看数据，不支持编辑";
+        } else {
+            this.canLocate = !keyColumns.isEmpty();
+            this.readOnlyReason = canLocate ? null
+                    : "无法定位行：该表无主键，且所有列均为大字段/二进制/时间戳，不能安全匹配，故只读";
+        }
     }
 
     public List<EditableColumn> columns() {

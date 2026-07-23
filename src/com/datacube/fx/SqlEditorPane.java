@@ -2,6 +2,9 @@ package com.datacube.fx;
 
 import com.datacube.config.AppSettings;
 import com.datacube.config.AppSettings.CommentMode;
+import com.datacube.config.ShortcutAction;
+import com.datacube.config.ShortcutSettings;
+import com.datacube.config.SqlHistoryStore;
 import com.datacube.export.XlsxWriter;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.ObjectTreeService;
@@ -27,7 +30,6 @@ import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.*;
-import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
@@ -92,6 +94,12 @@ public final class SqlEditorPane {
      */
     private final ConnConfig boundConn;
 
+    /** 近期 SQL 历史存储（可空）：执行/执行计划时记录，关闭标签时快照，供“找回”。 */
+    private final SqlHistoryStore history;
+
+    /** 可配置快捷键：执行/补全/注释等在按键事件里用 {@code match} 实时判定，改绑即时生效。 */
+    private final ShortcutSettings shortcuts;
+
     /** 预热的元数据名称（表/视图/schema），线程安全。 */
     private final Set<String> metaNames = ConcurrentHashMap.newKeySet();
     /** 已预热的 connId（每连接只预热一次）。 */
@@ -123,24 +131,46 @@ public final class SqlEditorPane {
     private QueryResult lastQueryResult;
 
     public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
-                         AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner) {
-        this(session, connections, treeSvc, settings, openDesigner, null);
-    }
-
-    public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
                          AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
-                         ConnConfig boundConn) {
+                         ConnConfig boundConn, String initialSchema, SqlHistoryStore history,
+                         ShortcutSettings shortcuts) {
         this.session = session;
         this.connections = connections;
         this.treeSvc = treeSvc;
         this.settings = settings;
         this.openDesigner = openDesigner;
         this.boundConn = boundConn;
+        this.history = history;
+        this.shortcuts = shortcuts;
         build();
+        // 依据打开位置回填 schema（如从表/schema 节点右键打开）；定位不到则保持空
+        if (initialSchema != null && !initialSchema.isBlank()) {
+            schemaField.setText(initialSchema.trim());
+        }
         // 注释显示模式变化 → 对当前查询结果即时重渲染表头（不重跑 SQL）
         settings.commentModeProperty().addListener((obs, o, n) -> {
             if (lastQueryResult != null) showQueryResult(lastQueryResult);
         });
+    }
+
+    /** 载入指定 SQL 文本到编辑区（用于历史“找回”）。 */
+    public void setSqlText(String sql) {
+        if (sql == null || editorArea == null) return;
+        editorArea.replaceText(sql);
+        applyHighlighting(sql);
+    }
+
+    /** 记录一条 SQL 到历史（连接名/schema 取当前上下文）；history 为空则忽略。 */
+    private void recordHistory(String sql) {
+        if (history == null) return;
+        ConnConfig c = currentConn();
+        history.record(c == null ? null : c.name(), schemaField.getText().trim(), sql);
+    }
+
+    /** 将当前编辑区内容快照到历史（供关闭标签时调用，留存未执行的草稿）。 */
+    public void snapshotToHistory() {
+        if (history == null || editorArea == null) return;
+        recordHistory(editorArea.getText());
     }
 
     /** 本编辑页当前应执行的连接：优先用绑定连接，否则回退到全局活动连接。 */
@@ -172,7 +202,7 @@ public final class SqlEditorPane {
         schemaField.setPromptText("schema（可选）");
         schemaField.setPrefWidth(160);
 
-        executeBtn = new Button("执行 (F5)");
+        executeBtn = new Button("执行 (" + shortcuts.get(ShortcutAction.SQL_EXECUTE).getDisplayText() + ")");
         executeBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
         executeBtn.setOnAction(e -> onExecute());
 
@@ -219,14 +249,16 @@ public final class SqlEditorPane {
         // 语法高亮：文本变化后单遍正则重算样式区间并应用到富文本
         editorArea.textProperty().addListener((obs, o, n) -> applyHighlighting(n));
         editorArea.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
-            if (e.getCode() == KeyCode.F5) {
+            if (shortcuts.get(ShortcutAction.SQL_EXECUTE).match(e)) {
                 e.consume();
                 onExecute();
-            } else if (e.isControlDown() && e.getCode() == KeyCode.SLASH) {
-                // Ctrl+/ 行注释切换；Ctrl+Shift+/ 块注释切换
+            } else if (shortcuts.get(ShortcutAction.SQL_BLOCK_COMMENT).match(e)) {
+                // 块注释切换（先于行注释判定：两者组合键精确匹配，Shift 状态互斥）
                 e.consume();
-                if (e.isShiftDown()) toggleBlockComment();
-                else toggleLineComment();
+                toggleBlockComment();
+            } else if (shortcuts.get(ShortcutAction.SQL_LINE_COMMENT).match(e)) {
+                e.consume();
+                toggleLineComment();
             }
         });
         // 高亮样式表（类名与 SqlHighlighter 输出一致）
@@ -240,7 +272,7 @@ public final class SqlEditorPane {
         });
         // 自动补全：关键字 + 预热的元数据名称（Ctrl+Space 强制触发）；
         // 并为「别名./表名.」提供列名成员补全。
-        autoComplete = new SqlAutoComplete(editorArea, this::completionCandidates);
+        autoComplete = new SqlAutoComplete(editorArea, this::completionCandidates, shortcuts);
         autoComplete.setMemberProvider(this::membersFor);
         installMetadataPrewarm();
         // 虚拟化滚动容器：为 CodeArea 提供垂直/水平滚动条（宽/长 SQL 友好）。
@@ -327,6 +359,7 @@ public final class SqlEditorPane {
         }
         final String connId = active.id();
         final String schema = schemaField.getText().trim();
+        recordHistory(sql);
 
         running = true;
         setButtonsRunning(true);
@@ -514,6 +547,7 @@ public final class SqlEditorPane {
         }
         final String connId = active.id();
         final String schema = schemaField.getText().trim();
+        recordHistory(text);
 
         running = true;
         setButtonsRunning(true);
