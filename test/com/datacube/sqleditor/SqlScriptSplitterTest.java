@@ -87,4 +87,32 @@ class SqlScriptSplitterTest {
         assertEquals(2, stmts.size(), "dollar-quote 内分号不切分：" + stmts);
         assertTrue(stmts.get(0).contains("$$"));
     }
+
+    @Test
+    void blockCommentedStatementsNotExecuted() {
+        String script = "/*\nselect * from t1 where id in('1','2');\n\nselect * from t2;\n*/";
+        assertTrue(SqlScriptSplitter.split(script).isEmpty(), "整段块注释不应产生语句");
+        assertTrue(SqlScriptSplitter.split(script, true).isEmpty(), "PL/SQL 模式下同样不产生语句");
+    }
+
+    @Test
+    void lineCommentOnlyUnitDropped() {
+        List<String> stmts = SqlScriptSplitter.split("-- 注释一\n-- 注释二\n; SELECT 1");
+        assertEquals(1, stmts.size(), "纯行注释单元应被丢弃：" + stmts);
+        assertEquals("SELECT 1", stmts.get(0));
+    }
+
+    @Test
+    void commentBeforeStatementKept() {
+        List<String> stmts = SqlScriptSplitter.split("/* 说明 */ SELECT 1; -- 尾注\nSELECT 2");
+        assertEquals(2, stmts.size(), "注释+语句混合单元应保留：" + stmts);
+        assertTrue(stmts.get(0).contains("SELECT 1"), "语句前的注释不影响执行：" + stmts.get(0));
+        assertTrue(stmts.get(1).contains("SELECT 2"));
+    }
+
+    @Test
+    void commentMarkerInsideStringIsExecutable() {
+        List<String> stmts = SqlScriptSplitter.split("SELECT '--' FROM dual");
+        assertEquals(1, stmts.size(), "字符串内的 -- 不是注释：" + stmts);
+    }
 }

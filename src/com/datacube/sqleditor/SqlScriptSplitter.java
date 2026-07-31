@@ -187,8 +187,34 @@ public final class SqlScriptSplitter {
 
         private void flush() {
             String s = cur.toString().trim();
-            if (!s.isEmpty()) stmts.add(s);
+            // 仅含注释/空白的单元不作为语句：整段被注释掉的 SQL 不应发往数据库
+            // （Oracle 对纯注释文本报 ORA-00900）。
+            if (!s.isEmpty() && hasExecutableContent(s)) stmts.add(s);
             cur.setLength(0);
+        }
+
+        /**
+         * 剥离 {@code --} 行注释与 {@code /* ... *}{@code /} 块注释后是否仍有非空白内容。
+         * 引号内的注释起始符不误判（如 {@code SELECT '--'} 为可执行语句）。
+         */
+        private static boolean hasExecutableContent(String s) {
+            int n = s.length();
+            int i = 0;
+            while (i < n) {
+                char c = s.charAt(i);
+                if (c == '-' && i + 1 < n && s.charAt(i + 1) == '-') {
+                    while (i < n && s.charAt(i) != '\n') i++;
+                } else if (c == '/' && i + 1 < n && s.charAt(i + 1) == '*') {
+                    int end = s.indexOf("*/", i + 2);
+                    if (end < 0) return false; // 未闭合块注释：其后内容也属于注释
+                    i = end + 2;
+                } else if (!Character.isWhitespace(c)) {
+                    return true; // 非空白且不在注释内（含引号起始）→ 可执行
+                } else {
+                    i++;
+                }
+            }
+            return false;
         }
 
         private static boolean isBlank(StringBuilder sb) {
