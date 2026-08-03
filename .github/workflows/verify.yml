@@ -1,0 +1,79 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wrapper-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: gradle/actions/wrapper-validation@v6
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            gradle: ./gradlew
+          - os: windows-latest
+            gradle: .\gradlew.bat
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Unit tests
+        run: ${{ matrix.gradle }} clean test --no-daemon --console=plain
+      - name: Windows linked image
+        if: runner.os == 'Windows'
+        run: .\gradlew.bat jlink --no-daemon --console=plain
+
+  redis-integration:
+    runs-on: ubuntu-latest
+    env:
+      DATACUBE_REDIS_HOST: 127.0.0.1
+      DATACUBE_REDIS_PORT: '6379'
+      DATACUBE_REDIS_DB: '0'
+      DATACUBE_REDIS_USERNAME: ''
+      DATACUBE_REDIS_PASSWORD: datacube-ci-only
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Start password-protected Redis
+        shell: bash
+        run: |
+          docker run --detach --name datacube-redis --publish 6379:6379 \
+            redis:7.4-alpine redis-server --requirepass "$DATACUBE_REDIS_PASSWORD"
+          for attempt in {1..30}; do
+            if docker exec -e REDISCLI_AUTH="$DATACUBE_REDIS_PASSWORD" datacube-redis redis-cli ping | grep -q PONG; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs datacube-redis
+          exit 1
+      - name: Redis integration test
+        run: ./gradlew test --tests com.datacube.redis.RedisLiveIntegrationTest --rerun-tasks --no-daemon --console=plain
+      - name: Stop Redis
+        if: always()
+        run: docker rm --force datacube-redis
