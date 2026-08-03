@@ -49,7 +49,7 @@ public final class AppSettings {
     /** 结果集默认最大保留行数（0 表示不限制）。 */
     public static final int DEFAULT_MAX_RESULT_ROWS = 2000;
     /** 应用最大堆（MB），写入启动器配置下次启动生效。 */
-    public static final int DEFAULT_MAX_HEAP_MB = 512;
+    public static final int DEFAULT_MAX_HEAP_MB = 256;
 
     private final Path file;
     private final ObjectProperty<CommentMode> commentMode =

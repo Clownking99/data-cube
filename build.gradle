@@ -184,14 +184,15 @@ jlink {
     // GUI 主启动器（对应 application.mainClass = com.datacube.DataCubeFx）。
     launcher {
         name = 'DataCube'
-        // 内存基线：默认最大堆 512m（可在设置页覆盖，写入 app cfg 下次启动生效）；
+        // 平衡内存基线：初始堆 16m、默认最大堆 256m（可在设置页覆盖 Xmx，下次启动生效）；
         // G1 + 周期回收 + 低堆空闲比促使 JVM 归还内存给 OS，降低单库单查询时的常驻占用。
         jvmArgs = [
-            '-Xmx512m',
+            '-Xms16m',
+            '-Xmx256m',
             '-XX:+UseG1GC',
-            '-XX:MaxHeapFreeRatio=25',
-            '-XX:MinHeapFreeRatio=10',
-            '-XX:G1PeriodicGCInterval=60000',
+            '-XX:MaxHeapFreeRatio=20',
+            '-XX:MinHeapFreeRatio=5',
+            '-XX:G1PeriodicGCInterval=30000',
             // NativeTitleBar 用 FFM 调用 dwmapi/user32（Windows 标题栏明暗），授权原生访问以消除告警
             '--enable-native-access=com.datacube'
         ]
