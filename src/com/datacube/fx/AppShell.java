@@ -62,8 +62,8 @@ public final class AppShell {
     private final SessionContext session = new SessionContext();
 
     private final ContentTabPane contentTabs = new ContentTabPane();
-    private final MigrationPane migrationPane = new MigrationPane();
-    private final UpdateService updateService = new UpdateService();
+    private final LazyValue<MigrationPane> migrationPane = new LazyValue<>(MigrationPane::new);
+    private final LazyValue<UpdateService> updateService = new LazyValue<>(UpdateService::new);
     private final SqlHistoryStore sqlHistory = new SqlHistoryStore();
     private final ShortcutSettings shortcuts = new ShortcutSettings();
     private final TreeActions treeActions = new TreeActions();
@@ -145,10 +145,12 @@ public final class AppShell {
         settings.themeProperty().addListener((obs, o, n) -> syncThemeBtn.run());
         themeBtn.setOnAction(e -> themeManager.toggle());
         Button migrationBtn = new Button("🔄 数据迁移");
-        migrationBtn.setOnAction(e -> contentTabs.openSingletonTab("数据迁移", migrationPane.getNode()));
+        migrationBtn.setOnAction(e ->
+                contentTabs.openSingletonTab("数据迁移", migrationPane.get().getNode()));
         Button aboutBtn = new Button("ℹ 关于");
         aboutBtn.setOnAction(e ->
-                AboutDialog.show(updateService, root.getScene() == null ? null : root.getScene().getWindow(), themeManager));
+                AboutDialog.show(updateService.get(),
+                        root.getScene() == null ? null : root.getScene().getWindow(), themeManager));
         Button settingsBtn = new Button("⚙ 设置");
         settingsBtn.setOnAction(e ->
                 SettingsDialog.show(settings, shortcuts, root.getScene() == null ? null : root.getScene().getWindow(), themeManager));
@@ -164,20 +166,21 @@ public final class AppShell {
 
     /** 是否有迁移任务在运行（供窗口关闭确认）。 */
     public boolean isRunning() {
-        return migrationPane.isRunning();
+        return migrationPane.peek().map(MigrationPane::isRunning).orElse(false);
     }
 
     /** 启动后台静默自检：仅在发现新版时在 UI 线程弹出更新提示（失败静默）。 */
     public void checkForUpdatesOnStartup() {
-        updateService.checkInBackground(info ->
-                Platform.runLater(() -> UpdateUI.promptUpdate(updateService, info,
+        UpdateService service = updateService.get();
+        service.checkInBackground(info ->
+                Platform.runLater(() -> UpdateUI.promptUpdate(service, info,
                         root.getScene() == null ? null : root.getScene().getWindow())));
     }
 
     /** 释放全部资源：迁移资源 + 关闭所有活动连接。 */
     public void shutdown() {
         try {
-            migrationPane.shutdown();
+            migrationPane.ifInitialized(MigrationPane::shutdown);
         } finally {
             connMgr.closeAll();
         }
