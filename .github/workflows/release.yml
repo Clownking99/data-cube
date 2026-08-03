@@ -1,13 +1,5 @@
 name: Build and Release
 
-# 推送 tag（v* 形如 v3.1.0）或手动触发时，用 Gradle + jpackage 打出两种 Windows 产物并发布 Release：
-#   1. 免安装绿色版（app-image 目录，压缩为 zip，解压后双击 DataCube.exe 运行）
-#   2. exe 安装程序（jpackage installer，需 WiX Toolset v5）
-# 均内置运行时（jlink），终端用户无需安装 Java。
-#
-# 说明：日常提交到 main 不再触发打包；只有推送 v* tag 才发布对应版本。
-# 手动触发（workflow_dispatch）会在最新 tag 基础上自增补丁号并创建新 tag。
-
 on:
   push:
     tags:
@@ -15,40 +7,49 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
   JAVA_VERSION: '25'
   WIX_VERSION: '5.0.2'
 
 jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+
   build:
-    # 必须在 Windows 上运行：jpackage 生成的是 Windows 原生 app-image 与 exe 安装包。
+    needs: verify
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-          cache: 'gradle'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Compute version
         id: version
         shell: bash
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            # tag 触发：直接采用推送的 tag 作为版本
             NEXT="${GITHUB_REF#refs/tags/}"
             echo "is_tag=true" >> "$GITHUB_OUTPUT"
           else
-            # 手动触发：在最新 tag 基础上自增补丁号
-            LATEST=$(git tag --sort=-v:refname | grep '^v[0-9]' | head -1)
+            LATEST=$(git tag --sort=-v:refname | grep '^v[0-9]' | head -1 || true)
             if [ -z "$LATEST" ]; then
               NEXT="v3.0.0"
             else
@@ -62,15 +63,16 @@ jobs:
           fi
           echo "tag=$NEXT" >> "$GITHUB_OUTPUT"
           echo "app_version=${NEXT#v}" >> "$GITHUB_OUTPUT"
-          echo "Build version: $NEXT (appVersion ${NEXT#v})"
+
+      - name: Verify release source
+        shell: pwsh
+        run: .\gradlew.bat clean test --no-daemon --console=plain
 
       - name: Install WiX Toolset (v5)
         shell: pwsh
         run: |
-          # jpackage 官方支持 WiX v4/v5；v6/v7 需接受 OSMF 付费协议，故锁定 v5。
           dotnet tool install --global wix --version $env:WIX_VERSION
           $tools = Join-Path $env:USERPROFILE ".dotnet\tools"
-          # 将 dotnet 全局工具目录加入后续步骤的 PATH，供 jpackage 调用 wix.exe。
           $tools | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           & "$tools\wix.exe" extension add --global WixToolset.Util.wixext/$env:WIX_VERSION
           & "$tools\wix.exe" extension add --global WixToolset.UI.wixext/$env:WIX_VERSION
@@ -80,10 +82,8 @@ jobs:
         shell: pwsh
         run: |
           $app = "${{ steps.version.outputs.app_version }}"
-          # 绿色版：先产出 app-image 目录 build/jpackage/DataCube/
           .\gradlew.bat jpackageImage "-PappVersion=$app" --no-daemon --console=plain
           if ($LASTEXITCODE -ne 0) { throw "jpackageImage failed ($LASTEXITCODE)" }
-          # 安装包：复用上一步的 app-image，产出 build/jpackage/DataCube-$app.exe
           .\gradlew.bat jpackage -PinstallerType=exe "-PappVersion=$app" --no-daemon --console=plain
           if ($LASTEXITCODE -ne 0) { throw "jpackage failed ($LASTEXITCODE)" }
 
@@ -92,46 +92,56 @@ jobs:
         run: |
           $tag = "${{ steps.version.outputs.tag }}"
           $app = "${{ steps.version.outputs.app_version }}"
-          # 绿色版：压缩整个 DataCube 目录（zip 内含 DataCube/，解压后双击其中 DataCube.exe）
           Compress-Archive -Path "build/jpackage/DataCube" -DestinationPath "DataCube-$tag-win64-portable.zip" -Force
-          # 安装包：重命名为带版本与平台标识
           Copy-Item "build/jpackage/DataCube-$app.exe" "DataCube-$tag-win64-setup.exe"
           Get-ChildItem "DataCube-$tag-*" | Select-Object Name, @{N='MB';E={"{0:N1}" -f ($_.Length/1MB)}}
 
       - name: Create tag
-        # tag 触发时 tag 已存在，无需再创建；仅手动触发时创建并推送计算出的 tag
         if: steps.version.outputs.is_tag != 'true'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}" || true
-          git push origin "${{ steps.version.outputs.tag }}" || true
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
 
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: "Release ${{ steps.version.outputs.tag }}"
-          body: |
-            ## DataCube ${{ steps.version.outputs.tag }}
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.version.outputs.tag }}"
+          $repo = "${{ github.repository }}"
+          $portable = "DataCube-$tag-win64-portable.zip"
+          $setup = "DataCube-$tag-win64-setup.exe"
+          @"
+          ## DataCube $tag
 
-            | 文件 | 说明 |
-            |------|------|
-            | `DataCube-${{ steps.version.outputs.tag }}-win64-portable.zip` | 免安装绿色版（Windows x64）。解压后进入 `DataCube` 文件夹，双击 `DataCube.exe` 启动图形界面；`DataCubeCli.exe` 为命令行迁移工具。已内置运行时，无需安装 Java。 |
-            | `DataCube-${{ steps.version.outputs.tag }}-win64-setup.exe` | 安装程序（Windows x64）。运行后按向导安装，可选安装目录，并创建开始菜单项与桌面快捷方式。 |
-          files: |
-            DataCube-${{ steps.version.outputs.tag }}-win64-portable.zip
-            DataCube-${{ steps.version.outputs.tag }}-win64-setup.exe
+          | 文件 | 说明 |
+          |------|------|
+          | $portable | Windows x64 免安装绿色版，内置运行时。 |
+          | $setup | Windows x64 安装程序，内置运行时。 |
+          "@ | Set-Content -LiteralPath release-notes.md -Encoding utf8
+
+          gh release view "$tag" --repo "$repo" *> $null
+          $exists = $LASTEXITCODE -eq 0
+          if ($exists) {
+            gh release edit "$tag" --repo "$repo" --title "Release $tag" --notes-file release-notes.md
+            if ($LASTEXITCODE -ne 0) { throw "gh release edit failed ($LASTEXITCODE)" }
+            gh release upload "$tag" "$portable" "$setup" --repo "$repo" --clobber
+          } else {
+            gh release create "$tag" "$portable" "$setup" --repo "$repo" --title "Release $tag" --notes-file release-notes.md --verify-tag
+          }
+          if ($LASTEXITCODE -ne 0) { throw "gh release publication failed ($LASTEXITCODE)" }
 
       - name: Summary
-        shell: bash
+        shell: pwsh
         run: |
-          VERSION="${{ steps.version.outputs.tag }}"
-          REPO="${{ github.repository }}"
-          {
-            echo "### Release ${VERSION}"
-            echo ""
-            echo "- [免安装绿色版](https://github.com/${REPO}/releases/download/${VERSION}/DataCube-${VERSION}-win64-portable.zip)"
-            echo "- [exe 安装程序](https://github.com/${REPO}/releases/download/${VERSION}/DataCube-${VERSION}-win64-setup.exe)"
-          } >> "$GITHUB_STEP_SUMMARY"
+          $tag = "${{ steps.version.outputs.tag }}"
+          $repo = "${{ github.repository }}"
+          @"
+          ### Release $tag
+
+          - [免安装绿色版](https://github.com/$repo/releases/download/$tag/DataCube-$tag-win64-portable.zip)
+          - [exe 安装程序](https://github.com/$repo/releases/download/$tag/DataCube-$tag-win64-setup.exe)
+          "@ >> $env:GITHUB_STEP_SUMMARY
