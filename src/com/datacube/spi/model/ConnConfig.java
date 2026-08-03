@@ -30,6 +30,8 @@ public record ConnConfig(
             case POSTGRESQL -> "jdbc:postgresql://" + host + ":" + port + "/" + database;
             // Oracle ：database 字段承载 Service Name
             case ORACLE -> "jdbc:oracle:thin:@//" + host + ":" + port + "/" + database;
+            // Redis：database 字段承载逻辑 DB 索引
+            case REDIS -> "redis://" + host + ":" + port + "/" + database;
         };
     }
 

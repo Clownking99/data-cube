@@ -8,7 +8,8 @@ package com.datacube.spi.model;
  */
 public enum DbType {
     POSTGRESQL("PostgreSQL", "jdbc:postgresql:", 5432),
-    ORACLE("Oracle", "jdbc:oracle:thin:@", 1521);
+    ORACLE("Oracle", "jdbc:oracle:thin:@", 1521),
+    REDIS("Redis", "redis://", 6379);
 
     private final String displayName;
     private final String urlPrefix;

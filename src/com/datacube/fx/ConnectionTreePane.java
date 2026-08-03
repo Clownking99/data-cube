@@ -3,7 +3,9 @@ package com.datacube.fx;
 import com.datacube.config.ConnectionStore;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.ObjectTreeService;
+import com.datacube.redis.RedisSession;
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.DbType;
 import com.datacube.spi.model.PackageInfo;
 import com.datacube.spi.model.RoutineInfo;
 import com.datacube.spi.model.SchemaInfo;
@@ -26,7 +28,9 @@ import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 /**
@@ -47,9 +51,11 @@ public final class ConnectionTreePane {
         void exportTable(String connId, TableRef table);
         void openTableDesigner(String connId, TableRef table);
         void newTable(String connId, String schema);
+        void openRedisKeys(ConnConfig conn, int database);
+        void openRedisConsole(ConnConfig conn);
     }
 
-    enum Kind { CONNECTION, SCHEMA, TABLES, VIEWS, ROUTINES, PACKAGES, TRIGGERS, TYPES, SEQUENCES, TABLE, VIEW, ROUTINE, PACKAGE, TRIGGER, TYPE, SEQUENCE }
+    enum Kind { CONNECTION, REDIS_DB, SCHEMA, TABLES, VIEWS, ROUTINES, PACKAGES, TRIGGERS, TYPES, SEQUENCES, TABLE, VIEW, ROUTINE, PACKAGE, TRIGGER, TYPE, SEQUENCE }
 
     /** 树节点数据。 */
     public static final class NodeData {
@@ -134,7 +140,10 @@ public final class ConnectionTreePane {
         tree.setOnMouseClicked(e -> {
             if (e.getClickCount() == 2) {
                 TreeItem<NodeData> sel = tree.getSelectionModel().getSelectedItem();
-                if (sel != null && (sel.getValue().kind == Kind.TABLE || sel.getValue().kind == Kind.VIEW)) {
+                if (sel != null && sel.getValue().kind == Kind.REDIS_DB) {
+                    NodeData d = sel.getValue();
+                    actions.openRedisKeys(connOf(sel), Integer.parseInt(d.name));
+                } else if (sel != null && (sel.getValue().kind == Kind.TABLE || sel.getValue().kind == Kind.VIEW)) {
                     NodeData d = sel.getValue();
                     actions.openDataGrid(d.connId, new TableRef(d.schema, d.name), d.kind == Kind.VIEW);
                 }
@@ -211,6 +220,9 @@ public final class ConnectionTreePane {
 
     private TreeItem<NodeData> connectionItem(ConnConfig cfg) {
         NodeData d = new NodeData(Kind.CONNECTION, cfg.name(), cfg, cfg.id(), null, null);
+        if (cfg.type() == DbType.REDIS) {
+            return lazyItem(d, () -> redisDatabaseItems(cfg));
+        }
         return lazyItem(d, () -> {
             List<TreeItem<NodeData>> out = new ArrayList<>();
             if (treeSvc.hasSchemaLevel(cfg.id())) {
@@ -222,6 +234,39 @@ public final class ConnectionTreePane {
             }
             return out;
         });
+    }
+
+    private List<TreeItem<NodeData>> redisDatabaseItems(ConnConfig cfg) {
+        RedisSession redis = connMgr.acquireRedis(cfg.id());
+        Map<Integer, Long> sizes = parseKeyspaceInfo(redis.info("keyspace"));
+        List<TreeItem<NodeData>> out = new ArrayList<>(16);
+        for (int database = 0; database < 16; database++) {
+            long size = sizes.getOrDefault(database, 0L);
+            String label = "db" + database + " (" + String.format("%,d", size) + ")";
+            out.add(new TreeItem<>(new NodeData(Kind.REDIS_DB, label, null, cfg.id(), null,
+                    Integer.toString(database))));
+        }
+        return out;
+    }
+
+    private static Map<Integer, Long> parseKeyspaceInfo(String info) {
+        Map<Integer, Long> sizes = new HashMap<>();
+        if (info == null) return sizes;
+        for (String line : info.split("\\R")) {
+            if (!line.startsWith("db")) continue;
+            int colon = line.indexOf(':');
+            int keys = line.indexOf("keys=", colon + 1);
+            if (colon < 3 || keys < 0) continue;
+            int comma = line.indexOf(',', keys);
+            try {
+                int database = Integer.parseInt(line.substring(2, colon));
+                long count = Long.parseLong(line.substring(keys + 5, comma < 0 ? line.length() : comma));
+                sizes.put(database, count);
+            } catch (NumberFormatException ignored) {
+                // Ignore a malformed INFO line and keep showing the remaining DBs.
+            }
+        }
+        return sizes;
     }
 
     private TreeItem<NodeData> schemaItem(String connId, String schema) {
@@ -457,6 +502,8 @@ public final class ConnectionTreePane {
                 return;
             }
             setText(item.label);
+            setStyle(item.kind == Kind.REDIS_DB && item.label.endsWith("(0)")
+                    ? "-fx-text-fill: -brand-fg-muted;" : "");
             setContextMenu(buildMenu(item));
         }
 
@@ -464,21 +511,29 @@ public final class ConnectionTreePane {
             ContextMenu menu = new ContextMenu();
             switch (d.kind) {
                 case CONNECTION -> {
-                    MenuItem sql = new MenuItem("打开 SQL 编辑器");
-                    sql.setOnAction(e -> actions.openSqlEditor(d.conn, null));
+                    MenuItem primary = new MenuItem(d.conn.type() == DbType.REDIS ? "打开命令行控制台" : "打开 SQL 编辑器");
+                    primary.setOnAction(e -> {
+                        if (d.conn.type() == DbType.REDIS) actions.openRedisConsole(d.conn);
+                        else actions.openSqlEditor(d.conn, null);
+                    });
                     MenuItem edit = new MenuItem("编辑连接");
                     edit.setOnAction(e -> onEditConnection(d.conn));
                     MenuItem del = new MenuItem("删除连接");
                     del.setOnAction(e -> onDeleteConnection(d.conn));
                     MenuItem refresh = new MenuItem("刷新");
                     refresh.setOnAction(e -> reload());
-                    menu.getItems().addAll(sql, edit, del, refresh);
+                    menu.getItems().addAll(primary, edit, del, refresh);
                     // 仅在已连接时提供“断开连接”（连接为惰性建立，展开节点才连）。
                     if (connMgr.isConnected(d.connId)) {
                         MenuItem disconnect = new MenuItem("断开连接");
                         disconnect.setOnAction(e -> disconnect(d.conn));
                         menu.getItems().add(1, disconnect);
                     }
+                }
+                case REDIS_DB -> {
+                    MenuItem open = new MenuItem("打开键浏览器");
+                    open.setOnAction(e -> actions.openRedisKeys(connOf(getTreeItem()), Integer.parseInt(d.name)));
+                    menu.getItems().add(open);
                 }
                 case SCHEMA -> {
                     MenuItem sql = new MenuItem("打开 SQL 编辑器");

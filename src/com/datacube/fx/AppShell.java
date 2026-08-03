@@ -25,6 +25,8 @@ import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Separator;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
@@ -213,6 +215,13 @@ public final class AppShell {
 
         @Override
         public void openSqlEditor(ConnConfig conn, String schema) {
+            if (conn != null && conn.type() == DbType.REDIS) {
+                Alert alert = new Alert(Alert.AlertType.INFORMATION,
+                        "Redis 连接不适用 SQL 编辑器，请打开键浏览器或命令行控制台。", ButtonType.OK);
+                alert.setHeaderText(null);
+                alert.showAndWait();
+                return;
+            }
             if (conn != null) session.setActiveConnection(conn);
             SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings,
                     this::openTableDesigner, conn, schema, sqlHistory, shortcuts);
@@ -243,6 +252,24 @@ public final class AppShell {
             String connName = connMgr.config(connId).name();
             TableDesignerPane pane = new TableDesignerPane(designSvc, connId, connName, null, schema, dbType);
             contentTabs.openTab("新建表", pane.getNode());
+        }
+
+        @Override
+        public void openRedisKeys(ConnConfig conn, int database) {
+            if (conn == null) return;
+            session.setActiveConnection(conn);
+            RedisKeyBrowserPane pane = new RedisKeyBrowserPane(connMgr, conn, database);
+            Tab tab = contentTabs.openTab(conn.name() + " · db" + database, pane.getNode());
+            tab.setOnClosed(e -> pane.close());
+        }
+
+        @Override
+        public void openRedisConsole(ConnConfig conn) {
+            if (conn == null) return;
+            session.setActiveConnection(conn);
+            RedisConsolePane pane = new RedisConsolePane(connMgr, conn);
+            Tab tab = contentTabs.openTab("Redis CLI - " + conn.name(), pane.getNode());
+            tab.setOnClosed(e -> pane.close());
         }
 
         @Override

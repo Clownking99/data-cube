@@ -1,8 +1,8 @@
 # DataCube — 数据库管理与迁移工具
 
-面向 **Oracle** 与 **PostgreSQL** 的桌面数据库工具，提供图形界面（GUI）与命令行（CLI）两个入口：
+面向 **Oracle**、**PostgreSQL** 与 **Redis** 的桌面数据库工具，提供图形界面（GUI）与命令行（CLI）两个入口：
 
-- **GUI（`DataCube.exe`）**：连接管理、对象树浏览、数据网格、DDL 查看、SQL 编辑器（语法高亮 / 自动补全 / PL/SQL 风格美化 / 执行计划）、结果导出（SQL / Excel / `pg_dump`）、Oracle→PostgreSQL 迁移、应用内自动更新。
+- **GUI（`DataCube.exe`）**：关系库连接/对象/SQL 管理，Redis 键浏览、五类型值编辑与安全命令控制台，结果导出（SQL / Excel / `pg_dump`）、Oracle→PostgreSQL 迁移、应用内自动更新。
 - **CLI（`DataCubeCli.exe`）**：将 Oracle 用户的表结构、序列、索引、约束、存储过程、触发器与全量数据迁移到 PostgreSQL。
 
 发布产物内置运行时（jlink），终端用户无需安装 Java。
@@ -10,6 +10,7 @@
 ## 功能特性
 
 - **多数据库支持**：通过 SPI 抽象（`spi/`）+ 提供者实现（`provider/oracle`、`provider/postgres`）统一 Oracle 与 PostgreSQL 的元数据读取、DDL 生成、SQL 方言与执行。
+- **Redis 管理**：零第三方依赖的 RESP2 客户端，支持单机/密码/ACL 连接、SCAN 分页键树、String/Hash/List/Set/ZSet 编辑、TTL 与命令控制台。
 - **SQL 编辑器**：基于 RichTextFX 的语法高亮、别名感知的字段补全、PL/SQL Developer “河道”风格美化、执行选中片段、查看执行计划。
 - **对象浏览**：连接树、表/视图数据网格（分页、排序）、DDL 查看、列注释展示。
 - **导出**：查询结果或整表导出为 SQL 脚本 / Excel（xlsx）/ `pg_dump`。
@@ -33,6 +34,7 @@
 │   ├── migration/                # Oracle 导出 / PG 导入 / PG 校验
 │   ├── provider/oracle/          # Oracle 的 SPI 实现
 │   ├── provider/postgres/        # PostgreSQL 的 SPI 实现
+│   ├── redis/                    # RESP2 客户端、Redis 会话、键树与控制台逻辑
 │   ├── service/                  # 编排层：连接管理、对象树、数据浏览、DDL 服务
 │   ├── spi/                      # 数据库提供者抽象接口
 │   │   └── model/                # 跨提供者的数据模型（DTO）

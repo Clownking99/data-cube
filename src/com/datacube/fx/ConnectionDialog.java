@@ -40,7 +40,7 @@ public final class ConnectionDialog {
         dialog.getDialogPane().getButtonTypes().addAll(testType, saveType, ButtonType.CANCEL);
 
         ComboBox<DbType> typeBox = new ComboBox<>();
-        typeBox.getItems().addAll(DbType.POSTGRESQL, DbType.ORACLE);
+        typeBox.getItems().addAll(DbType.values());
         typeBox.setConverter(new javafx.util.StringConverter<>() {
             @Override public String toString(DbType t) { return t == null ? "" : t.displayName(); }
             @Override public DbType fromString(String s) { return null; }
@@ -54,13 +54,24 @@ public final class ConnectionDialog {
         TextField userField = new TextField();
         PasswordField passField = new PasswordField();
         Label dbLabel = new Label("数据库:");
+        Label userLabel = new Label("用户名:");
+        Label passLabel = new Label("密码:");
 
         // 类型切换：联动默认端口、“数据库/服务名”标签与提示、标题
         typeBox.valueProperty().addListener((obs, old, nv) -> {
             if (nv == null) return;
             dialog.setHeaderText(nv.displayName() + " 连接");
             portField.setText(String.valueOf(nv.defaultPort()));
-            if (nv == DbType.ORACLE) {
+            userField.setPromptText("");
+            passField.setPromptText(existing == null ? "" : "（留空沿用原密码）");
+            if (nv == DbType.REDIS) {
+                dbLabel.setText("DB 索引:");
+                dbField.setText("0");
+                dbField.setPromptText("0-15");
+                userField.setText("");
+                userField.setPromptText("可选，Redis ACL 用户名");
+                passField.setPromptText(existing == null ? "可选" : "可选；留空沿用原密码");
+            } else if (nv == DbType.ORACLE) {
                 dbLabel.setText("服务名:");
                 dbField.setText("");
                 dbField.setPromptText("Service Name");
@@ -93,8 +104,8 @@ public final class ConnectionDialog {
         grid.addRow(2, new Label("主机:"), hostField);
         grid.addRow(3, new Label("端口:"), portField);
         grid.addRow(4, dbLabel, dbField);
-        grid.addRow(5, new Label("用户名:"), userField);
-        grid.addRow(6, new Label("密码:"), passField);
+        grid.addRow(5, userLabel, userField);
+        grid.addRow(6, passLabel, passField);
         dialog.getDialogPane().setContent(grid);
 
         // 测试连接：拦截 OTHER 按钮，不关闭对话框
@@ -129,9 +140,20 @@ public final class ConnectionDialog {
         String host = hostField.getText().trim();
         String db = dbField.getText().trim();
         String user = userField.getText().trim();
-        if (name.isEmpty() || host.isEmpty() || db.isEmpty() || user.isEmpty()) {
-            warn("名称/主机/数据库/用户名均不能为空");
+        if (type == DbType.REDIS && db.isEmpty()) db = "0";
+        if (name.isEmpty() || host.isEmpty()
+                || (type != DbType.REDIS && (db.isEmpty() || user.isEmpty()))) {
+            warn(type == DbType.REDIS ? "名称和主机不能为空" : "名称/主机/数据库/用户名均不能为空");
             return null;
+        }
+        if (type == DbType.REDIS) {
+            try {
+                int index = Integer.parseInt(db);
+                if (index < 0 || index > 15) throw new NumberFormatException();
+            } catch (NumberFormatException e) {
+                warn("Redis DB 索引必须是 0-15 的整数");
+                return null;
+            }
         }
         int port;
         try {

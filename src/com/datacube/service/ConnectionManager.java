@@ -1,10 +1,13 @@
 package com.datacube.service;
 
 import com.datacube.config.CredentialCipher;
+import com.datacube.redis.RedisSession;
+import com.datacube.redis.RedisSessionManager;
 import com.datacube.spi.ConnectionFactory;
 import com.datacube.spi.DatabaseProvider;
 import com.datacube.spi.ProviderRegistry;
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.DbType;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -25,11 +28,13 @@ public final class ConnectionManager {
     private static final Logger LOG = Logger.getLogger(ConnectionManager.class.getName());
 
     private final CredentialCipher cipher;
+    private final RedisSessionManager redis;
     private final Map<String, ConnConfig> configs = new LinkedHashMap<>();
     private final Map<String, Connection> live = new HashMap<>();
 
     public ConnectionManager(CredentialCipher cipher) {
         this.cipher = cipher;
+        this.redis = new RedisSessionManager(cipher);
     }
 
     /** 凭据加解密器（供 UI 编辑连接时加密密码复用）。 */
@@ -39,12 +44,16 @@ public final class ConnectionManager {
 
     /** 注册/更新连接配置（供 acquire 惰性建连使用）。 */
     public synchronized void register(ConnConfig cfg) {
+        ConnConfig previous = configs.get(cfg.id());
+        if (previous != null && !previous.equals(cfg)) release(cfg.id());
         configs.put(cfg.id(), cfg);
+        if (cfg.type() == DbType.REDIS) redis.register(cfg);
     }
 
     /** 移除配置并关闭其活动连接。 */
     public synchronized void unregister(String connId) {
         release(connId);
+        redis.unregister(connId);
         configs.remove(connId);
     }
 
@@ -54,17 +63,24 @@ public final class ConnectionManager {
 
     /** 该 connId 当前是否持有活动连接（供 UI 判断是否可断开）。 */
     public synchronized boolean isConnected(String connId) {
-        return live.containsKey(connId);
+        return live.containsKey(connId) || redis.isConnected(connId);
     }
 
     /** 该 connId 对应的 provider。 */
     public DatabaseProvider provider(String connId) {
         ConnConfig cfg = requireConfig(connId);
+        if (cfg.type() == DbType.REDIS) {
+            throw new IllegalStateException("Redis 不使用 JDBC DatabaseProvider");
+        }
         return ProviderRegistry.forType(cfg.type());
     }
 
     /** 惰性建连并按 connId 缓存；已有有效连接直接复用。 */
     public synchronized Connection acquire(String connId) throws SQLException {
+        ConnConfig cfg = requireConfig(connId);
+        if (cfg.type() == DbType.REDIS) {
+            throw new IllegalStateException("Redis 连接不能通过 JDBC acquire 获取；请使用 acquireRedis");
+        }
         Connection existing = live.get(connId);
         if (existing != null && isValid(existing)) {
             return existing;
@@ -73,7 +89,6 @@ public final class ConnectionManager {
             closeQuietly(existing);
             live.remove(connId);
         }
-        ConnConfig cfg = requireConfig(connId);
         DatabaseProvider provider = ProviderRegistry.forType(cfg.type());
         Connection conn = provider.connectionFactory().open(withPlainPassword(cfg));
         live.put(connId, conn);
@@ -84,12 +99,14 @@ public final class ConnectionManager {
     public synchronized void release(String connId) {
         Connection conn = live.remove(connId);
         if (conn != null) closeQuietly(conn);
+        redis.release(connId);
     }
 
     /** 关闭全部活动连接（应用退出时调用）。 */
     public synchronized void closeAll() {
         for (Connection c : live.values()) closeQuietly(c);
         live.clear();
+        redis.closeAll();
     }
 
     /**
@@ -98,8 +115,28 @@ public final class ConnectionManager {
      * @return {@code null} 表示成功；否则返回错误消息。
      */
     public String test(ConnConfig cfg) {
+        if (cfg.type() == DbType.REDIS) return redis.test(cfg);
         DatabaseProvider provider = ProviderRegistry.forType(cfg.type());
         return provider.connectionFactory().test(withPlainPassword(cfg));
+    }
+
+    /** 获取按连接 ID 缓存的 Redis 会话（供连接树等短操作使用）。 */
+    public RedisSession acquireRedis(String connId) {
+        ConnConfig cfg = requireConfig(connId);
+        if (cfg.type() != DbType.REDIS) throw new IllegalStateException("不是 Redis 连接: " + connId);
+        return redis.acquire(connId);
+    }
+
+    /** 为键浏览器/控制台标签创建 DB 隔离的 Redis 会话，调用方负责关闭。 */
+    public RedisSession openRedisSession(String connId, int database) {
+        ConnConfig cfg = requireConfig(connId);
+        if (cfg.type() != DbType.REDIS) throw new IllegalStateException("不是 Redis 连接: " + connId);
+        return redis.openSession(connId, database);
+    }
+
+    /** 关闭并解除一个独立 Redis 标签会话的生命周期跟踪。 */
+    public void closeRedisSession(RedisSession session) {
+        redis.closeIndependent(session);
     }
 
     // ---------- 内部 ----------
