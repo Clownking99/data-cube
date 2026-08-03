@@ -78,6 +78,17 @@ gradlew jpackage -PinstallerType=exe
 gradlew jpackage -PappVersion=3.1.0
 ```
 
+### 内存基线
+
+GUI 启动器默认使用 G1 平衡配置（初始堆 16MB、最大堆 256MB）。构建
+`jlink` 镜像后可在 Windows PowerShell 运行：
+
+```powershell
+.\tools\measure-memory.ps1
+```
+
+脚本等待主窗口稳定后输出工作集、私有内存和线程数，并只关闭自己启动的进程。
+
 ## 下载发布
 
 从 [Releases](https://github.com/Clownking99/data-cube/releases) 下载（Windows x64，均内置运行时）：
