@@ -4,8 +4,9 @@ import com.datacube.redis.RedisConsoleSupport;
 import com.datacube.redis.RedisSession;
 import com.datacube.service.ConnectionManager;
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.fx.task.FxSerialTaskQueue;
+import com.datacube.fx.task.FxTaskRunner;
 
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.*;
@@ -15,8 +16,6 @@ import javafx.scene.layout.VBox;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /** redis-cli 风格的非阻塞 Redis 命令控制台。 */
 public final class RedisConsolePane implements AutoCloseable {
@@ -24,23 +23,19 @@ public final class RedisConsolePane implements AutoCloseable {
     private final ConnConfig config;
     private final ConnectionManager manager;
     private final RedisSession session;
-    private final ExecutorService io;
+    private final FxSerialTaskQueue io;
     private final VBox root = new VBox(8);
     private final VBox output = new VBox(3);
     private final TextField input = new TextField();
     private final List<String> history = new ArrayList<>();
     private int historyIndex;
 
-    public RedisConsolePane(ConnectionManager manager, ConnConfig config) {
+    public RedisConsolePane(ConnectionManager manager, ConnConfig config, FxTaskRunner runner) {
         this.manager = manager;
         this.config = config;
         int database = parseDatabase(config.database());
         this.session = manager.openRedisSession(config.id(), database);
-        this.io = Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "Redis-Console-" + config.id());
-            thread.setDaemon(true);
-            return thread;
-        });
+        this.io = new FxSerialTaskQueue(runner);
         build(database);
     }
 
@@ -101,18 +96,12 @@ public final class RedisConsolePane implements AutoCloseable {
         input.clear();
         input.setDisable(true);
         append("> " + line, false);
-        io.submit(() -> {
-            try {
-                Object response = session.raw(args.toArray(String[]::new));
-                Platform.runLater(() -> append(RedisConsoleSupport.format(response), false));
-            } catch (Exception error) {
-                Platform.runLater(() -> append(message(error), true));
-            } finally {
-                Platform.runLater(() -> {
-                    input.setDisable(false);
-                    input.requestFocus();
-                });
-            }
+        io.submit(() -> session.raw(args.toArray(String[]::new)), response -> {
+            append(RedisConsoleSupport.format(response), false);
+            enableInput();
+        }, error -> {
+            append(message(error), true);
+            enableInput();
         });
     }
 
@@ -132,9 +121,14 @@ public final class RedisConsolePane implements AutoCloseable {
         output.getChildren().add(line);
     }
 
+    private void enableInput() {
+        input.setDisable(false);
+        input.requestFocus();
+    }
+
     @Override
     public void close() {
-        io.shutdownNow();
+        io.close();
         manager.closeRedisSession(session);
     }
 
@@ -146,7 +140,7 @@ public final class RedisConsolePane implements AutoCloseable {
         }
     }
 
-    private static String message(Exception error) {
+    private static String message(Throwable error) {
         return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
     }
 }

@@ -4,8 +4,9 @@ import com.datacube.redis.KeyTreeBuilder;
 import com.datacube.redis.RedisSession;
 import com.datacube.service.ConnectionManager;
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.fx.task.FxSerialTaskQueue;
+import com.datacube.fx.task.FxTaskRunner;
 
-import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
@@ -27,8 +28,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 /** Redis SCAN 键浏览器与 String/Hash/List/Set/ZSet 编辑器。 */
@@ -41,7 +40,8 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
 
     private final ConnectionManager manager;
     private final ConnConfig config;
-    private final ExecutorService io;
+    private final FxSerialTaskQueue io;
+    private final Object sessionLock = new Object();
     private final BorderPane root = new BorderPane();
     private final TreeView<TreeEntry> tree = new TreeView<>();
     private final VBox details = new VBox(8);
@@ -53,17 +53,15 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
     private final Set<String> loadedKeys = new LinkedHashSet<>();
 
     private volatile RedisSession session;
+    private volatile boolean closed;
     private long scanCursor;
     private boolean busy;
 
-    public RedisKeyBrowserPane(ConnectionManager manager, ConnConfig config, int initialDatabase) {
+    public RedisKeyBrowserPane(ConnectionManager manager, ConnConfig config, int initialDatabase,
+                               FxTaskRunner runner) {
         this.manager = manager;
         this.config = config;
-        this.io = Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "Redis-Keys-" + config.id());
-            thread.setDaemon(true);
-            return thread;
-        });
+        this.io = new FxSerialTaskQueue(runner);
         build(initialDatabase);
         restartSession(initialDatabase);
     }
@@ -119,19 +117,33 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
 
     private void restartSession(int db) {
         setBusy(true, "连接 db" + db + "...");
-        io.submit(() -> {
-            try {
-                RedisSession old = session;
-                if (old != null) manager.closeRedisSession(old);
-                session = manager.openRedisSession(config.id(), db);
-                if (!session.ping()) throw new IllegalStateException("PING 返回异常");
-                Platform.runLater(() -> {
-                    setBusy(false, "就绪");
-                    refreshKeys();
-                });
-            } catch (Exception error) {
-                Platform.runLater(() -> showError(error));
+        runIo(() -> {
+            RedisSession old;
+            synchronized (sessionLock) {
+                if (closed) return null;
+                old = session;
+                session = null;
             }
+            if (old != null) manager.closeRedisSession(old);
+
+            RedisSession opened = manager.openRedisSession(config.id(), db);
+            try {
+                if (!opened.ping()) throw new IllegalStateException("PING 返回异常");
+                synchronized (sessionLock) {
+                    if (closed) {
+                        manager.closeRedisSession(opened);
+                    } else {
+                        session = opened;
+                    }
+                }
+            } catch (Exception error) {
+                manager.closeRedisSession(opened);
+                throw error;
+            }
+            return null;
+        }, ignored -> {
+            setBusy(false, "就绪");
+            refreshKeys();
         });
     }
 
@@ -490,14 +502,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
     }
 
     private <T> void runIo(IoSupplier<T> operation, Consumer<T> success) {
-        io.submit(() -> {
-            try {
-                T value = operation.get();
-                Platform.runLater(() -> success.accept(value));
-            } catch (Exception error) {
-                Platform.runLater(() -> showError(error));
-            }
-        });
+        io.submit(operation::get, success, this::showError);
     }
 
     private void setBusy(boolean value, String message) {
@@ -506,7 +511,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
         status.setText(message);
     }
 
-    private void showError(Exception error) {
+    private void showError(Throwable error) {
         setBusy(false, "错误: " + message(error));
         warn(message(error));
     }
@@ -519,9 +524,14 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
 
     @Override
     public void close() {
-        io.shutdownNow();
-        RedisSession current = session;
-        session = null;
+        RedisSession current;
+        synchronized (sessionLock) {
+            if (closed) return;
+            closed = true;
+            current = session;
+            session = null;
+        }
+        io.close();
         if (current != null) manager.closeRedisSession(current);
     }
 
@@ -602,7 +612,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
         return out.toString();
     }
 
-    private static String message(Exception error) {
+    private static String message(Throwable error) {
         return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
     }
 

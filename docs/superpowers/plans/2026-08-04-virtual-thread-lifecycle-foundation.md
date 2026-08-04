@@ -61,26 +61,27 @@ Commit: `feat: 新增应用级虚拟线程任务作用域`
 - Create: `test/com/datacube/fx/task/FxSerialTaskQueueTest.java`
 - Modify: `src/com/datacube/fx/RedisKeyBrowserPane.java`
 - Modify: `src/com/datacube/fx/RedisConsolePane.java`
+- Modify: `src/com/datacube/fx/AppShell.java`
 
 **Interfaces:**
 - Produces: `FxSerialTaskQueue.submit(Callable<T>, Consumer<T>, Consumer<Throwable>)` and `close()`.
 - Consumes: one shared `FxTaskRunner`; each queued item still runs on its own virtual thread.
 
-- [ ] **Step 1: Write failing serial queue tests**
+- [x] **Step 1: Write failing serial queue tests**
 
 Submit multiple blocked tasks and prove FIFO completion with `maxConcurrent == 1`. Close with one active and one queued task and prove both futures are cancelled/interrupted and no UI callbacks run.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `./gradlew.bat test --tests com.datacube.fx.task.FxSerialTaskQueueTest`
 
 Expected: compilation fails because `FxSerialTaskQueue` does not exist.
 
-- [ ] **Step 3: Implement the queue and migrate Redis panes**
+- [x] **Step 3: Implement the queue and migrate Redis panes**
 
 Use an explicit synchronized `ArrayDeque` over the shared runner. Replace both pane-owned single-platform-thread executors and direct `Platform.runLater` calls with the serial queue; close the queue before closing the Redis session.
 
-- [ ] **Step 4: Verify GREEN and Redis regression tests**
+- [x] **Step 4: Verify GREEN and Redis regression tests**
 
 Run the queue test plus `RedisSessionManagerTest`, `RedisSessionTest`, and `RespClientTest`. Confirm the pane source contains no `new Thread` or local `ExecutorService`.
 

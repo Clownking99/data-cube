@@ -18,6 +18,7 @@ import com.datacube.spi.model.RoutineRef;
 import com.datacube.spi.model.ScriptOutcome;
 import com.datacube.spi.model.TableRef;
 import com.datacube.update.UpdateService;
+import com.datacube.fx.task.FxTaskRunner;
 
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -60,6 +61,7 @@ public final class AppShell {
     private final DdlService ddlSvc = new DdlService(connMgr);
     private final TableDesignService designSvc = new TableDesignService(connMgr);
     private final SessionContext session = new SessionContext();
+    private final FxTaskRunner tasks = new FxTaskRunner();
 
     private final ContentTabPane contentTabs = new ContentTabPane();
     private final LazyValue<MigrationPane> migrationPane = new LazyValue<>(MigrationPane::new);
@@ -182,7 +184,11 @@ public final class AppShell {
         try {
             migrationPane.ifInitialized(MigrationPane::shutdown);
         } finally {
-            connMgr.closeAll();
+            try {
+                tasks.close();
+            } finally {
+                connMgr.closeAll();
+            }
         }
     }
 
@@ -261,7 +267,7 @@ public final class AppShell {
         public void openRedisKeys(ConnConfig conn, int database) {
             if (conn == null) return;
             session.setActiveConnection(conn);
-            RedisKeyBrowserPane pane = new RedisKeyBrowserPane(connMgr, conn, database);
+            RedisKeyBrowserPane pane = new RedisKeyBrowserPane(connMgr, conn, database, tasks);
             Tab tab = contentTabs.openTab(conn.name() + " · db" + database, pane.getNode());
             tab.setOnClosed(e -> pane.close());
         }
@@ -270,7 +276,7 @@ public final class AppShell {
         public void openRedisConsole(ConnConfig conn) {
             if (conn == null) return;
             session.setActiveConnection(conn);
-            RedisConsolePane pane = new RedisConsolePane(connMgr, conn);
+            RedisConsolePane pane = new RedisConsolePane(connMgr, conn, tasks);
             Tab tab = contentTabs.openTab("Redis CLI - " + conn.name(), pane.getNode());
             tab.setOnClosed(e -> pane.close());
         }
