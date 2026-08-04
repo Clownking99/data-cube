@@ -7,6 +7,9 @@ import com.datacube.config.ShortcutSettings;
 import com.datacube.config.SqlHistoryStore;
 import com.datacube.export.ResultExporter;
 import com.datacube.export.XlsxWriter;
+import com.datacube.fx.task.FxSerialTaskQueue;
+import com.datacube.fx.task.FxTaskRunner;
+import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.ObjectTreeService;
 import com.datacube.sqleditor.InsertSqlGenerator;
@@ -25,6 +28,7 @@ import com.datacube.spi.model.TableRef;
 import com.datacube.spi.model.ViewInfo;
 
 import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -61,8 +65,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -72,7 +74,7 @@ import java.util.regex.Pattern;
  * <p>升级自原 {@code SqlEditorController}：连接不再手工注入，而是取自活动连接；
  * 执行委托 provider 的 {@link SqlRunner}，方言差异（schema 切换）由 provider 处理。
  */
-public final class SqlEditorPane {
+public final class SqlEditorPane implements AutoCloseable {
 
     /** 常见 SQL 关键字（大写形式，补全时展示）。 */
     private static final List<String> SQL_KEYWORDS = Arrays.asList(
@@ -109,6 +111,10 @@ public final class SqlEditorPane {
 
     /** 可配置快捷键：执行/补全/注释等在按键事件里用 {@code match} 实时判定，改绑即时生效。 */
     private final ShortcutSettings shortcuts;
+    private final FxTaskScope tasks;
+    private final FxSerialTaskQueue metadataTasks;
+    private final ChangeListener<CommentMode> commentModeListener;
+    private final ChangeListener<ConnConfig> activeConnectionListener;
 
     /** 预热的元数据名称（表/视图/schema），线程安全。 */
     private final Set<String> metaNames = ConcurrentHashMap.newKeySet();
@@ -118,12 +124,6 @@ public final class SqlEditorPane {
     private final Map<String, List<String>> columnCache = new ConcurrentHashMap<>();
     /** 正在后台加载列的 key，避免并发重复拉取。 */
     private final Set<String> columnLoading = ConcurrentHashMap.newKeySet();
-    private final ExecutorService metaPool = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "SqlMeta-Prewarm");
-        t.setDaemon(true);
-        return t;
-    });
-
     private final VBox root = new VBox(8);
     private CodeArea editorArea;
     private SqlAutoComplete autoComplete;
@@ -138,6 +138,7 @@ public final class SqlEditorPane {
     private CheckBox analyzeCheck;
 
     private volatile boolean running = false;
+    private boolean closed;
     /** 最近一次单条查询结果（用于注释显示模式切换后即时重渲染表头）；非查询视图时为 null。 */
     private QueryResult lastQueryResult;
     /** 最近一次单条查询的原 SQL（用于「复制 INSERT」解析目标表）；与 lastQueryResult 同生命周期。 */
@@ -146,7 +147,7 @@ public final class SqlEditorPane {
     public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
                          AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
                          ConnConfig boundConn, String initialSchema, SqlHistoryStore history,
-                         ShortcutSettings shortcuts) {
+                         ShortcutSettings shortcuts, FxTaskRunner runner) {
         this.session = session;
         this.connections = connections;
         this.treeSvc = treeSvc;
@@ -155,15 +156,21 @@ public final class SqlEditorPane {
         this.boundConn = boundConn;
         this.history = history;
         this.shortcuts = shortcuts;
+        this.tasks = runner.scope();
+        this.metadataTasks = new FxSerialTaskQueue(runner);
+        this.commentModeListener = (obs, oldMode, newMode) -> {
+            if (lastQueryResult != null) showQueryResult(lastQueryResult);
+        };
+        this.activeConnectionListener = (obs, oldConnection, connection) -> {
+            if (connection != null) prewarm(connection);
+        };
         build();
         // 依据打开位置回填 schema（如从表/schema 节点右键打开）；定位不到则保持空
         if (initialSchema != null && !initialSchema.isBlank()) {
             schemaField.setText(initialSchema.trim());
         }
         // 注释显示模式变化 → 对当前查询结果即时重渲染表头（不重跑 SQL）
-        settings.commentModeProperty().addListener((obs, o, n) -> {
-            if (lastQueryResult != null) showQueryResult(lastQueryResult);
-        });
+        settings.commentModeProperty().addListener(commentModeListener);
     }
 
     /** 载入指定 SQL 文本到编辑区（用于历史“找回”）。 */
@@ -193,6 +200,20 @@ public final class SqlEditorPane {
 
     public Node getNode() {
         return root;
+    }
+
+    @Override
+    public void close() {
+        if (closed) return;
+        closed = true;
+        snapshotToHistory();
+        settings.commentModeProperty().removeListener(commentModeListener);
+        if (boundConn == null) {
+            session.activeConnectionProperty().removeListener(activeConnectionListener);
+        }
+        if (autoComplete != null) autoComplete.hide();
+        metadataTasks.close();
+        tasks.close();
     }
 
     private void build() {
@@ -403,33 +424,33 @@ public final class SqlEditorPane {
         statusLabel.setText("执行中...");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
-        new Thread(() -> doExecute(connId, sql, schema, settings.getMaxResultRows()), "SqlEditor-Worker").start();
+        tasks.submit(() -> doExecute(connId, sql, schema, settings.getMaxResultRows()), result -> {
+            running = false;
+            setButtonsRunning(false);
+            if (result.error() != null) {
+                showError(result.error(), result.elapsedMillis());
+            } else {
+                showScriptResults(result.outcomes(), result.elapsedMillis());
+            }
+        }, failure -> {
+            running = false;
+            setButtonsRunning(false);
+            showError(message(failure), 0);
+        });
     }
 
-    private void doExecute(String connId, String sql, String schema, int maxRows) {
+    private ExecutionResult doExecute(String connId, String sql, String schema, int maxRows) {
         long t0 = System.currentTimeMillis();
-        List<ScriptOutcome> outcomes = null;
-        String errMsg = null;
         try {
             Connection conn = connections.acquire(connId);
             SqlRunner runner = connections.provider(connId).sqlRunner();
-            outcomes = runner.executeScript(conn, sql, schema.isEmpty() ? null : schema, maxRows,
+            List<ScriptOutcome> outcomes = runner.executeScript(conn, sql,
+                    schema.isEmpty() ? null : schema, maxRows,
                     this::askScriptError);
+            return new ExecutionResult(outcomes, null, System.currentTimeMillis() - t0);
         } catch (Exception e) {
-            errMsg = e.getMessage();
+            return new ExecutionResult(null, message(e), System.currentTimeMillis() - t0);
         }
-        long elapsed = System.currentTimeMillis() - t0;
-        final List<ScriptOutcome> fOutcomes = outcomes;
-        final String fErr = errMsg;
-        Platform.runLater(() -> {
-            running = false;
-            setButtonsRunning(false);
-            if (fErr != null) {
-                showError(fErr, elapsed);
-            } else {
-                showScriptResults(fOutcomes, elapsed);
-            }
-        });
     }
 
     /**
@@ -437,11 +458,13 @@ public final class SqlEditorPane {
      * （继续 / 全部继续 / 取消）并以 {@link CountDownLatch} 阻塞等待用户选择。
      */
     private ScriptErrorPolicy.Decision askScriptError(int index, String sql, String message) {
+        if (tasks.isClosed()) return ScriptErrorPolicy.Decision.ABORT;
         final java.util.concurrent.atomic.AtomicReference<ScriptErrorPolicy.Decision> ref =
                 new java.util.concurrent.atomic.AtomicReference<>(ScriptErrorPolicy.Decision.ABORT);
         final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
         Platform.runLater(() -> {
             try {
+                if (tasks.isClosed()) return;
                 ButtonType cont = new ButtonType("继续");
                 ButtonType contAll = new ButtonType("全部继续");
                 ButtonType abort = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
@@ -499,22 +522,20 @@ public final class SqlEditorPane {
         if (name.isEmpty()) return;
         final String schema = resolveSchema(active, dialect, rawSchema);
 
-        new Thread(() -> {
-            boolean exists = false;
-            try {
-                for (TableInfo t : treeSvc.tables(connId, schema)) {
-                    if (t.name().equalsIgnoreCase(name)) { exists = true; break; }
-                }
-            } catch (Exception ignore) {
-                // 校验失败静默：不跳转
+        tasks.submit(() -> {
+            for (TableInfo t : treeSvc.tables(connId, schema)) {
+                if (t.name().equalsIgnoreCase(name)) return true;
             }
+            return false;
+        }, exists -> {
             if (exists) {
-                Platform.runLater(() -> openDesigner.accept(connId, new TableRef(schema, name)));
+                openDesigner.accept(connId, new TableRef(schema, name));
             } else {
-                Platform.runLater(() -> statusLabel.setText("未找到表: "
-                        + (schema == null ? "" : schema + ".") + name));
+                statusLabel.setText("未找到表: " + (schema == null ? "" : schema + ".") + name);
             }
-        }, "SqlEditor-GotoTable").start();
+        }, failure -> {
+            // 校验失败静默：不跳转
+        });
     }
 
     /** 从 text 的 pos 处向两侧扩展取标识符（含 {@code .} 与引号）。 */
@@ -591,39 +612,41 @@ public final class SqlEditorPane {
         statusLabel.setText(analyze ? "执行计划(ANALYZE)中..." : "生成执行计划中...");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
-        new Thread(() -> doExplain(connId, sql, schema, analyze, total), "SqlEditor-Explain").start();
+        tasks.submit(() -> doExplain(connId, sql, schema, analyze), outcome -> {
+            running = false;
+            setButtonsRunning(false);
+            QueryResult result = outcome.result();
+            if (outcome.error() != null) {
+                showError(outcome.error(), 0);
+            } else if (result.kind == QueryResult.Kind.ERROR) {
+                showError(result.errorMessage, result.elapsedMillis);
+            } else if (result.kind == QueryResult.Kind.QUERY) {
+                StringBuilder plan = new StringBuilder();
+                for (List<Object> row : result.rows) {
+                    if (!row.isEmpty() && row.get(0) != null) plan.append(row.get(0));
+                    plan.append('\n');
+                }
+                showPlan(plan.toString(), result.elapsedMillis, total);
+            } else {
+                showError("未返回执行计划", result.elapsedMillis);
+            }
+        }, failure -> {
+            running = false;
+            setButtonsRunning(false);
+            showError(message(failure), 0);
+        });
     }
 
-    private void doExplain(String connId, String sql, String schema, boolean analyze, int total) {
-        QueryResult result = null;
-        String errMsg = null;
+    private ExplainResult doExplain(String connId, String sql, String schema, boolean analyze) {
         try {
             Connection conn = connections.acquire(connId);
             var provider = connections.provider(connId);
-            result = provider.sqlRunner().explain(conn, sql, schema.isEmpty() ? null : schema, analyze);
+            QueryResult result = provider.sqlRunner().explain(
+                    conn, sql, schema.isEmpty() ? null : schema, analyze);
+            return new ExplainResult(result, null);
         } catch (Exception e) {
-            errMsg = e.getMessage();
+            return new ExplainResult(null, message(e));
         }
-        final QueryResult fResult = result;
-        final String fErr = errMsg;
-        Platform.runLater(() -> {
-            running = false;
-            setButtonsRunning(false);
-            if (fErr != null) {
-                showError(fErr, 0);
-            } else if (fResult.kind == QueryResult.Kind.ERROR) {
-                showError(fResult.errorMessage, fResult.elapsedMillis);
-            } else if (fResult.kind == QueryResult.Kind.QUERY) {
-                StringBuilder sb = new StringBuilder();
-                for (List<Object> row : fResult.rows) {
-                    if (!row.isEmpty() && row.get(0) != null) sb.append(row.get(0));
-                    sb.append('\n');
-                }
-                showPlan(sb.toString(), fResult.elapsedMillis, total);
-            } else {
-                showError("未返回执行计划", fResult.elapsedMillis);
-            }
-        });
     }
 
     private void showPlan(String planText, long elapsed, int totalStmts) {
@@ -838,25 +861,25 @@ public final class SqlEditorPane {
         final List<List<Object>> rows = r.rows;
         statusLabel.setText("导出中...");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
-        new Thread(() -> {
-            String err = null;
+        tasks.submit(() -> {
             try {
                 writeExportFile(fmt, out, table, columns, rows);
-            } catch (Exception e) {
-                err = e.getMessage() == null ? e.toString() : e.getMessage();
-                if (out.exists()) out.delete();
-            }
-            final String fErr = err;
-            Platform.runLater(() -> {
-                if (fErr == null) {
-                    statusLabel.setText("已导出: " + out.getAbsolutePath());
-                    statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
-                } else {
-                    statusLabel.setText("导出失败: " + fErr);
-                    statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
+            } catch (Exception error) {
+                try {
+                    java.nio.file.Files.deleteIfExists(out.toPath());
+                } catch (Exception ignored) {
+                    // 保留原始导出错误
                 }
-            });
-        }, "Result-Export").start();
+                throw error;
+            }
+            return null;
+        }, ignored -> {
+            statusLabel.setText("已导出: " + out.getAbsolutePath());
+            statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
+        }, failure -> {
+            statusLabel.setText("导出失败: " + message(failure));
+            statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
+        });
     }
 
     /** 后台线程按格式写出文件；XLSX 走 XlsxWriter，文本类格式统一 UTF-8。 */
@@ -1003,6 +1026,7 @@ public final class SqlEditorPane {
 
     /** 补全候选：SQL 关键字 + 已预热的元数据名称。 */
     private Collection<String> completionCandidates() {
+        if (tasks.isClosed()) return List.of();
         List<String> all = new ArrayList<>(SQL_KEYWORDS.size() + metaNames.size());
         all.addAll(SQL_KEYWORDS);
         all.addAll(metaNames);
@@ -1015,9 +1039,7 @@ public final class SqlEditorPane {
             prewarm(boundConn);
             return;
         }
-        session.activeConnectionProperty().addListener((obs, o, c) -> {
-            if (c != null) prewarm(c);
-        });
+        session.activeConnectionProperty().addListener(activeConnectionListener);
         ConnConfig cur = session.getActiveConnection();
         if (cur != null) prewarm(cur);
     }
@@ -1027,33 +1049,30 @@ public final class SqlEditorPane {
      * 若并发冲突或失败则静默跳过并允许下次重试，不影响关键字补全。
      */
     private void prewarm(ConnConfig cfg) {
+        if (tasks.isClosed()) return;
         final String connId = cfg.id();
         final String database = cfg.database();
         if (!prewarmed.add(connId)) return;
-        metaPool.submit(() -> {
-            try {
-                List<String> schemas = new ArrayList<>();
-                if (treeSvc.hasSchemaLevel(connId)) {
-                    for (SchemaInfo s : treeSvc.schemas(connId, database)) schemas.add(s.name());
-                } else {
-                    schemas.add(null);
-                }
-                List<String> collected = new ArrayList<>();
-                for (String s : schemas) {
-                    if (s != null) collected.add(s);
-                    try {
-                        for (TableInfo t : treeSvc.tables(connId, s)) collected.add(t.name());
-                        for (ViewInfo v : treeSvc.views(connId, s)) collected.add(v.name());
-                    } catch (Exception ignore) {
-                        // 单个 schema 读取失败不阻断其余
-                    }
-                    if (collected.size() > 5000) break;
-                }
-                metaNames.addAll(collected);
-            } catch (Exception e) {
-                prewarmed.remove(connId); // 允许下次重试
+        metadataTasks.submit(() -> {
+            List<String> schemas = new ArrayList<>();
+            if (treeSvc.hasSchemaLevel(connId)) {
+                for (SchemaInfo s : treeSvc.schemas(connId, database)) schemas.add(s.name());
+            } else {
+                schemas.add(null);
             }
-        });
+            List<String> collected = new ArrayList<>();
+            for (String schema : schemas) {
+                if (schema != null) collected.add(schema);
+                try {
+                    for (TableInfo t : treeSvc.tables(connId, schema)) collected.add(t.name());
+                    for (ViewInfo v : treeSvc.views(connId, schema)) collected.add(v.name());
+                } catch (Exception ignore) {
+                    // 单个 schema 读取失败不阻断其余
+                }
+                if (collected.size() > 5000) break;
+            }
+            return collected;
+        }, metaNames::addAll, failure -> prewarmed.remove(connId));
     }
 
     // ---------- 列名成员补全（别名./表名. 上下文） ----------
@@ -1064,6 +1083,7 @@ public final class SqlEditorPane {
      * 后台加载并先返回空，加载完成后回调 {@link SqlAutoComplete#refresh()}。
      */
     private Collection<String> membersFor(String qualifier) {
+        if (tasks.isClosed()) return List.of();
         ConnConfig active = currentConn();
         if (active == null) return List.of();
         String connId = active.id();
@@ -1094,22 +1114,23 @@ public final class SqlEditorPane {
 
     /** 后台加载指定表的列名并入缓存，成功后触发补全刷新。 */
     private void loadColumnsAsync(String connId, String schema, String tableName, String key) {
+        if (tasks.isClosed()) return;
         if (!columnLoading.add(key)) return;
-        metaPool.submit(() -> {
+        metadataTasks.submit(() -> {
             List<String> cols = new ArrayList<>();
-            try {
-                for (ColumnInfo c : treeSvc.columns(connId, new TableRef(schema, tableName))) {
-                    cols.add(c.name());
-                }
-            } catch (Exception ignore) {
-                // 读取失败静默：允许下次重试
-            } finally {
-                columnLoading.remove(key);
+            for (ColumnInfo c : treeSvc.columns(connId, new TableRef(schema, tableName))) {
+                cols.add(c.name());
             }
+            return cols;
+        }, cols -> {
+            columnLoading.remove(key);
             if (!cols.isEmpty()) {
                 columnCache.put(key, cols);
                 if (autoComplete != null) autoComplete.refresh();
             }
+        }, failure -> {
+            // 读取失败静默：允许下次重试
+            columnLoading.remove(key);
         });
     }
 
@@ -1248,6 +1269,13 @@ public final class SqlEditorPane {
         }
         applyHighlighting(editorArea.getText());
     }
+
+    private static String message(Throwable error) {
+        return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+    }
+
+    private record ExecutionResult(List<ScriptOutcome> outcomes, String error, long elapsedMillis) {}
+    private record ExplainResult(QueryResult result, String error) {}
 
     private void showAlert(String msg) {
         Alert alert = new Alert(Alert.AlertType.WARNING, msg, ButtonType.OK);

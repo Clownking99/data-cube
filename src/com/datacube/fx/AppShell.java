@@ -205,10 +205,10 @@ public final class AppShell {
             ConnConfig conn = resolveConnByName(entry.connName());
             if (conn != null) session.setActiveConnection(conn);
             SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings,
-                    treeActions::openTableDesigner, conn, entry.schema(), sqlHistory, shortcuts);
+                    treeActions::openTableDesigner, conn, entry.schema(), sqlHistory, shortcuts, tasks);
             pane.setSqlText(entry.sql());
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
-            contentTabs.openManagedTab(name, pane.getNode(), pane::snapshotToHistory);
+            contentTabs.openManagedTab(name, pane.getNode(), pane::close);
         });
     }
 
@@ -235,9 +235,9 @@ public final class AppShell {
             }
             if (conn != null) session.setActiveConnection(conn);
             SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings,
-                    this::openTableDesigner, conn, schema, sqlHistory, shortcuts);
+                    this::openTableDesigner, conn, schema, sqlHistory, shortcuts, tasks);
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
-            contentTabs.openManagedTab(name, pane.getNode(), pane::snapshotToHistory);
+            contentTabs.openManagedTab(name, pane.getNode(), pane::close);
         }
 
         @Override
