@@ -5,12 +5,16 @@ import com.datacube.spi.model.DbType;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.logging.Logger;
 
 /**
@@ -24,13 +28,28 @@ public final class ConnectionStore {
     private static final Logger LOG = Logger.getLogger(ConnectionStore.class.getName());
 
     private final Path file;
+    private final PathMover mover;
+    private final SnapshotWriter writer;
 
     public ConnectionStore() {
         this(Path.of(System.getProperty("user.home"), ".datacube", "connections.json"));
     }
 
     public ConnectionStore(Path file) {
-        this.file = file;
+        this(file,
+                (source, target, options) -> Files.move(source, target, options),
+                (target, json) -> Files.writeString(target, json, StandardCharsets.UTF_8));
+    }
+
+    ConnectionStore(Path file, PathMover mover) {
+        this(file, mover,
+                (target, json) -> Files.writeString(target, json, StandardCharsets.UTF_8));
+    }
+
+    ConnectionStore(Path file, PathMover mover, SnapshotWriter writer) {
+        this.file = Objects.requireNonNull(file, "file").toAbsolutePath();
+        this.mover = Objects.requireNonNull(mover, "mover");
+        this.writer = Objects.requireNonNull(writer, "writer");
     }
 
     /** 读取所有连接配置；文件不存在返回空列表；损坏条目跳过。 */
@@ -58,20 +77,61 @@ public final class ConnectionStore {
         return out;
     }
 
-    /** 覆盖写入全部连接配置。 */
+    /** 在同目录写入临时快照并原子替换，替换前复制有效旧文件为 {@code .bak}。 */
     public synchronized void saveAll(List<ConnConfig> configs) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[\n");
+        String json = serialize(List.copyOf(Objects.requireNonNull(configs, "configs")));
+        Path parent = file.getParent();
+        Path temp = null;
+        try {
+            Files.createDirectories(parent);
+            temp = Files.createTempFile(parent, file.getFileName() + ".", ".tmp");
+            writer.write(temp, json);
+            if (Files.exists(file) && isStructurallyValid(file)) {
+                Files.copy(file, backupFile(), StandardCopyOption.REPLACE_EXISTING);
+            }
+            replace(temp);
+            temp = null;
+        } catch (IOException e) {
+            throw new IllegalStateException("写入连接配置失败: " + e.getMessage(), e);
+        } finally {
+            if (temp != null) {
+                try {
+                    Files.deleteIfExists(temp);
+                } catch (IOException cleanup) {
+                    LOG.fine("清理连接配置临时文件失败: " + cleanup.getMessage());
+                }
+            }
+        }
+    }
+
+    private static String serialize(List<ConnConfig> configs) {
+        StringBuilder sb = new StringBuilder("[\n");
         for (int i = 0; i < configs.size(); i++) {
             if (i > 0) sb.append(",\n");
             sb.append(toJson(configs.get(i)));
         }
-        sb.append("\n]\n");
+        return sb.append("\n]\n").toString();
+    }
+
+    private void replace(Path temp) throws IOException {
         try {
-            Files.createDirectories(file.getParent());
-            Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new IllegalStateException("写入连接配置失败: " + e.getMessage(), e);
+            mover.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException unsupported) {
+            mover.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private Path backupFile() {
+        return file.resolveSibling(file.getFileName() + ".bak");
+    }
+
+    private static boolean isStructurallyValid(Path candidate) {
+        try {
+            parseArrayOfObjects(Files.readString(candidate, StandardCharsets.UTF_8));
+            return true;
+        } catch (IOException | RuntimeException invalid) {
+            LOG.warning("旧连接配置损坏，不覆盖现有备份: " + invalid.getMessage());
+            return false;
         }
     }
 
@@ -244,5 +304,15 @@ public final class ConnectionStore {
             }
         }
         return sb.toString();
+    }
+
+    @FunctionalInterface
+    interface PathMover {
+        void move(Path source, Path target, CopyOption... options) throws IOException;
+    }
+
+    @FunctionalInterface
+    interface SnapshotWriter {
+        void write(Path target, String json) throws IOException;
     }
 }
