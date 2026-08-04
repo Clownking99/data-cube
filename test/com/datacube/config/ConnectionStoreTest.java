@@ -109,6 +109,52 @@ class ConnectionStoreTest {
         assertEquals("redis", store.loadAll().getFirst().id());
     }
 
+    @Test
+    void loadsBackupWhenPrimaryStructureIsCorruptWithoutOverwritingPrimary() throws Exception {
+        Path file = tempDir.resolve("connections.json");
+        ConnectionStore store = new ConnectionStore(file);
+        ConnConfig first = config("first", DbType.POSTGRESQL);
+        store.saveAll(List.of(first));
+        store.saveAll(List.of(config("second", DbType.REDIS)));
+        String corrupt = "[] trailing ]";
+        Files.writeString(file, corrupt);
+
+        assertEquals(List.of(first), store.loadAll());
+        assertEquals(corrupt, Files.readString(file));
+    }
+
+    @Test
+    void savingOverCorruptPrimaryKeepsLastValidBackup() throws Exception {
+        Path file = tempDir.resolve("connections.json");
+        Path backup = tempDir.resolve("connections.json.bak");
+        ConnectionStore store = new ConnectionStore(file);
+        ConnConfig first = config("first", DbType.POSTGRESQL);
+        store.saveAll(List.of(first));
+        store.saveAll(List.of(config("second", DbType.REDIS)));
+        Files.writeString(file, "corrupt");
+
+        store.saveAll(List.of(config("third", DbType.ORACLE)));
+
+        assertEquals(List.of(first), new ConnectionStore(backup).loadAll());
+        assertEquals("third", store.loadAll().getFirst().id());
+    }
+
+    @Test
+    void skipsMalformedEntryAndKeepsValidSibling() throws Exception {
+        Path file = tempDir.resolve("connections.json");
+        Files.writeString(file, """
+                [
+                  {"name":"bad","type":"REDIS","port":6379},
+                  {"id":"ok","name":"ok","type":"REDIS","host":"localhost","port":6379,"database":"0","username":"","encryptedPassword":""}
+                ]
+                """);
+
+        List<ConnConfig> loaded = new ConnectionStore(file).loadAll();
+
+        assertEquals(1, loaded.size());
+        assertEquals("ok", loaded.getFirst().id());
+    }
+
     private static ConnConfig config(String id, DbType type) {
         return new ConnConfig(id, id, type, "localhost", type.defaultPort(), "0", "user", "encrypted", Map.of());
     }

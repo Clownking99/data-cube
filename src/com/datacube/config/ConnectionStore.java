@@ -52,27 +52,33 @@ public final class ConnectionStore {
         this.writer = Objects.requireNonNull(writer, "writer");
     }
 
-    /** 读取所有连接配置；文件不存在返回空列表；损坏条目跳过。 */
+    /** 读取所有连接配置；主文件损坏时尝试备份，但不覆盖损坏主文件。 */
     public synchronized List<ConnConfig> loadAll() {
-        List<ConnConfig> out = new ArrayList<>();
-        if (!Files.exists(file)) return out;
-        String text;
+        if (!Files.exists(file)) return new ArrayList<>();
         try {
-            text = Files.readString(file, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            LOG.warning("读取连接配置失败: " + e.getMessage());
-            return out;
+            return load(file);
+        } catch (IOException | RuntimeException primaryFailure) {
+            LOG.warning("读取主连接配置失败，尝试备份: " + primaryFailure.getMessage());
         }
+        Path backup = backupFile();
+        if (!Files.exists(backup)) return new ArrayList<>();
         try {
-            for (Map<String, String> obj : parseArrayOfObjects(text)) {
-                try {
-                    out.add(fromMap(obj));
-                } catch (RuntimeException bad) {
-                    LOG.warning("跳过损坏的连接条目: " + bad.getMessage());
-                }
+            return load(backup);
+        } catch (IOException | RuntimeException backupFailure) {
+            LOG.warning("读取连接配置备份失败: " + backupFailure.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    private static List<ConnConfig> load(Path source) throws IOException {
+        String text = Files.readString(source, StandardCharsets.UTF_8);
+        List<ConnConfig> out = new ArrayList<>();
+        for (Map<String, String> obj : parseArrayOfObjects(text)) {
+            try {
+                out.add(fromMap(obj));
+            } catch (RuntimeException badEntry) {
+                LOG.warning("跳过损坏的连接条目: " + badEntry.getMessage());
             }
-        } catch (RuntimeException e) {
-            LOG.warning("解析连接配置失败，忽略全部: " + e.getMessage());
         }
         return out;
     }
@@ -205,7 +211,10 @@ public final class ConnectionStore {
         }
         List<Map<String, String>> result = new ArrayList<>();
         int i = skipWhitespace(json, 1);
-        if (json.charAt(i) == ']') return result;
+        if (json.charAt(i) == ']') {
+            if (i == json.length() - 1) return result;
+            throw new IllegalArgumentException("连接配置数组后存在多余内容");
+        }
         while (i < json.length() - 1) {
             if (json.charAt(i) != '{') {
                 throw new IllegalArgumentException("连接条目必须是 JSON 对象");
@@ -213,7 +222,10 @@ public final class ConnectionStore {
             int end = closingBrace(json, i + 1);
             result.add(parseObject(json.substring(i + 1, end)));
             i = skipWhitespace(json, end + 1);
-            if (json.charAt(i) == ']') return result;
+            if (json.charAt(i) == ']') {
+                if (i == json.length() - 1) return result;
+                throw new IllegalArgumentException("连接配置数组后存在多余内容");
+            }
             if (json.charAt(i) != ',') {
                 throw new IllegalArgumentException("连接条目之间缺少逗号");
             }

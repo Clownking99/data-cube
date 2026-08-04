@@ -79,6 +79,11 @@ gradlew jpackage -PinstallerType=exe
 gradlew jpackage -PappVersion=3.1.0
 ```
 
+### 连接配置可靠性
+
+连接配置先写入同目录唯一临时文件，再使用原子替换更新主文件；有效旧版本保留为
+`connections.json.bak`。若主文件结构损坏，启动时仅从备份读取，不会静默覆盖损坏文件。
+
 ### 内存基线
 
 GUI 启动器默认使用 G1 平衡配置（初始堆 16MB、最大堆 256MB）。构建
