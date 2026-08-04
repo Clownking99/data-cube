@@ -46,7 +46,8 @@
 │   └── postgresql-42.7.10.jar
 ├── lib/                          # 打包用的非模块化 jar 与 JavaFX native
 ├── build.gradle / settings.gradle / gradlew      # Gradle 构建
-├── .github/workflows/release.yml # CI：Gradle + jpackage 打包并发布 Release
+├── .github/workflows/verify.yml  # PR/main：跨平台测试、Redis 集成、Windows jlink
+├── .github/workflows/release.yml # v* tag/手动：验证通过后生成 Windows 发布产物
 └── docs/superpowers/specs/       # 设计文档
 ```
 
@@ -98,7 +99,13 @@ GUI 启动器默认使用 G1 平衡配置（初始堆 16MB、最大堆 256MB）�
 | `DataCube-vX.X.X-win64-portable.zip` | 免安装绿色版。解压后进入 `DataCube` 文件夹，双击 `DataCube.exe` 启动 GUI；`DataCubeCli.exe` 为命令行迁移工具。 |
 | `DataCube-vX.X.X-win64-setup.exe` | 安装程序。按向导安装（可选目录），创建开始菜单项与桌面快捷方式。 |
 
-推送到 `main` 分支后，GitHub Actions（[release.yml](.github/workflows/release.yml)）自动用 Gradle + jpackage 打包并发布 Release，版本号在最新 tag 上递增 patch。
+PR 和推送到 `main` 会运行 [verify.yml](.github/workflows/verify.yml)：Windows、Linux
+执行完整单元测试，Linux 使用一次性 CI 密码验证真实 Redis 协议，Windows 额外验证
+`jlink`。该流程不使用开发或生产 Redis 凭据。
+
+推送 `v*` tag 或手动运行 [release.yml](.github/workflows/release.yml) 才会发布版本。
+发布任务必须先通过同一验证门禁，并在 jpackage 前再次执行测试；手动发布会在最新
+tag 上递增 patch。
 
 ## CLI 迁移工具
 
