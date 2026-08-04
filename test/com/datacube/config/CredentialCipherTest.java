@@ -97,6 +97,26 @@ class CredentialCipherTest {
         assertEquals("fallback-secret", windowsCipher.decrypt(encoded));
     }
 
+    @Test
+    void defaultFacadeUsesAesGcmWithoutLoadingDpapiOffWindows() {
+        String originalOs = System.getProperty("os.name");
+        System.setProperty("os.name", "Linux");
+        try {
+            CredentialCipher portableCipher = new CredentialCipher();
+
+            String encoded = portableCipher.encrypt("portable-secret");
+
+            assertTrue(encoded.startsWith("v2:aesgcm:"));
+            assertEquals("portable-secret", portableCipher.decrypt(encoded));
+        } finally {
+            if (originalOs == null) {
+                System.clearProperty("os.name");
+            } else {
+                System.setProperty("os.name", originalOs);
+            }
+        }
+    }
+
     private static CredentialProtector reversible(String scheme) {
         return new CredentialProtector() {
             @Override public String scheme() { return scheme; }

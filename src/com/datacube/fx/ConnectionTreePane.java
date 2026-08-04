@@ -1,6 +1,7 @@
 package com.datacube.fx;
 
 import com.datacube.config.ConnectionStore;
+import com.datacube.config.CredentialMigration;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.ObjectTreeService;
 import com.datacube.redis.RedisSession;
@@ -170,7 +171,7 @@ public final class ConnectionTreePane {
         ConnectionDialog.show(null, connMgr.cipher(), connMgr).ifPresent(cfg -> {
             List<ConnConfig> all = new ArrayList<>(store.loadAll());
             all.add(cfg);
-            store.saveAll(all);
+            saveSnapshot(all);
             connMgr.register(cfg);
             tree.getRoot().getChildren().add(connectionItem(cfg));
         });
@@ -182,7 +183,7 @@ public final class ConnectionTreePane {
             for (ConnConfig c : store.loadAll()) {
                 all.add(c.id().equals(cfg.id()) ? cfg : c);
             }
-            store.saveAll(all);
+            saveSnapshot(all);
             connMgr.register(cfg);
             reload();
         });
@@ -198,9 +199,13 @@ public final class ConnectionTreePane {
         for (ConnConfig c : store.loadAll()) {
             if (!c.id().equals(cfg.id())) all.add(c);
         }
-        store.saveAll(all);
+        saveSnapshot(all);
         connMgr.unregister(cfg.id());
         reload();
+    }
+
+    private void saveSnapshot(List<ConnConfig> configs) {
+        store.saveAll(CredentialMigration.upgradeAll(configs, connMgr.cipher()));
     }
 
     /** 断开连接：关闭活动连接并将该节点重置为未展开的懒加载状态（下次展开重连）。 */

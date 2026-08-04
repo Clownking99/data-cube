@@ -6,8 +6,8 @@ import java.util.Map;
 /**
  * 连接配置：持久化到 {@code ~/.datacube/connections.json}。
  *
- * <p>元信息明文存储；{@code encryptedPassword} 为 AES 加密后的密文
- * （由 service 层 {@code CredentialCipher} 加解密）。不可变。
+ * <p>元信息明文存储；{@code encryptedPassword} 为版本化的受保护凭据
+ * （由 config 层 {@code CredentialCipher} 加解密）。不可变。
  */
 public record ConnConfig(
         String id,

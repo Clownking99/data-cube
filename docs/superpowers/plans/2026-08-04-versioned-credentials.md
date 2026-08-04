@@ -104,24 +104,24 @@ Commit: `feat: Windows 使用 DPAPI 保护连接密码`
 - Produces: `CredentialMigration.upgradeAll(List<ConnConfig>, CredentialCipher)`.
 - Consumes: `ConnConfig.withEncryptedPassword(String)` and `CredentialCipher.upgrade(String)`.
 
-- [ ] **Step 1: Write failing migration tests**
+- [x] **Step 1: Write failing migration tests**
 
 Test a mixed snapshot where a valid v1 entry becomes v2, an existing v2 entry is unchanged, an empty password remains empty, and a damaged v1 entry is preserved without blocking valid siblings.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `./gradlew.bat test --tests com.datacube.config.CredentialMigrationTest`
 
 Expected: compilation fails because `CredentialMigration` is missing.
 
-- [ ] **Step 3: Implement migration and wire every snapshot save**
+- [x] **Step 3: Implement migration and wire every snapshot save**
 
 Add the pure migration helper and call it before all connection-tree add/edit/delete `saveAll` operations. Do not migrate during `loadAll`, and never overwrite an entry whose legacy decryption fails.
 
-- [ ] **Step 4: Update docs and verify the project**
+- [x] **Step 4: Update docs and verify the project**
 
 Document version prefixes, DPAPI user/machine binding, fallback behavior, and save-time migration. Run `./gradlew.bat clean test`, `./gradlew.bat jlink`, `git diff --check`, and `codegraph sync`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit: `feat: 保存连接时迁移旧版凭据`
