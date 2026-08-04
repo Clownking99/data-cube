@@ -2,6 +2,8 @@ package com.datacube.fx;
 
 import com.datacube.config.AppSettings;
 import com.datacube.config.AppSettings.CommentMode;
+import com.datacube.fx.task.FxTaskRunner;
+import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.DataBrowseService;
 import com.datacube.service.DataEditService;
 import com.datacube.spi.model.EditableColumn;
@@ -9,7 +11,6 @@ import com.datacube.spi.model.PagedResult;
 import com.datacube.spi.model.RowKey;
 import com.datacube.spi.model.TableRef;
 
-import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -31,7 +32,7 @@ import java.util.List;
  * 二次确认）。读写共用 {@code busy} 串行开关，保护共享连接。写能力经
  * {@link DataEditService}，只读分页经 {@link DataBrowseService}。
  */
-public final class DataGridPane {
+public final class DataGridPane implements AutoCloseable {
 
     private static final int PAGE_SIZE = 200;
 
@@ -43,6 +44,7 @@ public final class DataGridPane {
     private final AppSettings settings;
     /** 是否强制只读（如视图）：禁用新增/删除/编辑，仅查看数据。 */
     private final boolean readOnly;
+    private final FxTaskScope tasks;
 
     private final VBox root = new VBox(8);
     private TableView<EditableGridModel.Row> grid;
@@ -61,12 +63,7 @@ public final class DataGridPane {
     private final List<TableColumn<EditableGridModel.Row, String>> dataColumns = new ArrayList<>();
 
     public DataGridPane(DataBrowseService browse, DataEditService edit, String connId, String connName,
-                        TableRef table, AppSettings settings) {
-        this(browse, edit, connId, connName, table, settings, false);
-    }
-
-    public DataGridPane(DataBrowseService browse, DataEditService edit, String connId, String connName,
-                        TableRef table, AppSettings settings, boolean readOnly) {
+                        TableRef table, AppSettings settings, boolean readOnly, FxTaskRunner runner) {
         this.browse = browse;
         this.edit = edit;
         this.connId = connId;
@@ -74,6 +71,7 @@ public final class DataGridPane {
         this.table = table;
         this.settings = settings;
         this.readOnly = readOnly;
+        this.tasks = runner.scope();
         build();
         settings.commentModeProperty().addListener((o, a, b) -> reapplyHeaders());
         load();
@@ -81,6 +79,11 @@ public final class DataGridPane {
 
     public Node getNode() {
         return root;
+    }
+
+    @Override
+    public void close() {
+        tasks.close();
     }
 
     // ---------- 构建 ----------
@@ -166,34 +169,26 @@ public final class DataGridPane {
 
         final String filter = filterField.getText().trim();
         final long reqOffset = offset;
-        new Thread(() -> {
-            EditableGridModel m = model;
-            PagedResult result = null;
-            String err = null;
-            try {
-                if (m == null) {
-                    List<EditableColumn> cols = edit.columns(connId, table);
-                    m = new EditableGridModel(cols, readOnly);
-                }
-                result = browse.page(connId, table, reqOffset, PAGE_SIZE, null,
-                        filter.isEmpty() ? null : filter);
-            } catch (Exception e) {
-                err = e.getMessage();
+        final EditableGridModel existingModel = model;
+        tasks.submit(() -> {
+            EditableGridModel loadedModel = existingModel;
+            if (loadedModel == null) {
+                List<EditableColumn> cols = edit.columns(connId, table);
+                loadedModel = new EditableGridModel(cols, readOnly);
             }
-            final EditableGridModel fModel = m;
-            final PagedResult fResult = result;
-            final String fErr = err;
-            Platform.runLater(() -> {
-                busy = false;
-                setControlsDisabled(false);
-                if (fErr != null) {
-                    error("错误: " + fErr);
-                } else {
-                    model = fModel;
-                    render(fResult);
-                }
-            });
-        }, "DataGrid-Worker").start();
+            PagedResult result = browse.page(connId, table, reqOffset, PAGE_SIZE, null,
+                    filter.isEmpty() ? null : filter);
+            return new LoadResult(loadedModel, result);
+        }, loaded -> {
+            busy = false;
+            setControlsDisabled(false);
+            model = loaded.model();
+            render(loaded.result());
+        }, failure -> {
+            busy = false;
+            setControlsDisabled(false);
+            error("错误: " + message(failure));
+        });
     }
 
     private void render(PagedResult result) {
@@ -378,37 +373,31 @@ public final class DataGridPane {
         busy = true;
         setControlsDisabled(true);
         info("提交中...");
-        new Thread(() -> {
-            String err = null;
-            try {
-                if (wasNew) {
-                    edit.insert(connId, table, changed);
-                } else {
-                    edit.update(connId, table, changed, key);
-                }
-            } catch (Exception e) {
-                err = e.getMessage();
+        tasks.submit(() -> {
+            if (wasNew) {
+                edit.insert(connId, table, changed);
+            } else {
+                edit.update(connId, table, changed, key);
             }
-            final String fErr = err;
-            Platform.runLater(() -> {
-                busy = false;
-                setControlsDisabled(false);
-                if (fErr != null) {
-                    error("提交失败: " + fErr);
-                    // 保留脏状态，焦点停留在该行
-                    return;
-                }
-                if (needReload) {
-                    if (after != null) after.run();
-                    else load();
-                } else {
-                    model.markClean(row);
-                    grid.refresh();
-                    info("已提交 1 行");
-                    if (after != null) after.run();
-                }
-            });
-        }, "DataGrid-Commit").start();
+            return null;
+        }, ignored -> {
+            busy = false;
+            setControlsDisabled(false);
+            if (needReload) {
+                if (after != null) after.run();
+                else load();
+            } else {
+                model.markClean(row);
+                grid.refresh();
+                info("已提交 1 行");
+                if (after != null) after.run();
+            }
+        }, failure -> {
+            busy = false;
+            setControlsDisabled(false);
+            error("提交失败: " + message(failure));
+            // 保留脏状态，焦点停留在该行
+        });
     }
 
     // ---------- 分页（先提交当前脏行） ----------
@@ -453,7 +442,8 @@ public final class DataGridPane {
         busy = true;
         setControlsDisabled(true);
         info("删除中...");
-        new Thread(() -> {
+        final EditableGridModel currentModel = model;
+        tasks.submit(() -> {
             String err = null;
             int done = 0;
             for (EditableGridModel.Row row : selected) {
@@ -461,27 +451,30 @@ public final class DataGridPane {
                     continue; // 未提交的新增行，仅 UI 移除
                 }
                 try {
-                    edit.delete(connId, table, model.keyOf(row));
+                    edit.delete(connId, table, currentModel.keyOf(row));
                     done++;
                 } catch (Exception e) {
                     err = e.getMessage();
                     break;
                 }
             }
-            final String fErr = err;
-            final int fDone = done;
-            Platform.runLater(() -> {
-                busy = false;
-                setControlsDisabled(false);
-                if (fErr != null) {
-                    error("删除失败（已删 " + fDone + " 行）: " + fErr);
-                    load(); // 重载以反映真实状态
-                } else {
-                    grid.getItems().removeAll(selected);
-                    info("已删除 " + selected.size() + " 行");
-                }
-            });
-        }, "DataGrid-Delete").start();
+            return new DeleteResult(done, err);
+        }, result -> {
+            busy = false;
+            setControlsDisabled(false);
+            if (result.error() != null) {
+                error("删除失败（已删 " + result.deleted() + " 行）: " + result.error());
+                load(); // 重载以反映真实状态
+            } else {
+                grid.getItems().removeAll(selected);
+                info("已删除 " + selected.size() + " 行");
+            }
+        }, failure -> {
+            busy = false;
+            setControlsDisabled(false);
+            error("删除失败: " + message(failure));
+            load();
+        });
     }
 
     // ---------- 单元格 ----------
@@ -649,6 +642,13 @@ public final class DataGridPane {
         a.setTitle("操作失败");
         a.showAndWait();
     }
+
+    private static String message(Throwable error) {
+        return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+    }
+
+    private record LoadResult(EditableGridModel model, PagedResult result) {}
+    private record DeleteResult(int deleted, String error) {}
 
     /** 估算列宽：取表头与前若干行内容的最大字符数，换算像素并裁剪到 [60, 360]。 */
     private static double estimateColumnWidth(String header, List<List<Object>> rows, int idx) {

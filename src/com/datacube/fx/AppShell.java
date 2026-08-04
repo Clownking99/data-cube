@@ -243,9 +243,10 @@ public final class AppShell {
         @Override
         public void openDataGrid(String connId, TableRef table, boolean readOnly) {
             String connName = connMgr.config(connId).name();
-            DataGridPane pane = new DataGridPane(browseSvc, editSvc, connId, connName, table, settings, readOnly);
+            DataGridPane pane = new DataGridPane(
+                    browseSvc, editSvc, connId, connName, table, settings, readOnly, tasks);
             String prefix = readOnly ? "视图: " : "数据: ";
-            contentTabs.openTab(prefix + table.name(), pane.getNode());
+            contentTabs.openManagedTab(prefix + table.name(), pane.getNode(), pane::close);
         }
 
         @Override
