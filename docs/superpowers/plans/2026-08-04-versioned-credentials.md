@@ -68,25 +68,25 @@ Commit: `feat: 引入版本化凭据格式并兼容旧密文`
 - Produces: DPAPI protector returning raw Base64 payloads to the facade.
 - Consumes: `CryptProtectData`, `CryptUnprotectData`, `LocalFree`, and `GetLastError` via FFM.
 
-- [ ] **Step 1: Write failing DPAPI selection/fallback tests**
+- [x] **Step 1: Write failing DPAPI selection/fallback tests**
 
 Test that a DPAPI primary produces `v2:dpapi:`, that primary failure falls back to `v2:aesgcm:`, and that a Windows native round trip restores Unicode without returning plaintext bytes.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `./gradlew.bat test --tests com.datacube.config.CredentialCipherTest --tests com.datacube.config.DpapiCredentialProtectorTest`
 
 Expected: compilation fails because the DPAPI protector and primary/fallback constructor are missing.
 
-- [ ] **Step 3: Implement the native bridge**
+- [x] **Step 3: Implement the native bridge**
 
 Model `DATA_BLOB` using ABI-aligned FFM layouts, pass `CRYPTPROTECT_UI_FORBIDDEN`, copy native output before leaving the confined arena, and always release `pbData` with `LocalFree`. Convert native failures to sanitized `IllegalStateException` messages containing only the Win32 error code.
 
-- [ ] **Step 4: Enable native access for tests and verify GREEN**
+- [x] **Step 4: Enable native access for tests and verify GREEN**
 
 Set `--enable-native-access=ALL-UNNAMED` on the Gradle test JVM. Run the two focused test classes and confirm all tests pass on Windows; gate the native round trip with an OS assumption so Linux CI remains valid.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit: `feat: Windows 使用 DPAPI 保护连接密码`
 

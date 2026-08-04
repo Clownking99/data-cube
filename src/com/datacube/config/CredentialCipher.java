@@ -17,11 +17,11 @@ public final class CredentialCipher {
     private final CredentialProtector legacy;
 
     public CredentialCipher() {
-        this(AesGcmCredentialProtector.legacy());
+        this(defaultProtectors());
     }
 
-    private CredentialCipher(CredentialProtector aes) {
-        this(aes, aes, aes);
+    private CredentialCipher(DefaultProtectors defaults) {
+        this(defaults.primary(), defaults.aes(), defaults.aes());
     }
 
     CredentialCipher(CredentialProtector primary, CredentialProtector fallback,
@@ -108,5 +108,21 @@ public final class CredentialCipher {
             if (!Character.isDigit(encoded.charAt(i))) return false;
         }
         return true;
+    }
+
+    private static DefaultProtectors defaultProtectors() {
+        CredentialProtector aes = AesGcmCredentialProtector.legacy();
+        if (!System.getProperty("os.name", "").toLowerCase().contains("win")) {
+            return new DefaultProtectors(aes, aes);
+        }
+        try {
+            return new DefaultProtectors(new DpapiCredentialProtector(), aes);
+        } catch (RuntimeException unavailable) {
+            LOG.warning("Windows DPAPI 初始化不可用，使用 AES-GCM 回退");
+            return new DefaultProtectors(aes, aes);
+        }
+    }
+
+    private record DefaultProtectors(CredentialProtector primary, CredentialProtector aes) {
     }
 }

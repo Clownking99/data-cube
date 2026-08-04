@@ -70,4 +70,38 @@ class CredentialCipherTest {
         assertEquals("migrate-me", cipher.decrypt(upgraded));
         assertEquals(unreadable, cipher.upgrade(unreadable));
     }
+
+    @Test
+    void usesDpapiPrimaryForNewCredentials() {
+        CredentialProtector dpapi = reversible("dpapi");
+        CredentialCipher windowsCipher = new CredentialCipher(dpapi, aes, aes);
+
+        String encoded = windowsCipher.encrypt("windows-secret");
+
+        assertTrue(encoded.startsWith("v2:dpapi:"));
+        assertEquals("windows-secret", windowsCipher.decrypt(encoded));
+    }
+
+    @Test
+    void fallsBackToAesGcmWhenDpapiProtectionFails() {
+        CredentialProtector unavailableDpapi = new CredentialProtector() {
+            @Override public String scheme() { return "dpapi"; }
+            @Override public String protect(String plain) { throw new IllegalStateException("native unavailable"); }
+            @Override public String unprotect(String payload) { throw new IllegalStateException("native unavailable"); }
+        };
+        CredentialCipher windowsCipher = new CredentialCipher(unavailableDpapi, aes, aes);
+
+        String encoded = windowsCipher.encrypt("fallback-secret");
+
+        assertTrue(encoded.startsWith("v2:aesgcm:"));
+        assertEquals("fallback-secret", windowsCipher.decrypt(encoded));
+    }
+
+    private static CredentialProtector reversible(String scheme) {
+        return new CredentialProtector() {
+            @Override public String scheme() { return scheme; }
+            @Override public String protect(String plain) { return new StringBuilder(plain).reverse().toString(); }
+            @Override public String unprotect(String payload) { return new StringBuilder(payload).reverse().toString(); }
+        };
+    }
 }

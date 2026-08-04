@@ -117,6 +117,8 @@ tasks.named('compileTestJava') {
 tasks.named('test') {
     modularity.inferModulePath = false
     useJUnitPlatform()
+    // DPAPI 单元测试运行于未命名模块；显式授权 JDK 25 FFM 原生调用。
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 application {
