@@ -13,6 +13,7 @@ import javafx.scene.control.TabPane;
 public final class ContentTabPane {
 
     private final TabPane tabPane = new TabPane();
+    private final ManagedTabRegistry<Tab> managedTabs = new ManagedTabRegistry<>();
 
     public ContentTabPane() {
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.SELECTED_TAB);
@@ -36,6 +37,19 @@ public final class ContentTabPane {
         tabPane.getTabs().add(tab);
         tabPane.getSelectionModel().select(tab);
         return tab;
+    }
+
+    /** 打开由容器管理生命周期的标签；关闭标签或应用时释放器只执行一次。 */
+    public Tab openManagedTab(String title, Node content, Runnable disposer) {
+        Tab tab = openTab(title, content);
+        Runnable close = managedTabs.register(tab, disposer);
+        tab.setOnClosed(event -> close.run());
+        return tab;
+    }
+
+    /** 释放全部尚未关闭的受管标签资源，供应用退出调用。 */
+    public void disposeAll() {
+        managedTabs.disposeAll();
     }
 
     /**

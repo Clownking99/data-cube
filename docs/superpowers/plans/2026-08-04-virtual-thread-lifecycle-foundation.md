@@ -85,7 +85,7 @@ Use an explicit synchronized `ArrayDeque` over the shared runner. Replace both p
 
 Run the queue test plus `RedisSessionManagerTest`, `RedisSessionTest`, and `RespClientTest`. Confirm the pane source contains no `new Thread` or local `ExecutorService`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit: `feat: Redis 面板使用串行虚拟线程队列`
 
@@ -103,24 +103,24 @@ Commit: `feat: Redis 面板使用串行虚拟线程队列`
 - Produces: `ContentTabPane.openManagedTab(String, Node, Runnable)` and `disposeAll()`.
 - Consumes: exactly-once `RedisKeyBrowserPane.close`, `RedisConsolePane.close`, and SQL history snapshot callbacks.
 
-- [ ] **Step 1: Write failing lifecycle registry tests**
+- [x] **Step 1: Write failing lifecycle registry tests**
 
 Test that a disposer runs once when both individual close and global shutdown race, that global shutdown disposes every remaining entry, and that registering after shutdown immediately disposes the resource.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run: `./gradlew.bat test --tests com.datacube.fx.ManagedTabRegistryTest`
 
 Expected: compilation fails because the lifecycle registry does not exist.
 
-- [ ] **Step 3: Implement managed tabs and wire shutdown**
+- [x] **Step 3: Implement managed tabs and wire shutdown**
 
 Use the registry behind `openManagedTab`; replace AppShell `setOnClosed` calls for SQL history and Redis panes. `AppShell.shutdown()` disposes managed tabs, closes the shared runner with the 3-second policy, then closes connection resources.
 
-- [ ] **Step 4: Document and verify the project**
+- [x] **Step 4: Document and verify the project**
 
 Document the virtual-thread/lifecycle rules. Run `./gradlew.bat clean test`, `./gradlew.bat jlink`, `git diff --check`, and `codegraph sync`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Commit: `feat: 统一管理标签页任务与资源生命周期`

@@ -30,7 +30,6 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Separator;
 import javafx.scene.control.SplitPane;
-import javafx.scene.control.Tab;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -179,15 +178,19 @@ public final class AppShell {
                         root.getScene() == null ? null : root.getScene().getWindow())));
     }
 
-    /** 释放全部资源：迁移资源 + 关闭所有活动连接。 */
+    /** 释放全部资源：标签页、迁移任务、后台任务与活动连接。 */
     public void shutdown() {
         try {
-            migrationPane.ifInitialized(MigrationPane::shutdown);
+            contentTabs.disposeAll();
         } finally {
             try {
-                tasks.close();
+                migrationPane.ifInitialized(MigrationPane::shutdown);
             } finally {
-                connMgr.closeAll();
+                try {
+                    tasks.close();
+                } finally {
+                    connMgr.closeAll();
+                }
             }
         }
     }
@@ -205,8 +208,7 @@ public final class AppShell {
                     treeActions::openTableDesigner, conn, entry.schema(), sqlHistory, shortcuts);
             pane.setSqlText(entry.sql());
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
-            Tab tab = contentTabs.openTab(name, pane.getNode());
-            tab.setOnClosed(e -> pane.snapshotToHistory());
+            contentTabs.openManagedTab(name, pane.getNode(), pane::snapshotToHistory);
         });
     }
 
@@ -235,8 +237,7 @@ public final class AppShell {
             SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings,
                     this::openTableDesigner, conn, schema, sqlHistory, shortcuts);
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
-            Tab tab = contentTabs.openTab(name, pane.getNode());
-            tab.setOnClosed(e -> pane.snapshotToHistory());
+            contentTabs.openManagedTab(name, pane.getNode(), pane::snapshotToHistory);
         }
 
         @Override
@@ -268,8 +269,7 @@ public final class AppShell {
             if (conn == null) return;
             session.setActiveConnection(conn);
             RedisKeyBrowserPane pane = new RedisKeyBrowserPane(connMgr, conn, database, tasks);
-            Tab tab = contentTabs.openTab(conn.name() + " · db" + database, pane.getNode());
-            tab.setOnClosed(e -> pane.close());
+            contentTabs.openManagedTab(conn.name() + " · db" + database, pane.getNode(), pane::close);
         }
 
         @Override
@@ -277,8 +277,7 @@ public final class AppShell {
             if (conn == null) return;
             session.setActiveConnection(conn);
             RedisConsolePane pane = new RedisConsolePane(connMgr, conn, tasks);
-            Tab tab = contentTabs.openTab("Redis CLI - " + conn.name(), pane.getNode());
-            tab.setOnClosed(e -> pane.close());
+            contentTabs.openManagedTab("Redis CLI - " + conn.name(), pane.getNode(), pane::close);
         }
 
         @Override
