@@ -139,20 +139,51 @@ public final class ConnectionStore {
     // ---------- 极简解析（仅支持本类产出的平坦对象数组） ----------
 
     private static List<Map<String, String>> parseArrayOfObjects(String text) {
-        List<Map<String, String>> result = new ArrayList<>();
-        int i = 0, n = text.length();
-        while (i < n && text.charAt(i) != '[') i++;
-        if (i >= n) return result;
-        i++; // skip [
-        while (i < n) {
-            while (i < n && text.charAt(i) != '{' && text.charAt(i) != ']') i++;
-            if (i >= n || text.charAt(i) == ']') break;
-            int end = text.indexOf('}', i);
-            if (end < 0) break;
-            result.add(parseObject(text.substring(i + 1, end)));
-            i = end + 1;
+        String json = text.strip();
+        if (json.length() < 2 || json.charAt(0) != '[' || json.charAt(json.length() - 1) != ']') {
+            throw new IllegalArgumentException("连接配置必须是完整 JSON 数组");
         }
-        return result;
+        List<Map<String, String>> result = new ArrayList<>();
+        int i = skipWhitespace(json, 1);
+        if (json.charAt(i) == ']') return result;
+        while (i < json.length() - 1) {
+            if (json.charAt(i) != '{') {
+                throw new IllegalArgumentException("连接条目必须是 JSON 对象");
+            }
+            int end = closingBrace(json, i + 1);
+            result.add(parseObject(json.substring(i + 1, end)));
+            i = skipWhitespace(json, end + 1);
+            if (json.charAt(i) == ']') return result;
+            if (json.charAt(i) != ',') {
+                throw new IllegalArgumentException("连接条目之间缺少逗号");
+            }
+            i = skipWhitespace(json, i + 1);
+        }
+        throw new IllegalArgumentException("连接配置数组未闭合");
+    }
+
+    private static int skipWhitespace(String text, int from) {
+        int i = from;
+        while (i < text.length() && Character.isWhitespace(text.charAt(i))) i++;
+        return i;
+    }
+
+    private static int closingBrace(String text, int from) {
+        boolean quoted = false;
+        boolean escaped = false;
+        for (int i = from; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (escaped) {
+                escaped = false;
+            } else if (quoted && ch == '\\') {
+                escaped = true;
+            } else if (ch == '"') {
+                quoted = !quoted;
+            } else if (!quoted && ch == '}') {
+                return i;
+            }
+        }
+        throw new IllegalArgumentException("连接条目对象未闭合");
     }
 
     private static Map<String, String> parseObject(String body) {
@@ -191,7 +222,7 @@ public final class ConnectionStore {
             if (s.charAt(i) == '\\') { i++; continue; }
             if (s.charAt(i) == '"') return i;
         }
-        return s.length();
+        throw new IllegalArgumentException("字符串未闭合");
     }
 
     private static String unescape(String s) {
