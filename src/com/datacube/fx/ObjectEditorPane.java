@@ -1,9 +1,10 @@
 package com.datacube.fx;
 
+import com.datacube.fx.task.FxTaskRunner;
+import com.datacube.fx.task.FxTaskScope;
 import com.datacube.spi.model.QueryResult;
 import com.datacube.spi.model.ScriptOutcome;
 
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -32,7 +33,7 @@ import java.util.function.Function;
  * <p>工具栏提供「执行 / 重新加载 / 复制」；底部状态区逐条汇总执行结果（成功/失败与耗时），
  * 任一单元失败时状态区标红并展示错误信息。执行整段文本（含 spec+body 多单元）。
  */
-public final class ObjectEditorPane {
+public final class ObjectEditorPane implements AutoCloseable {
 
     private final VBox root = new VBox(8);
     private final CodeArea codeArea = HighlightedSqlArea.create(true);
@@ -44,23 +45,32 @@ public final class ObjectEditorPane {
     private final String title;
     private final Callable<String> fetch;
     private final Function<String, List<ScriptOutcome>> executor;
+    private final FxTaskScope tasks;
 
     /**
      * @param title    面板标题（对象名）
      * @param fetch    初始 DDL 获取逻辑（工作线程执行，可抛异常）
      * @param executor 执行器：接收整段文本，返回每单元执行结果（工作线程执行）
+     * @param runner   应用级虚拟线程运行器
      */
     public ObjectEditorPane(String title, Callable<String> fetch,
-                            Function<String, List<ScriptOutcome>> executor) {
+                            Function<String, List<ScriptOutcome>> executor,
+                            FxTaskRunner runner) {
         this.title = title;
         this.fetch = fetch;
         this.executor = executor;
+        this.tasks = runner.scope();
         build();
         load();
     }
 
     public Node getNode() {
         return root;
+    }
+
+    @Override
+    public void close() {
+        tasks.close();
     }
 
     private void build() {
@@ -103,30 +113,17 @@ public final class ObjectEditorPane {
     /** 加载初始 DDL 到编辑区。 */
     private void load() {
         setBusy(true);
-        new Thread(() -> {
-            String ddl;
-            String err = null;
-            try {
-                ddl = fetch.call();
-            } catch (Exception e) {
-                ddl = null;
-                err = e.getMessage();
-            }
-            final String fDdl = ddl;
-            final String fErr = err;
-            Platform.runLater(() -> {
-                setBusy(false);
-                if (fErr != null) {
-                    codeArea.replaceText("-- 获取 DDL 失败: " + fErr);
-                    statusLabel.setText("错误");
-                    statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
-                } else {
-                    codeArea.replaceText(fDdl == null ? "" : fDdl);
-                    statusLabel.setText("就绪");
-                    statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
-                }
-            });
-        }, "ObjectEditor-Load").start();
+        tasks.submit(fetch, ddl -> {
+            setBusy(false);
+            codeArea.replaceText(ddl == null ? "" : ddl);
+            statusLabel.setText("就绪");
+            statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
+        }, failure -> {
+            setBusy(false);
+            codeArea.replaceText("-- 获取 DDL 失败: " + message(failure));
+            statusLabel.setText("错误");
+            statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
+        });
     }
 
     /** 重新加载：确认后重跑初始 DDL 覆盖编辑区（避免误丢改动）。 */
@@ -150,28 +147,15 @@ public final class ObjectEditorPane {
         setBusy(true);
         statusLabel.setText("执行中...");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
-        new Thread(() -> {
-            List<ScriptOutcome> outcomes;
-            String err = null;
-            try {
-                outcomes = executor.apply(ddl);
-            } catch (Exception e) {
-                outcomes = null;
-                err = e.getMessage();
-            }
-            final List<ScriptOutcome> fOutcomes = outcomes;
-            final String fErr = err;
-            Platform.runLater(() -> {
-                setBusy(false);
-                if (fErr != null) {
-                    statusArea.setText("执行失败: " + fErr);
-                    statusLabel.setText("失败");
-                    statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
-                    return;
-                }
-                renderOutcomes(fOutcomes);
-            });
-        }, "ObjectEditor-Execute").start();
+        tasks.submit(() -> executor.apply(ddl), outcomes -> {
+            setBusy(false);
+            renderOutcomes(outcomes);
+        }, failure -> {
+            setBusy(false);
+            statusArea.setText("执行失败: " + message(failure));
+            statusLabel.setText("失败");
+            statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
+        });
     }
 
     private void renderOutcomes(List<ScriptOutcome> outcomes) {
@@ -202,5 +186,10 @@ public final class ObjectEditorPane {
             statusLabel.setText("全部成功：" + ok + " 条");
             statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
         }
+    }
+
+    private static String message(Throwable failure) {
+        String message = failure.getMessage();
+        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
 }

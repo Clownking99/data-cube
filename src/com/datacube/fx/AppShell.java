@@ -310,8 +310,8 @@ public final class AppShell {
                 }
             };
             ObjectEditorPane pane = new ObjectEditorPane(
-                    "编辑: " + name, ddlFetch(connId, node), executor);
-            contentTabs.openTab("编辑: " + name, pane.getNode());
+                    "编辑: " + name, ddlFetch(connId, node), executor, tasks);
+            contentTabs.openManagedTab("编辑: " + name, pane.getNode(), pane::close);
         }
 
         @Override
