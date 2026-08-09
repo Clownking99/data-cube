@@ -7,6 +7,7 @@ import com.datacube.spi.ConnectionFactory;
 import com.datacube.spi.DatabaseProvider;
 import com.datacube.spi.ProviderRegistry;
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.DbType;
 
 import java.sql.Connection;
@@ -14,6 +15,8 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
 import java.util.logging.Logger;
 
 /**
@@ -29,12 +32,20 @@ public final class ConnectionManager {
 
     private final CredentialCipher cipher;
     private final RedisSessionManager redis;
+    private final Function<DbType, DatabaseProvider> providerResolver;
     private final Map<String, ConnConfig> configs = new LinkedHashMap<>();
     private final Map<String, Connection> live = new HashMap<>();
 
     public ConnectionManager(CredentialCipher cipher) {
+        this(cipher, ProviderRegistry::forType);
+    }
+
+    ConnectionManager(
+            CredentialCipher cipher,
+            Function<DbType, DatabaseProvider> providerResolver) {
         this.cipher = cipher;
         this.redis = new RedisSessionManager(cipher);
+        this.providerResolver = Objects.requireNonNull(providerResolver, "providerResolver");
     }
 
     /** 凭据加解密器（供 UI 编辑连接时加密密码复用）。 */
@@ -72,7 +83,7 @@ public final class ConnectionManager {
         if (cfg.type() == DbType.REDIS) {
             throw new IllegalStateException("Redis 不使用 JDBC DatabaseProvider");
         }
-        return ProviderRegistry.forType(cfg.type());
+        return providerResolver.apply(cfg.type());
     }
 
     /** 惰性建连并按 connId 缓存；已有有效连接直接复用。 */
@@ -89,10 +100,27 @@ public final class ConnectionManager {
             closeQuietly(existing);
             live.remove(connId);
         }
-        DatabaseProvider provider = ProviderRegistry.forType(cfg.type());
+        DatabaseProvider provider = providerResolver.apply(cfg.type());
         Connection conn = provider.connectionFactory().open(withPlainPassword(cfg));
         live.put(connId, conn);
         return conn;
+    }
+
+    /** 创建不进入共享缓存、由调用方独占并负责关闭的 JDBC 连接。 */
+    public Connection openDedicated(String connId) throws SQLException {
+        ConnConfig cfg = requireConfig(connId);
+        if (cfg.type() == DbType.REDIS) {
+            throw new IllegalStateException("Redis 连接不能创建 JDBC 编辑器会话");
+        }
+        return providerResolver.apply(cfg.type()).connectionFactory().open(withPlainPassword(cfg));
+    }
+
+    /** 为 SQL 编辑器创建一个拥有独立 JDBC 连接生命周期的新会话。 */
+    public JdbcEditorSession openEditorSession(String connId) {
+        ConnConfig cfg = requireConfig(connId);
+        DatabaseProvider provider = provider(connId);
+        return new JdbcEditorSession(connId, ConnectionSafetyOptions.from(cfg),
+                () -> openDedicated(connId), provider.sqlRunner());
     }
 
     /** 释放指定连接。 */
@@ -116,7 +144,7 @@ public final class ConnectionManager {
      */
     public String test(ConnConfig cfg) {
         if (cfg.type() == DbType.REDIS) return redis.test(cfg);
-        DatabaseProvider provider = ProviderRegistry.forType(cfg.type());
+        DatabaseProvider provider = providerResolver.apply(cfg.type());
         return provider.connectionFactory().test(withPlainPassword(cfg));
     }
 
