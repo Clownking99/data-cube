@@ -100,7 +100,18 @@ GUI 启动器默认使用 G1 平衡配置（初始堆 16MB、最大堆 256MB）�
 .\tools\measure-memory.ps1
 ```
 
-脚本等待主窗口稳定后输出工作集、私有内存和线程数，并只关闭自己启动的进程。
+脚本等待主窗口稳定后输出工作集、私有内存、线程数和完整 JVM 参数，并只关闭自己
+启动的进程。需要降低单次采样波动时，可连续测量三个独立进程：
+
+```powershell
+.\tools\measure-memory.ps1 -Samples 3
+```
+
+CDS 对照实验可显式使用 `-CdsMode off` 或 `-CdsMode on`；`on` 要求当前 jlink
+镜像已通过 `build\image\bin\java.exe -Xshare:dump` 生成归档。默认 `auto` 在没有归档时
+仍可正常启动。当前 JDK 25 静态 CDS 实验没有得到可重复的启动或空闲内存收益，因此发布
+镜像暂不内置归档，详见
+[`docs/performance/2026-08-09-jdk25-cds-validation.md`](docs/performance/2026-08-09-jdk25-cds-validation.md)。
 
 ### 后台任务与资源生命周期
 
