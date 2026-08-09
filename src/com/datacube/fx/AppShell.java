@@ -291,7 +291,7 @@ public final class AppShell {
         @Override
         public void exportTable(String connId, TableRef table) {
             ExportDialog.show(connMgr, connId, table,
-                    root.getScene() == null ? null : root.getScene().getWindow());
+                    root.getScene() == null ? null : root.getScene().getWindow(), tasks);
         }
 
         @Override

@@ -3,10 +3,11 @@ package com.datacube.fx;
 import com.datacube.export.ExportContent;
 import com.datacube.export.ExportFormat;
 import com.datacube.export.TableExporter;
+import com.datacube.fx.task.FxTaskRunner;
+import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.ConnectionManager;
 import com.datacube.spi.model.TableRef;
 
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
@@ -19,17 +20,19 @@ import javafx.stage.FileChooser;
 import javafx.stage.Window;
 
 import java.io.File;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 单表导出对话框：选择内容（结构/数据/两者）与格式（SQL/Excel/pg_dump），
- * 再经 {@link FileChooser} 选目标文件，后台线程调用 {@link TableExporter}。
+ * 再经 {@link FileChooser} 选目标文件，受管虚拟线程调用 {@link TableExporter}。
  */
 public final class ExportDialog {
 
     private ExportDialog() {
     }
 
-    public static void show(ConnectionManager conns, String connId, TableRef table, Window owner) {
+    public static void show(ConnectionManager conns, String connId, TableRef table, Window owner,
+                            FxTaskRunner runner) {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle("导出表: " + table.qualified());
         dialog.setHeaderText(null);
@@ -95,39 +98,58 @@ public final class ExportDialog {
         File out = chooser.showSaveDialog(owner);
         if (out == null) return;
 
-        runExport(conns, connId, table, content, format, out);
+        runExport(conns, connId, table, content, format, out, runner);
     }
 
     private static void runExport(ConnectionManager conns, String connId, TableRef table,
-                                  ExportContent content, ExportFormat format, File out) {
+                                  ExportContent content, ExportFormat format, File out,
+                                  FxTaskRunner runner) {
+        FxTaskScope task = runner.scope();
+        AtomicBoolean completed = new AtomicBoolean();
         Alert progress = new Alert(Alert.AlertType.INFORMATION);
         progress.setTitle("导出");
         progress.setHeaderText(null);
         progress.setContentText("正在导出 " + table.qualified() + " ...");
-        progress.getButtonTypes().setAll(ButtonType.CLOSE);
+        progress.getButtonTypes().setAll(ButtonType.CANCEL);
+        progress.setOnHidden(event -> {
+            if (!completed.get()) task.close();
+        });
         progress.show();
 
-        new Thread(() -> {
-            String err = null;
+        task.submit(() -> {
             try {
                 TableExporter.export(conns, connId, table, content, format, out);
-            } catch (Exception e) {
-                err = e.getMessage() == null ? e.toString() : e.getMessage();
-                // 失败时清理半成品文件
+                return out;
+            } catch (Exception failure) {
                 if (out.exists()) out.delete();
+                throw failure;
             }
-            final String fErr = err;
-            Platform.runLater(() -> {
-                progress.close();
-                Alert done = new Alert(fErr == null ? Alert.AlertType.INFORMATION : Alert.AlertType.ERROR);
-                done.setTitle("导出");
-                done.setHeaderText(null);
-                done.setContentText(fErr == null
-                        ? "导出完成:\n" + out.getAbsolutePath()
-                        : "导出失败:\n" + fErr);
-                done.showAndWait();
-            });
-        }, "Table-Export").start();
+        }, exported -> {
+            completed.set(true);
+            task.close();
+            progress.close();
+            showResult(null, exported);
+        }, failure -> {
+            completed.set(true);
+            task.close();
+            progress.close();
+            showResult(message(failure), out);
+        });
+    }
+
+    private static void showResult(String error, File out) {
+        Alert done = new Alert(error == null ? Alert.AlertType.INFORMATION : Alert.AlertType.ERROR);
+        done.setTitle("导出");
+        done.setHeaderText(null);
+        done.setContentText(error == null
+                ? "导出完成:\n" + out.getAbsolutePath()
+                : "导出失败:\n" + error);
+        done.showAndWait();
+    }
+
+    private static String message(Throwable failure) {
+        String message = failure.getMessage();
+        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
 
     private static RadioButton radio(ToggleGroup group, String text, Object userData) {
