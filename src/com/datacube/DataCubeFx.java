@@ -5,12 +5,15 @@ import com.datacube.fx.BrandLogo;
 import com.datacube.fx.SplashScreen;
 import javafx.animation.PauseTransition;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
 import javafx.util.Duration;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DataCubeFx extends Application {
 
@@ -35,7 +38,10 @@ public class DataCubeFx extends Application {
             BrandLogo.applyIcons(primaryStage);
 
             // 窗口关闭事件：迁移任务进行中提示确认
+            AtomicBoolean closing = new AtomicBoolean();
             primaryStage.setOnCloseRequest((WindowEvent e) -> {
+                e.consume();
+                if (closing.get()) return;
                 if (appShell.isRunning()) {
                     Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
                             "迁移任务正在执行中，强制关闭可能导致数据不完整。\n确定关闭？",
@@ -43,14 +49,18 @@ public class DataCubeFx extends Application {
                     alert.setHeaderText(null);
                     alert.showAndWait();
                     if (alert.getResult() != ButtonType.YES) {
-                        e.consume();
                         return;
                     }
-                    // 关闭请求处理器已在 JavaFX 线程；同步清理，避免隐式退出跳过排队回调。
-                    appShell.shutdown();
-                } else {
-                    appShell.shutdown();
                 }
+                if (!closing.compareAndSet(false, true)) return;
+                appShell.shutdownAsync().whenComplete((ignored, failure) -> Platform.runLater(() -> {
+                    if (failure != null) {
+                        System.err.println("[DataCube] shutdown failure: " + failure);
+                        failure.printStackTrace(System.err);
+                    }
+                    primaryStage.setOnCloseRequest(null);
+                    primaryStage.close();
+                }));
             });
 
             // 闪屏最短展示后淡出，再显示主窗口并触发后台更新自检（失败不打扰用户）

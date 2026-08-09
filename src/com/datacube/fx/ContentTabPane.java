@@ -1,9 +1,13 @@
 package com.datacube.fx;
 
 import javafx.application.Platform;
+import javafx.collections.ListChangeListener;
 import javafx.scene.Node;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
  * 内容标签容器：承载 SQL 编辑器 / 数据浏览 / DDL 查看 / 迁移等功能面板。
@@ -15,9 +19,17 @@ public final class ContentTabPane {
 
     private final TabPane tabPane = new TabPane();
     private final ManagedTabRegistry<Tab> managedTabs = new ManagedTabRegistry<>();
+    private final AsyncManagedTabRegistry<Tab> guardedTabs = new AsyncManagedTabRegistry<>();
 
     public ContentTabPane() {
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.SELECTED_TAB);
+        tabPane.getTabs().addListener((ListChangeListener<Tab>) change -> {
+            while (change.next()) {
+                for (Tab removed : change.getRemoved()) {
+                    guardedTabs.requestClose(removed);
+                }
+            }
+        });
     }
 
     public Node getNode() {
@@ -48,32 +60,73 @@ public final class ContentTabPane {
         return tab;
     }
 
-    /** 打开带异步关闭守卫的受管标签；守卫批准后才从界面移除并释放资源。 */
+    /**
+     * 打开带异步关闭守卫的受管标签。
+     *
+     * <p>{@code guard} 承担虚拟线程上的阻塞清理；{@code uiFinalizer} 只在 FX 线程调用，
+     * 必须轻量、非阻塞。清理批准前标签不会由正常关闭请求移除。
+     */
     public Tab openManagedTab(
             String title,
             Node content,
             AsyncTabCloseGuard guard,
-            Runnable disposer) {
+            Runnable uiFinalizer) {
         Tab tab = openTab(title, content);
-        Runnable dispose = managedTabs.register(tab, disposer);
-        AsyncCloseGate gate = new AsyncCloseGate();
+        AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
+                guard,
+                AsyncTabCloseCoordinator.DEFAULT_TIMEOUT,
+                AsyncTabCloseCoordinator::scheduleTimeout,
+                ContentTabPane::dispatchFx,
+                () -> tabPane.getTabs().remove(tab),
+                () -> {
+                    guardedTabs.unregister(tab);
+                    uiFinalizer.run();
+                },
+                ContentTabPane::reportCloseFailure);
+        guardedTabs.register(tab, coordinator);
         tab.setOnCloseRequest(event -> {
             event.consume();
-            if (!gate.beginRequest()) return;
-            guard.requestClose(approved -> Platform.runLater(() ->
-                    gate.complete(approved, () -> {
-                        tab.setOnCloseRequest(null);
-                        tabPane.getTabs().remove(tab);
-                        dispose.run();
-                    })));
+            coordinator.requestClose();
         });
-        tab.setOnClosed(event -> dispose.run());
+        tab.setOnClosed(event -> coordinator.requestClose());
         return tab;
     }
 
-    /** 释放全部尚未关闭的受管标签资源，供应用退出调用。 */
+    /**
+     * 异步关闭所有受管标签；受守卫标签先完成阻塞清理，再在 FX 线程执行 UI finalizer。
+     * 返回的 stage 在所有守卫到达批准、拒绝、失败或超时终态后完成。
+     */
+    public CompletionStage<Void> closeAllManagedTabs() {
+        if (!Platform.isFxApplicationThread()) {
+            CompletableFuture<Void> dispatched = new CompletableFuture<>();
+            Platform.runLater(() -> closeAllManagedTabs().whenComplete((ignored, failure) -> {
+                if (failure == null) dispatched.complete(null);
+                else dispatched.completeExceptionally(failure);
+            }));
+            return dispatched;
+        }
+
+        try {
+            managedTabs.disposeAll();
+        } catch (Throwable failure) {
+            reportCloseFailure(failure);
+        }
+        return guardedTabs.closeAll();
+    }
+
+    /** 兼容旧退出入口；新代码应等待 {@link #closeAllManagedTabs()}。 */
     public void disposeAll() {
-        managedTabs.disposeAll();
+        closeAllManagedTabs();
+    }
+
+    private static void dispatchFx(Runnable action) {
+        if (Platform.isFxApplicationThread()) action.run();
+        else Platform.runLater(action);
+    }
+
+    private static void reportCloseFailure(Throwable failure) {
+        System.err.println("[DataCube] tab close failure: " + failure);
+        failure.printStackTrace(System.err);
     }
 
     /**

@@ -6,6 +6,7 @@ import com.datacube.config.CredentialCipher;
 import com.datacube.config.ShortcutAction;
 import com.datacube.config.ShortcutSettings;
 import com.datacube.config.SqlHistoryStore;
+import com.datacube.fx.task.FxTaskRunner;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.DataBrowseService;
 import com.datacube.service.DataEditService;
@@ -18,7 +19,6 @@ import com.datacube.spi.model.RoutineRef;
 import com.datacube.spi.model.ScriptOutcome;
 import com.datacube.spi.model.TableRef;
 import com.datacube.update.UpdateService;
-import com.datacube.fx.task.FxTaskRunner;
 
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -37,6 +37,9 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 应用主壳：三栏式布局（顶部工具栏 + 左连接树 + 中内容区）。
@@ -63,6 +66,7 @@ public final class AppShell {
     private final FxTaskRunner tasks = new FxTaskRunner();
 
     private final ContentTabPane contentTabs = new ContentTabPane();
+    private final AtomicReference<CompletableFuture<Void>> shutdown = new AtomicReference<>();
     private final LazyValue<MigrationPane> migrationPane = new LazyValue<>(() -> new MigrationPane(tasks));
     private final LazyValue<UpdateService> updateService =
             new LazyValue<>(() -> new UpdateService(tasks::submit, Platform::runLater));
@@ -179,25 +183,48 @@ public final class AppShell {
                 root.getScene() == null ? null : root.getScene().getWindow()));
     }
 
-    /** 释放全部资源：标签页、迁移任务、后台任务与活动连接。 */
+    /**
+     * 异步释放全部资源。受守卫标签完成关闭后，其余潜在阻塞清理在虚拟线程执行。
+     */
+    public CompletionStage<Void> shutdownAsync() {
+        CompletableFuture<Void> existing = shutdown.get();
+        if (existing != null) return existing;
+
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        if (!shutdown.compareAndSet(null, result)) return shutdown.get();
+        contentTabs.closeAllManagedTabs().whenComplete((ignored, tabFailure) ->
+                Thread.startVirtualThread(() -> {
+                    try {
+                        shutdownRemaining();
+                        if (tabFailure == null) result.complete(null);
+                        else result.completeExceptionally(tabFailure);
+                    } catch (Throwable failure) {
+                        if (tabFailure != null) failure.addSuppressed(tabFailure);
+                        result.completeExceptionally(failure);
+                    }
+                }));
+        return result;
+    }
+
+    /** 兼容旧调用方的非阻塞入口；需要知道完成状态时使用 {@link #shutdownAsync()}。 */
     public void shutdown() {
+        shutdownAsync();
+    }
+
+    private void shutdownRemaining() {
         try {
-            contentTabs.disposeAll();
+            connectionTree.close();
         } finally {
             try {
-                connectionTree.close();
+                migrationPane.ifInitialized(MigrationPane::shutdown);
             } finally {
                 try {
-                    migrationPane.ifInitialized(MigrationPane::shutdown);
+                    updateService.ifInitialized(UpdateService::close);
                 } finally {
                     try {
-                        updateService.ifInitialized(UpdateService::close);
+                        tasks.close();
                     } finally {
-                        try {
-                            tasks.close();
-                        } finally {
-                            connMgr.closeAll();
-                        }
+                        connMgr.closeAll();
                     }
                 }
             }
