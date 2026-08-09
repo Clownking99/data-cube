@@ -295,8 +295,8 @@ public final class AppShell {
         @Override
         public void openDdl(String connId, ConnectionTreePane.NodeData node) {
             String name = node.name();
-            DdlViewPane pane = new DdlViewPane("DDL: " + name, ddlFetch(connId, node));
-            contentTabs.openTab("DDL: " + name, pane.getNode());
+            DdlViewPane pane = new DdlViewPane("DDL: " + name, ddlFetch(connId, node), tasks);
+            contentTabs.openManagedTab("DDL: " + name, pane.getNode(), pane::close);
         }
 
         @Override

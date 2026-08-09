@@ -1,6 +1,8 @@
 package com.datacube.fx;
 
-import javafx.application.Platform;
+import com.datacube.fx.task.FxTaskRunner;
+import com.datacube.fx.task.FxTaskScope;
+
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -21,23 +23,31 @@ import java.util.concurrent.Callable;
  * DDL 查看面板（只读）：异步获取对象的 CREATE 语句，提供复制按钮。
  * 使用高亮 {@link CodeArea}（行号 + SQL 语法着色）展示。
  */
-public final class DdlViewPane {
+public final class DdlViewPane implements AutoCloseable {
 
     private final VBox root = new VBox(8);
     private final CodeArea codeArea = HighlightedSqlArea.create(false);
     private final Label statusLabel = new Label("加载中...");
+    private final FxTaskScope tasks;
 
     /**
      * @param title  面板标题（对象名）
      * @param fetch  DDL 获取逻辑（在工作线程执行，可抛异常）
+     * @param runner 应用级虚拟线程运行器
      */
-    public DdlViewPane(String title, Callable<String> fetch) {
+    public DdlViewPane(String title, Callable<String> fetch, FxTaskRunner runner) {
+        this.tasks = runner.scope();
         build(title);
         load(fetch);
     }
 
     public Node getNode() {
         return root;
+    }
+
+    @Override
+    public void close() {
+        tasks.close();
     }
 
     private void build(String title) {
@@ -66,28 +76,19 @@ public final class DdlViewPane {
     }
 
     private void load(Callable<String> fetch) {
-        new Thread(() -> {
-            String ddl;
-            String err = null;
-            try {
-                ddl = fetch.call();
-            } catch (Exception e) {
-                ddl = null;
-                err = e.getMessage();
-            }
-            final String fDdl = ddl;
-            final String fErr = err;
-            Platform.runLater(() -> {
-                if (fErr != null) {
-                    codeArea.replaceText("-- 获取 DDL 失败: " + fErr);
-                    statusLabel.setText("错误");
-                    statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
-                } else {
-                    codeArea.replaceText(fDdl == null ? "" : fDdl);
-                    statusLabel.setText("就绪");
-                    statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
-                }
-            });
-        }, "DdlView-Worker").start();
+        tasks.submit(fetch, ddl -> {
+            codeArea.replaceText(ddl == null ? "" : ddl);
+            statusLabel.setText("就绪");
+            statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
+        }, failure -> {
+            codeArea.replaceText("-- 获取 DDL 失败: " + message(failure));
+            statusLabel.setText("错误");
+            statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
+        });
+    }
+
+    private static String message(Throwable failure) {
+        String message = failure.getMessage();
+        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
 }
