@@ -165,7 +165,7 @@ public final class SqlScriptSplitter {
 
                     case IN_LINE_COMMENT:
                         cur.append(c);
-                        if (c == '\n') state = State.NORMAL;
+                        if (c == '\n' || c == '\r') state = State.NORMAL;
                         i++;
                         break;
 

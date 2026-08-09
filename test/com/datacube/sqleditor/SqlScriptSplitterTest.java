@@ -153,6 +153,18 @@ class SqlScriptSplitterTest {
     }
 
     @Test
+    void lineCommentsEndAtLfCrLfAndCrWithoutHidingFollowingStatements() {
+        String[] lineEndings = {"\n", "\r\n", "\r"};
+        for (String lineEnding : lineEndings) {
+            List<String> stmts = SqlScriptSplitter.split(
+                    "select 1 -- harmless" + lineEnding + "; delete from account", false);
+
+            assertEquals(2, stmts.size(), "行尾必须恢复分句状态：" + escaped(lineEnding));
+            assertTrue(stmts.get(1).toLowerCase().startsWith("delete from account"));
+        }
+    }
+
+    @Test
     void commentBeforeStatementKept() {
         List<String> stmts = SqlScriptSplitter.split("/* 说明 */ SELECT 1; -- 尾注\nSELECT 2");
         assertEquals(2, stmts.size(), "注释+语句混合单元应保留：" + stmts);
@@ -164,5 +176,9 @@ class SqlScriptSplitterTest {
     void commentMarkerInsideStringIsExecutable() {
         List<String> stmts = SqlScriptSplitter.split("SELECT '--' FROM dual");
         assertEquals(1, stmts.size(), "字符串内的 -- 不是注释：" + stmts);
+    }
+
+    private static String escaped(String value) {
+        return value.replace("\r", "\\r").replace("\n", "\\n");
     }
 }

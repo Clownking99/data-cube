@@ -202,11 +202,29 @@ class SqlSafetyAnalyzerTest {
         assertTrue(analysis.statements().get(2).risks().contains(DESTRUCTIVE_DDL));
     }
 
+    @Test
+    void lineCommentTerminatorsCannotHideFollowingWrites() {
+        String[] lineEndings = {"\n", "\r\n", "\r"};
+        for (String lineEnding : lineEndings) {
+            var analysis = SqlSafetyAnalyzer.analyze(
+                    "select 1 -- harmless" + lineEnding + "; delete from account", false);
+
+            assertEquals(2, analysis.statements().size(), escaped(lineEnding));
+            assertEquals(WRITE, analysis.statements().get(1).kind(), escaped(lineEnding));
+            assertTrue(analysis.statements().get(1).risks().contains(MISSING_WHERE),
+                    escaped(lineEnding));
+        }
+    }
+
     private static String nestedWith(int layers) {
         String sql = "delete from account returning id";
         for (int layer = layers; layer >= 1; layer--) {
             sql = "with c" + layer + " as (" + sql + ") select * from c" + layer;
         }
         return sql;
+    }
+
+    private static String escaped(String value) {
+        return value.replace("\r", "\\r").replace("\n", "\\n");
     }
 }
