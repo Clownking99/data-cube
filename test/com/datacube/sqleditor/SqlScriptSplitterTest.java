@@ -156,6 +156,23 @@ class SqlScriptSplitterTest {
     }
 
     @Test
+    void invalidLexicalUnitsRemainAvailableForConservativeHandling() {
+        String[] invalidScripts = {
+                "/* outer /* inner */ tail */ DELETE FROM account;",
+                "*/ DELETE FROM account;",
+                "/* unclosed DELETE FROM account;",
+                "/* unclosed COMMIT;"
+        };
+
+        for (String script : invalidScripts) {
+            List<String> stmts = SqlScriptSplitter.split(script, true);
+            assertEquals(1, stmts.size(), "invalid SQL unit must not be silently dropped: " + script);
+            assertTrue(stmts.getFirst().contains(
+                    script.contains("DELETE") ? "DELETE" : "COMMIT"), script);
+        }
+    }
+
+    @Test
     void lineCommentOnlyUnitDropped() {
         List<String> stmts = SqlScriptSplitter.split("-- 注释一\n-- 注释二\n; SELECT 1");
         assertEquals(1, stmts.size(), "纯行注释单元应被丢弃：" + stmts);

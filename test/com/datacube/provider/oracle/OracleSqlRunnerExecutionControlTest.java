@@ -150,6 +150,22 @@ class OracleSqlRunnerExecutionControlTest {
         assertEquals(List.of("UPDATE first_table SET value = 1"), jdbc.executedSql);
     }
 
+    @Test
+    void invalidOracleCommentPrefixProducesAnOutcomeAndReachesJdbc() {
+        JdbcScenario jdbc = new JdbcScenario();
+        jdbc.failure = sql -> new SQLException("invalid nested comment");
+        String invalid = "/* outer /* inner */ tail */ DELETE FROM things;";
+
+        List<ScriptOutcome> outcomes = runner.executeScript(jdbc.connection(), invalid, null,
+                new SqlExecutionOptions(0, 0, new SqlExecutionControl()), null);
+
+        assertEquals(1, outcomes.size());
+        assertEquals(QueryResult.FailureKind.SQL_ERROR,
+                outcomes.getFirst().result().failureKind);
+        assertEquals(List.of("/* outer /* inner */ tail */ DELETE FROM things"),
+                jdbc.executedSql);
+    }
+
     private static void cancel(SqlExecutionControl control) {
         try {
             assertTrue(control.cancel());

@@ -18,6 +18,30 @@ class SqlSafetyAnalyzerTest {
     }
 
     @Test
+    void invalidLexicalUnitsRemainVisibleButNeverQualifyAsTransactionTrivia() {
+        String nested = "/* outer /* inner */ tail */ DELETE FROM account;";
+        String stray = "*/ DELETE FROM account;";
+        for (String sql : new String[]{nested, stray}) {
+            var statement = SqlSafetyAnalyzer.analyze(sql, true).statements().getFirst();
+            assertEquals(WRITE, statement.kind(), sql);
+            assertTrue(statement.risks().contains(MISSING_WHERE), sql);
+        }
+
+        for (String sql : new String[]{
+                "/* unclosed DELETE FROM account;", "/* unclosed COMMIT;"}) {
+            var statement = SqlSafetyAnalyzer.analyze(sql, true).statements().getFirst();
+            assertEquals(UNKNOWN, statement.kind(), sql);
+            assertTrue(statement.risks().contains(UNKNOWN_STATEMENT), sql);
+        }
+
+        assertEquals("", SqlSafetyAnalyzer.transactionCompletionKeyword(
+                "/* outer /* inner */ tail */ COMMIT;", true));
+        assertEquals("", SqlSafetyAnalyzer.transactionCompletionKeyword("*/ COMMIT;", true));
+        assertEquals("", SqlSafetyAnalyzer.transactionCompletionKeyword(
+                "/* unclosed COMMIT;", true));
+    }
+
+    @Test
     void detectsMissingTopLevelWhereWithoutBeingFooledBySubqueryOrLiteral() {
         var unsafe = SqlSafetyAnalyzer.analyze(
                 "update account set state='where' where_note=(select note from audit where id=1)", false);

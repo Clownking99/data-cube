@@ -44,10 +44,10 @@ public final class SqlScriptSplitter {
         return new SplitState(plsql).run(sql);
     }
 
-    /** 剥离方言注释后是否仍含可执行内容。 */
+    /** 仅纯 trivia 可丢弃；INVALID 与可执行内容都必须留给后续保守处理。 */
     static boolean hasExecutableContent(String sql, boolean oracleMode) {
         return SqlLexicalRules.triviaStatus(sql, oracleMode)
-                == SqlLexicalRules.TriviaStatus.EXECUTABLE;
+                != SqlLexicalRules.TriviaStatus.TRIVIA;
     }
 
     private enum State {
