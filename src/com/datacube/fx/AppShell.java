@@ -258,16 +258,18 @@ public final class AppShell {
         public void openTableDesigner(String connId, TableRef table) {
             DbType dbType = connMgr.provider(connId).type();
             String connName = connMgr.config(connId).name();
-            TableDesignerPane pane = new TableDesignerPane(designSvc, connId, connName, table, table.schema(), dbType);
-            contentTabs.openTab("设计: " + table.name(), pane.getNode());
+            TableDesignerPane pane = new TableDesignerPane(
+                    designSvc, connId, connName, table, table.schema(), dbType, tasks);
+            contentTabs.openManagedTab("设计: " + table.name(), pane.getNode(), pane::close);
         }
 
         @Override
         public void newTable(String connId, String schema) {
             DbType dbType = connMgr.provider(connId).type();
             String connName = connMgr.config(connId).name();
-            TableDesignerPane pane = new TableDesignerPane(designSvc, connId, connName, null, schema, dbType);
-            contentTabs.openTab("新建表", pane.getNode());
+            TableDesignerPane pane = new TableDesignerPane(
+                    designSvc, connId, connName, null, schema, dbType, tasks);
+            contentTabs.openManagedTab("新建表", pane.getNode(), pane::close);
         }
 
         @Override

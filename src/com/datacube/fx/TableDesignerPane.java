@@ -1,5 +1,7 @@
 package com.datacube.fx;
 
+import com.datacube.fx.task.FxTaskRunner;
+import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.TableDesignService;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.model.ColumnDraft;
@@ -34,6 +36,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 表设计器面板：新建或编辑表结构（列/主键/索引/表注释），生成方言 DDL 预览，
@@ -41,9 +44,9 @@ import java.util.Set;
  *
  * <p>编辑态用可变行模型（JavaFX property）承载，{@link #snapshot()} 转 {@link TableDraft}。
  * DDL 生成与执行委托 {@link TableDesignService}（方言封闭在 provider 层）；
- * 载入/执行走后台线程，回 {@link Platform#runLater} 更新 UI。
+ * 载入/执行走受管虚拟线程，UI 更新由标签级任务作用域调度。
  */
-public final class TableDesignerPane {
+public final class TableDesignerPane implements AutoCloseable {
 
     /** PG 常见类型候选（可编辑下拉，允许自定义文本）。 */
     private static final List<String> PG_TYPES = Arrays.asList(
@@ -64,6 +67,8 @@ public final class TableDesignerPane {
     private final String schema;
     private final DbType dbType;
     private final boolean isNew;
+    private final FxTaskScope tasks;
+    private final AtomicBoolean closed = new AtomicBoolean();
 
     private final VBox root = new VBox(8);
     private TextField nameField;
@@ -85,7 +90,7 @@ public final class TableDesignerPane {
     private volatile boolean running = false;
 
     public TableDesignerPane(TableDesignService svc, String connId, String connName, TableRef table,
-                             String schema, DbType dbType) {
+                             String schema, DbType dbType, FxTaskRunner runner) {
         this.svc = svc;
         this.connId = connId;
         this.connName = connName;
@@ -93,12 +98,19 @@ public final class TableDesignerPane {
         this.schema = schema;
         this.dbType = dbType;
         this.isNew = table == null;
+        this.tasks = runner.scope();
         build();
         if (!isNew) reload();
     }
 
     public Node getNode() {
         return root;
+    }
+
+    @Override
+    public void close() {
+        closed.set(true);
+        tasks.close();
     }
 
     // ---------- 构建 ----------
@@ -296,26 +308,11 @@ public final class TableDesignerPane {
 
     private void reload() {
         setStatus("载入中...", "-brand-fg-muted");
-        new Thread(() -> {
-            TableDraft d = null;
-            String err = null;
-            try {
-                d = svc.load(connId, table);
-            } catch (Exception e) {
-                err = e.getMessage();
-            }
-            final TableDraft fd = d;
-            final String fErr = err;
-            Platform.runLater(() -> {
-                if (fErr != null) {
-                    setStatus("载入失败: " + fErr, "-status-error");
-                    return;
-                }
-                original = fd;
-                populate(fd);
-                setStatus("就绪", "-status-ok");
-            });
-        }, "TableDesigner-Load").start();
+        tasks.submit(() -> svc.load(connId, table), draft -> {
+            original = draft;
+            populate(draft);
+            setStatus("就绪", "-status-ok");
+        }, failure -> setStatus("载入失败: " + message(failure), "-status-error"));
     }
 
     private void populate(TableDraft d) {
@@ -419,32 +416,21 @@ public final class TableDesignerPane {
         running = true;
         applyBtn.setDisable(true);
         setStatus("执行中...", "-brand-fg-muted");
-        new Thread(() -> {
-            List<ScriptOutcome> outcomes = null;
-            String execErr = null;
-            try {
-                outcomes = svc.execute(connId, ddl, this::askScriptError);
-            } catch (Exception e) {
-                execErr = e.getMessage();
+        tasks.submit(() -> svc.execute(connId, ddl, this::askScriptError), outcomes -> {
+            running = false;
+            applyBtn.setDisable(false);
+            String failed = firstError(outcomes);
+            if (failed != null) {
+                setStatus("执行完成但有失败: " + failed, "-status-error");
+            } else {
+                setStatus("执行成功（" + (outcomes == null ? 0 : outcomes.size()) + " 条语句）", "-status-ok");
+                if (!isNew) reload();  // 编辑现有表：重载原始态
             }
-            final List<ScriptOutcome> fOut = outcomes;
-            final String fErr = execErr;
-            Platform.runLater(() -> {
-                running = false;
-                applyBtn.setDisable(false);
-                if (fErr != null) {
-                    setStatus("执行失败: " + fErr, "-status-error");
-                    return;
-                }
-                String failed = firstError(fOut);
-                if (failed != null) {
-                    setStatus("执行完成但有失败: " + failed, "-status-error");
-                } else {
-                    setStatus("执行成功（" + (fOut == null ? 0 : fOut.size()) + " 条语句）", "-status-ok");
-                    if (!isNew) reload();  // 编辑现有表：重载原始态
-                }
-            });
-        }, "TableDesigner-Exec").start();
+        }, failure -> {
+            running = false;
+            applyBtn.setDisable(false);
+            setStatus("执行失败: " + message(failure), "-status-error");
+        });
     }
 
     /** 预览确认对话框：展示完整 DDL，用户点「执行」返回 true。 */
@@ -473,11 +459,13 @@ public final class TableDesignerPane {
      * （继续 / 全部继续 / 取消）并以 {@link java.util.concurrent.CountDownLatch} 阻塞等待选择。
      */
     private ScriptErrorPolicy.Decision askScriptError(int index, String sql, String message) {
+        if (closed.get()) return ScriptErrorPolicy.Decision.ABORT;
         final java.util.concurrent.atomic.AtomicReference<ScriptErrorPolicy.Decision> ref =
                 new java.util.concurrent.atomic.AtomicReference<>(ScriptErrorPolicy.Decision.ABORT);
         final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
         Platform.runLater(() -> {
             try {
+                if (closed.get()) return;
                 ButtonType cont = new ButtonType("继续");
                 ButtonType contAll = new ButtonType("全部继续");
                 ButtonType abort = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
@@ -512,6 +500,11 @@ public final class TableDesignerPane {
             }
         }
         return null;
+    }
+
+    private static String message(Throwable failure) {
+        String message = failure.getMessage();
+        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
 
     // ---------- 工具 ----------
