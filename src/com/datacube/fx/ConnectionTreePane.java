@@ -2,6 +2,8 @@ package com.datacube.fx;
 
 import com.datacube.config.ConnectionStore;
 import com.datacube.config.CredentialMigration;
+import com.datacube.fx.task.FxTaskRunner;
+import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.ObjectTreeService;
 import com.datacube.redis.RedisSession;
@@ -18,7 +20,6 @@ import com.datacube.spi.model.TypeInfo;
 import com.datacube.spi.model.ViewInfo;
 
 import javafx.animation.PauseTransition;
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.*;
@@ -40,7 +41,7 @@ import java.util.concurrent.Callable;
  * <p>数据来自 {@link ObjectTreeService}；右键菜单/双击的具体动作委托 {@link Actions}
  * （由 {@link AppShell} 实现）。选中任意节点会将其所属连接设为活动连接。
  */
-public final class ConnectionTreePane {
+public final class ConnectionTreePane implements AutoCloseable {
 
     /** 树操作回调（由 AppShell 实现，打开对应内容标签）。 */
     public interface Actions {
@@ -90,6 +91,7 @@ public final class ConnectionTreePane {
     private final ObjectTreeService treeSvc;
     private final SessionContext session;
     private final Actions actions;
+    private final FxTaskScope tasks;
 
     private final VBox root = new VBox(6);
     private final TreeView<NodeData> tree = new TreeView<>();
@@ -100,17 +102,24 @@ public final class ConnectionTreePane {
     private final PauseTransition searchReset = new PauseTransition(Duration.seconds(1.2));
 
     public ConnectionTreePane(ConnectionStore store, ConnectionManager connMgr,
-                              ObjectTreeService treeSvc, SessionContext session, Actions actions) {
+                              ObjectTreeService treeSvc, SessionContext session, Actions actions,
+                              FxTaskRunner runner) {
         this.store = store;
         this.connMgr = connMgr;
         this.treeSvc = treeSvc;
         this.session = session;
         this.actions = actions;
+        this.tasks = runner.scope();
         build();
     }
 
     public Node getNode() {
         return root;
+    }
+
+    @Override
+    public void close() {
+        tasks.close();
     }
 
     /** 新建连接（供上方应用头工具栏调用）。 */
@@ -360,7 +369,7 @@ public final class ConnectionTreePane {
         return out;
     }
 
-    /** 构造懒加载节点：首次展开时后台线程加载子节点。 */
+    /** 构造懒加载节点：首次展开时在受管虚拟线程中加载子节点。 */
     private TreeItem<NodeData> lazyItem(NodeData data, Callable<List<TreeItem<NodeData>>> loader) {
         TreeItem<NodeData> item = new TreeItem<>(data);
         TreeItem<NodeData> placeholder = new TreeItem<>(
@@ -377,27 +386,16 @@ public final class ConnectionTreePane {
     }
 
     private void loadInto(TreeItem<NodeData> item, Callable<List<TreeItem<NodeData>>> loader) {
-        new Thread(() -> {
-            List<TreeItem<NodeData>> children;
-            String err = null;
-            try {
-                children = loader.call();
-            } catch (Exception e) {
-                children = null;
-                err = e.getMessage();
-            }
-            final List<TreeItem<NodeData>> fChildren = children;
-            final String fErr = err;
-            Platform.runLater(() -> {
-                item.getChildren().clear();
-                if (fErr != null) {
-                    item.getChildren().add(new TreeItem<>(
-                            new NodeData(item.getValue().kind, "错误: " + fErr, null, null, null, null)));
-                } else {
-                    item.getChildren().addAll(fChildren);
-                }
-            });
-        }, "Tree-Loader").start();
+        tasks.submit(loader,
+                children -> item.getChildren().setAll(children),
+                failure -> item.getChildren().setAll(new TreeItem<>(
+                        new NodeData(item.getValue().kind, "错误: " + message(failure),
+                                null, null, null, null))));
+    }
+
+    private static String message(Throwable failure) {
+        String message = failure.getMessage();
+        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
 
     /** 沿树向上找到所属连接的 ConnConfig。 */

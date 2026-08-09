@@ -68,6 +68,7 @@ public final class AppShell {
     private final SqlHistoryStore sqlHistory = new SqlHistoryStore();
     private final ShortcutSettings shortcuts = new ShortcutSettings();
     private final TreeActions treeActions = new TreeActions();
+    private ConnectionTreePane connectionTree;
 
     public AppShell() {
         build();
@@ -100,12 +101,12 @@ public final class AppShell {
     private void build() {
         root.setStyle("-fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; -fx-font-size: 13px;");
 
-        ConnectionTreePane treePane = new ConnectionTreePane(store, connMgr, treeSvc, session, treeActions);
-        root.setTop(topBar(treePane));
+        connectionTree = new ConnectionTreePane(store, connMgr, treeSvc, session, treeActions, tasks);
+        root.setTop(topBar(connectionTree));
 
-        SplitPane split = new SplitPane(treePane.getNode(), contentTabs.getNode());
+        SplitPane split = new SplitPane(connectionTree.getNode(), contentTabs.getNode());
         split.setDividerPositions(0.24);
-        SplitPane.setResizableWithParent(treePane.getNode(), false);
+        SplitPane.setResizableWithParent(connectionTree.getNode(), false);
         root.setCenter(split);
 
         // 快捷键（默认 Ctrl+Shift+H）：找回近期使用的 SQL。用事件过滤器实时匹配
@@ -184,12 +185,16 @@ public final class AppShell {
             contentTabs.disposeAll();
         } finally {
             try {
-                migrationPane.ifInitialized(MigrationPane::shutdown);
+                connectionTree.close();
             } finally {
                 try {
-                    tasks.close();
+                    migrationPane.ifInitialized(MigrationPane::shutdown);
                 } finally {
-                    connMgr.closeAll();
+                    try {
+                        tasks.close();
+                    } finally {
+                        connMgr.closeAll();
+                    }
                 }
             }
         }
