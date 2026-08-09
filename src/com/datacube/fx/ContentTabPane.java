@@ -138,7 +138,7 @@ public final class ContentTabPane {
             lease.installed();
             return tab;
         } catch (Throwable failure) {
-            lease.abort(binding.guard());
+            lease.failed(failure, binding.guard(), ContentTabPane::reportCloseFailure);
             reportCloseFailure(failure);
             return null;
         }
@@ -151,15 +151,18 @@ public final class ContentTabPane {
             Runnable uiFinalizer,
             Runnable mandatoryAbortCleanup) {
         AsyncManagedTabRegistry<Tab>.Reservation reservation;
+        MandatoryAbortTracker tracker;
         ManagedOpenLease lease;
         synchronized (ownershipLock) {
+            tracker = mandatoryAborts;
             reservation = guardedTabs.reserve();
             lease = ManagedOpenLease.acquire(
-                    reservation.acquired(), reservation, mandatoryAborts);
+                    reservation.acquired(), reservation, tracker);
         }
         if (!lease.acquired()) {
-            AsyncTabCloseGuards.mandatoryAbort(
-                    mandatoryAbortCleanup, ContentTabPane::reportCloseFailure).requestClose();
+            tracker.trackLegacyAbort(AsyncTabCloseGuards.mandatoryAbort(
+                    mandatoryAbortCleanup, ContentTabPane::reportCloseFailure),
+                    ContentTabPane::reportCloseFailure);
             reportCloseFailure(new IllegalStateException("managed tab rejected while registry is closing"));
             return null;
         }
@@ -171,8 +174,9 @@ public final class ContentTabPane {
             else lease.installed();
             return tab;
         } catch (Throwable failure) {
-            lease.abort(AsyncTabCloseGuards.mandatoryAbort(
-                    mandatoryAbortCleanup, ContentTabPane::reportCloseFailure));
+            lease.failed(failure, AsyncTabCloseGuards.mandatoryAbort(
+                    mandatoryAbortCleanup, ContentTabPane::reportCloseFailure),
+                    ContentTabPane::reportCloseFailure);
             reportCloseFailure(failure);
             return null;
         }
@@ -202,19 +206,24 @@ public final class ContentTabPane {
             reportCloseFailure(new IllegalStateException("managed tab reservation was released before register"));
             return null;
         }
-        try {
-            tabPane.getTabs().add(tab);
-            tabPane.getSelectionModel().select(tab);
-            tab.setOnCloseRequest(event -> {
-                event.consume();
-                coordinator.requestClose();
-            });
-            tab.setOnClosed(event -> coordinator.requestClose());
-            return tab;
-        } catch (Throwable failure) {
-            guardedTabs.unregister(tab);
-            throw failure;
-        }
+        ManagedTabInstaller.install(
+                () -> tabPane.getTabs().add(tab),
+                () -> tabPane.getSelectionModel().select(tab),
+                () -> {
+                    tab.setOnCloseRequest(event -> {
+                        event.consume();
+                        coordinator.requestClose();
+                    });
+                    tab.setOnClosed(event -> coordinator.requestClose());
+                },
+                () -> {
+                    internalTabMutation = true;
+                    try { tabPane.getTabs().remove(tab); }
+                    finally { internalTabMutation = false; }
+                },
+                () -> guardedTabs.unregister(tab),
+                coordinator::failInstallation);
+        return tab;
     }
 
     /**
@@ -235,14 +244,12 @@ public final class ContentTabPane {
             return dispatched;
         }
         MandatoryAbortTracker tracker;
-        CompletionStage<TabCloseOutcome> tabs;
-        CompletionStage<TabCloseOutcome> aborts;
+        CompletionStage<TabCloseOutcome> closing;
         synchronized (ownershipLock) {
             tracker = mandatoryAborts;
-            tabs = guardedTabs.closeAll();
-            aborts = tracker.seal();
+            closing = ManagedCloseBarrier.close(guardedTabs::closeAll, tracker);
         }
-        return tabs.thenCombine(aborts, ContentTabPane::aggregate).thenApply(outcome -> {
+        return closing.thenApply(outcome -> {
             if (outcome == TabCloseOutcome.CANCELLED) {
                 synchronized (ownershipLock) {
                     if (mandatoryAborts == tracker) mandatoryAborts = new MandatoryAbortTracker();
@@ -256,16 +263,6 @@ public final class ContentTabPane {
     @Deprecated(forRemoval = false)
     public void disposeAll() {
         closeAllManagedTabs();
-    }
-
-    private static TabCloseOutcome aggregate(TabCloseOutcome left, TabCloseOutcome right) {
-        if (left == TabCloseOutcome.FAILED_PARTIAL || right == TabCloseOutcome.FAILED_PARTIAL) {
-            return TabCloseOutcome.FAILED_PARTIAL;
-        }
-        if (left == TabCloseOutcome.CANCELLED || right == TabCloseOutcome.CANCELLED) {
-            return TabCloseOutcome.CANCELLED;
-        }
-        return TabCloseOutcome.COMPLETED;
     }
 
     private static void dispatchFx(Runnable action) {

@@ -36,12 +36,15 @@ public final class DdlViewPane implements AutoCloseable {
      * @param runner 应用级虚拟线程运行器
      */
     public DdlViewPane(String title, Callable<String> fetch, FxTaskRunner runner) {
-        try (ConstructionOwner construction = new ConstructionOwner()) {
+        ConstructionOwner construction = new ConstructionOwner();
+        try {
             this.tasks = runner.scope();
             construction.own(tasks::close);
             build(title);
             load(fetch);
             construction.commit();
+        } catch (Throwable failure) {
+            throw construction.close(failure).failure();
         }
     }
 

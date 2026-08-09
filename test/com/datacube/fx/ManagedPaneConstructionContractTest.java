@@ -16,8 +16,17 @@ class ManagedPaneConstructionContractTest {
                 "SqlEditorPane", "DataGridPane", "TableDesignerPane", "RedisKeyBrowserPane",
                 "RedisConsolePane", "DdlViewPane", "ObjectEditorPane", "SequenceDesignerPane")) {
             String source = Files.readString(Path.of("src/com/datacube/fx/" + pane + ".java"));
-            assertTrue(source.contains("try (ConstructionOwner construction"), pane);
+            assertTrue(source.contains("ConstructionOwner construction = new ConstructionOwner()"), pane);
             assertTrue(source.contains("construction.commit()"), pane);
+            assertTrue(source.contains("construction.close(failure).failure()"), pane);
+        }
+    }
+
+    @Test
+    void redisSocketRollbackIsDeclaredBlocking() throws Exception {
+        for (String pane : List.of("RedisKeyBrowserPane", "RedisConsolePane")) {
+            String source = Files.readString(Path.of("src/com/datacube/fx/" + pane + ".java"));
+            assertTrue(source.contains("construction.ownBlocking("), pane);
         }
     }
 }

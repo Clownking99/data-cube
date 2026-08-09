@@ -104,6 +104,22 @@ final class AsyncTabCloseCoordinator {
         return current != null && current.removalAuthorized;
     }
 
+    CloseAttempt failInstallation(Throwable failure) {
+        Objects.requireNonNull(failure, "failure");
+        Attempt attempt;
+        synchronized (this) {
+            if (current != null) return current.exposed;
+            AsyncCloseGate.Request request = gate.beginRequest();
+            if (request == null) throw new IllegalStateException("closed coordinator has no result");
+            attempt = new Attempt(request);
+            current = attempt;
+        }
+        report(failure);
+        settleFatalOnFx(attempt);
+        invokeUiFinalizer(attempt);
+        return attempt.exposed;
+    }
+
     private void start(Attempt attempt) {
         CompletionStage<CloseGuardOutcome> cleanup;
         try {

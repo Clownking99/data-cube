@@ -3,6 +3,7 @@ package com.datacube.fx;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 
 /** One-way sealed accounting for mandatory-abort ownership leases. */
 final class MandatoryAbortTracker {
@@ -17,10 +18,33 @@ final class MandatoryAbortTracker {
         return new Lease(true);
     }
 
-    synchronized CompletionStage<TabCloseOutcome> seal() {
+    synchronized CompletionStage<TabCloseOutcome> settlement() {
+        return settlement;
+    }
+
+    synchronized CompletionStage<TabCloseOutcome> hardSeal() {
         sealed = true;
         completeIfReady();
         return settlement;
+    }
+
+    boolean trackLegacyAbort(
+            AsyncTabCloseGuard abortGuard,
+            Consumer<? super Throwable> reporter) {
+        Objects.requireNonNull(abortGuard, "abortGuard");
+        Objects.requireNonNull(reporter, "reporter");
+        Lease lease = acquireLease();
+        if (!lease.acquired()) {
+            report(reporter, new IllegalStateException(
+                    "mandatory abort rejected after hard seal"));
+            return false;
+        }
+        lease.abort(abortGuard);
+        return true;
+    }
+
+    private static void report(Consumer<? super Throwable> reporter, Throwable failure) {
+        try { reporter.accept(failure); } catch (Throwable ignored) { }
     }
 
     private synchronized void finishLease(boolean failed) {

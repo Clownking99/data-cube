@@ -4,14 +4,14 @@ import java.util.List;
 
 /** Synchronously remembers the selection transition immediately preceding a tab-list mutation. */
 final class ManagedSelectionTracker<T> {
-    private T previous;
+    private T current;
 
     void changed(T before, T after) {
-        previous = before;
+        current = after;
     }
 
     T originalSelection(List<? extends T> removed, T current) {
         if (current != null && removed.contains(current)) return current;
-        return previous != null && removed.contains(previous) ? previous : null;
+        return this.current != null && removed.contains(this.current) ? this.current : null;
     }
 }

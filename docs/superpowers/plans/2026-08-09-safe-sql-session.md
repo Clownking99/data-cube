@@ -1152,6 +1152,10 @@ Expected: session state and isolation tests pass.
   abort cleanup through the provided `AbortBinding`, before any fallible initialization. The lease
   is bound to the abort terminal before its virtual thread starts, so a reentrant close-all cannot
   observe an empty abort snapshot.
+- Close-all uses a two-phase abort barrier: seal the managed-tab registry first while the abort
+  tracker is still accepting synchronous/reentrant legacy aborts, then hard-seal the tracker and
+  await every accepted lease. After hard-seal, quarantined legacy opens are synchronously rejected,
+  reported as fatal, and must not start untracked cleanup.
 - The deprecated three-argument overload remains source-compatible, but runs its disposer on one
   virtual thread. New callers must use the four-argument phase-split API.
 - `closeAllManagedTabs()` returns `CompletionStage<TabCloseOutcome>` and `shutdownAsync()` returns
@@ -1433,10 +1437,14 @@ contentTabs.openManagedTab(name, abortBinding -> ManagedTabFactorySequence.creat
 ~~~
 
 `SqlEditorPane` and `JdbcEditorSession` constructors use a `ConstructionOwner`: every task scope,
-queue, socket, and dedicated JDBC session is registered immediately after allocation; constructor
-failure rolls them back in reverse order with best-effort aggregation. Only successful construction
-commits ownership to the pane. In Task 6, `openEditorSession` must be followed immediately by
-`construction.own(jdbcSession::close)` before schema lookup, UI initialization, or query startup.
+queue, socket, and dedicated JDBC session is registered immediately after allocation. Pure-memory
+and lightweight task-scope compensation runs synchronously in reverse order. Potentially blocking
+socket/JDBC compensation uses `ownBlocking` and is carried by `SafeConstructionFailure` into the
+tracked mandatory-abort virtual thread; it must never run on the FX thread. Complete rollback is a
+safe lease cancellation, while any rollback failure is `FAILED_PARTIAL`. Only successful
+construction commits ownership to the pane. In Task 6, `openEditorSession` must be followed
+immediately by `construction.ownBlocking(jdbcSession::close)` before schema lookup, UI
+initialization, or query startup.
 
 The guard completes `APPROVED` only after JdbcEditorSession cancel/wait/rollback-or-commit/close,
 history persistence, and both task scopes have finished on a virtual thread. A user cancel returns

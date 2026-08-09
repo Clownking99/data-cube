@@ -1,6 +1,7 @@
 package com.datacube.fx;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 /** Composite ownership acquired before constructing any managed content. */
 final class ManagedOpenLease implements AutoCloseable {
@@ -45,6 +46,37 @@ final class ManagedOpenLease implements AutoCloseable {
         terminal = true;
         abortLease.abort(guard);
         closeQuietly(registryReservation);
+    }
+
+    synchronized void failed(Throwable failure, AsyncTabCloseGuard abortGuard) {
+        failed(failure, abortGuard, ignored -> {});
+    }
+
+    synchronized void failed(
+            Throwable failure,
+            AsyncTabCloseGuard abortGuard,
+            Consumer<? super Throwable> reporter) {
+        if (!acquired || terminal) return;
+        if (failure instanceof SafeConstructionFailure safe && safe.requiresMandatoryAbort()) {
+            abort(AsyncTabCloseGuards.mandatoryAbort(
+                    safe.mandatoryAbortCleanup(), reporter));
+            return;
+        }
+        if (failure instanceof SafeConstructionFailure) {
+            terminal = true;
+            abortLease.installed();
+            closeQuietly(registryReservation);
+            return;
+        }
+        if (failure instanceof PartialCloseException partial
+                && partial.requiresMandatoryAbort()) {
+            AsyncTabCloseGuard deferred = AsyncTabCloseGuards.mandatoryAbort(
+                    partial.mandatoryAbortCleanup(), reporter);
+            abort(() -> deferred.requestClose().thenApply(
+                    ignored -> CloseGuardOutcome.FAILED_PARTIAL));
+            return;
+        }
+        abort(abortGuard);
     }
 
     @Override

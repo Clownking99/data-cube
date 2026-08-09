@@ -8,6 +8,7 @@ import java.util.function.Consumer;
 /** Constructor-local ownership transaction with reverse-order best-effort rollback. */
 final class ConstructionOwner implements AutoCloseable {
     private final Deque<Runnable> cleanup = new ArrayDeque<>();
+    private final Deque<Runnable> blockingCleanup = new ArrayDeque<>();
     private final Consumer<? super Throwable> reporter;
     private boolean committed;
 
@@ -27,14 +28,32 @@ final class ConstructionOwner implements AutoCloseable {
         cleanup.addFirst(Objects.requireNonNull(action, "action"));
     }
 
+    void ownBlocking(Runnable action) {
+        if (committed) throw new IllegalStateException("construction ownership already committed");
+        blockingCleanup.addFirst(Objects.requireNonNull(action, "action"));
+    }
+
     void commit() {
         committed = true;
         cleanup.clear();
+        blockingCleanup.clear();
     }
 
     @Override
     public void close() {
-        if (committed) return;
+        Rollback rollback = close(new IllegalStateException(
+                "construction exited without commit"));
+        if (rollback.outcome() == RollbackOutcome.FAILED_PARTIAL) {
+            throw rollback.failure();
+        }
+    }
+
+    Rollback close(Throwable constructionFailure) {
+        Objects.requireNonNull(constructionFailure, "constructionFailure");
+        if (committed) {
+            return new Rollback(RollbackOutcome.SAFE,
+                    new SafeConstructionFailure(constructionFailure));
+        }
         Throwable first = null;
         while (!cleanup.isEmpty()) {
             try {
@@ -45,6 +64,18 @@ final class ConstructionOwner implements AutoCloseable {
                 try { reporter.accept(failure); } catch (Throwable ignored) { }
             }
         }
-        if (first != null) throw new PartialCloseException(first);
+        Runnable deferred = blockingCleanup.isEmpty() ? null : () ->
+                BestEffortCloseSequence.run(blockingCleanup.toArray(Runnable[]::new));
+        if (first == null) {
+            return new Rollback(RollbackOutcome.SAFE,
+                    new SafeConstructionFailure(constructionFailure, deferred));
+        }
+        PartialCloseException partial = new PartialCloseException(constructionFailure, deferred);
+        partial.addSuppressed(first);
+        return new Rollback(RollbackOutcome.FAILED_PARTIAL, partial);
     }
+
+    enum RollbackOutcome { SAFE, FAILED_PARTIAL }
+
+    record Rollback(RollbackOutcome outcome, RuntimeException failure) {}
 }

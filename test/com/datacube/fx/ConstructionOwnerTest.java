@@ -7,6 +7,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConstructionOwnerTest {
 
@@ -22,10 +25,13 @@ class ConstructionOwnerTest {
         });
         owner.own(() -> closed.add("socket"));
 
-        assertThrows(PartialCloseException.class, owner::close);
+        IllegalStateException build = new IllegalStateException("build");
+        ConstructionOwner.Rollback rollback = owner.close(build);
 
         assertEquals(List.of("socket", "queue", "scope"), closed);
         assertEquals(1, failures.size());
+        assertEquals(ConstructionOwner.RollbackOutcome.FAILED_PARTIAL, rollback.outcome());
+        assertInstanceOf(PartialCloseException.class, rollback.failure());
     }
 
     @Test
@@ -35,7 +41,7 @@ class ConstructionOwnerTest {
         owner.own(() -> closed.add("scope"));
 
         owner.commit();
-        owner.close();
+        owner.close(new IllegalStateException("unused"));
 
         assertEquals(List.of(), closed);
     }
@@ -44,14 +50,34 @@ class ConstructionOwnerTest {
     void sqlEditorStyleBuildFailureClosesQueueThenScope() {
         List<String> closed = new ArrayList<>();
 
-        assertThrows(IllegalStateException.class, () -> {
-            try (ConstructionOwner construction = new ConstructionOwner(ignored -> {})) {
-                construction.own(() -> closed.add("scope"));
-                construction.own(() -> closed.add("metadata-queue"));
-                throw new IllegalStateException("build failed");
-            }
-        });
+        ConstructionOwner construction = new ConstructionOwner(ignored -> {});
+        construction.own(() -> closed.add("scope"));
+        construction.own(() -> closed.add("metadata-queue"));
+        IllegalStateException build = new IllegalStateException("build failed");
+
+        ConstructionOwner.Rollback rollback = construction.close(build);
 
         assertEquals(List.of("metadata-queue", "scope"), closed);
+        assertEquals(ConstructionOwner.RollbackOutcome.SAFE, rollback.outcome());
+        SafeConstructionFailure safe = assertInstanceOf(
+                SafeConstructionFailure.class, rollback.failure());
+        assertSame(build, safe.getCause());
+    }
+
+    @Test
+    void blockingRollbackIsDeferredUntilMandatoryAbortRuns() {
+        List<String> calls = new ArrayList<>();
+        ConstructionOwner owner = new ConstructionOwner(ignored -> {});
+        owner.own(() -> calls.add("scope"));
+        owner.ownBlocking(() -> calls.add("socket"));
+
+        ConstructionOwner.Rollback rollback = owner.close(new IllegalStateException("build"));
+
+        assertEquals(List.of("scope"), calls);
+        SafeConstructionFailure safe = assertInstanceOf(
+                SafeConstructionFailure.class, rollback.failure());
+        assertTrue(safe.requiresMandatoryAbort());
+        safe.mandatoryAbortCleanup().run();
+        assertEquals(List.of("scope", "socket"), calls);
     }
 }

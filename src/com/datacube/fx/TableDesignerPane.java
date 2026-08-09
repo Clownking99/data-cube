@@ -98,12 +98,15 @@ public final class TableDesignerPane implements AutoCloseable {
         this.schema = schema;
         this.dbType = dbType;
         this.isNew = table == null;
-        try (ConstructionOwner construction = new ConstructionOwner()) {
+        ConstructionOwner construction = new ConstructionOwner();
+        try {
             this.tasks = runner.scope();
             construction.own(tasks::close);
             build();
             if (!isNew) reload();
             construction.commit();
+        } catch (Throwable failure) {
+            throw construction.close(failure).failure();
         }
     }
 

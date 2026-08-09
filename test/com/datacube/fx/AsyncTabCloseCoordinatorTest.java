@@ -279,6 +279,30 @@ class AsyncTabCloseCoordinatorTest {
     }
 
     @Test
+    void failedInstallationCreatesFatalTombstoneWithoutStartingUserGuard() {
+        AtomicInteger guards = new AtomicInteger();
+        AtomicInteger finalizers = new AtomicInteger();
+        List<Throwable> failures = new ArrayList<>();
+        AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
+                () -> {
+                    guards.incrementAndGet();
+                    return CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED);
+                }, Duration.ofSeconds(5), new ManualTimeoutScheduler(), Runnable::run,
+                () -> {}, () -> {}, () -> {}, () -> {},
+                finalizers::incrementAndGet, failures::add);
+        IllegalStateException install = new IllegalStateException("install rollback");
+
+        CloseAttempt attempt = coordinator.failInstallation(install);
+
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL,
+                attempt.settlement().toCompletableFuture().join());
+        assertEquals(0, guards.get());
+        assertEquals(1, finalizers.get());
+        assertEquals(List.of(install), failures);
+        assertSame(attempt, coordinator.requestClose());
+    }
+
+    @Test
     void invokedFinalizerFailureIsReportedButSettlementIsCompleted() {
         IllegalStateException failure = new IllegalStateException("ui finalizer");
         Harness harness = new Harness(

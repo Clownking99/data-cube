@@ -14,6 +14,7 @@ import com.datacube.spi.model.TableRef;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.beans.value.ChangeListener;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -74,7 +75,8 @@ public final class DataGridPane implements AutoCloseable {
         this.settings = settings;
         this.readOnly = readOnly;
         this.commentModeListener = (o, a, b) -> reapplyHeaders();
-        try (ConstructionOwner construction = new ConstructionOwner()) {
+        ConstructionOwner construction = new ConstructionOwner();
+        try {
             this.tasks = runner.scope();
             construction.own(tasks::close);
             build();
@@ -82,6 +84,8 @@ public final class DataGridPane implements AutoCloseable {
             construction.own(() -> settings.commentModeProperty().removeListener(commentModeListener));
             load();
             construction.commit();
+        } catch (Throwable failure) {
+            throw construction.close(failure).failure();
         }
     }
 
@@ -90,8 +94,19 @@ public final class DataGridPane implements AutoCloseable {
     }
 
     @Override
+    @Deprecated(forRemoval = false)
     public void close() {
+        closeResources();
+        if (Platform.isFxApplicationThread()) finalizeCloseOnFx();
+        else Platform.runLater(this::finalizeCloseOnFx);
+    }
+
+    void closeResources() {
         tasks.close();
+    }
+
+    void finalizeCloseOnFx() {
+        settings.commentModeProperty().removeListener(commentModeListener);
     }
 
     // ---------- 构建 ----------

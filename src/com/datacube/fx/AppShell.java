@@ -261,12 +261,12 @@ public final class AppShell {
     private void openBackgroundCleanupTab(String title, Supplier<BackgroundTab> factory) {
         contentTabs.openManagedTab(title, binding -> ManagedTabFactorySequence.create(
                 factory,
-                tab -> binding.bind(tab.cleanup()),
+                tab -> binding.bind(tab.blockingCleanup()),
                 ignored -> {},
                 tab -> new ContentTabPane.ManagedTabSpec(
                         tab.content(), AsyncTabCloseGuards.blocking(
-                                tab.cleanup(), AppShell::reportShutdownFailure),
-                        () -> {}, tab.cleanup())));
+                                tab.blockingCleanup(), AppShell::reportShutdownFailure),
+                        tab.uiFinalizer(), tab.blockingCleanup())));
     }
 
     /** 连接树动作实现：将树操作转为内容标签。 */
@@ -294,7 +294,8 @@ public final class AppShell {
             openBackgroundCleanupTab(prefix + table.name(), () -> {
                 DataGridPane pane = new DataGridPane(
                         browseSvc, editSvc, connId, connName, table, settings, readOnly, tasks);
-                return new BackgroundTab(pane.getNode(), pane::close);
+                return new BackgroundTab(
+                        pane.getNode(), pane::closeResources, pane::finalizeCloseOnFx);
             });
         }
 
@@ -305,7 +306,7 @@ public final class AppShell {
             openBackgroundCleanupTab("设计: " + table.name(), () -> {
                 TableDesignerPane pane = new TableDesignerPane(
                         designSvc, connId, connName, table, table.schema(), dbType, tasks);
-                return new BackgroundTab(pane.getNode(), pane::close);
+                return new BackgroundTab(pane.getNode(), pane::close, () -> {});
             });
         }
 
@@ -316,7 +317,7 @@ public final class AppShell {
             openBackgroundCleanupTab("新建表", () -> {
                 TableDesignerPane pane = new TableDesignerPane(
                         designSvc, connId, connName, null, schema, dbType, tasks);
-                return new BackgroundTab(pane.getNode(), pane::close);
+                return new BackgroundTab(pane.getNode(), pane::close, () -> {});
             });
         }
 
@@ -326,7 +327,7 @@ public final class AppShell {
             session.setActiveConnection(conn);
             openBackgroundCleanupTab(conn.name() + " · db" + database, () -> {
                 RedisKeyBrowserPane pane = new RedisKeyBrowserPane(connMgr, conn, database, tasks);
-                return new BackgroundTab(pane.getNode(), pane::close);
+                return new BackgroundTab(pane.getNode(), pane::close, () -> {});
             });
         }
 
@@ -336,7 +337,7 @@ public final class AppShell {
             session.setActiveConnection(conn);
             openBackgroundCleanupTab("Redis CLI - " + conn.name(), () -> {
                 RedisConsolePane pane = new RedisConsolePane(connMgr, conn, tasks);
-                return new BackgroundTab(pane.getNode(), pane::close);
+                return new BackgroundTab(pane.getNode(), pane::close, () -> {});
             });
         }
 
@@ -351,7 +352,7 @@ public final class AppShell {
             String name = node.name();
             openBackgroundCleanupTab("DDL: " + name, () -> {
                 DdlViewPane pane = new DdlViewPane("DDL: " + name, ddlFetch(connId, node), tasks);
-                return new BackgroundTab(pane.getNode(), pane::close);
+                return new BackgroundTab(pane.getNode(), pane::close, () -> {});
             });
         }
 
@@ -368,7 +369,7 @@ public final class AppShell {
             openBackgroundCleanupTab("编辑: " + name, () -> {
                 ObjectEditorPane pane = new ObjectEditorPane(
                         "编辑: " + name, ddlFetch(connId, node), executor, tasks);
-                return new BackgroundTab(pane.getNode(), pane::close);
+                return new BackgroundTab(pane.getNode(), pane::close, () -> {});
             });
         }
 
@@ -380,7 +381,7 @@ public final class AppShell {
             openBackgroundCleanupTab("编辑序列: " + name, () -> {
                 SequenceDesignerPane pane = new SequenceDesignerPane(
                         ddlSvc, connId, connName, node.schema(), name, dbType, tasks);
-                return new BackgroundTab(pane.getNode(), pane::close);
+                return new BackgroundTab(pane.getNode(), pane::close, () -> {});
             });
         }
 
@@ -401,5 +402,5 @@ public final class AppShell {
         }
     }
 
-    private record BackgroundTab(Node content, Runnable cleanup) {}
+    private record BackgroundTab(Node content, Runnable blockingCleanup, Runnable uiFinalizer) {}
 }

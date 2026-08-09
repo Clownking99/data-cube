@@ -160,7 +160,8 @@ public final class SqlEditorPane implements AutoCloseable {
         this.boundConn = boundConn;
         this.history = history;
         this.shortcuts = shortcuts;
-        try (ConstructionOwner construction = new ConstructionOwner()) {
+        ConstructionOwner construction = new ConstructionOwner();
+        try {
             this.tasks = runner.scope();
             construction.own(tasks::close);
             this.metadataTasks = new FxSerialTaskQueue(runner);
@@ -183,6 +184,8 @@ public final class SqlEditorPane implements AutoCloseable {
             }
             settings.commentModeProperty().addListener(commentModeListener);
             construction.commit();
+        } catch (Throwable failure) {
+            throw construction.close(failure).failure();
         }
     }
 

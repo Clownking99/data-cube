@@ -61,12 +61,16 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
                                FxTaskRunner runner) {
         this.manager = manager;
         this.config = config;
-        try (ConstructionOwner construction = new ConstructionOwner()) {
+        ConstructionOwner construction = new ConstructionOwner();
+        try {
             this.io = new FxSerialTaskQueue(runner);
-            construction.own(this::close);
+            construction.own(this::stopIo);
+            construction.ownBlocking(this::closeCurrentSession);
             build(initialDatabase);
             restartSession(initialDatabase);
             construction.commit();
+        } catch (Throwable failure) {
+            throw construction.close(failure).failure();
         }
     }
 
@@ -528,14 +532,22 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
 
     @Override
     public void close() {
+        RedisPaneCloseSequence.close(this::stopIo, this::closeCurrentSession);
+    }
+
+    private void stopIo() {
+        synchronized (sessionLock) {
+            closed = true;
+        }
+        io.close();
+    }
+
+    private void closeCurrentSession() {
         RedisSession current;
         synchronized (sessionLock) {
-            if (closed) return;
-            closed = true;
             current = session;
             session = null;
         }
-        io.close();
         if (current != null) manager.closeRedisSession(current);
     }
 

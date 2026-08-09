@@ -34,13 +34,16 @@ public final class RedisConsolePane implements AutoCloseable {
         this.manager = manager;
         this.config = config;
         int database = parseDatabase(config.database());
-        try (ConstructionOwner construction = new ConstructionOwner()) {
+        ConstructionOwner construction = new ConstructionOwner();
+        try {
             this.session = manager.openRedisSession(config.id(), database);
-            construction.own(() -> manager.closeRedisSession(session));
+            construction.ownBlocking(() -> manager.closeRedisSession(session));
             this.io = new FxSerialTaskQueue(runner);
             construction.own(io::close);
             build(database);
             construction.commit();
+        } catch (Throwable failure) {
+            throw construction.close(failure).failure();
         }
     }
 
@@ -133,8 +136,9 @@ public final class RedisConsolePane implements AutoCloseable {
 
     @Override
     public void close() {
-        io.close();
-        manager.closeRedisSession(session);
+        RedisPaneCloseSequence.close(
+                io::close,
+                () -> manager.closeRedisSession(session));
     }
 
     private static int parseDatabase(String value) {
