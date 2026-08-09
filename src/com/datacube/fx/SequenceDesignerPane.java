@@ -1,12 +1,13 @@
 package com.datacube.fx;
 
+import com.datacube.fx.task.FxTaskRunner;
+import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.DdlService;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.model.QueryResult;
 import com.datacube.spi.model.ScriptOutcome;
 import com.datacube.spi.model.SequenceDraft;
 
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -37,10 +38,10 @@ import java.util.List;
  * {@code ALTER SEQUENCE} 预览，确认后执行。
  *
  * <p>所有者/名称只读；PG 无 ORDER 概念时隐藏“顺序”。DDL 生成与执行委托
- * {@link DdlService}（方言封闭在 provider 层）；载入/执行走后台线程，
- * 回 {@link Platform#runLater} 更新 UI。
+ * {@link DdlService}（方言封闭在 provider 层）；载入/执行走受管虚拟线程，
+ * UI 更新由标签级任务作用域调度。
  */
-public final class SequenceDesignerPane {
+public final class SequenceDesignerPane implements AutoCloseable {
 
     private final DdlService svc;
     private final String connId;
@@ -48,6 +49,7 @@ public final class SequenceDesignerPane {
     private final String schema;
     private final String name;
     private final boolean supportsOrder;
+    private final FxTaskScope tasks;
 
     private final VBox root = new VBox(8);
     private final TextField ownerField = new TextField();
@@ -69,19 +71,26 @@ public final class SequenceDesignerPane {
     private volatile boolean running = false;
 
     public SequenceDesignerPane(DdlService svc, String connId, String connName,
-                                String schema, String name, DbType dbType) {
+                                String schema, String name, DbType dbType,
+                                FxTaskRunner runner) {
         this.svc = svc;
         this.connId = connId;
         this.connName = connName;
         this.schema = schema;
         this.name = name;
         this.supportsOrder = dbType == DbType.ORACLE;
+        this.tasks = runner.scope();
         build();
         reload();
     }
 
     public Node getNode() {
         return root;
+    }
+
+    @Override
+    public void close() {
+        tasks.close();
     }
 
     // ---------- 构建 ----------
@@ -160,28 +169,16 @@ public final class SequenceDesignerPane {
     private void reload() {
         setStatus("加载中...", "-brand-fg-muted");
         setBusy(true);
-        new Thread(() -> {
-            SequenceDraft d = null;
-            String err = null;
-            try {
-                d = svc.loadSequence(connId, schema, name);
-            } catch (Exception e) {
-                err = e.getMessage();
-            }
-            final SequenceDraft fd = d;
-            final String fErr = err;
-            Platform.runLater(() -> {
-                setBusy(false);
-                if (fErr != null) {
-                    setStatus("载入失败: " + fErr, "-status-error");
-                    return;
-                }
-                original = fd;
-                populate(fd);
-                previewArea.replaceText("-- 修改上方属性后点“预览”或“应用”");
-                setStatus("就绪", "-status-ok");
-            });
-        }, "SequenceDesigner-Load").start();
+        tasks.submit(() -> svc.loadSequence(connId, schema, name), draft -> {
+            setBusy(false);
+            original = draft;
+            populate(draft);
+            previewArea.replaceText("-- 修改上方属性后点“预览”或“应用”");
+            setStatus("就绪", "-status-ok");
+        }, failure -> {
+            setBusy(false);
+            setStatus("载入失败: " + message(failure), "-status-error");
+        });
     }
 
     private void populate(SequenceDraft d) {
@@ -249,32 +246,21 @@ public final class SequenceDesignerPane {
         running = true;
         setBusy(true);
         setStatus("执行中...", "-brand-fg-muted");
-        new Thread(() -> {
-            List<ScriptOutcome> outcomes = null;
-            String err = null;
-            try {
-                outcomes = svc.executeDdl(connId, ddl);
-            } catch (Exception e) {
-                err = e.getMessage();
+        tasks.submit(() -> svc.executeDdl(connId, ddl), outcomes -> {
+            running = false;
+            setBusy(false);
+            String failed = firstError(outcomes);
+            if (failed != null) {
+                setStatus("执行完成但有失败: " + failed, "-status-error");
+            } else {
+                setStatus("执行成功（" + (outcomes == null ? 0 : outcomes.size()) + " 条语句）", "-status-ok");
+                reload();  // 重载最新属性作为新的原始态
             }
-            final List<ScriptOutcome> fOut = outcomes;
-            final String fErr = err;
-            Platform.runLater(() -> {
-                running = false;
-                setBusy(false);
-                if (fErr != null) {
-                    setStatus("执行失败: " + fErr, "-status-error");
-                    return;
-                }
-                String failed = firstError(fOut);
-                if (failed != null) {
-                    setStatus("执行完成但有失败: " + failed, "-status-error");
-                } else {
-                    setStatus("执行成功（" + (fOut == null ? 0 : fOut.size()) + " 条语句）", "-status-ok");
-                    reload();  // 重载最新属性作为新的原始态
-                }
-            });
-        }, "SequenceDesigner-Exec").start();
+        }, failure -> {
+            running = false;
+            setBusy(false);
+            setStatus("执行失败: " + message(failure), "-status-error");
+        });
     }
 
     /** 预览确认对话框：展示完整 DDL，用户点「执行」返回 true。 */
@@ -338,5 +324,10 @@ public final class SequenceDesignerPane {
     private static String truncate(String s, int max) {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max) + "...";
+    }
+
+    private static String message(Throwable failure) {
+        String message = failure.getMessage();
+        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
 }

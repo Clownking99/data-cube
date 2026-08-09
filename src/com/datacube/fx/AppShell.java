@@ -320,8 +320,8 @@ public final class AppShell {
             DbType dbType = connMgr.provider(connId).type();
             String connName = connMgr.config(connId).name();
             SequenceDesignerPane pane = new SequenceDesignerPane(
-                    ddlSvc, connId, connName, node.schema(), name, dbType);
-            contentTabs.openTab("编辑序列: " + name, pane.getNode());
+                    ddlSvc, connId, connName, node.schema(), name, dbType, tasks);
+            contentTabs.openManagedTab("编辑序列: " + name, pane.getNode(), pane::close);
         }
 
         /** 根据节点类型选择对应的 DDL 获取逻辑。 */
