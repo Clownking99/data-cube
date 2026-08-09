@@ -107,6 +107,19 @@ class SqlScriptSplitterTest {
     }
 
     @Test
+    void nonAsciiIdentifierCodeUnitsCannotOpenDollarQuotes() {
+        String[] scripts = {
+                "select 1 as e\u0301$bar$; delete from account",
+                "select 1 as name\u200C$tag$; delete from account"
+        };
+        for (String script : scripts) {
+            List<String> stmts = SqlScriptSplitter.split(script, false);
+            assertEquals(2, stmts.size(), "非 ASCII 标识符 code unit 不能吞掉后续语句：" + stmts);
+            assertTrue(stmts.get(1).toLowerCase().startsWith("delete from account"));
+        }
+    }
+
+    @Test
     void pgEscapeStringDoesNotHideFollowingStatement() {
         List<String> stmts = SqlScriptSplitter.split(
                 "select E'it\\'s'; delete from account", false);

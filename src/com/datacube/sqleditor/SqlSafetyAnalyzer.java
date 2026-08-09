@@ -344,7 +344,7 @@ public final class SqlSafetyAnalyzer {
     }
 
     private static boolean isWordStart(char value) {
-        return Character.isLetter(value) || value == '_';
+        return value >= 0x80 || Character.isLetter(value) || value == '_';
     }
 
     private static boolean isWordPart(char value) {

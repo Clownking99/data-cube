@@ -72,6 +72,20 @@ class SqlSafetyAnalyzerTest {
     }
 
     @Test
+    void nonAsciiIdentifierCodeUnitsCannotHideFollowingWrites() {
+        String[] scripts = {
+                "select 1 as e\u0301$bar$; delete from account",
+                "select 1 as name\u200C$tag$; delete from account"
+        };
+        for (String script : scripts) {
+            var analysis = SqlSafetyAnalyzer.analyze(script, false);
+            assertEquals(2, analysis.statements().size(), script);
+            assertEquals(WRITE, analysis.statements().get(1).kind(), script);
+            assertTrue(analysis.statements().get(1).risks().contains(MISSING_WHERE), script);
+        }
+    }
+
+    @Test
     void classifiesExplainAnalyzeAndSessionStateConflicts() {
         assertEquals(READ, SqlSafetyAnalyzer.analyze(
                 "explain select * from t", false).statements().getFirst().kind());
@@ -119,6 +133,21 @@ class SqlSafetyAnalyzerTest {
         var statement = SqlSafetyAnalyzer.analyze(sql, false).statements().getFirst();
         assertEquals(WRITE, statement.kind());
         assertTrue(statement.risks().contains(MISSING_WHERE));
+    }
+
+    @Test
+    void cteScopeLimitIsExactAndConservativeWithoutStackRecursion() {
+        var atLimit = assertDoesNotThrow(() ->
+                SqlSafetyAnalyzer.analyze(nestedWith(64), false).statements().getFirst());
+        assertEquals(WRITE, atLimit.kind());
+        assertTrue(atLimit.risks().contains(MISSING_WHERE));
+        assertFalse(atLimit.risks().contains(UNKNOWN_STATEMENT));
+
+        var beyondLimit = assertDoesNotThrow(() ->
+                SqlSafetyAnalyzer.analyze(nestedWith(65), false).statements().getFirst());
+        assertEquals(UNKNOWN, beyondLimit.kind());
+        assertTrue(beyondLimit.risks().contains(MISSING_WHERE));
+        assertTrue(beyondLimit.risks().contains(UNKNOWN_STATEMENT));
     }
 
     @Test
@@ -171,5 +200,13 @@ class SqlSafetyAnalyzerTest {
         assertEquals(READ, analysis.statements().get(0).kind());
         assertTrue(analysis.statements().get(1).risks().contains(MISSING_WHERE));
         assertTrue(analysis.statements().get(2).risks().contains(DESTRUCTIVE_DDL));
+    }
+
+    private static String nestedWith(int layers) {
+        String sql = "delete from account returning id";
+        for (int layer = layers; layer >= 1; layer--) {
+            sql = "with c" + layer + " as (" + sql + ") select * from c" + layer;
+        }
+        return sql;
     }
 }

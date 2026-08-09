@@ -42,21 +42,30 @@ final class SqlLexicalRules {
 
     static String dollarDelimiterAt(String sql, int offset, boolean oracleMode) {
         if (oracleMode || offset < 0 || offset >= sql.length() || sql.charAt(offset) != '$'
-                || offset > 0 && isWordPart(sql.charAt(offset - 1))) {
+                || offset > 0 && isPostgresIdentifierPart(sql.charAt(offset - 1), true)) {
             return null;
         }
         int i = offset + 1;
-        while (i < sql.length() && (Character.isLetterOrDigit(sql.charAt(i))
-                || sql.charAt(i) == '_')) {
+        while (i < sql.length() && isPostgresIdentifierPart(sql.charAt(i), false)) {
             i++;
         }
         if (i >= sql.length() || sql.charAt(i) != '$') return null;
-        if (i > offset + 1 && Character.isDigit(sql.charAt(offset + 1))) return null;
+        if (i > offset + 1 && isAsciiDigit(sql.charAt(offset + 1))) return null;
         return sql.substring(offset, i + 1);
     }
 
     static boolean isWordPart(char value) {
-        return Character.isLetterOrDigit(value) || value == '_' || value == '$';
+        return value >= 0x80 || Character.isLetterOrDigit(value) || value == '_' || value == '$';
+    }
+
+    private static boolean isPostgresIdentifierPart(char value, boolean allowDollar) {
+        return value >= 0x80 || value >= 'A' && value <= 'Z'
+                || value >= 'a' && value <= 'z' || isAsciiDigit(value)
+                || value == '_' || allowDollar && value == '$';
+    }
+
+    private static boolean isAsciiDigit(char value) {
+        return value >= '0' && value <= '9';
     }
 
     record OracleQuote(int prefixLength, char closingDelimiter) {}

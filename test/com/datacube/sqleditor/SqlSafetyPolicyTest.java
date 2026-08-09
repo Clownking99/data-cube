@@ -58,6 +58,19 @@ class SqlSafetyPolicyTest {
     }
 
     @Test
+    void developmentRequiresConfirmationBeyondCteScopeLimit() {
+        ConnectionSafetyOptions options =
+                new ConnectionSafetyOptions(ConnectionEnvironment.DEVELOPMENT, false, 60);
+
+        var decision = assertDoesNotThrow(() -> SqlSafetyPolicy.decide(
+                SqlSafetyAnalyzer.analyze(nestedWith(65), false), options));
+
+        assertFalse(decision.blocked());
+        assertTrue(decision.confirmationRequired());
+        assertEquals(1, decision.relevantStatements().size());
+    }
+
+    @Test
     void sessionStateConflictsAreAlwaysBlocked() {
         ConnectionSafetyOptions options =
                 new ConnectionSafetyOptions(ConnectionEnvironment.DEVELOPMENT, false, 60);
@@ -79,5 +92,13 @@ class SqlSafetyPolicyTest {
         assertEquals(1, decision.relevantStatements().get(0).index());
         assertEquals(2, decision.relevantStatements().get(1).index());
         assertTrue(decision.message().contains("会话状态"));
+    }
+
+    private static String nestedWith(int layers) {
+        String sql = "delete from account returning id";
+        for (int layer = layers; layer >= 1; layer--) {
+            sql = "with c" + layer + " as (" + sql + ") select * from c" + layer;
+        }
+        return sql;
     }
 }
