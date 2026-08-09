@@ -1446,6 +1446,21 @@ construction commits ownership to the pane. In Task 6, `openEditorSession` must 
 immediately by `construction.ownBlocking(jdbcSession::close)` before schema lookup, UI
 initialization, or query startup.
 
+Use the explicit rollback template; `ConstructionOwner` is deliberately not `AutoCloseable` and
+must never be used with try-with-resources:
+
+~~~java
+ConstructionOwner construction = new ConstructionOwner();
+try {
+    JdbcEditorSession jdbcSession = connections.openEditorSession(editorConnection.id());
+    construction.ownBlocking(jdbcSession::close);
+    // Only after ownership is recorded: schema lookup, UI setup, and query startup.
+    construction.commit();
+} catch (Throwable failure) {
+    throw construction.close(failure).failure();
+}
+~~~
+
 The guard completes `APPROVED` only after JdbcEditorSession cancel/wait/rollback-or-commit/close,
 history persistence, and both task scopes have finished on a virtual thread. A user cancel returns
 `REJECTED` and is genuinely retryable. Once destructive cleanup starts, any partial failure is

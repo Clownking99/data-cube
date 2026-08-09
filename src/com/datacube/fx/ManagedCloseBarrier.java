@@ -1,7 +1,6 @@
 package com.datacube.fx;
 
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 
@@ -16,8 +15,13 @@ final class ManagedCloseBarrier {
         try {
             tabs = Objects.requireNonNull(sealRegistry.get(), "registry close returned null");
         } catch (Throwable failure) {
-            aborts.hardSeal();
-            return CompletableFuture.failedFuture(failure);
+            return aborts.hardSeal().handle((outcome, abortFailure) -> {
+                if (abortFailure != null || outcome == null
+                        || outcome == TabCloseOutcome.FAILED_PARTIAL) {
+                    return TabCloseOutcome.FAILED_PARTIAL;
+                }
+                throw new java.util.concurrent.CompletionException(failure);
+            });
         }
         CompletionStage<TabCloseOutcome> abortSettlement = aborts.hardSeal();
         return tabs.thenCombine(abortSettlement, ManagedCloseBarrier::aggregate);

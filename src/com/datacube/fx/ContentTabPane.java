@@ -28,7 +28,7 @@ public final class ContentTabPane {
     public ContentTabPane() {
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.SELECTED_TAB);
         tabPane.getSelectionModel().selectedItemProperty().addListener(
-                (ignored, before, selected) -> selectionTracker.changed(before, selected));
+                (ignored, before, selected) -> selectionTracker.changed(before, selected, tabPane.getTabs().contains(before)));
         tabPane.getTabs().addListener((ListChangeListener<Tab>) change -> {
             if (internalTabMutation) return;
             while (change.next()) {

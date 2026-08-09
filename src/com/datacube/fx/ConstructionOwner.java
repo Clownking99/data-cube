@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /** Constructor-local ownership transaction with reverse-order best-effort rollback. */
-final class ConstructionOwner implements AutoCloseable {
+final class ConstructionOwner {
     private final Deque<Runnable> cleanup = new ArrayDeque<>();
     private final Deque<Runnable> blockingCleanup = new ArrayDeque<>();
     private final Consumer<? super Throwable> reporter;
@@ -37,15 +37,6 @@ final class ConstructionOwner implements AutoCloseable {
         committed = true;
         cleanup.clear();
         blockingCleanup.clear();
-    }
-
-    @Override
-    public void close() {
-        Rollback rollback = close(new IllegalStateException(
-                "construction exited without commit"));
-        if (rollback.outcome() == RollbackOutcome.FAILED_PARTIAL) {
-            throw rollback.failure();
-        }
     }
 
     Rollback close(Throwable constructionFailure) {

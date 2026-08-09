@@ -12,8 +12,8 @@ class ManagedSelectionTrackerTest {
     @Test
     void doesNotRestoreASelectionThatIsNoLongerCurrent() {
         ManagedSelectionTracker<String> tracker = new ManagedSelectionTracker<>();
-        tracker.changed("A", "B");
-        tracker.changed("B", "C");
+        tracker.changed("A", "B", true);
+        tracker.changed("B", "C", true);
 
         assertNull(tracker.originalSelection(List.of("B"), "C"));
     }
@@ -21,7 +21,7 @@ class ManagedSelectionTrackerTest {
     @Test
     void unrelatedRemovalDoesNotForceASelectionRestore() {
         ManagedSelectionTracker<String> tracker = new ManagedSelectionTracker<>();
-        tracker.changed("A", "B");
+        tracker.changed("A", "B", true);
 
         assertNull(tracker.originalSelection(List.of("C"), "B"));
     }
@@ -29,7 +29,7 @@ class ManagedSelectionTrackerTest {
     @Test
     void sameTurnSelectionChangeThenRemovingPreviousTabDoesNotRestoreIt() {
         ManagedSelectionTracker<String> tracker = new ManagedSelectionTracker<>();
-        tracker.changed("A", "B");
+        tracker.changed("A", "B", true);
 
         assertNull(tracker.originalSelection(List.of("A"), "B"));
     }
@@ -37,8 +37,18 @@ class ManagedSelectionTrackerTest {
     @Test
     void removingCurrentTabCapturesItForRestoration() {
         ManagedSelectionTracker<String> tracker = new ManagedSelectionTracker<>();
-        tracker.changed("A", "B");
+        tracker.changed("A", "B", true);
 
         assertEquals("B", tracker.originalSelection(List.of("B"), null));
+    }
+
+    @Test
+    void removalDrivenSelectionTransitionRestoresDisplacedCurrentTab() {
+        ManagedSelectionTracker<String> tracker = new ManagedSelectionTracker<>();
+        tracker.changed("A", "B", true);
+        tracker.changed("B", "C", false);
+
+        assertEquals("B", tracker.originalSelection(List.of("B"), "C"));
+        assertNull(tracker.originalSelection(List.of("B"), "C"));
     }
 }

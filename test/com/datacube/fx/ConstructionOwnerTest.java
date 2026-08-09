@@ -10,8 +10,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class ConstructionOwnerTest {
+
+    @Test
+    void requiresExplicitRollbackCauseAndCannotBeUsedWithTryWithResources() {
+        assertFalse(AutoCloseable.class.isAssignableFrom(ConstructionOwner.class));
+        assertThrows(NoSuchMethodException.class,
+                () -> ConstructionOwner.class.getDeclaredMethod("close"));
+    }
 
     @Test
     void failureClosesAllOwnedResourcesInReverseOrderAndReportsAggregate() {

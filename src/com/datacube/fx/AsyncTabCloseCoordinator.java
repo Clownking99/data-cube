@@ -107,15 +107,25 @@ final class AsyncTabCloseCoordinator {
     CloseAttempt failInstallation(Throwable failure) {
         Objects.requireNonNull(failure, "failure");
         Attempt attempt;
+        Throwable cancelFailure = null;
         synchronized (this) {
-            if (current != null) return current.exposed;
-            AsyncCloseGate.Request request = gate.beginRequest();
-            if (request == null) throw new IllegalStateException("closed coordinator has no result");
-            attempt = new Attempt(request);
-            current = attempt;
+            if (current == null) {
+                AsyncCloseGate.Request request = gate.beginRequest();
+                if (request == null) throw new IllegalStateException("closed coordinator has no result");
+                current = new Attempt(request);
+            }
+            attempt = current;
+            attempt.installationFatal = true;
+            attempt.cleanupTerminal = true;
+            try {
+                attempt.timeoutHandle.cancel();
+            } catch (Throwable timerFailure) {
+                cancelFailure = timerFailure;
+            }
+            settleFatalOnFx(attempt);
         }
         report(failure);
-        settleFatalOnFx(attempt);
+        if (cancelFailure != null) report(cancelFailure);
         invokeUiFinalizer(attempt);
         return attempt.exposed;
     }
@@ -348,6 +358,7 @@ final class AsyncTabCloseCoordinator {
         private final CloseAttempt exposed;
         private TimeoutHandle timeoutHandle = () -> {};
         private boolean cleanupTerminal;
+        private boolean installationFatal;
         private boolean removalAuthorized;
         private boolean finalizerInvoked;
 

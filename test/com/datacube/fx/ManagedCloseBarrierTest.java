@@ -24,4 +24,19 @@ class ManagedCloseBarrierTest {
         abort.complete(CloseGuardOutcome.FAILED_PARTIAL);
         assertEquals(TabCloseOutcome.FAILED_PARTIAL, close.toCompletableFuture().join());
     }
+
+    @Test
+    void registrySealFailureWaitsForReentrantAbortAndFatalWins() {
+        MandatoryAbortTracker tracker = new MandatoryAbortTracker();
+        CompletableFuture<CloseGuardOutcome> abort = new CompletableFuture<>();
+
+        var close = ManagedCloseBarrier.close(() -> {
+            assertTrue(tracker.trackLegacyAbort(() -> abort, ignored -> {}));
+            throw new IllegalStateException("registry seal");
+        }, tracker);
+
+        assertFalse(close.toCompletableFuture().isDone());
+        abort.complete(CloseGuardOutcome.FAILED_PARTIAL);
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL, close.toCompletableFuture().join());
+    }
 }

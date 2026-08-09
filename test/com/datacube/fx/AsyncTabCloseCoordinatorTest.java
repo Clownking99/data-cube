@@ -303,6 +303,63 @@ class AsyncTabCloseCoordinatorTest {
     }
 
     @Test
+    void pendingRejectedCleanupCannotOverrideInstallationFatal() throws Exception {
+        CompletableFuture<CloseGuardOutcome> cleanup = new CompletableFuture<>();
+        ManualTimeoutScheduler timeouts = new ManualTimeoutScheduler();
+        AtomicInteger retryable = new AtomicInteger();
+        AtomicInteger finalizers = new AtomicInteger();
+        List<Throwable> failures = new ArrayList<>();
+        AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
+                () -> cleanup, Duration.ofSeconds(5), timeouts, Runnable::run,
+                () -> {}, retryable::incrementAndGet, () -> {}, () -> {},
+                finalizers::incrementAndGet, failures::add);
+        CloseAttempt pending = coordinator.requestClose();
+        IllegalStateException install = new IllegalStateException("install failed");
+
+        assertSame(pending, coordinator.failInstallation(install));
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL,
+                pending.settlement().toCompletableFuture().get(
+                        1, java.util.concurrent.TimeUnit.SECONDS));
+        cleanup.complete(CloseGuardOutcome.REJECTED);
+
+        assertEquals(0, retryable.get());
+        assertEquals(1, finalizers.get());
+        assertEquals(1, timeouts.cancelledCount());
+        assertTrue(failures.contains(install));
+        assertSame(pending, coordinator.requestClose());
+    }
+
+    @Test
+    void pendingApprovedCleanupCannotRemoveOrReleaseAfterInstallationFatal() throws Exception {
+        CompletableFuture<CloseGuardOutcome> cleanup = new CompletableFuture<>();
+        AtomicInteger removals = new AtomicInteger();
+        AtomicInteger releases = new AtomicInteger();
+        AtomicInteger finalizers = new AtomicInteger();
+        List<Throwable> failures = new ArrayList<>();
+        AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
+                () -> cleanup, Duration.ofSeconds(5), new ManualTimeoutScheduler(), Runnable::run,
+                () -> {}, () -> {}, removals::incrementAndGet, releases::incrementAndGet,
+                () -> {
+                    finalizers.incrementAndGet();
+                    throw new IllegalStateException("finalizer");
+                }, failures::add);
+        CloseAttempt pending = coordinator.requestClose();
+        IllegalStateException install = new IllegalStateException("install failed");
+
+        coordinator.failInstallation(install);
+        cleanup.complete(CloseGuardOutcome.APPROVED);
+
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL,
+                pending.settlement().toCompletableFuture().get(
+                        1, java.util.concurrent.TimeUnit.SECONDS));
+        assertEquals(0, removals.get());
+        assertEquals(0, releases.get());
+        assertEquals(1, finalizers.get());
+        assertTrue(failures.contains(install));
+        assertTrue(failures.stream().anyMatch(f -> "finalizer".equals(f.getMessage())));
+    }
+
+    @Test
     void invokedFinalizerFailureIsReportedButSettlementIsCompleted() {
         IllegalStateException failure = new IllegalStateException("ui finalizer");
         Harness harness = new Harness(

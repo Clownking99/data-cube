@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
@@ -63,5 +65,13 @@ class ContentTabPaneContractTest {
         assertEquals(4, components.length);
         assertEquals("mandatoryAbortCleanup", components[3].getName());
         assertEquals(Runnable.class, components[3].getType());
+    }
+
+    @Test
+    void selectionListenerCapturesWhetherPreviousTabWasAlreadyRemoved() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/ContentTabPane.java"));
+
+        assertTrue(source.contains("selectionTracker.changed(before, selected,"
+                + " tabPane.getTabs().contains(before))"));
     }
 }
