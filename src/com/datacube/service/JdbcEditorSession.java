@@ -256,24 +256,44 @@ public final class JdbcEditorSession implements AutoCloseable {
 
     @Override
     public void close() {
+        try {
+            closeStrict();
+        } catch (SQLException ignored) {
+            // Compatibility API remains best-effort; lifecycle owners use closeStrict().
+        }
+    }
+
+    /** Closes the owned JDBC resource and preserves a failed cleanup reference for retry. */
+    public void closeStrict() throws SQLException {
         closeRequested.set(true);
         cancel();
         singleFlight.lock();
         try {
             Connection current = connection.getAndSet(null);
+            SQLException rollbackFailure = null;
             if (current != null
                     && transactionMode == TransactionMode.MANUAL
                     && transactionState != TransactionState.IDLE) {
                 try {
                     current.rollback();
-                } catch (SQLException ignored) {
-                    // Closing the owned connection remains mandatory.
+                } catch (SQLException failure) {
+                    rollbackFailure = failure;
                 }
             }
-            closeOrRetain(current);
+            SQLException closeFailure = null;
+            try {
+                closeOrRetainStrict(current);
+            } catch (SQLException failure) {
+                closeFailure = failure;
+            }
             transactionState = TransactionState.IDLE;
             transactionConnection = null;
             connectionState = ConnectionState.CLOSED;
+            if (closeFailure != null) {
+                if (rollbackFailure != null) closeFailure.addSuppressed(rollbackFailure);
+                throw closeFailure;
+            }
+            if (rollbackFailure != null) throw rollbackFailure;
         } finally {
             singleFlight.unlock();
         }
@@ -441,6 +461,16 @@ public final class JdbcEditorSession implements AutoCloseable {
                     // Keep the reference so a later close() can retry.
                 }
             }
+        }
+    }
+
+    private void closeOrRetainStrict(Connection connection) throws SQLException {
+        synchronized (cleanupMonitor) {
+            if (connection != null && cleanupConnection == null) cleanupConnection = connection;
+            Connection cleanup = cleanupConnection;
+            if (cleanup == null) return;
+            cleanup.close();
+            cleanupConnection = null;
         }
     }
 

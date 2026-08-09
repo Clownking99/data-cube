@@ -391,6 +391,28 @@ class JdbcEditorSessionTest {
     }
 
     @Test
+    void closeStrictSurfacesJdbcFailureAndRetainsCleanupForRetry() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
+                jdbc::open, new StubRunner(QueryResult.update(1, 1)));
+        session.executeScript("select 1", null, 100, null, false);
+        jdbc.closeFailure = new SQLException("strict close failed");
+        jdbc.closeFailureLeavesOpen = true;
+
+        SQLException failure = assertThrows(SQLException.class, session::closeStrict);
+
+        assertEquals("strict close failed", failure.getMessage());
+        assertEquals(1, jdbc.closes.get());
+        assertFalse(jdbc.handles.getFirst().closed);
+
+        jdbc.closeFailure = null;
+        assertDoesNotThrow(session::closeStrict);
+        assertEquals(2, jdbc.closes.get());
+        assertTrue(jdbc.handles.getFirst().closed);
+    }
+
+    @Test
     void cancelWithoutActiveStatementClosesDedicatedConnectionWithoutWaitingForExecution() throws Exception {
         JdbcStub jdbc = new JdbcStub();
         BlockingRunner runner = new BlockingRunner();

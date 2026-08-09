@@ -40,7 +40,7 @@ class SqlEditorSessionContractTest {
     void pinnedEditorStopsFollowingLaterTreeSelections() throws Exception {
         String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
         int listener = source.indexOf("this.activeConnectionListener");
-        int pinnedGuard = source.indexOf("if (editorConnection == null)", listener);
+        int pinnedGuard = source.indexOf("if (admission.pinned() == null)", listener);
         int prewarm = source.indexOf("prewarm(connection)", listener);
 
         assertTrue(listener >= 0 && pinnedGuard > listener);
@@ -66,5 +66,36 @@ class SqlEditorSessionContractTest {
 
         assertTrue(source.contains(
                 "SqlScriptSplitter.split(text, active.type() == DbType.ORACLE)"));
+    }
+
+    @Test
+    void fxAdmissionPinsBeforeSafetyAndClosingPreventsSessionPublication() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        int execute = source.indexOf("private void onExecute()");
+        int pin = source.indexOf("admitCurrentConnection()", execute);
+        int safety = source.indexOf("allowBySafetyPolicy", execute);
+        assertTrue(pin > execute && pin < safety,
+                "execution must pin before safety analysis and background submission");
+        assertTrue(source.contains("admission.beginClosing()"));
+        assertTrue(source.contains("sessionOperations.stopAcceptingAndCancelQueued()"));
+        assertTrue(source.contains("admission.requireOpenPinned()"));
+        assertTrue(source.contains("existing.snapshot().connectionId().equals(connection.id())"));
+    }
+
+    @Test
+    void closeWaitsForSessionQueueAndUsesStrictFinalResources() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("awaitSessionOperationsIdle"));
+        assertTrue(source.contains("currentEditorSession()"));
+        assertFalse(source.contains("ClosePlan(\n            String connectionName,\n"
+                + "            String schema,\n            String sql,\n"
+                + "            JdbcEditorSession editorSession"));
+        assertTrue(source.contains("history.recordStrict"));
+        assertTrue(source.contains("editorSession.closeStrict()"));
+        assertTrue(source.contains("running = sessionOperations.snapshot().pending()"));
+        assertTrue(source.contains("submitSessionOperation(true"));
+        assertTrue(source.contains("tasks.submit(editorSession::cancel"));
     }
 }

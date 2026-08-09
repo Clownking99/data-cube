@@ -20,6 +20,18 @@
   通用“新建 SQL”遇活动 Redis 时打开未绑定标签，树上的 Redis 动作仍保持原提示/入口。
 - Explain 保留首语句行为，并使用已选关系型连接的 Oracle 分句模式；执行、策略、schema 与
   `oracleMode` 都来自同一个被 pin 的连接配置。
+- 审查修复将首次关系型操作收口到 FX admission 临界区：在安全分析和后台提交之前原子
+  pin `ConnConfig`/connectionId，后续 safety、schema、Oracle 模式与专用会话只从 pinned
+  配置派生；closing 阶段不得新建或发布会话。
+- 新增每编辑器 `SerialSessionOperationQueue`：execute、Explain、事务模式、commit 和
+  rollback 严格 FIFO 单飞，每项在 JDK 25 虚拟线程上运行；cancel 通过独立 task scope
+  绕过队列。操作 pending 期间执行和事务控件均禁用。
+- 关闭 admission 在 FX 线程先停止接收，取消未开始的事务命令，将 current/queued 纳入
+  关闭对话，后台等待 queue idle，最终从当前真实 session 做事务决策和清理。
+- `SqlHistoryStore.recordStrict` 对写入失败可观测并回滚内存快照；
+  `JdbcEditorSession.closeStrict` 会上报 JDBC close 失败且保留 cleanup reference 供重试。
+  正常关闭与 mandatory abort 都通过 strict best-effort 序列，任一失败都为
+  `FAILED_PARTIAL`。
 
 ## RED
 
@@ -38,15 +50,26 @@
 - running + AUTO_COMMIT 关闭不得误 rollback：1 test，1 failure；仅对手动 dirty 事务回滚后 GREEN。
 - Explain 必须使用连接的 Oracle 分句模式：1 test，1 failure；传递 `DbType.ORACLE` 后 GREEN。
 
+审查修复第一轮 RED：
+
+```powershell
+.\gradlew.bat test --tests com.datacube.fx.SqlEditorConnectionAdmissionTest --tests com.datacube.fx.task.SerialSessionOperationQueueTest --tests com.datacube.config.SqlHistoryStoreStrictTest --tests com.datacube.service.JdbcEditorSessionTest --tests com.datacube.fx.SqlEditorSessionContractTest --no-daemon --console=plain
+```
+
+结果：测试编译按预期 RED，共报告 15 处缺失 API/合同：atomic admission、FIFO queue、
+strict history/JDBC cleanup 与 Pane 编排尚未存在。纯 Java 层转 GREEN 后，Pane 源码合同仍有
+2 个预期 failure；迁移完成后全部 GREEN。内部审计又先加 RED 锁定关闭拒绝后的
+pending/running 重算与 cancel 绕过 FIFO，然后完成最小实现转 GREEN。
+
 ## GREEN
 
 最终聚焦强制重跑：
 
 ```powershell
-.\gradlew.bat test --tests com.datacube.fx.SqlEditorPaneLifecycleTest --tests com.datacube.fx.SqlEditorSessionContractTest --tests com.datacube.fx.AsyncCloseGateTest --tests com.datacube.service.JdbcEditorSessionTest --tests com.datacube.sqleditor.SqlSafetyPolicyTest --no-daemon --console=plain --rerun-tasks
+.\gradlew.bat test --tests com.datacube.fx.SqlEditorPaneLifecycleTest --tests com.datacube.fx.SqlEditorSessionContractTest --tests com.datacube.fx.SqlEditorConnectionAdmissionTest --tests com.datacube.fx.task.SerialSessionOperationQueueTest --tests com.datacube.config.SqlHistoryStoreStrictTest --tests com.datacube.fx.task.AsyncCloseGateTest --tests com.datacube.service.JdbcEditorSessionTest --tests com.datacube.service.SqlSafetyPolicyTest --rerun-tasks --no-daemon --console=plain
 ```
 
-结果：`BUILD SUCCESSFUL`，8/8 Gradle tasks 实际执行。
+结果：`BUILD SUCCESSFUL`，8/8 Gradle tasks 实际执行；所有聚焦类全部通过。
 
 最终全量强制重跑：
 
@@ -54,7 +77,7 @@
 .\gradlew.bat test --no-daemon --console=plain --rerun-tasks
 ```
 
-结果：`BUILD SUCCESSFUL`，8/8 Gradle tasks 实际执行；测试 XML 汇总 371 tests、0 failures、
+结果：`BUILD SUCCESSFUL`，8/8 Gradle tasks 实际执行；测试 XML 汇总 382 tests、0 failures、
 0 errors、1 skipped。
 
 静态检查：
@@ -71,16 +94,20 @@ git status --short
 ## SHA
 
 - 基线：`1485ca9545af8136c3596551b701a888cb8b3eaa`
-- Task 6：本报告所在的单一 `feat: 集成安全 SQL 会话` 提交；最终 SHA 由提交后的
-  `git rev-parse HEAD` 记录在交付简报中。
+- Task 6 初始集成：`0d428f8f7157d0715c46419106c5fdb532f7d127`
+- Task 6 审查修复：本报告所在的 `fix: 修复 SQL 会话并发与关闭` 提交；完整 SHA 由
+  提交后的 `git rev-parse HEAD` 记录在交付简报中。
 - 未 push。
 
 ## 风险
 
 - 驱动若永久忽略 cancel，关闭 attempt 会保持 `STILL_CLOSING`，不会误批准或提前移除标签；
   需要等待底层 JDBC 终止或应用退出清理完成。
-- `JdbcEditorSession.close()` 对驱动 close 异常采用内部保留并重试的 best-effort 语义；当前
-  UI 只能根据会话公开终态判断，无法展示驱动私有 cleanup reference 的细节。
+- strict 历史写入或 JDBC close 首次失败会使当次关闭为 `FAILED_PARTIAL`，标签注册表保留
+  清理责任；JDBC cleanup reference 保留供后续 strict close 重试。当前 UI 不展示驱动私有
+  cleanup reference 的细节。
+- closing 只取消未开始的会话命令；当前 JDBC 操作需先响应 cancel 并进入 idle，才能执行
+  关闭事务决策。这是保持 commit/rollback 与执行严格顺序所必需的等待点。
 - 安全分析器按既有保守词法策略工作，不是完整 SQL parser；未知语句和生产写入仍会要求确认，
   会话状态冲突与只读违规仍会直接阻止。
 - 源码合同测试用于锁定所有权紧邻顺序和 UI 编排；JDBC 事务/取消的运行时语义继续由

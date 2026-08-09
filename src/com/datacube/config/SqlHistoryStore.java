@@ -49,14 +49,31 @@ public final class SqlHistoryStore {
      * 再插入到最前（等效置顶并刷新时间戳）；超出上限裁剪最旧。变更后立即写回（best-effort）。
      */
     public synchronized void record(String connName, String schema, String sql) {
+        try {
+            recordStrict(connName, schema, sql);
+        } catch (IOException e) {
+            LOG.warning("写入 SQL 历史失败: " + e.getMessage());
+        }
+    }
+
+    /** Records and persists atomically, surfacing file failures to lifecycle coordinators. */
+    public synchronized void recordStrict(String connName, String schema, String sql)
+            throws IOException {
         if (sql == null) return;
         String trimmed = sql.strip();
         if (trimmed.isEmpty()) return;
+        List<Entry> before = new ArrayList<>(entries);
         entries.removeIf(e -> e.sql().equals(trimmed));
         entries.add(0, new Entry(System.currentTimeMillis(),
                 blankToNull(connName), blankToNull(schema), trimmed));
         while (entries.size() > MAX_ENTRIES) entries.remove(entries.size() - 1);
-        save();
+        try {
+            saveStrict();
+        } catch (IOException failure) {
+            entries.clear();
+            entries.addAll(before);
+            throw failure;
+        }
     }
 
     // ---------- 持久化 ----------
@@ -88,7 +105,7 @@ public final class SqlHistoryStore {
         while (entries.size() > MAX_ENTRIES) entries.remove(entries.size() - 1);
     }
 
-    private void save() {
+    private void saveStrict() throws IOException {
         StringBuilder sb = new StringBuilder();
         for (Entry e : entries) {
             sb.append(e.timestamp()).append('|')
@@ -96,12 +113,8 @@ public final class SqlHistoryStore {
               .append(encode(e.schema())).append('|')
               .append(encode(e.sql())).append('\n');
         }
-        try {
-            Files.createDirectories(file.getParent());
-            Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            LOG.warning("写入 SQL 历史失败: " + e.getMessage());
-        }
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
     }
 
     private static String blankToNull(String s) {
