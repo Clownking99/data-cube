@@ -26,22 +26,21 @@ public final class SqlSafetyPolicy {
         Objects.requireNonNull(analysis, "analysis");
         Objects.requireNonNull(options, "options");
 
-        List<SqlSafetyAnalyzer.StatementAnalysis> sessionConflicts = matching(
-                analysis, statement -> statement.risks().contains(
-                        SqlSafetyAnalyzer.Risk.SESSION_STATE_CONFLICT));
-        if (!sessionConflicts.isEmpty()) {
-            return new Decision(true, false, sessionConflicts,
-                    "SQL 会话状态与安全执行会话冲突，已阻止执行");
+        List<SqlSafetyAnalyzer.StatementAnalysis> blocked = new ArrayList<>();
+        boolean hasSessionConflict = false;
+        for (SqlSafetyAnalyzer.StatementAnalysis statement : analysis.statements()) {
+            boolean sessionConflict = statement.risks().contains(
+                    SqlSafetyAnalyzer.Risk.SESSION_STATE_CONFLICT);
+            boolean readOnlyViolation = options.readOnly()
+                    && statement.kind() != SqlSafetyAnalyzer.StatementKind.READ
+                    && !isCommitOrRollback(statement);
+            if (sessionConflict) hasSessionConflict = true;
+            if (sessionConflict || readOnlyViolation) blocked.add(statement);
         }
-
-        if (options.readOnly()) {
-            List<SqlSafetyAnalyzer.StatementAnalysis> readOnlyViolations = matching(
-                    analysis, statement -> statement.kind() != SqlSafetyAnalyzer.StatementKind.READ
-                            && !isCommitOrRollback(statement));
-            if (!readOnlyViolations.isEmpty()) {
-                return new Decision(true, false, readOnlyViolations,
-                        "只读连接不允许执行非只读语句");
-            }
+        if (!blocked.isEmpty()) {
+            return new Decision(true, false, blocked, hasSessionConflict
+                    ? "SQL 会话状态与安全执行会话冲突，已阻止执行"
+                    : "只读连接不允许执行非只读语句");
         }
 
         List<SqlSafetyAnalyzer.StatementAnalysis> confirmations = matching(analysis, statement ->

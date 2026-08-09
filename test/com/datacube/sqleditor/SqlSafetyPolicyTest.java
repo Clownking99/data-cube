@@ -45,4 +45,20 @@ class SqlSafetyPolicyTest {
         assertTrue(SqlSafetyPolicy.decide(
                 SqlSafetyAnalyzer.analyze("start transaction", false), options).blocked());
     }
+
+    @Test
+    void blockedDecisionCollectsSessionAndReadOnlyViolationsInScriptOrder() {
+        ConnectionSafetyOptions options =
+                new ConnectionSafetyOptions(ConnectionEnvironment.DEVELOPMENT, true, 60);
+
+        var decision = SqlSafetyPolicy.decide(
+                SqlSafetyAnalyzer.analyze("begin; insert into t values (1)", false), options);
+
+        assertTrue(decision.blocked());
+        assertFalse(decision.confirmationRequired());
+        assertEquals(2, decision.relevantStatements().size());
+        assertEquals(1, decision.relevantStatements().get(0).index());
+        assertEquals(2, decision.relevantStatements().get(1).index());
+        assertTrue(decision.message().contains("会话状态"));
+    }
 }

@@ -89,6 +89,25 @@ class SqlScriptSplitterTest {
     }
 
     @Test
+    void pgEscapeStringDoesNotHideFollowingStatement() {
+        List<String> stmts = SqlScriptSplitter.split(
+                "select E'it\\'s'; delete from account", false);
+
+        assertEquals(2, stmts.size(), "E-string 的反斜杠转义不能吞掉后续语句：" + stmts);
+        assertTrue(stmts.get(1).toLowerCase().startsWith("delete from account"));
+    }
+
+    @Test
+    void oracleNqQuoteCanContainApostrophesAndSemicolons() {
+        List<String> stmts = SqlScriptSplitter.split(
+                "select NQ'[It's; delete from hidden]' from dual; delete from target where id=1",
+                true);
+
+        assertEquals(2, stmts.size(), "NQ quote 内的撇号和分号不能参与分句：" + stmts);
+        assertTrue(stmts.get(1).toLowerCase().startsWith("delete from target"));
+    }
+
+    @Test
     void blockCommentedStatementsNotExecuted() {
         String script = "/*\nselect * from t1 where id in('1','2');\n\nselect * from t2;\n*/";
         assertTrue(SqlScriptSplitter.split(script).isEmpty(), "整段块注释不应产生语句");

@@ -23,7 +23,8 @@ public final class SqlSafetyAnalyzer {
     private static final Set<String> TRANSACTION_KEYWORDS = Set.of(
             "BEGIN", "START", "COMMIT", "ROLLBACK", "SET", "SAVEPOINT", "RELEASE");
     private static final Set<String> EXPLAINABLE_KEYWORDS = Set.of(
-            "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "WITH", "VALUES", "TABLE");
+            "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "WITH", "VALUES", "TABLE",
+            "EXECUTE", "EXEC", "CALL", "DO", "DECLARE", "CREATE");
     private static final Set<String> CTE_COMMAND_KEYWORDS = Set.of(
             "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE");
 
@@ -50,17 +51,32 @@ public final class SqlSafetyAnalyzer {
         List<String> statements = SqlScriptSplitter.split(script, oracleMode);
         List<StatementAnalysis> analyses = new ArrayList<>(statements.size());
         for (int i = 0; i < statements.size(); i++) {
-            analyses.add(analyzeStatement(i + 1, statements.get(i)));
+            analyses.add(analyzeStatement(i + 1, statements.get(i), oracleMode));
         }
         return new ScriptAnalysis(analyses);
     }
 
-    private static StatementAnalysis analyzeStatement(int index, String sql) {
-        List<Token> tokens = topLevelTokens(sql);
+    private static StatementAnalysis analyzeStatement(int index, String sql, boolean oracleMode) {
+        List<Token> lexicalTokens = lexicalTokens(sql, oracleMode);
+        List<Token> tokens = lexicalTokens.stream().filter(token -> token.depth() == 0).toList();
         String first = tokens.isEmpty() ? "" : tokens.getFirst().word();
-        String effective = effectiveKeyword(tokens);
-        StatementKind kind = classify(effective, tokens);
+        boolean explainAnalyze = "EXPLAIN".equals(first) && lexicalTokens.stream()
+                .anyMatch(token -> "ANALYZE".equals(token.word()));
+        String effective = effectiveKeyword(tokens, explainAnalyze);
+        boolean confirmedPlSqlBlock = oracleMode && "BEGIN".equals(effective)
+                && tokens.stream().anyMatch(token -> "END".equals(token.word()));
+        StatementKind kind = classify(effective, tokens, confirmedPlSqlBlock);
         EnumSet<Risk> risks = EnumSet.noneOf(Risk.class);
+        int withIndex = cteWithIndex(tokens, first);
+        if (withIndex >= 0) {
+            CteSummary ctes = analyzeCteBodies(lexicalTokens, tokens, withIndex + 1);
+            if (ctes.write()) {
+                kind = StatementKind.WRITE;
+            } else if (ctes.unknown()) {
+                kind = StatementKind.UNKNOWN;
+            }
+            if (ctes.missingWhere()) risks.add(Risk.MISSING_WHERE);
+        }
         if (kind == StatementKind.UNKNOWN) risks.add(Risk.UNKNOWN_STATEMENT);
         if (("UPDATE".equals(effective) || "DELETE".equals(effective))
                 && tokens.stream().noneMatch(token -> "WHERE".equals(token.word()))) {
@@ -76,7 +92,65 @@ public final class SqlSafetyAnalyzer {
         return new StatementAnalysis(index, sql, first, kind, risks);
     }
 
-    private static String effectiveKeyword(List<Token> tokens) {
+    private static int cteWithIndex(List<Token> tokens, String first) {
+        if ("WITH".equals(first)) return 0;
+        if (!"EXPLAIN".equals(first)) return -1;
+        for (int i = 1; i < tokens.size(); i++) {
+            if ("WITH".equals(tokens.get(i).word())) return i;
+            if (EXPLAINABLE_KEYWORDS.contains(tokens.get(i).word())) return -1;
+        }
+        return -1;
+    }
+
+    private static CteSummary analyzeCteBodies(List<Token> lexicalTokens,
+                                               List<Token> topLevelTokens,
+                                               int commandSearchStart) {
+        Token mainCommand = commandTokenAfterWith(topLevelTokens, commandSearchStart);
+        if (mainCommand == null) return new CteSummary(false, true, false);
+
+        boolean write = false;
+        boolean unknown = false;
+        boolean missingWhere = false;
+        for (Token token : topLevelTokens) {
+            if (token.offset() >= mainCommand.offset()) break;
+            if (!"AS".equals(token.word())) continue;
+
+            Token bodyCommand = lexicalTokens.stream()
+                    .filter(candidate -> candidate.offset() > token.offset()
+                            && candidate.offset() < mainCommand.offset()
+                            && candidate.depth() > 0)
+                    .findFirst()
+                    .orElse(null);
+            if (bodyCommand == null) {
+                unknown = true;
+                continue;
+            }
+
+            int bodyEnd = lexicalTokens.stream()
+                    .filter(candidate -> candidate.offset() > bodyCommand.offset()
+                            && candidate.depth() == 0)
+                    .mapToInt(Token::offset)
+                    .findFirst()
+                    .orElse(mainCommand.offset());
+            StatementKind bodyKind = classify(bodyCommand.word(), List.of(bodyCommand), false);
+            if (bodyKind == StatementKind.WRITE) {
+                write = true;
+            } else if (bodyKind != StatementKind.READ) {
+                unknown = true;
+            }
+            if (("UPDATE".equals(bodyCommand.word()) || "DELETE".equals(bodyCommand.word()))
+                    && lexicalTokens.stream().noneMatch(candidate ->
+                    candidate.offset() > bodyCommand.offset()
+                            && candidate.offset() < bodyEnd
+                            && candidate.depth() == bodyCommand.depth()
+                            && "WHERE".equals(candidate.word()))) {
+                missingWhere = true;
+            }
+        }
+        return new CteSummary(write, unknown, missingWhere);
+    }
+
+    private static String effectiveKeyword(List<Token> tokens, boolean explainAnalyze) {
         if (tokens.isEmpty()) return "";
         String first = tokens.getFirst().word();
         if ("WITH".equals(first)) return commandAfterWith(tokens, 1);
@@ -87,34 +161,34 @@ public final class SqlSafetyAnalyzer {
             if (!EXPLAINABLE_KEYWORDS.contains(word)) continue;
             return "WITH".equals(word) ? commandAfterWith(tokens, i + 1) : word;
         }
-        return "EXPLAIN";
+        return explainAnalyze ? "" : "EXPLAIN";
     }
 
     private static String commandAfterWith(List<Token> tokens, int start) {
-        for (int i = start; i < tokens.size(); i++) {
-            String word = tokens.get(i).word();
-            if (CTE_COMMAND_KEYWORDS.contains(word)) return word;
-        }
-        return "WITH";
+        Token command = commandTokenAfterWith(tokens, start);
+        return command == null ? "WITH" : command.word();
     }
 
-    private static StatementKind classify(String effective, List<Token> tokens) {
+    private static Token commandTokenAfterWith(List<Token> tokens, int start) {
+        for (int i = start; i < tokens.size(); i++) {
+            Token token = tokens.get(i);
+            if (CTE_COMMAND_KEYWORDS.contains(token.word())) return token;
+        }
+        return null;
+    }
+
+    private static StatementKind classify(String effective, List<Token> tokens,
+                                          boolean confirmedPlSqlBlock) {
         if (READ_KEYWORDS.contains(effective) || "EXPLAIN".equals(effective)) {
             return StatementKind.READ;
         }
         if (WRITE_KEYWORDS.contains(effective)) return StatementKind.WRITE;
         if (DDL_KEYWORDS.contains(effective)) return StatementKind.DDL;
         if (TRANSACTION_KEYWORDS.contains(effective)) {
-            if ("BEGIN".equals(effective) && !isStandaloneBegin(tokens)) return StatementKind.WRITE;
+            if ("BEGIN".equals(effective) && confirmedPlSqlBlock) return StatementKind.WRITE;
             return StatementKind.TRANSACTION_CONTROL;
         }
         return StatementKind.UNKNOWN;
-    }
-
-    private static boolean isStandaloneBegin(List<Token> tokens) {
-        if (tokens.size() == 1) return true;
-        return tokens.size() == 2
-                && ("WORK".equals(tokens.get(1).word()) || "TRANSACTION".equals(tokens.get(1).word()));
     }
 
     private enum State {
@@ -122,13 +196,14 @@ public final class SqlSafetyAnalyzer {
         DOLLAR_QUOTE, ORACLE_Q_QUOTE
     }
 
-    private static List<Token> topLevelTokens(String sql) {
+    private static List<Token> lexicalTokens(String sql, boolean oracleMode) {
         List<Token> tokens = new ArrayList<>();
         State state = State.NORMAL;
         int depth = 0;
         int blockCommentDepth = 0;
         String dollarDelimiter = null;
         char oracleClose = 0;
+        boolean backslashEscapes = false;
 
         for (int i = 0; i < sql.length();) {
             char current = sql.charAt(i);
@@ -144,18 +219,21 @@ public final class SqlSafetyAnalyzer {
                         blockCommentDepth = 1;
                         i += 2;
                     } else if (current == '\'') {
+                        backslashEscapes = SqlLexicalRules.isPostgresEscapeStringQuote(
+                                sql, i, oracleMode);
                         state = State.SINGLE_QUOTE;
                         i++;
                     } else if (current == '"') {
                         state = State.DOUBLE_QUOTE;
                         i++;
-                    } else if ((current == 'q' || current == 'Q') && next == '\''
-                            && i + 2 < sql.length()) {
-                        oracleClose = oracleClosingDelimiter(sql.charAt(i + 2));
+                    } else if (SqlLexicalRules.oracleQuoteAt(sql, i, oracleMode) != null) {
+                        SqlLexicalRules.OracleQuote quote =
+                                SqlLexicalRules.oracleQuoteAt(sql, i, oracleMode);
+                        oracleClose = quote.closingDelimiter();
                         state = State.ORACLE_Q_QUOTE;
-                        i += 3;
+                        i += quote.prefixLength();
                     } else {
-                        String delimiter = dollarDelimiterAt(sql, i);
+                        String delimiter = SqlLexicalRules.dollarDelimiterAt(sql, i);
                         if (delimiter != null) {
                             dollarDelimiter = delimiter;
                             state = State.DOLLAR_QUOTE;
@@ -166,20 +244,24 @@ public final class SqlSafetyAnalyzer {
                         } else if (current == ')') {
                             if (depth > 0) depth--;
                             i++;
-                        } else if (depth == 0 && isWordStart(current)) {
+                        } else if (isWordStart(current)) {
                             int start = i++;
                             while (i < sql.length() && isWordPart(sql.charAt(i))) i++;
-                            tokens.add(new Token(sql.substring(start, i).toUpperCase(Locale.ROOT)));
+                            tokens.add(new Token(sql.substring(start, i).toUpperCase(Locale.ROOT),
+                                    depth, start));
                         } else {
                             i++;
                         }
                     }
                 }
                 case SINGLE_QUOTE -> {
-                    if (current == '\'' && next == '\'') {
+                    if (backslashEscapes && current == '\\' && i + 1 < sql.length()) {
+                        i += 2;
+                    } else if (current == '\'' && next == '\'') {
                         i += 2;
                     } else if (current == '\'') {
                         state = State.NORMAL;
+                        backslashEscapes = false;
                         i++;
                     } else {
                         i++;
@@ -232,34 +314,15 @@ public final class SqlSafetyAnalyzer {
         return tokens;
     }
 
-    private static String dollarDelimiterAt(String sql, int offset) {
-        if (sql.charAt(offset) != '$') return null;
-        int i = offset + 1;
-        while (i < sql.length() && (Character.isLetterOrDigit(sql.charAt(i)) || sql.charAt(i) == '_')) {
-            i++;
-        }
-        if (i >= sql.length() || sql.charAt(i) != '$') return null;
-        if (i > offset + 1 && Character.isDigit(sql.charAt(offset + 1))) return null;
-        return sql.substring(offset, i + 1);
-    }
-
-    private static char oracleClosingDelimiter(char opening) {
-        return switch (opening) {
-            case '[' -> ']';
-            case '(' -> ')';
-            case '{' -> '}';
-            case '<' -> '>';
-            default -> opening;
-        };
-    }
-
     private static boolean isWordStart(char value) {
         return Character.isLetter(value) || value == '_';
     }
 
     private static boolean isWordPart(char value) {
-        return Character.isLetterOrDigit(value) || value == '_' || value == '$';
+        return SqlLexicalRules.isWordPart(value);
     }
 
-    private record Token(String word) {}
+    private record Token(String word, int depth, int offset) {}
+
+    private record CteSummary(boolean write, boolean unknown, boolean missingWhere) {}
 }

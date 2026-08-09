@@ -45,7 +45,8 @@ public final class SqlScriptSplitter {
     }
 
     private enum State {
-        NORMAL, IN_QUOTE, IN_DQUOTE, IN_LINE_COMMENT, IN_BLOCK_COMMENT, IN_DOLLAR
+        NORMAL, IN_QUOTE, IN_DQUOTE, IN_LINE_COMMENT, IN_BLOCK_COMMENT, IN_DOLLAR,
+        IN_ORACLE_Q_QUOTE
     }
 
     /** 单次 split 调用的可变状态。 */
@@ -54,6 +55,8 @@ public final class SqlScriptSplitter {
         private final List<String> stmts = new ArrayList<>();
         private State state = State.NORMAL;
         private String dollarTag;
+        private boolean backslashEscapes;
+        private char oracleQuoteClose;
         private final boolean plsql;
         private boolean plsqlBlock;
 
@@ -76,7 +79,16 @@ public final class SqlScriptSplitter {
                                 && blockMatcher.region(i, n).lookingAt()) {
                             plsqlBlock = true;
                         }
-                        if (c == '\'') {
+                        SqlLexicalRules.OracleQuote oracleQuote =
+                                SqlLexicalRules.oracleQuoteAt(sql, i, plsql);
+                        if (oracleQuote != null) {
+                            cur.append(sql, i, i + oracleQuote.prefixLength());
+                            oracleQuoteClose = oracleQuote.closingDelimiter();
+                            state = State.IN_ORACLE_Q_QUOTE;
+                            i += oracleQuote.prefixLength();
+                        } else if (c == '\'') {
+                            backslashEscapes = SqlLexicalRules.isPostgresEscapeStringQuote(
+                                    sql, i, plsql);
                             state = State.IN_QUOTE;
                             cur.append(c);
                             i++;
@@ -98,13 +110,12 @@ public final class SqlScriptSplitter {
                             plsqlBlock = false;
                             i = advancePastLine(sql, i);
                         } else if (c == '$') {
-                            int tagEnd = findDollarTagEnd(sql, i);
-                            if (tagEnd > i) {
-                                String tag = sql.substring(i, tagEnd + 1);
+                            String tag = SqlLexicalRules.dollarDelimiterAt(sql, i);
+                            if (tag != null) {
                                 cur.append(tag);
                                 state = State.IN_DOLLAR;
                                 dollarTag = tag;
-                                i = tagEnd + 1;
+                                i += tag.length();
                             } else {
                                 cur.append(c);
                                 i++;
@@ -120,12 +131,16 @@ public final class SqlScriptSplitter {
 
                     case IN_QUOTE:
                         cur.append(c);
-                        if (c == '\'') {
+                        if (backslashEscapes && c == '\\' && i + 1 < n) {
+                            cur.append(sql.charAt(i + 1));
+                            i += 2;
+                        } else if (c == '\'') {
                             if (i + 1 < n && sql.charAt(i + 1) == '\'') {
                                 cur.append('\'');
                                 i += 2;
                             } else {
                                 state = State.NORMAL;
+                                backslashEscapes = false;
                                 i++;
                             }
                         } else {
@@ -175,6 +190,17 @@ public final class SqlScriptSplitter {
                             dollarTag = null;
                         } else {
                             cur.append(c);
+                            i++;
+                        }
+                        break;
+
+                    case IN_ORACLE_Q_QUOTE:
+                        cur.append(c);
+                        if (c == oracleQuoteClose && i + 1 < n && sql.charAt(i + 1) == '\'') {
+                            cur.append('\'');
+                            state = State.NORMAL;
+                            i += 2;
+                        } else {
                             i++;
                         }
                         break;
@@ -243,21 +269,5 @@ public final class SqlScriptSplitter {
             return j < n ? j + 1 : n;
         }
 
-        /**
-         * 从 {@code $} 开始扫描，匹配形如 {@code $tag$} 的结束位置（含两个 $）。
-         * 若不存在合法的 dollar tag（如孤立的 {@code $5}），返回 -1。
-         */
-        private static int findDollarTagEnd(String sql, int start) {
-            int n = sql.length();
-            if (start + 1 >= n) return -1;
-            int j = start + 1;
-            while (j < n) {
-                char c = sql.charAt(j);
-                if (c == '$') return j;
-                if (!(Character.isLetterOrDigit(c) || c == '_')) return -1;
-                j++;
-            }
-            return -1;
-        }
     }
 }

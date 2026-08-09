@@ -35,6 +35,24 @@ class SqlSafetyAnalyzerTest {
     }
 
     @Test
+    void handlesPgEscapeStringsAndOracleNationalQQuotesConsistentlyWithSplitting() {
+        var unsafe = SqlSafetyAnalyzer.analyze(
+                "update account set note=E'it\\'s where hidden'", false);
+        assertTrue(unsafe.statements().getFirst().risks().contains(MISSING_WHERE));
+
+        var batch = SqlSafetyAnalyzer.analyze(
+                "select E'it\\'s'; delete from account where id=1", false);
+        assertEquals(2, batch.statements().size());
+        assertEquals(WRITE, batch.statements().get(1).kind());
+
+        var oracle = SqlSafetyAnalyzer.analyze(
+                "select NQ'[It's; drop table hidden]' from dual", true);
+        assertEquals(1, oracle.statements().size());
+        assertEquals(READ, oracle.statements().getFirst().kind());
+        assertFalse(oracle.statements().getFirst().risks().contains(DESTRUCTIVE_DDL));
+    }
+
+    @Test
     void classifiesExplainAnalyzeAndSessionStateConflicts() {
         assertEquals(READ, SqlSafetyAnalyzer.analyze(
                 "explain select * from t", false).statements().getFirst().kind());
@@ -44,6 +62,71 @@ class SqlSafetyAnalyzerTest {
                 .contains(SESSION_STATE_CONFLICT));
         assertFalse(SqlSafetyAnalyzer.analyze("commit", false).statements().getFirst().risks()
                 .contains(SESSION_STATE_CONFLICT));
+    }
+
+    @Test
+    void dataModifyingCtesCannotBeHiddenByReadOnlyMainStatement() {
+        String[] writes = {
+                "with changed as (insert into audit values (1) returning id) select * from changed",
+                "with changed as (update account set state='x' where id=1 returning id) select * from changed",
+                "with changed as (delete from account where id=1 returning id) select * from changed",
+                "with changed as (merge into target using source on target.id=source.id "
+                        + "when matched then update set value=source.value returning id) select * from changed"
+        };
+        for (String sql : writes) {
+            assertEquals(WRITE, SqlSafetyAnalyzer.analyze(sql, false).statements().getFirst().kind(), sql);
+        }
+
+        var unsafe = SqlSafetyAnalyzer.analyze(
+                "with removed as (delete from account returning id) select * from removed", false);
+        assertTrue(unsafe.statements().getFirst().risks().contains(MISSING_WHERE));
+
+        var unknown = SqlSafetyAnalyzer.analyze(
+                "with opaque as (vacuum account) select * from opaque", false);
+        assertEquals(UNKNOWN, unknown.statements().getFirst().kind());
+        assertTrue(unknown.statements().getFirst().risks().contains(UNKNOWN_STATEMENT));
+    }
+
+    @Test
+    void explainAnalyzeNeverFallsBackToReadForExecutableOrOpaqueTargets() {
+        assertEquals(WRITE, SqlSafetyAnalyzer.analyze(
+                "explain analyze execute prepared_write(1)", false)
+                .statements().getFirst().kind());
+
+        var opaque = SqlSafetyAnalyzer.analyze(
+                "explain analyze provider_specific_command account", false)
+                .statements().getFirst();
+        assertEquals(UNKNOWN, opaque.kind());
+        assertTrue(opaque.risks().contains(UNKNOWN_STATEMENT));
+
+        assertEquals(DDL, SqlSafetyAnalyzer.analyze(
+                "explain analyze create table account_copy as select * from account", false)
+                .statements().getFirst().kind());
+
+        var cte = SqlSafetyAnalyzer.analyze(
+                "explain analyze with removed as (delete from account returning id) "
+                        + "select * from removed", false).statements().getFirst();
+        assertEquals(WRITE, cte.kind());
+        assertTrue(cte.risks().contains(MISSING_WHERE));
+    }
+
+    @Test
+    void beginTransactionModesAreConflictsUnlessAPlSqlBlockIsConfirmed() {
+        String[] transactions = {
+                "begin work isolation level serializable read only",
+                "begin transaction read write",
+                "begin isolation level repeatable read"
+        };
+        for (String sql : transactions) {
+            var statement = SqlSafetyAnalyzer.analyze(sql, false).statements().getFirst();
+            assertEquals(TRANSACTION_CONTROL, statement.kind(), sql);
+            assertTrue(statement.risks().contains(SESSION_STATE_CONFLICT), sql);
+        }
+
+        var plsql = SqlSafetyAnalyzer.analyze("begin\n null;\nend;\n/", true)
+                .statements().getFirst();
+        assertEquals(WRITE, plsql.kind());
+        assertFalse(plsql.risks().contains(SESSION_STATE_CONFLICT));
     }
 
     @Test
