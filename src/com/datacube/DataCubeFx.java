@@ -2,7 +2,7 @@ package com.datacube;
 
 import com.datacube.fx.AppShell;
 import com.datacube.fx.BrandLogo;
-import com.datacube.fx.ShutdownOutcome;
+import com.datacube.fx.ShutdownQuarantine;
 import com.datacube.fx.SplashScreen;
 import javafx.animation.PauseTransition;
 import javafx.application.Application;
@@ -13,8 +13,6 @@ import javafx.scene.control.ButtonType;
 import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
 import javafx.util.Duration;
-
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class DataCubeFx extends Application {
 
@@ -39,10 +37,10 @@ public class DataCubeFx extends Application {
             BrandLogo.applyIcons(primaryStage);
 
             // 窗口关闭事件：迁移任务进行中提示确认
-            AtomicBoolean closing = new AtomicBoolean();
+            ShutdownQuarantine quarantine = new ShutdownQuarantine();
             primaryStage.setOnCloseRequest((WindowEvent e) -> {
                 e.consume();
-                if (closing.get()) return;
+                if (quarantine.isQuarantined()) return;
                 if (appShell.isRunning()) {
                     Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
                             "迁移任务正在执行中，强制关闭可能导致数据不完整。\n确定关闭？",
@@ -53,23 +51,22 @@ public class DataCubeFx extends Application {
                         return;
                     }
                 }
-                if (!closing.compareAndSet(false, true)) return;
+                if (!quarantine.begin()) return;
+                appShell.getRoot().setDisable(true);
                 appShell.shutdownAsync().whenComplete((outcome, failure) -> Platform.runLater(() -> {
+                    ShutdownQuarantine.Action action = quarantine.settle(outcome, failure);
                     if (failure != null) {
                         System.err.println("[DataCube] shutdown failure: " + failure);
                         failure.printStackTrace(System.err);
-                        closing.set(false);
+                    }
+                    if (action == ShutdownQuarantine.Action.RECOVER) {
+                        appShell.getRoot().setDisable(false);
                         return;
                     }
-                    if (outcome == ShutdownOutcome.CANCELLED) {
-                        closing.set(false);
-                        return;
-                    }
-                    if (outcome == ShutdownOutcome.FAILED_PARTIAL) {
+                    if (action == ShutdownQuarantine.Action.FATAL) {
                         System.err.println("[DataCube] shutdown partially failed; application is not retryable");
                         return;
                     }
-                    if (outcome != ShutdownOutcome.COMPLETED) return;
                     primaryStage.setOnCloseRequest(null);
                     primaryStage.close();
                 }));

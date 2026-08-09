@@ -38,6 +38,8 @@ import javafx.scene.layout.Region;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * 应用主壳：三栏式布局（顶部工具栏 + 左连接树 + 中内容区）。
@@ -221,11 +223,16 @@ public final class AppShell {
         SqlHistoryDialog.show(sqlHistory, owner, themeManager).ifPresent(entry -> {
             ConnConfig conn = resolveConnByName(entry.connName());
             if (conn != null) session.setActiveConnection(conn);
-            SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings,
-                    treeActions::openTableDesigner, conn, entry.schema(), sqlHistory, shortcuts, tasks);
-            pane.setSqlText(entry.sql());
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
-            openSqlTab(name, pane);
+            AtomicReference<SqlEditorPane> created = new AtomicReference<>();
+            openSqlTab(name, () -> {
+                SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings,
+                        treeActions::openTableDesigner, conn, entry.schema(), sqlHistory, shortcuts, tasks);
+                created.set(pane);
+                return pane;
+            });
+            SqlEditorPane pane = created.get();
+            if (pane != null) pane.setSqlText(entry.sql());
         });
     }
 
@@ -238,20 +245,21 @@ public final class AppShell {
         return null;
     }
 
-    private void openSqlTab(String title, SqlEditorPane pane) {
-        contentTabs.openManagedTab(
-                title,
-                pane.getNode(),
-                pane::requestClose,
-                pane::finalizeCloseOnFx);
+    private void openSqlTab(String title, Supplier<SqlEditorPane> factory) {
+        contentTabs.openManagedTab(title, () -> {
+            SqlEditorPane pane = factory.get();
+            return new ContentTabPane.ManagedTabSpec(
+                    pane.getNode(), pane::requestClose, pane::finalizeCloseOnFx, pane::closeResources);
+        });
     }
 
-    private void openBackgroundCleanupTab(String title, Node content, Runnable cleanup) {
-        contentTabs.openManagedTab(
-                title,
-                content,
-                AsyncTabCloseGuards.blocking(cleanup),
-                () -> {});
+    private void openBackgroundCleanupTab(String title, Supplier<BackgroundTab> factory) {
+        contentTabs.openManagedTab(title, () -> {
+            BackgroundTab tab = factory.get();
+            return new ContentTabPane.ManagedTabSpec(
+                    tab.content(), AsyncTabCloseGuards.blocking(tab.cleanup()),
+                    () -> {}, tab.cleanup());
+        });
     }
 
     /** 连接树动作实现：将树操作转为内容标签。 */
@@ -267,53 +275,62 @@ public final class AppShell {
                 return;
             }
             if (conn != null) session.setActiveConnection(conn);
-            SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings,
-                    this::openTableDesigner, conn, schema, sqlHistory, shortcuts, tasks);
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
-            openSqlTab(name, pane);
+            openSqlTab(name, () -> new SqlEditorPane(session, connMgr, treeSvc, settings,
+                    this::openTableDesigner, conn, schema, sqlHistory, shortcuts, tasks));
         }
 
         @Override
         public void openDataGrid(String connId, TableRef table, boolean readOnly) {
             String connName = connMgr.config(connId).name();
-            DataGridPane pane = new DataGridPane(
-                    browseSvc, editSvc, connId, connName, table, settings, readOnly, tasks);
             String prefix = readOnly ? "视图: " : "数据: ";
-            openBackgroundCleanupTab(prefix + table.name(), pane.getNode(), pane::close);
+            openBackgroundCleanupTab(prefix + table.name(), () -> {
+                DataGridPane pane = new DataGridPane(
+                        browseSvc, editSvc, connId, connName, table, settings, readOnly, tasks);
+                return new BackgroundTab(pane.getNode(), pane::close);
+            });
         }
 
         @Override
         public void openTableDesigner(String connId, TableRef table) {
             DbType dbType = connMgr.provider(connId).type();
             String connName = connMgr.config(connId).name();
-            TableDesignerPane pane = new TableDesignerPane(
-                    designSvc, connId, connName, table, table.schema(), dbType, tasks);
-            openBackgroundCleanupTab("设计: " + table.name(), pane.getNode(), pane::close);
+            openBackgroundCleanupTab("设计: " + table.name(), () -> {
+                TableDesignerPane pane = new TableDesignerPane(
+                        designSvc, connId, connName, table, table.schema(), dbType, tasks);
+                return new BackgroundTab(pane.getNode(), pane::close);
+            });
         }
 
         @Override
         public void newTable(String connId, String schema) {
             DbType dbType = connMgr.provider(connId).type();
             String connName = connMgr.config(connId).name();
-            TableDesignerPane pane = new TableDesignerPane(
-                    designSvc, connId, connName, null, schema, dbType, tasks);
-            openBackgroundCleanupTab("新建表", pane.getNode(), pane::close);
+            openBackgroundCleanupTab("新建表", () -> {
+                TableDesignerPane pane = new TableDesignerPane(
+                        designSvc, connId, connName, null, schema, dbType, tasks);
+                return new BackgroundTab(pane.getNode(), pane::close);
+            });
         }
 
         @Override
         public void openRedisKeys(ConnConfig conn, int database) {
             if (conn == null) return;
             session.setActiveConnection(conn);
-            RedisKeyBrowserPane pane = new RedisKeyBrowserPane(connMgr, conn, database, tasks);
-            openBackgroundCleanupTab(conn.name() + " · db" + database, pane.getNode(), pane::close);
+            openBackgroundCleanupTab(conn.name() + " · db" + database, () -> {
+                RedisKeyBrowserPane pane = new RedisKeyBrowserPane(connMgr, conn, database, tasks);
+                return new BackgroundTab(pane.getNode(), pane::close);
+            });
         }
 
         @Override
         public void openRedisConsole(ConnConfig conn) {
             if (conn == null) return;
             session.setActiveConnection(conn);
-            RedisConsolePane pane = new RedisConsolePane(connMgr, conn, tasks);
-            openBackgroundCleanupTab("Redis CLI - " + conn.name(), pane.getNode(), pane::close);
+            openBackgroundCleanupTab("Redis CLI - " + conn.name(), () -> {
+                RedisConsolePane pane = new RedisConsolePane(connMgr, conn, tasks);
+                return new BackgroundTab(pane.getNode(), pane::close);
+            });
         }
 
         @Override
@@ -325,8 +342,10 @@ public final class AppShell {
         @Override
         public void openDdl(String connId, ConnectionTreePane.NodeData node) {
             String name = node.name();
-            DdlViewPane pane = new DdlViewPane("DDL: " + name, ddlFetch(connId, node), tasks);
-            openBackgroundCleanupTab("DDL: " + name, pane.getNode(), pane::close);
+            openBackgroundCleanupTab("DDL: " + name, () -> {
+                DdlViewPane pane = new DdlViewPane("DDL: " + name, ddlFetch(connId, node), tasks);
+                return new BackgroundTab(pane.getNode(), pane::close);
+            });
         }
 
         @Override
@@ -339,9 +358,11 @@ public final class AppShell {
                     throw new RuntimeException(ex.getMessage(), ex);
                 }
             };
-            ObjectEditorPane pane = new ObjectEditorPane(
-                    "编辑: " + name, ddlFetch(connId, node), executor, tasks);
-            openBackgroundCleanupTab("编辑: " + name, pane.getNode(), pane::close);
+            openBackgroundCleanupTab("编辑: " + name, () -> {
+                ObjectEditorPane pane = new ObjectEditorPane(
+                        "编辑: " + name, ddlFetch(connId, node), executor, tasks);
+                return new BackgroundTab(pane.getNode(), pane::close);
+            });
         }
 
         @Override
@@ -349,9 +370,11 @@ public final class AppShell {
             String name = node.name();
             DbType dbType = connMgr.provider(connId).type();
             String connName = connMgr.config(connId).name();
-            SequenceDesignerPane pane = new SequenceDesignerPane(
-                    ddlSvc, connId, connName, node.schema(), name, dbType, tasks);
-            openBackgroundCleanupTab("编辑序列: " + name, pane.getNode(), pane::close);
+            openBackgroundCleanupTab("编辑序列: " + name, () -> {
+                SequenceDesignerPane pane = new SequenceDesignerPane(
+                        ddlSvc, connId, connName, node.schema(), name, dbType, tasks);
+                return new BackgroundTab(pane.getNode(), pane::close);
+            });
         }
 
         /** 根据节点类型选择对应的 DDL 获取逻辑。 */
@@ -370,4 +393,6 @@ public final class AppShell {
             };
         }
     }
+
+    private record BackgroundTab(Node content, Runnable cleanup) {}
 }

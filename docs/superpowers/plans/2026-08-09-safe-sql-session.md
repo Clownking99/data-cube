@@ -1145,6 +1145,10 @@ Expected: session state and isolation tests pass.
   `CompletionStage<CloseGuardOutcome>` (`APPROVED`, `REJECTED`, or `FAILED_PARTIAL`).
 - `ContentTabPane` adds `openManagedTab(String, Node, AsyncTabCloseGuard, Runnable)`; the final
   `Runnable` is an FX-only, non-blocking UI finalizer.
+- New resource-owning callers use `openManagedTab(String, Supplier<ManagedTabSpec>)`. The container
+  acquires an `AutoCloseable` registry reservation before invoking the supplier; Task 6 must not
+  construct `SqlEditorPane`/`JdbcEditorSession` before that reservation. `ManagedTabSpec` also
+  supplies mandatory abort cleanup which never prompts or rejects if registration cannot finish.
 - The deprecated three-argument overload remains source-compatible, but runs its disposer on one
   virtual thread. New callers must use the four-argument phase-split API.
 - `closeAllManagedTabs()` returns `CompletionStage<TabCloseOutcome>` and `shutdownAsync()` returns
@@ -1216,12 +1220,15 @@ coalesces duplicate requests and owns exception/null/cancellation/timeout normal
 
 The guarded overload registers its coordinator before adding the tab. Guard cleanup may block only
 off the FX thread. Approval is dispatched back to FX for tab removal and the lightweight finalizer.
-External `tabs.remove(tab)` is also intercepted. `CANCELLED` restores an enabled tab at its original
-index and selection. A timeout yields `TIMED_OUT_STILL_CLOSING`, restores/keeps the tab disabled, and
-retains the underlying cleanup single-flight. Late `APPROVED` automatically removes/finalizes the
-tab; late `REJECTED` or a retryable exception re-enables it and permits a new generation;
-`FAILED_PARTIAL` remains disabled and terminal. Normal completion cancels and removes its
-daemon-scheduler timer. Root FX-dispatch rejection is never reported as `COMPLETED`.
+External `tabs.remove(tab)` is also intercepted. Its whole removed batch is restored disabled at the
+original relative position, preserving the original selection only when that selected tab was in
+the batch. `CloseAttempt.status()` may change from `CLOSING` to progress-only `STILL_CLOSING`, but
+timeout never completes `CloseAttempt.settlement()` and never releases registry ownership. The
+underlying cleanup result is the unique settlement: late `APPROVED` automatically removes/finalizes
+the tab; late `REJECTED` or a retryable exception re-enables it and permits a new generation;
+`FAILED_PARTIAL` remains disabled and terminal. `closeAllManagedTabs()` remains sealed and waits for
+that settlement. Normal completion cancels and removes its daemon-scheduler timer. Root FX-dispatch
+or tab-removal failure is never reported as `COMPLETED`.
 
 - [ ] **Step 5: Verify GREEN and commit**
 
@@ -1409,15 +1416,25 @@ finalizer is reported and swallowed without a second invocation.
 
 - [ ] **Step 7: Bind AppShell SQL tabs to the guarded overload**
 
-Both openSqlHistory and TreeActions.openSqlEditor construct the Pane as today but call:
+Both openSqlHistory and TreeActions.openSqlEditor must reserve ownership before constructing the
+pane. Use the factory overload and provide the non-interactive background abort path:
 
 ~~~java
-contentTabs.openManagedTab(
-        name,
-        pane.getNode(),
-        pane::requestClose,
-        pane::finalizeCloseOnFx);
+contentTabs.openManagedTab(name, () -> {
+    SqlEditorPane pane = new SqlEditorPane(/* existing arguments */);
+    return new ContentTabPane.ManagedTabSpec(
+            pane.getNode(),
+            pane::requestClose,
+            pane::finalizeCloseOnFx,
+            pane::closeResources);
+});
 ~~~
+
+The guard completes `APPROVED` only after JdbcEditorSession cancel/wait/rollback-or-commit/close,
+history persistence, and both task scopes have finished on a virtual thread. A user cancel returns
+`REJECTED` and is genuinely retryable. Once destructive cleanup starts, any partial failure is
+`FAILED_PARTIAL`; the mandatory abort path never opens a confirmation dialog and never returns
+`REJECTED`. The FX finalizer performs only lightweight listener/UI cleanup.
 
 If the generic SQL entry has an active Redis connection, open the tab disconnected rather than binding Redis. Existing tree Redis actions remain unchanged.
 

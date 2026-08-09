@@ -13,6 +13,17 @@ final class AsyncTabCloseGuards {
 
     static AsyncTabCloseGuard blocking(Runnable cleanup) {
         Objects.requireNonNull(cleanup, "cleanup");
+        return fatalOnce(cleanup);
+    }
+
+    /** Mandatory ownership-abort cleanup: never asks the user and any failure is permanently fatal. */
+    static AsyncTabCloseGuard mandatoryAbort(Runnable cleanup) {
+        return fatalOnce(Objects.requireNonNull(cleanup, "cleanup"));
+    }
+
+    /** Explicitly retryable background action for work known not to have destructive partial effects. */
+    static AsyncTabCloseGuard blockingAttempt(Runnable cleanup) {
+        Objects.requireNonNull(cleanup, "cleanup");
         return blockingAttempt(() -> cleanup);
     }
 
@@ -38,6 +49,29 @@ final class AsyncTabCloseGuards {
             }
             return result;
         });
+    }
+
+    private static AsyncTabCloseGuard fatalOnce(Runnable cleanup) {
+        AtomicReference<CompletableFuture<CloseGuardOutcome>> current = new AtomicReference<>();
+        return () -> {
+            CompletableFuture<CloseGuardOutcome> existing = current.get();
+            if (existing != null) return existing;
+            CompletableFuture<CloseGuardOutcome> created = new CompletableFuture<>();
+            if (!current.compareAndSet(null, created)) return current.get();
+            try {
+                Thread.startVirtualThread(() -> {
+                    try {
+                        cleanup.run();
+                        created.complete(CloseGuardOutcome.APPROVED);
+                    } catch (Throwable failure) {
+                        created.complete(CloseGuardOutcome.FAILED_PARTIAL);
+                    }
+                });
+            } catch (Throwable failure) {
+                created.complete(CloseGuardOutcome.FAILED_PARTIAL);
+            }
+            return created;
+        };
     }
 
     /** Caches only an in-flight, approved, or fatal-partial attempt; retryable terminals are cleared. */

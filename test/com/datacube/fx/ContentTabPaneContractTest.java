@@ -5,10 +5,9 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -22,9 +21,12 @@ class ContentTabPaneContractTest {
                 "openManagedTab", String.class, Node.class, Runnable.class);
         Method guarded = ContentTabPane.class.getDeclaredMethod(
                 "openManagedTab", String.class, Node.class, AsyncTabCloseGuard.class, Runnable.class);
+        Method reservedFactory = ContentTabPane.class.getDeclaredMethod(
+                "openManagedTab", String.class, Supplier.class);
 
         assertNotNull(existing);
         assertNotNull(guarded);
+        assertNotNull(reservedFactory);
         assertTrue(existing.isAnnotationPresent(Deprecated.class));
     }
 
@@ -52,13 +54,11 @@ class ContentTabPaneContractTest {
     }
 
     @Test
-    void managedOpenSafelyReportsRegistryRejectionInsteadOfThrowingIntoFxHandler() throws Exception {
-        String source = Files.readString(Path.of("src/com/datacube/fx/ContentTabPane.java"));
+    void managedFactoryRequiresIndependentMandatoryAbortCleanup() throws Exception {
+        var components = ContentTabPane.ManagedTabSpec.class.getRecordComponents();
 
-        int rejection = source.indexOf("if (!guardedTabs.register(tab, coordinator))");
-        int rejectedReturn = source.indexOf("return null;", rejection);
-        String rejectionBlock = source.substring(rejection, rejectedReturn);
-        assertTrue(rejectionBlock.contains("reportCloseFailure"));
-        assertTrue(rejectionBlock.contains("coordinator.requestClose()"));
+        assertEquals(4, components.length);
+        assertEquals("mandatoryAbortCleanup", components[3].getName());
+        assertEquals(Runnable.class, components[3].getType());
     }
 }

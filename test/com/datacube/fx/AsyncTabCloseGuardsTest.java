@@ -47,10 +47,25 @@ class AsyncTabCloseGuardsTest {
     }
 
     @Test
-    void blockingFailureClearsCacheSoSecondCallReallyRetries() {
+    void legacyBlockingFailureIsFatalAndCachedAfterSideEffect() {
         AtomicInteger invocations = new AtomicInteger();
         AsyncTabCloseGuard guard = AsyncTabCloseGuards.blocking(() -> {
-            if (invocations.incrementAndGet() == 1) throw new IllegalStateException("retry");
+            invocations.incrementAndGet();
+            throw new IllegalStateException("after side effect");
+        });
+
+        var first = guard.requestClose();
+
+        assertEquals(CloseGuardOutcome.FAILED_PARTIAL, first.toCompletableFuture().join());
+        assertSame(first, guard.requestClose());
+        assertEquals(1, invocations.get());
+    }
+
+    @Test
+    void explicitRetryableBlockingAttemptCanRetryFailureBeforeDestructiveWork() {
+        AtomicInteger invocations = new AtomicInteger();
+        AsyncTabCloseGuard guard = AsyncTabCloseGuards.blockingAttempt(() -> {
+            if (invocations.incrementAndGet() == 1) throw new IllegalStateException("retryable");
         });
 
         var first = guard.requestClose();
@@ -60,6 +75,24 @@ class AsyncTabCloseGuardsTest {
         assertNotSame(first, retry);
         assertEquals(CloseGuardOutcome.APPROVED, retry.toCompletableFuture().join());
         assertEquals(2, invocations.get());
+    }
+
+    @Test
+    void mandatoryAbortRunsInBackgroundOnceAndExposesFatalOutcome() {
+        AtomicBoolean virtual = new AtomicBoolean();
+        AtomicInteger invocations = new AtomicInteger();
+        AsyncTabCloseGuard abort = AsyncTabCloseGuards.mandatoryAbort(() -> {
+            virtual.set(Thread.currentThread().isVirtual());
+            invocations.incrementAndGet();
+            throw new IllegalStateException("abort partial");
+        });
+
+        var first = abort.requestClose();
+
+        assertEquals(CloseGuardOutcome.FAILED_PARTIAL, first.toCompletableFuture().join());
+        assertSame(first, abort.requestClose());
+        assertTrue(virtual.get());
+        assertEquals(1, invocations.get());
     }
 
     @Test

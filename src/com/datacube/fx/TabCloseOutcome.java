@@ -4,6 +4,5 @@ package com.datacube.fx;
 public enum TabCloseOutcome {
     COMPLETED,
     CANCELLED,
-    TIMED_OUT_STILL_CLOSING,
     FAILED_PARTIAL
 }

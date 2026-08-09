@@ -14,9 +14,10 @@ class DataCubeFxShutdownContractTest {
     void windowClosesOnlyForCompletedOutcomeAndPartialFailureIsNotMadeRetryable() throws Exception {
         String source = Files.readString(Path.of("src/com/datacube/DataCubeFx.java"));
 
-        assertTrue(source.contains("ShutdownOutcome.COMPLETED"));
-        assertTrue(source.contains("ShutdownOutcome.CANCELLED"));
-        assertTrue(source.contains("ShutdownOutcome.FAILED_PARTIAL"));
+        assertTrue(source.contains("ShutdownQuarantine.Action.RECOVER"));
+        assertTrue(source.contains("ShutdownQuarantine.Action.FATAL"));
+        assertTrue(source.contains("appShell.getRoot().setDisable(true)"));
+        assertTrue(source.contains("appShell.getRoot().setDisable(false)"));
         assertFalse(source.contains("Boolean.TRUE.equals(approved)"));
     }
 }

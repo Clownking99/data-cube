@@ -55,6 +55,10 @@ final class AsyncCloseGate {
             this.generation = generation;
         }
 
+        long generation() {
+            return generation;
+        }
+
         @Override
         public String toString() {
             return "close-request-" + generation;
