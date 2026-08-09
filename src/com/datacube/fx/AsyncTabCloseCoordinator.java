@@ -5,9 +5,10 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -18,9 +19,11 @@ final class AsyncTabCloseCoordinator {
 
     static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
 
+    private static final ScheduledThreadPoolExecutor TIMEOUTS = createTimeoutExecutor();
+
     private final AsyncTabCloseGuard guard;
     private final Duration timeout;
-    private final BiConsumer<Duration, Runnable> timeoutScheduler;
+    private final TimeoutScheduler timeoutScheduler;
     private final Consumer<Runnable> fxDispatcher;
     private final Runnable removeTabIfPresent;
     private final Runnable uiFinalizer;
@@ -29,10 +32,19 @@ final class AsyncTabCloseCoordinator {
 
     private Attempt current;
 
+    private static ScheduledThreadPoolExecutor createTimeoutExecutor() {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(
+                1,
+                Thread.ofPlatform().daemon(true).name("DataCube-tab-close-timeout").factory());
+        executor.setRemoveOnCancelPolicy(true);
+        executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        return executor;
+    }
+
     AsyncTabCloseCoordinator(
             AsyncTabCloseGuard guard,
             Duration timeout,
-            BiConsumer<Duration, Runnable> timeoutScheduler,
+            TimeoutScheduler timeoutScheduler,
             Consumer<Runnable> fxDispatcher,
             Runnable removeTabIfPresent,
             Runnable uiFinalizer,
@@ -52,7 +64,7 @@ final class AsyncTabCloseCoordinator {
             if (current != null) return current.result;
             AsyncCloseGate.Request request = gate.beginRequest();
             if (request == null) throw new IllegalStateException("closed coordinator has no result");
-            attempt = new Attempt(request, new CompletableFuture<>());
+            attempt = new Attempt(request);
             current = attempt;
         }
         start(attempt);
@@ -64,52 +76,80 @@ final class AsyncTabCloseCoordinator {
         try {
             cleanup = guard.requestClose();
         } catch (Throwable failure) {
-            reject(attempt, failure);
+            rejectBeforeCleanup(attempt, failure);
             return;
         }
         if (cleanup == null) {
-            reject(attempt, new NullPointerException("close guard returned null stage"));
+            rejectBeforeCleanup(attempt, new NullPointerException("close guard returned null stage"));
             return;
         }
 
         try {
-            cleanup.whenComplete((approved, failure) -> {
-                Throwable actualFailure = unwrap(failure);
-                if (actualFailure != null) reject(attempt, actualFailure);
-                else if (approved == null) reject(
-                        attempt, new NullPointerException("close guard completed with null"));
-                else finish(attempt, approved);
-            });
-            timeoutScheduler.accept(timeout, () -> reject(
-                    attempt, new TimeoutException("tab close timed out after " + timeout)));
+            TimeoutHandle handle = timeoutScheduler.schedule(timeout, () -> timeOut(attempt));
+            synchronized (this) {
+                attempt.timeoutHandle = Objects.requireNonNull(handle, "timeout handle");
+            }
         } catch (Throwable failure) {
-            reject(attempt, failure);
+            abandonCallerButAwaitCleanup(attempt, failure);
+        }
+
+        try {
+            cleanup.whenComplete((approved, failure) ->
+                    cleanupCompleted(attempt, approved, unwrap(failure)));
+        } catch (Throwable failure) {
+            cleanupCompleted(attempt, false, failure);
         }
     }
 
-    private void reject(Attempt attempt, Throwable failure) {
-        boolean handled;
+    private void timeOut(Attempt attempt) {
+        abandonCallerButAwaitCleanup(
+                attempt, new TimeoutException("tab close timed out after " + timeout));
+    }
+
+    private void abandonCallerButAwaitCleanup(Attempt attempt, Throwable failure) {
         synchronized (this) {
-            handled = gate.complete(attempt.request, false, () -> {}, failureReporter);
-            if (handled && current == attempt) current = null;
+            if (current != attempt || attempt.cleanupTerminal || attempt.callerAbandoned) return;
+            attempt.callerAbandoned = true;
         }
-        if (!handled) return;
         report(failure);
         attempt.result.complete(false);
     }
 
-    private void finish(Attempt attempt, boolean approved) {
-        if (!approved) {
-            boolean handled;
-            synchronized (this) {
-                handled = gate.complete(attempt.request, false, () -> {}, failureReporter);
-                if (handled && current == attempt) current = null;
+    private void cleanupCompleted(Attempt attempt, Boolean approved, Throwable failure) {
+        boolean abandoned;
+        boolean closeApproved;
+        synchronized (this) {
+            if (current != attempt || attempt.cleanupTerminal) return;
+            attempt.cleanupTerminal = true;
+            attempt.timeoutHandle.cancel();
+            abandoned = attempt.callerAbandoned;
+            closeApproved = failure == null && Boolean.TRUE.equals(approved) && !abandoned;
+
+            if (!closeApproved) {
+                gate.complete(attempt.request, false, () -> {}, failureReporter);
+                current = null;
             }
-            if (handled) attempt.result.complete(false);
-            return;
         }
 
+        if (failure != null) report(failure);
+        else if (approved == null) report(new NullPointerException("close guard completed with null"));
+        if (abandoned) return;
+        if (!closeApproved) {
+            attempt.result.complete(false);
+            return;
+        }
         gate.complete(attempt.request, true, () -> dispatchFinalizer(attempt), failureReporter);
+    }
+
+    private void rejectBeforeCleanup(Attempt attempt, Throwable failure) {
+        synchronized (this) {
+            if (current != attempt) return;
+            attempt.cleanupTerminal = true;
+            gate.complete(attempt.request, false, () -> {}, failureReporter);
+            current = null;
+        }
+        report(failure);
+        attempt.result.complete(false);
     }
 
     private void dispatchFinalizer(Attempt attempt) {
@@ -148,9 +188,31 @@ final class AsyncTabCloseCoordinator {
         return failure;
     }
 
-    static void scheduleTimeout(Duration delay, Runnable action) {
-        CompletableFuture.delayedExecutor(delay.toMillis(), TimeUnit.MILLISECONDS).execute(action);
+    static TimeoutHandle scheduleTimeout(Duration delay, Runnable action) {
+        ScheduledFuture<?> scheduled = TIMEOUTS.schedule(
+                action, delay.toMillis(), TimeUnit.MILLISECONDS);
+        return () -> scheduled.cancel(false);
     }
 
-    private record Attempt(AsyncCloseGate.Request request, CompletableFuture<Boolean> result) {}
+    @FunctionalInterface
+    interface TimeoutScheduler {
+        TimeoutHandle schedule(Duration delay, Runnable task);
+    }
+
+    @FunctionalInterface
+    interface TimeoutHandle {
+        void cancel();
+    }
+
+    private static final class Attempt {
+        private final AsyncCloseGate.Request request;
+        private final CompletableFuture<Boolean> result = new CompletableFuture<>();
+        private TimeoutHandle timeoutHandle = () -> {};
+        private boolean callerAbandoned;
+        private boolean cleanupTerminal;
+
+        private Attempt(AsyncCloseGate.Request request) {
+            this.request = request;
+        }
+    }
 }

@@ -37,9 +37,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 
 import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 应用主壳：三栏式布局（顶部工具栏 + 左连接树 + 中内容区）。
@@ -66,7 +64,11 @@ public final class AppShell {
     private final FxTaskRunner tasks = new FxTaskRunner();
 
     private final ContentTabPane contentTabs = new ContentTabPane();
-    private final AtomicReference<CompletableFuture<Void>> shutdown = new AtomicReference<>();
+    private final AsyncShutdownCoordinator shutdown = new AsyncShutdownCoordinator(
+            contentTabs::closeAllManagedTabs,
+            task -> Thread.startVirtualThread(task),
+            this::shutdownRemaining,
+            AppShell::reportShutdownFailure);
     private final LazyValue<MigrationPane> migrationPane = new LazyValue<>(() -> new MigrationPane(tasks));
     private final LazyValue<UpdateService> updateService =
             new LazyValue<>(() -> new UpdateService(tasks::submit, Platform::runLater));
@@ -186,27 +188,12 @@ public final class AppShell {
     /**
      * 异步释放全部资源。受守卫标签完成关闭后，其余潜在阻塞清理在虚拟线程执行。
      */
-    public CompletionStage<Void> shutdownAsync() {
-        CompletableFuture<Void> existing = shutdown.get();
-        if (existing != null) return existing;
-
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        if (!shutdown.compareAndSet(null, result)) return shutdown.get();
-        contentTabs.closeAllManagedTabs().whenComplete((ignored, tabFailure) ->
-                Thread.startVirtualThread(() -> {
-                    try {
-                        shutdownRemaining();
-                        if (tabFailure == null) result.complete(null);
-                        else result.completeExceptionally(tabFailure);
-                    } catch (Throwable failure) {
-                        if (tabFailure != null) failure.addSuppressed(tabFailure);
-                        result.completeExceptionally(failure);
-                    }
-                }));
-        return result;
+    public CompletionStage<Boolean> shutdownAsync() {
+        return shutdown.shutdown();
     }
 
-    /** 兼容旧调用方的非阻塞入口；需要知道完成状态时使用 {@link #shutdownAsync()}。 */
+    /** @deprecated 使用并等待 {@link #shutdownAsync()} 的 Boolean 结果。 */
+    @Deprecated(forRemoval = false)
     public void shutdown() {
         shutdownAsync();
     }
@@ -231,6 +218,11 @@ public final class AppShell {
         }
     }
 
+    private static void reportShutdownFailure(Throwable failure) {
+        System.err.println("[DataCube] shutdown failure: " + failure);
+        failure.printStackTrace(System.err);
+    }
+
     /**
      * 打开 SQL 历史找回对话框：选中一条则在新的 SQL 编辑标签中载入其 SQL，
      * 并按连接名解析回原连接（解析不到则不绑定）、回填其 schema。
@@ -244,7 +236,7 @@ public final class AppShell {
                     treeActions::openTableDesigner, conn, entry.schema(), sqlHistory, shortcuts, tasks);
             pane.setSqlText(entry.sql());
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
-            contentTabs.openManagedTab(name, pane.getNode(), pane::close);
+            openSqlTab(name, pane);
         });
     }
 
@@ -255,6 +247,22 @@ public final class AppShell {
             if (name.equals(c.name())) return c;
         }
         return null;
+    }
+
+    private void openSqlTab(String title, SqlEditorPane pane) {
+        contentTabs.openManagedTab(
+                title,
+                pane.getNode(),
+                pane::requestClose,
+                pane::finalizeCloseOnFx);
+    }
+
+    private void openBackgroundCleanupTab(String title, Node content, Runnable cleanup) {
+        contentTabs.openManagedTab(
+                title,
+                content,
+                AsyncTabCloseGuards.blocking(cleanup),
+                () -> {});
     }
 
     /** 连接树动作实现：将树操作转为内容标签。 */
@@ -273,7 +281,7 @@ public final class AppShell {
             SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings,
                     this::openTableDesigner, conn, schema, sqlHistory, shortcuts, tasks);
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
-            contentTabs.openManagedTab(name, pane.getNode(), pane::close);
+            openSqlTab(name, pane);
         }
 
         @Override
@@ -282,7 +290,7 @@ public final class AppShell {
             DataGridPane pane = new DataGridPane(
                     browseSvc, editSvc, connId, connName, table, settings, readOnly, tasks);
             String prefix = readOnly ? "视图: " : "数据: ";
-            contentTabs.openManagedTab(prefix + table.name(), pane.getNode(), pane::close);
+            openBackgroundCleanupTab(prefix + table.name(), pane.getNode(), pane::close);
         }
 
         @Override
@@ -291,7 +299,7 @@ public final class AppShell {
             String connName = connMgr.config(connId).name();
             TableDesignerPane pane = new TableDesignerPane(
                     designSvc, connId, connName, table, table.schema(), dbType, tasks);
-            contentTabs.openManagedTab("设计: " + table.name(), pane.getNode(), pane::close);
+            openBackgroundCleanupTab("设计: " + table.name(), pane.getNode(), pane::close);
         }
 
         @Override
@@ -300,7 +308,7 @@ public final class AppShell {
             String connName = connMgr.config(connId).name();
             TableDesignerPane pane = new TableDesignerPane(
                     designSvc, connId, connName, null, schema, dbType, tasks);
-            contentTabs.openManagedTab("新建表", pane.getNode(), pane::close);
+            openBackgroundCleanupTab("新建表", pane.getNode(), pane::close);
         }
 
         @Override
@@ -308,7 +316,7 @@ public final class AppShell {
             if (conn == null) return;
             session.setActiveConnection(conn);
             RedisKeyBrowserPane pane = new RedisKeyBrowserPane(connMgr, conn, database, tasks);
-            contentTabs.openManagedTab(conn.name() + " · db" + database, pane.getNode(), pane::close);
+            openBackgroundCleanupTab(conn.name() + " · db" + database, pane.getNode(), pane::close);
         }
 
         @Override
@@ -316,7 +324,7 @@ public final class AppShell {
             if (conn == null) return;
             session.setActiveConnection(conn);
             RedisConsolePane pane = new RedisConsolePane(connMgr, conn, tasks);
-            contentTabs.openManagedTab("Redis CLI - " + conn.name(), pane.getNode(), pane::close);
+            openBackgroundCleanupTab("Redis CLI - " + conn.name(), pane.getNode(), pane::close);
         }
 
         @Override
@@ -329,7 +337,7 @@ public final class AppShell {
         public void openDdl(String connId, ConnectionTreePane.NodeData node) {
             String name = node.name();
             DdlViewPane pane = new DdlViewPane("DDL: " + name, ddlFetch(connId, node), tasks);
-            contentTabs.openManagedTab("DDL: " + name, pane.getNode(), pane::close);
+            openBackgroundCleanupTab("DDL: " + name, pane.getNode(), pane::close);
         }
 
         @Override
@@ -344,7 +352,7 @@ public final class AppShell {
             };
             ObjectEditorPane pane = new ObjectEditorPane(
                     "编辑: " + name, ddlFetch(connId, node), executor, tasks);
-            contentTabs.openManagedTab("编辑: " + name, pane.getNode(), pane::close);
+            openBackgroundCleanupTab("编辑: " + name, pane.getNode(), pane::close);
         }
 
         @Override
@@ -354,7 +362,7 @@ public final class AppShell {
             String connName = connMgr.config(connId).name();
             SequenceDesignerPane pane = new SequenceDesignerPane(
                     ddlSvc, connId, connName, node.schema(), name, dbType, tasks);
-            contentTabs.openManagedTab("编辑序列: " + name, pane.getNode(), pane::close);
+            openBackgroundCleanupTab("编辑序列: " + name, pane.getNode(), pane::close);
         }
 
         /** 根据节点类型选择对应的 DDL 获取逻辑。 */

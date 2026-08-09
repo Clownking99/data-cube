@@ -1141,9 +1141,15 @@ Expected: session state and isolation tests pass.
 
 **Interfaces:**
 
-- AsyncTabCloseGuard.requestClose(Consumer<Boolean>) reports approval asynchronously.
-- ContentTabPane adds openManagedTab(String, Node, AsyncTabCloseGuard, Runnable).
-- Existing three-argument openManagedTab remains unchanged for all non-SQL tabs.
+- `AsyncTabCloseGuard.requestClose()` immediately returns `CompletionStage<Boolean>`.
+- `ContentTabPane` adds `openManagedTab(String, Node, AsyncTabCloseGuard, Runnable)`; the final
+  `Runnable` is an FX-only, non-blocking UI finalizer.
+- The deprecated three-argument overload remains source-compatible, but runs its disposer on one
+  virtual thread. New callers must use the four-argument phase-split API.
+- `closeAllManagedTabs()` and `AppShell.shutdownAsync()` return an aggregate
+  `CompletionStage<Boolean>`; destructive application teardown starts only after `true`.
+  A refused close completes `false`; close-all or virtual-thread startup failure completes
+  exceptionally. Both outcomes reset the window-closing latch and permit retry.
 
 - [ ] **Step 1: Write failing close-gate tests**
 
@@ -1175,7 +1181,8 @@ class AsyncCloseGateTest {
 }
 ~~~
 
-ContentTabPaneContractTest uses reflection to assert both overloads exist and AsyncTabCloseGuard has one method taking Consumer.
+ContentTabPaneContractTest uses reflection to assert both overloads exist, the legacy overload is
+deprecated, and AsyncTabCloseGuard has one no-argument method returning CompletionStage.
 
 - [ ] **Step 2: Run tests and verify RED**
 
@@ -1192,45 +1199,26 @@ Expected: compile failure because the close guard types do not exist.
 ~~~java
 package com.datacube.fx;
 
-import java.util.function.Consumer;
+import java.util.concurrent.CompletionStage;
 
 @FunctionalInterface
 public interface AsyncTabCloseGuard {
-    void requestClose(Consumer<Boolean> completion);
+    CompletionStage<Boolean> requestClose();
 }
 ~~~
 
-AsyncCloseGate uses AtomicBoolean pending and closed. beginRequest returns false while pending or after approved close. complete(false) clears pending; complete(true) atomically marks closed then invokes closeAction once.
+AsyncCloseGate issues a unique request handle/generation. Only that handle can finish its pending
+generation; late completion from an older generation cannot consume a newer retry. The coordinator
+coalesces duplicate requests and owns exception/null/cancellation/timeout normalization.
 
 - [ ] **Step 4: Wire ContentTabPane**
 
-The existing overload delegates with no guard. The guarded overload registers the disposer first, consumes close requests, and requires Platform.isFxApplicationThread before touching TabPane:
-
-~~~java
-public Tab openManagedTab(
-        String title,
-        Node content,
-        AsyncTabCloseGuard guard,
-        Runnable disposer) {
-    Tab tab = openTab(title, content);
-    Runnable dispose = managedTabs.register(tab, disposer);
-    AsyncCloseGate gate = new AsyncCloseGate();
-    tab.setOnCloseRequest(event -> {
-        event.consume();
-        if (!gate.beginRequest()) return;
-        guard.requestClose(approved -> Platform.runLater(() ->
-                gate.complete(approved, () -> {
-                    tab.setOnCloseRequest(null);
-                    tabPane.getTabs().remove(tab);
-                    dispose.run();
-                })));
-    });
-    tab.setOnClosed(event -> dispose.run());
-    return tab;
-}
-~~~
-
-The three-argument overload keeps the current immediate-close behavior and exactly-once disposer.
+The guarded overload registers its coordinator before adding the tab. Guard cleanup may block only
+off the FX thread. Approval is dispatched back to FX for tab removal and the lightweight finalizer.
+External `tabs.remove(tab)` is also intercepted: rejection/failure/timeout restores the tab at its
+original index and selection. Timeout completes the caller with `false`, but retains the underlying
+cleanup single-flight until that stage reaches a safe terminal state; only then may a new generation
+start. Normal completion cancels and removes its daemon-scheduler timer.
 
 - [ ] **Step 5: Verify GREEN and commit**
 
@@ -1258,7 +1246,7 @@ Expected: gate, contract, and exactly-once lifecycle tests pass.
 
 **Interfaces:**
 
-- SqlEditorPane adds requestClose(Consumer<Boolean> completion).
+- SqlEditorPane adds `CompletionStage<Boolean> requestClose()`.
 - SqlEditorPane lazily binds a previously unbound tab once and owns one JdbcEditorSession.
 - All execution and explain calls go through JdbcEditorSession, never ConnectionManager.acquire.
 - AppShell passes pane::requestClose to the guarded ContentTabPane overload.
@@ -1268,7 +1256,8 @@ Expected: gate, contract, and exactly-once lifecycle tests pass.
 Extend SqlEditorPaneLifecycleTest:
 
 ~~~java
-assertNotNull(SqlEditorPane.class.getMethod("requestClose", java.util.function.Consumer.class));
+assertEquals(CompletionStage.class,
+        SqlEditorPane.class.getMethod("requestClose").getReturnType());
 ~~~
 
 Create SqlEditorSessionContractTest that reads SqlEditorPane.java and asserts:
@@ -1395,26 +1384,17 @@ QueryResult FailureKind.CANCELLED displays “已取消”; TIMEOUT displays “
 
 - [ ] **Step 6: Implement asynchronous close decisions**
 
-Add:
+`requestClose()` is called on FX and immediately captures the editor/history state plus the user's
+close decision. It returns one shared `CompletionStage<Boolean>` for the in-flight attempt.
+`requestCancelRollbackClose` offers “取消执行、回滚并关闭 / 取消关闭”;
+`requestTransactionClose` offers “提交并关闭 / 回滚并关闭 / 取消”. After the FX decision, run
+cancel, wait-for-execution, rollback/commit, history persistence, task-scope close, and JDBC close on
+the existing `FxTaskRunner` or a JDK 25 virtual thread. Complete `true` only after all required
+blocking cleanup reaches its safe terminal state. A user refusal completes `false`; failure completes
+`false` or exceptionally. Never run JDBC/session cleanup from the FX finalizer.
 
-~~~java
-public void requestClose(Consumer<Boolean> completion) {
-    if (jdbcSession == null || !jdbcSession.snapshot().running()
-            && !jdbcSession.snapshot().hasPendingTransaction()) {
-        completion.accept(true);
-        return;
-    }
-    if (jdbcSession.snapshot().running()) {
-        requestCancelRollbackClose(completion);
-    } else {
-        requestTransactionClose(completion);
-    }
-}
-~~~
-
-requestCancelRollbackClose offers “取消执行、回滚并关闭 / 取消关闭”. requestTransactionClose offers “提交并关闭 / 回滚并关闭 / 取消”. Commit, rollback, and cancel/rollback run through tasks.submit; completion.accept(true) is called only from a successful FX callback. Failure keeps the tab open.
-
-close remains idempotent, snapshots history, removes listeners, closes metadata tasks and task scope, and finally closes jdbcSession so application shutdown rolls back rather than commits.
+The FX finalizer remains idempotent and lightweight: it only removes listeners and hides UI state.
+The coordinator invokes it on the FX Application Thread after the guard completes `true`.
 
 - [ ] **Step 7: Bind AppShell SQL tabs to the guarded overload**
 
@@ -1425,7 +1405,7 @@ contentTabs.openManagedTab(
         name,
         pane.getNode(),
         pane::requestClose,
-        pane::close);
+        pane::finalizeCloseOnFx);
 ~~~
 
 If the generic SQL entry has an active Redis connection, open the tab disconnected rather than binding Redis. Existing tree Redis actions remain unchanged.

@@ -18,15 +18,21 @@ import java.util.concurrent.CompletionStage;
 public final class ContentTabPane {
 
     private final TabPane tabPane = new TabPane();
-    private final ManagedTabRegistry<Tab> managedTabs = new ManagedTabRegistry<>();
     private final AsyncManagedTabRegistry<Tab> guardedTabs = new AsyncManagedTabRegistry<>();
 
     public ContentTabPane() {
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.SELECTED_TAB);
         tabPane.getTabs().addListener((ListChangeListener<Tab>) change -> {
             while (change.next()) {
+                int restoreIndex = change.getFrom();
                 for (Tab removed : change.getRemoved()) {
-                    guardedTabs.requestClose(removed);
+                    int index = restoreIndex++;
+                    CompletionStage<Boolean> close = guardedTabs.requestClose(removed);
+                    AsyncTabRemovalRecovery.restoreOnRejection(
+                            close,
+                            ContentTabPane::dispatchFx,
+                            () -> restoreRemovedTab(removed, index),
+                            ContentTabPane::reportCloseFailure);
                 }
             }
         });
@@ -52,12 +58,13 @@ public final class ContentTabPane {
         return tab;
     }
 
-    /** 打开由容器管理生命周期的标签；关闭标签或应用时释放器只执行一次。 */
+    /**
+     * 旧式单一 disposer API。disposer 现在在一次性虚拟线程 guard 中运行，调用方应迁移到
+     * 明确拆分 blocking cleanup 与 FX finalizer 的四参数重载。
+     */
+    @Deprecated(forRemoval = false)
     public Tab openManagedTab(String title, Node content, Runnable disposer) {
-        Tab tab = openTab(title, content);
-        Runnable close = managedTabs.register(tab, disposer);
-        tab.setOnClosed(event -> close.run());
-        return tab;
+        return openManagedTab(title, content, AsyncTabCloseGuards.blocking(disposer), () -> {});
     }
 
     /**
@@ -71,7 +78,8 @@ public final class ContentTabPane {
             Node content,
             AsyncTabCloseGuard guard,
             Runnable uiFinalizer) {
-        Tab tab = openTab(title, content);
+        Tab tab = new Tab(title, content);
+        tab.setClosable(true);
         AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
                 guard,
                 AsyncTabCloseCoordinator.DEFAULT_TIMEOUT,
@@ -84,6 +92,8 @@ public final class ContentTabPane {
                 },
                 ContentTabPane::reportCloseFailure);
         guardedTabs.register(tab, coordinator);
+        tabPane.getTabs().add(tab);
+        tabPane.getSelectionModel().select(tab);
         tab.setOnCloseRequest(event -> {
             event.consume();
             coordinator.requestClose();
@@ -96,27 +106,33 @@ public final class ContentTabPane {
      * 异步关闭所有受管标签；受守卫标签先完成阻塞清理，再在 FX 线程执行 UI finalizer。
      * 返回的 stage 在所有守卫到达批准、拒绝、失败或超时终态后完成。
      */
-    public CompletionStage<Void> closeAllManagedTabs() {
+    public CompletionStage<Boolean> closeAllManagedTabs() {
         if (!Platform.isFxApplicationThread()) {
-            CompletableFuture<Void> dispatched = new CompletableFuture<>();
-            Platform.runLater(() -> closeAllManagedTabs().whenComplete((ignored, failure) -> {
-                if (failure == null) dispatched.complete(null);
-                else dispatched.completeExceptionally(failure);
-            }));
+            CompletableFuture<Boolean> dispatched = new CompletableFuture<>();
+            try {
+                Platform.runLater(() -> closeAllManagedTabs().whenComplete((approved, failure) -> {
+                    if (failure == null) dispatched.complete(approved);
+                    else dispatched.completeExceptionally(failure);
+                }));
+            } catch (Throwable failure) {
+                dispatched.completeExceptionally(failure);
+            }
             return dispatched;
-        }
-
-        try {
-            managedTabs.disposeAll();
-        } catch (Throwable failure) {
-            reportCloseFailure(failure);
         }
         return guardedTabs.closeAll();
     }
 
-    /** 兼容旧退出入口；新代码应等待 {@link #closeAllManagedTabs()}。 */
+    /** @deprecated 使用并等待 {@link #closeAllManagedTabs()} 的 Boolean 结果。 */
+    @Deprecated(forRemoval = false)
     public void disposeAll() {
         closeAllManagedTabs();
+    }
+
+    private void restoreRemovedTab(Tab tab, int requestedIndex) {
+        if (tabPane.getTabs().contains(tab)) return;
+        int index = Math.max(0, Math.min(requestedIndex, tabPane.getTabs().size()));
+        tabPane.getTabs().add(index, tab);
+        tabPane.getSelectionModel().select(tab);
     }
 
     private static void dispatchFx(Runnable action) {

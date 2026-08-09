@@ -4,10 +4,13 @@ import javafx.scene.Node;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.concurrent.CompletionStage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ContentTabPaneContractTest {
 
@@ -20,11 +23,14 @@ class ContentTabPaneContractTest {
 
         assertNotNull(existing);
         assertNotNull(guarded);
+        assertTrue(existing.isAnnotationPresent(Deprecated.class));
     }
 
     @Test
     void asyncCloseGuardReturnsCompletionStage() {
-        Method[] methods = AsyncTabCloseGuard.class.getDeclaredMethods();
+        Method[] methods = Arrays.stream(AsyncTabCloseGuard.class.getDeclaredMethods())
+                .filter(method -> Modifier.isAbstract(method.getModifiers()))
+                .toArray(Method[]::new);
 
         assertEquals(1, methods.length);
         assertEquals(CompletionStage.class, methods[0].getReturnType());

@@ -64,7 +64,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -138,7 +141,9 @@ public final class SqlEditorPane implements AutoCloseable {
     private CheckBox analyzeCheck;
 
     private volatile boolean running = false;
-    private boolean closed;
+    private final AtomicBoolean resourcesClosed = new AtomicBoolean();
+    private final AtomicBoolean uiFinalized = new AtomicBoolean();
+    private CompletionStage<Boolean> closeRequest;
     /** 最近一次单条查询结果（用于注释显示模式切换后即时重渲染表头）；非查询视图时为 null。 */
     private QueryResult lastQueryResult;
     /** 最近一次单条查询的原 SQL（用于「复制 INSERT」解析目标表）；与 lastQueryResult 同生命周期。 */
@@ -203,17 +208,70 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     @Override
+    @Deprecated(forRemoval = false)
     public void close() {
-        if (closed) return;
-        closed = true;
-        snapshotToHistory();
+        Runnable beginClose = () -> requestClose().whenComplete((approved, failure) -> {
+            if (failure != null || !Boolean.TRUE.equals(approved)) {
+                if (failure != null) failure.printStackTrace(System.err);
+                return;
+            }
+            if (Platform.isFxApplicationThread()) finalizeCloseOnFx();
+            else Platform.runLater(this::finalizeCloseOnFx);
+        });
+        if (Platform.isFxApplicationThread()) beginClose.run();
+        else Platform.runLater(beginClose);
+    }
+
+    /**
+     * Captures JavaFX state immediately, then persists history and closes task/JDBC resources on
+     * one virtual thread. The returned stage completes {@code true} only after that blocking phase
+     * reaches its safe terminal state. Repeated calls share the same in-flight/completed request.
+     */
+    public synchronized CompletionStage<Boolean> requestClose() {
+        if (closeRequest != null) return closeRequest;
+        if (!Platform.isFxApplicationThread()) {
+            CompletableFuture<Boolean> rejected = new CompletableFuture<>();
+            rejected.completeExceptionally(
+                    new IllegalStateException("SqlEditorPane.requestClose must start on the FX Application Thread"));
+            return rejected;
+        }
+
+        CloseSnapshot snapshot = captureCloseSnapshot();
+        closeRequest = AsyncTabCloseGuards.blocking(() -> {
+            closeResources();
+            persistCloseSnapshot(snapshot);
+        }).requestClose();
+        return closeRequest;
+    }
+
+    /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
+    void closeResources() {
+        if (!resourcesClosed.compareAndSet(false, true)) return;
+        metadataTasks.close();
+        tasks.close();
+    }
+
+    /** Lightweight JavaFX phase; callers invoke this only on the FX Application Thread. */
+    void finalizeCloseOnFx() {
+        if (!uiFinalized.compareAndSet(false, true)) return;
         settings.commentModeProperty().removeListener(commentModeListener);
         if (boundConn == null) {
             session.activeConnectionProperty().removeListener(activeConnectionListener);
         }
         if (autoComplete != null) autoComplete.hide();
-        metadataTasks.close();
-        tasks.close();
+    }
+
+    private CloseSnapshot captureCloseSnapshot() {
+        ConnConfig connection = currentConn();
+        return new CloseSnapshot(
+                connection == null ? null : connection.name(),
+                schemaField == null ? null : schemaField.getText().trim(),
+                editorArea == null ? null : editorArea.getText());
+    }
+
+    private void persistCloseSnapshot(CloseSnapshot snapshot) {
+        if (history == null || snapshot.sql() == null) return;
+        history.record(snapshot.connectionName(), snapshot.schema(), snapshot.sql());
     }
 
     private void build() {
@@ -1276,6 +1334,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private record ExecutionResult(List<ScriptOutcome> outcomes, String error, long elapsedMillis) {}
     private record ExplainResult(QueryResult result, String error) {}
+    private record CloseSnapshot(String connectionName, String schema, String sql) {}
 
     private void showAlert(String msg) {
         Alert alert = new Alert(Alert.AlertType.WARNING, msg, ButtonType.OK);

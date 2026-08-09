@@ -10,8 +10,13 @@ import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.TableRef;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.function.BiConsumer;
+import java.util.concurrent.CompletionStage;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -24,5 +29,21 @@ class SqlEditorPaneLifecycleTest {
                 SessionContext.class, ConnectionManager.class, ObjectTreeService.class,
                 AppSettings.class, BiConsumer.class, ConnConfig.class, String.class,
                 SqlHistoryStore.class, ShortcutSettings.class, FxTaskRunner.class));
+    }
+
+    @Test
+    void separatesBlockingResourceCleanupFromFxFinalization() throws Exception {
+        assertNotNull(SqlEditorPane.class.getDeclaredMethod("closeResources"));
+        assertNotNull(SqlEditorPane.class.getDeclaredMethod("finalizeCloseOnFx"));
+        assertEquals(CompletionStage.class,
+                SqlEditorPane.class.getDeclaredMethod("requestClose").getReturnType());
+    }
+
+    @Test
+    void appShellUsesThePaneAsyncGuardInsteadOfAnFxBlockingFinalizer() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/AppShell.java"));
+
+        assertTrue(source.contains("pane::requestClose"));
+        assertFalse(source.contains("AsyncTabCloseGuards.blocking(pane::closeResources)"));
     }
 }

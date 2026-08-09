@@ -53,10 +53,16 @@ public class DataCubeFx extends Application {
                     }
                 }
                 if (!closing.compareAndSet(false, true)) return;
-                appShell.shutdownAsync().whenComplete((ignored, failure) -> Platform.runLater(() -> {
+                appShell.shutdownAsync().whenComplete((approved, failure) -> Platform.runLater(() -> {
                     if (failure != null) {
                         System.err.println("[DataCube] shutdown failure: " + failure);
                         failure.printStackTrace(System.err);
+                        closing.set(false);
+                        return;
+                    }
+                    if (!Boolean.TRUE.equals(approved)) {
+                        closing.set(false);
+                        return;
                     }
                     primaryStage.setOnCloseRequest(null);
                     primaryStage.close();
