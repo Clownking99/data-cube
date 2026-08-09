@@ -1,5 +1,6 @@
 package com.datacube.fx;
 
+import com.datacube.fx.task.FxTaskRunner;
 import javafx.scene.Node;
 
 /**
@@ -10,10 +11,11 @@ import javafx.scene.Node;
  */
 public final class MigrationPane {
 
-    private final MainController controller = new MainController();
+    private final MainController controller;
     private final Node content;
 
-    public MigrationPane() {
+    public MigrationPane(FxTaskRunner runner) {
+        this.controller = new MainController(runner.scope(), command -> runner.submit(command));
         this.content = controller.createMigrationContent();
     }
 

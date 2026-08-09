@@ -5,7 +5,6 @@ import com.datacube.fx.BrandLogo;
 import com.datacube.fx.SplashScreen;
 import javafx.animation.PauseTransition;
 import javafx.application.Application;
-import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
@@ -47,10 +46,8 @@ public class DataCubeFx extends Application {
                         e.consume();
                         return;
                     }
-                    // 用户确认：调用取消逻辑并清理资源
-                    Platform.runLater(() -> {
-                        appShell.shutdown();
-                    });
+                    // 关闭请求处理器已在 JavaFX 线程；同步清理，避免隐式退出跳过排队回调。
+                    appShell.shutdown();
                 } else {
                     appShell.shutdown();
                 }

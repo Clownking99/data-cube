@@ -48,7 +48,11 @@ public final class FxTaskRunner implements AutoCloseable {
     }
 
     FxTaskScope scope(Consumer<Runnable> uiDispatcher) {
-        return new FxTaskScope(this, uiDispatcher);
+        return scope(uiDispatcher, FxTaskRunner::reportFatal);
+    }
+
+    FxTaskScope scope(Consumer<Runnable> uiDispatcher, Consumer<? super Error> fatalErrorHandler) {
+        return new FxTaskScope(this, uiDispatcher, fatalErrorHandler);
     }
 
     @Override
@@ -63,5 +67,10 @@ public final class FxTaskRunner implements AutoCloseable {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static void reportFatal(Error error) {
+        Thread thread = Thread.currentThread();
+        thread.getUncaughtExceptionHandler().uncaughtException(thread, error);
     }
 }

@@ -110,7 +110,7 @@ public class ConsoleLogger implements MigrationLogger {
 
     // ==================== 工具方法 ====================
 
-    public static String stackTrace(Exception e) {
+    public static String stackTrace(Throwable e) {
         StringWriter sw = new StringWriter();
         e.printStackTrace(new PrintWriter(sw));
         return sw.toString();

@@ -20,10 +20,15 @@ public class OracleExporter {
     private int maxConcurrency = 20;
     private boolean convertBool = false;
     private Map<String, Map<String, String>> columnCommentsCache = new HashMap<>();
-    private final java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final MigrationCancellation cancellation;
 
     public OracleExporter(MigrationLogger logger) {
+        this(logger, new MigrationCancellation());
+    }
+
+    public OracleExporter(MigrationLogger logger, MigrationCancellation cancellation) {
         this.logger = logger;
+        this.cancellation = Objects.requireNonNull(cancellation, "cancellation");
     }
 
     public void setMaxConcurrency(int concurrency) {
@@ -34,17 +39,17 @@ public class OracleExporter {
     public void setConvertBool(boolean convert) { this.convertBool = convert; }
 
     /** 请求取消导出（幂等，调用后下个检查点会中断） */
-    public void cancel() { cancelled.set(true); }
+    public void cancel() { cancellation.cancel(); }
 
     /** 重置取消标志（在重新调用 exportDDL/exportData 前需调用） */
-    public void resetCancel() { cancelled.set(false); }
+    public void resetCancel() { cancellation.reset(); }
 
-    public boolean isCancelled() { return cancelled.get(); }
+    public boolean isCancelled() { return cancellation.isCancelled(); }
 
     // ==================== DDL 导出 ====================
 
     public void exportDDL(Connection conn, String owner, String pgSchema) throws SQLException, IOException {
-        cancelled.set(false);
+        cancellation.checkCancelled();
         logger.logSection("导出 DDL：" + owner + " → " + pgSchema);
 
         String outputDir = BASE_DIR + "/" + pgSchema;
@@ -52,14 +57,20 @@ public class OracleExporter {
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("序列",          exportSequences(conn, owner, outputDir));
+        cancellation.checkCancelled();
         stats.put("表",            exportTables(conn, owner, outputDir));
+        cancellation.checkCancelled();
         stats.put("索引",          exportIndexes(conn, owner, outputDir));
+        cancellation.checkCancelled();
         stats.put("约束",          exportConstraints(conn, owner, outputDir));
+        cancellation.checkCancelled();
         stats.put("存储过程/函数", exportFunctions(conn, owner, outputDir));
+        cancellation.checkCancelled();
         stats.put("包",            exportPackages(conn, owner, outputDir));
+        cancellation.checkCancelled();
         stats.put("触发器",        exportTriggers(conn, owner, outputDir));
 
-        if (cancelled.get()) {
+        if (cancellation.isCancelled()) {
             logger.logWarn("DDL 导出已被取消");
         } else {
             logger.logOk("脚本已输出到 " + outputDir + "/");
@@ -70,7 +81,8 @@ public class OracleExporter {
 
     private int exportSequences(Connection conn, String owner, String dir) throws SQLException, IOException {
         PrintWriter w = new PrintWriter(new FileWriter(dir + "/01_sequences.sql"));
-        SqlUtils.header(w, "序列");
+        try {
+            SqlUtils.header(w, "序列");
 
         String sql = "SELECT SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY, CYCLE_FLAG, CACHE_SIZE " +
                 "FROM ALL_SEQUENCES WHERE SEQUENCE_OWNER = ? ORDER BY SEQUENCE_NAME";
@@ -100,16 +112,19 @@ public class OracleExporter {
                 }
             }
         }
-        w.close();
-        logger.logOk("序列: " + count + " 个");
-        return count;
+            logger.logOk("序列: " + count + " 个");
+            return count;
+        } finally {
+            w.close();
+        }
     }
 
     // ==================== 表 ====================
 
     private int exportTables(Connection conn, String owner, String dir) throws SQLException, IOException {
         PrintWriter w = new PrintWriter(new FileWriter(dir + "/02_tables.sql"));
-        SqlUtils.header(w, "表结构");
+        try {
+            SqlUtils.header(w, "表结构");
 
         Map<String, String> tableComments = getTableComments(conn, owner);
         Map<String, Map<String, String>> colComments = getColumnComments(conn, owner);
@@ -133,9 +148,11 @@ public class OracleExporter {
             writeTable(conn, owner, tables.get(i), w, tableComments, colComments);
             logger.logProgress("导出表结构", i + 1, total);
         }
-        w.close();
-        logger.logOk("表: " + total + " 个");
-        return total;
+            logger.logOk("表: " + total + " 个");
+            return total;
+        } finally {
+            w.close();
+        }
     }
 
     private void writeTable(Connection conn, String owner, String table, PrintWriter w,
@@ -195,7 +212,8 @@ public class OracleExporter {
 
     private int exportIndexes(Connection conn, String owner, String dir) throws SQLException, IOException {
         PrintWriter w = new PrintWriter(new FileWriter(dir + "/03_indexes.sql"));
-        SqlUtils.header(w, "索引");
+        try {
+            SqlUtils.header(w, "索引");
 
         String sql = "SELECT INDEX_NAME, TABLE_NAME, UNIQUENESS FROM ALL_INDEXES " +
                 "WHERE OWNER = ? ORDER BY INDEX_NAME";
@@ -217,16 +235,19 @@ public class OracleExporter {
                 }
             }
         }
-        w.close();
-        logger.logOk("索引: " + count + " 个");
-        return count;
+            logger.logOk("索引: " + count + " 个");
+            return count;
+        } finally {
+            w.close();
+        }
     }
 
     // ==================== 约束 ====================
 
     private int exportConstraints(Connection conn, String owner, String dir) throws SQLException, IOException {
         PrintWriter w = new PrintWriter(new FileWriter(dir + "/04_constraints.sql"));
-        SqlUtils.header(w, "约束");
+        try {
+            SqlUtils.header(w, "约束");
 
         String sql = "SELECT CONSTRAINT_NAME, TABLE_NAME, CONSTRAINT_TYPE FROM ALL_CONSTRAINTS " +
                 "WHERE OWNER = ? AND CONSTRAINT_TYPE IN ('P','U') ORDER BY CONSTRAINT_NAME";
@@ -249,16 +270,19 @@ public class OracleExporter {
                 }
             }
         }
-        w.close();
-        logger.logOk("约束: " + count + " 个");
-        return count;
+            logger.logOk("约束: " + count + " 个");
+            return count;
+        } finally {
+            w.close();
+        }
     }
 
     // ==================== 函数 ====================
 
     private int exportFunctions(Connection conn, String owner, String dir) throws SQLException, IOException {
         PrintWriter w = new PrintWriter(new FileWriter(dir + "/05_functions.sql"));
-        SqlUtils.header(w, "存储过程/函数");
+        try {
+            SqlUtils.header(w, "存储过程/函数");
 
         String sql = "SELECT OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS " +
                 "WHERE OWNER = ? AND OBJECT_TYPE IN ('PROCEDURE','FUNCTION') AND STATUS = 'VALID' ORDER BY OBJECT_NAME";
@@ -273,16 +297,19 @@ public class OracleExporter {
                 }
             }
         }
-        w.close();
-        logger.logOk("存储过程/函数: " + count + " 个");
-        return count;
+            logger.logOk("存储过程/函数: " + count + " 个");
+            return count;
+        } finally {
+            w.close();
+        }
     }
 
     // ==================== 包 ====================
 
     private int exportPackages(Connection conn, String owner, String dir) throws SQLException, IOException {
         PrintWriter w = new PrintWriter(new FileWriter(dir + "/06_packages.sql"));
-        SqlUtils.header(w, "包");
+        try {
+            SqlUtils.header(w, "包");
 
         String sql = "SELECT OBJECT_NAME FROM ALL_OBJECTS " +
                 "WHERE OWNER = ? AND OBJECT_TYPE = 'PACKAGE' AND STATUS = 'VALID' ORDER BY OBJECT_NAME";
@@ -297,16 +324,19 @@ public class OracleExporter {
                 }
             }
         }
-        w.close();
-        logger.logOk("包: " + count + " 个");
-        return count;
+            logger.logOk("包: " + count + " 个");
+            return count;
+        } finally {
+            w.close();
+        }
     }
 
     // ==================== 触发器 ====================
 
     private int exportTriggers(Connection conn, String owner, String dir) throws SQLException, IOException {
         PrintWriter w = new PrintWriter(new FileWriter(dir + "/07_triggers.sql"));
-        SqlUtils.header(w, "触发器");
+        try {
+            SqlUtils.header(w, "触发器");
 
         String sql = "SELECT TRIGGER_NAME, TABLE_NAME, TRIGGER_TYPE, TRIGGERING_EVENT FROM ALL_TRIGGERS " +
                 "WHERE OWNER = ? AND STATUS = 'ENABLED' ORDER BY TRIGGER_NAME";
@@ -337,15 +367,17 @@ public class OracleExporter {
                 }
             }
         }
-        w.close();
-        logger.logOk("触发器: " + count + " 个");
-        return count;
+            logger.logOk("触发器: " + count + " 个");
+            return count;
+        } finally {
+            w.close();
+        }
     }
 
     // ==================== 数据导出（虚拟线程） ====================
 
     public void exportData(Connection conn, String oraUrl, String oraUser, String oraPass, String pgSchema) throws SQLException, IOException {
-        cancelled.set(false);
+        cancellation.checkCancelled();
         logger.logSection("导出数据：" + oraUser + "（虚拟线程, 并发上限 " + maxConcurrency + ", 超时 " + TABLE_TIMEOUT_SEC + "s/表）");
 
         String dataDir = BASE_DIR + "/" + pgSchema.toLowerCase() + "/data";
@@ -382,15 +414,20 @@ public class OracleExporter {
         List<Future<?>> futures = new ArrayList<>();
 
         for (String table : tables) {
-            if (cancelled.get()) break;
+            if (cancellation.isCancelled()) break;
             futures.add(pool.submit(() -> {
-                semaphore.acquireUninterruptibly();
+                boolean acquired = false;
                 try {
-                    if (cancelled.get()) return;
+                    semaphore.acquire();
+                    acquired = true;
+                    cancellation.checkCancelled();
                     boolean success = false;
                     for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
-                        if (cancelled.get()) break;
-                        try (Connection threadConn = DriverManager.getConnection(oraUrl, oraUser, oraPass)) {
+                        if (cancellation.isCancelled()) break;
+                        Connection threadConn = null;
+                        try {
+                            threadConn = cancellation.register(
+                                    DriverManager.getConnection(oraUrl, oraUser, oraPass));
                             synchronized (logger) {
                                 logger.logInfo(">> 导出: " + table + (attempt > 1 ? " (重试 " + attempt + ")" : ""));
                             }
@@ -408,6 +445,8 @@ public class OracleExporter {
                             }
                             success = true;
                             break;
+                        } catch (CancellationException cancelled) {
+                            break;
                         } catch (Exception e) {
                             String msg = e.getMessage() != null ? e.getMessage() : "unknown";
                             logger.logToFile("[ERR]   " + table + " (attempt " + attempt + "): " + msg);
@@ -416,27 +455,35 @@ public class OracleExporter {
                                     logger.logWarn(table + " 失败，重试中...");
                                 }
                             }
+                        } finally {
+                            cancellation.release(threadConn);
                         }
                     }
-                    if (!success) {
+                    if (!success && !cancellation.isCancelled()) {
                         fail.incrementAndGet();
                         synchronized (logger) {
                             logger.logErr(table + ": " + MAX_RETRY + " 次尝试均失败，跳过");
                         }
                     }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
                 } finally {
-                    semaphore.release();
+                    if (acquired) semaphore.release();
                 }
 
-                int d = done.incrementAndGet();
-                logger.logProgress("导出进度", d, total);
+                if (!cancellation.isCancelled()) {
+                    int d = done.incrementAndGet();
+                    logger.logProgress("导出进度", d, total);
+                }
             }));
         }
 
-        for (Future<?> f : futures) {
-            try { f.get(TABLE_TIMEOUT_SEC * 2L, TimeUnit.SECONDS); } catch (Exception ignored) {}
+        boolean completed = MigrationTaskCoordinator.awaitAll(futures, pool, cancellation,
+                java.time.Duration.ofSeconds(TABLE_TIMEOUT_SEC * 2L));
+        if (!completed) {
+            logger.logWarn("数据导出已取消，已停止剩余表任务");
+            return;
         }
-        pool.shutdown();
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("成功", ok.get());
@@ -464,6 +511,7 @@ public class OracleExporter {
                 long bytes = 0;
                 try (BufferedWriter bw = new BufferedWriter(new FileWriter(fileName), 1024 * 1024)) {
                     do {
+                        cancellation.checkCancelled();
                         count++;
                         String line = SqlUtils.insertSql(table, columns, rs, convertBool, columnCommentsCache);
                         bw.write(line);

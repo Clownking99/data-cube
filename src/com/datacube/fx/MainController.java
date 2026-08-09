@@ -2,20 +2,28 @@ package com.datacube.fx;
 
 import com.datacube.cli.ConsoleLogger;
 import com.datacube.core.ConnectionHelper;
+import com.datacube.fx.task.FxTaskScope;
+import com.datacube.migration.MigrationCancellation;
 import com.datacube.migration.OracleExporter;
 import com.datacube.migration.PgImporter;
 import com.datacube.migration.PgVerifier;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.util.Duration;
 
 import java.sql.*;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 public class MainController {
+
+    private final FxTaskScope tasks;
+    private final Executor cleanupExecutor;
 
     // 连接输入
     private TextField oraUrlField, oraUserField, pgUrlField, pgUserField, pgSchemaField;
@@ -41,6 +49,16 @@ public class MainController {
     private Connection oraConn;
     private String oraUrl, oraUser, oraPass, pgUrl, pgUser, pgPass, pgSchema;
     private volatile boolean shuttingDown = false;
+    private final AtomicReference<MigrationCancellation> activeOperation = new AtomicReference<>();
+
+    MainController(FxTaskScope tasks) {
+        this(tasks, Runnable::run);
+    }
+
+    MainController(FxTaskScope tasks, Executor cleanupExecutor) {
+        this.tasks = java.util.Objects.requireNonNull(tasks, "tasks");
+        this.cleanupExecutor = java.util.Objects.requireNonNull(cleanupExecutor, "cleanupExecutor");
+    }
 
     /** 迁移 Tab 内容：原 UI 拆出。作为独立面板嵌入 AppShell。 */
     public VBox createMigrationContent() {
@@ -58,7 +76,7 @@ public class MainController {
         VBox.setVgrow(logBox, Priority.ALWAYS);
 
         // 初始化 logger（日志区域创建后）
-        fxLogger = new FxLogger(logArea, progressBar, statusLabel);
+        fxLogger = new FxLogger(logArea, progressBar, statusLabel, tasks::dispatch);
         return content;
     }
 
@@ -155,13 +173,13 @@ public class MainController {
 
         actionButtons = new Button[]{testBtn, ddlBtn, dataBtn, fullBtn, incrBtn, allBtn, verifyBtn, cancelBtn};
 
-        testBtn.setOnAction(e -> onTestConnection());
-        ddlBtn.setOnAction(e -> runAsync(() -> onExportDDL()));
-        dataBtn.setOnAction(e -> runAsync(() -> onExportData()));
-        fullBtn.setOnAction(e -> runAsync(() -> onImport(false)));
-        incrBtn.setOnAction(e -> runAsync(() -> onImport(true)));
-        allBtn.setOnAction(e -> runAsync(() -> onAll()));
-        verifyBtn.setOnAction(e -> runAsync(() -> onVerify()));
+        testBtn.setOnAction(e -> startAsync(false, this::onTestConnection));
+        ddlBtn.setOnAction(e -> startAsync(true, this::onExportDDL));
+        dataBtn.setOnAction(e -> startAsync(true, this::onExportData));
+        fullBtn.setOnAction(e -> startAsync(true, operation -> onImport(operation, false)));
+        incrBtn.setOnAction(e -> startAsync(true, operation -> onImport(operation, true)));
+        allBtn.setOnAction(e -> startAsync(true, this::onAll));
+        verifyBtn.setOnAction(e -> startAsync(true, this::onVerify));
 
         pane.getChildren().addAll(actionButtons);
         return pane;
@@ -212,121 +230,149 @@ public class MainController {
         return true;
     }
 
-    private boolean connect() {
+    private boolean connect(MigrationCancellation cancellation) {
         ConnectionHelper.loadDrivers(fxLogger);
 
+        Connection opened = null;
         try {
-            oraConn = ConnectionHelper.openAndTest(oraUrl, oraUser, oraPass, "Oracle", fxLogger);
-        } catch (SQLException e) {
+            opened = cancellation.register(
+                    ConnectionHelper.openAndTest(oraUrl, oraUser, oraPass, "Oracle", fxLogger));
+            oraConn = opened;
+            cancellation.checkCancelled();
+        } catch (SQLException | CancellationException e) {
+            cancellation.release(opened);
+            oraConn = null;
             return false;
         }
 
-        try (Connection pgConn = ConnectionHelper.openAndTest(pgUrl, pgUser, pgPass, "PostgreSQL", fxLogger)) {
+        Connection pgConn = null;
+        try {
+            pgConn = cancellation.register(
+                    ConnectionHelper.openAndTest(pgUrl, pgUser, pgPass, "PostgreSQL", fxLogger));
             ConnectionHelper.ensureSchema(pgConn, pgSchema, fxLogger);
-        } catch (SQLException e) {
-            try { oraConn.close(); } catch (Exception ignored) {}
-            oraConn = null;
+            cancellation.checkCancelled();
+        } catch (SQLException | CancellationException e) {
+            closeOraConn(cancellation);
             return false;
+        } finally {
+            cancellation.release(pgConn);
         }
 
         return true;
     }
 
-    private void initModules() {
+    private void initModules(MigrationCancellation cancellation) {
         // Spinner setEditable(true) 后用户可能输入越界值，需 clamp
         int concurrency = concurrencySpinner.getValue();
         if (concurrency < 1) concurrency = 1;
         if (concurrency > 100) concurrency = 100;
         boolean convertBool = boolCheck.isSelected();
 
-        exporter = new OracleExporter(fxLogger);
+        exporter = new OracleExporter(fxLogger, cancellation);
         exporter.setMaxConcurrency(concurrency);
         exporter.setConvertBool(convertBool);
 
-        importer = new PgImporter(fxLogger);
+        importer = new PgImporter(fxLogger, cancellation);
         importer.setMaxConcurrency(concurrency);
 
-        verifier = new PgVerifier(fxLogger);
+        verifier = new PgVerifier(fxLogger, cancellation);
     }
 
-    private void onTestConnection() {
-        if (!readInputs()) return;
-        runAsync(() -> {
-            fxLogger.logSection("测试连接");
-            ConnectionHelper.loadDrivers(fxLogger);
-            try {
-                try (Connection c = ConnectionHelper.openAndTest(oraUrl, oraUser, oraPass, "Oracle", fxLogger)) {}
-            } catch (SQLException ignored) {}
-            try {
-                try (Connection c = ConnectionHelper.openAndTest(pgUrl, pgUser, pgPass, "PostgreSQL", fxLogger)) {}
-            } catch (SQLException ignored) {}
-        });
+    private void onTestConnection(MigrationCancellation cancellation) {
+        fxLogger.logSection("测试连接");
+        ConnectionHelper.loadDrivers(fxLogger);
+        testConnection(cancellation, oraUrl, oraUser, oraPass, "Oracle");
+        cancellation.checkCancelled();
+        testConnection(cancellation, pgUrl, pgUser, pgPass, "PostgreSQL");
     }
 
-    private void onExportDDL() {
-        if (!readInputs() || !connect()) return;
-        initModules();
+    private void testConnection(MigrationCancellation cancellation, String url, String user,
+                                String password, String label) {
+        Connection connection = null;
+        try {
+            connection = cancellation.register(
+                    ConnectionHelper.openAndTest(url, user, password, label, fxLogger));
+        } catch (SQLException ignored) {
+        } finally {
+            cancellation.release(connection);
+        }
+    }
+
+    private void onExportDDL(MigrationCancellation cancellation) {
+        if (!connect(cancellation)) return;
         try {
             exporter.exportDDL(oraConn, oraUser, pgSchema);
+        } catch (CancellationException ignored) {
         } catch (Exception e) {
-            fxLogger.logErr("导出 DDL 失败: " + e.getMessage());
+            if (!cancellation.isCancelled()) fxLogger.logErr("导出 DDL 失败: " + e.getMessage());
         } finally {
-            closeOraConn();
+            closeOraConn(cancellation);
         }
     }
 
-    private void onExportData() {
-        if (!readInputs() || !connect()) return;
-        initModules();
+    private void onExportData(MigrationCancellation cancellation) {
+        if (!connect(cancellation)) return;
         try {
             exporter.exportData(oraConn, oraUrl, oraUser, oraPass, pgSchema);
+        } catch (CancellationException ignored) {
         } catch (Exception e) {
-            fxLogger.logErr("导出数据失败: " + e.getMessage());
+            if (!cancellation.isCancelled()) fxLogger.logErr("导出数据失败: " + e.getMessage());
         } finally {
-            closeOraConn();
+            closeOraConn(cancellation);
         }
     }
 
-    private void onImport(boolean incremental) {
-        if (!readInputs() || !connect()) return;
-        initModules();
-        closeOraConn();
+    private void onImport(MigrationCancellation cancellation, boolean incremental) {
+        if (!connect(cancellation)) return;
+        closeOraConn(cancellation);
         try {
             importer.importToPg(pgUrl, pgUser, pgPass, oraUser, pgSchema, incremental);
+        } catch (CancellationException ignored) {
         } catch (Exception e) {
-            fxLogger.logErr("导入失败: " + e.getMessage());
+            if (!cancellation.isCancelled()) fxLogger.logErr("导入失败: " + e.getMessage());
         }
     }
 
-    private void onAll() {
-        if (!readInputs() || !connect()) return;
-        initModules();
+    private void onAll(MigrationCancellation cancellation) {
+        if (!connect(cancellation)) return;
         try {
             exporter.exportDDL(oraConn, oraUser, pgSchema);
+            cancellation.checkCancelled();
             exporter.exportData(oraConn, oraUrl, oraUser, oraPass, pgSchema);
-            closeOraConn();
+            cancellation.checkCancelled();
+            closeOraConn(cancellation);
             importer.importToPg(pgUrl, pgUser, pgPass, oraUser, pgSchema, true);
+            cancellation.checkCancelled();
             verifier.verify(pgUrl, pgUser, pgPass, pgSchema);
+        } catch (CancellationException ignored) {
         } catch (Exception e) {
-            fxLogger.logErr("操作失败: " + e.getMessage());
+            if (!cancellation.isCancelled()) fxLogger.logErr("操作失败: " + e.getMessage());
         } finally {
-            closeOraConn();
+            closeOraConn(cancellation);
         }
     }
 
-    private void onVerify() {
-        if (!readInputs()) return;
-        initModules();
+    private void onVerify(MigrationCancellation cancellation) {
         try {
             verifier.verify(pgUrl, pgUser, pgPass, pgSchema);
+        } catch (CancellationException ignored) {
         } catch (Exception e) {
-            fxLogger.logErr("验证失败: " + e.getMessage());
+            if (!cancellation.isCancelled()) fxLogger.logErr("验证失败: " + e.getMessage());
         }
     }
 
     // ==================== 工具方法 ====================
 
-    private void runAsync(Runnable task) {
+    private void startAsync(boolean initializeModules, Consumer<MigrationCancellation> task) {
+        if (shuttingDown || !readInputs()) return;
+        MigrationCancellation cancellation = new MigrationCancellation();
+        if (initializeModules) initModules(cancellation);
+        runAsync(cancellation, task);
+    }
+
+    private void runAsync(MigrationCancellation cancellation,
+                          Consumer<MigrationCancellation> task) {
+        if (!activeOperation.compareAndSet(null, cancellation)) return;
         // 禁用其他按钮，显示取消按钮
         for (Button btn : actionButtons) {
             if (btn == cancelBtn) continue;
@@ -337,39 +383,58 @@ public class MainController {
         progressBar.setProgress(-1);
         statusLabel.setText("执行中...");
 
-        new Thread(() -> {
-            try {
-                task.run();
-            } catch (Exception e) {
-                fxLogger.logErr("异常: " + e.getMessage());
+        try {
+            tasks.submit(() -> {
+                try {
+                    task.accept(cancellation);
+                    return null;
+                } catch (CancellationException ignored) {
+                    return null;
+                } finally {
+                    cancellation.close();
+                    try {
+                        cancellation.awaitCleanup();
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                    activeOperation.compareAndSet(cancellation, null);
+                }
+            }, ignored -> finishTask(), error -> {
+                fxLogger.logErr("异常: " + error.getMessage());
                 // 保留完整堆栈到日志文件，便于事后排查
-                fxLogger.logToFile(ConsoleLogger.stackTrace(e));
-            } finally {
-                Platform.runLater(() -> {
-                    setButtonsDisabled(false);
-                    cancelBtn.setVisible(false);
-                    progressBar.setProgress(1.0);
-                    statusLabel.setText("完成");
-                    // 延迟 1.5s 重置进度条，避免视觉“突然消失”
-                    Timeline delay = new Timeline(new KeyFrame(Duration.seconds(1.5), ev -> {
-                        if (!controller_shutting_down()) {
-                            progressBar.setProgress(0);
-                            statusLabel.setText("就绪");
-                        }
-                    }));
-                    delay.play();
-                });
-                // 不再在此处关闭日志文件，避免连续任务日志丢失；
-                // 统一在窗口关闭时由 shutdown() 关闭。
+                fxLogger.logToFile(ConsoleLogger.stackTrace(error));
+                finishTask();
+            });
+        } catch (RuntimeException rejected) {
+            cancellation.close();
+            activeOperation.compareAndSet(cancellation, null);
+            if (!shuttingDown) finishTask();
+            throw rejected;
+        }
+    }
+
+    private void finishTask() {
+        setButtonsDisabled(false);
+        cancelBtn.setVisible(false);
+        progressBar.setProgress(1.0);
+        statusLabel.setText("完成");
+        // 延迟 1.5s 重置进度条，避免视觉“突然消失”
+        Timeline delay = new Timeline(new KeyFrame(Duration.seconds(1.5), ev -> {
+            if (!controller_shutting_down()) {
+                progressBar.setProgress(0);
+                statusLabel.setText("就绪");
             }
-        }, "DataCube-Worker").start();
+        }));
+        delay.play();
+        // 不再在此处关闭日志文件，避免连续任务日志丢失；
+        // 统一在窗口关闭时由 shutdown() 关闭。
     }
 
     private void onCancel() {
         fxLogger.logWarn("收到取消请求，正在停止...");
         cancelBtn.setDisable(true);
-        if (exporter != null) exporter.cancel();
-        if (importer != null) importer.cancel();
+        MigrationCancellation operation = activeOperation.get();
+        if (operation != null) operation.cancelAsync(cleanupExecutor);
     }
 
     /**
@@ -377,9 +442,9 @@ public class MainController {
      */
     public void shutdown() {
         shuttingDown = true;
-        try {
-            if (oraConn != null && !oraConn.isClosed()) oraConn.close();
-        } catch (Exception ignored) {}
+        MigrationCancellation operation = activeOperation.getAndSet(null);
+        if (operation != null) operation.cancelAsync(cleanupExecutor);
+        tasks.close();
         if (fxLogger != null) fxLogger.closeLog();
     }
 
@@ -401,18 +466,15 @@ public class MainController {
         }
     }
 
-    private void closeOraConn() {
-        if (oraConn != null) {
-            try { oraConn.close(); } catch (Exception ignored) {}
-            oraConn = null;
-        }
+    private void closeOraConn(MigrationCancellation cancellation) {
+        Connection connection = oraConn;
+        oraConn = null;
+        cancellation.release(connection);
     }
 
     private void showAlert(String msg) {
-        Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.WARNING, msg, ButtonType.OK);
-            alert.setHeaderText(null);
-            alert.showAndWait();
-        });
+        Alert alert = new Alert(Alert.AlertType.WARNING, msg, ButtonType.OK);
+        alert.setHeaderText(null);
+        alert.showAndWait();
     }
 }

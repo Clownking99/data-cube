@@ -74,4 +74,43 @@ class FxTaskScopeTest {
             assertFalse(failureCallback.get());
         }
     }
+
+    @Test
+    void directDispatchDropsQueuedAndPostCloseCallbacks() throws Exception {
+        try (FxTaskRunner runner = new FxTaskRunner()) {
+            BlockingQueue<Runnable> ui = new LinkedBlockingQueue<>();
+            FxTaskScope scope = runner.scope(ui::add);
+            AtomicBoolean callback = new AtomicBoolean();
+
+            scope.dispatch(() -> callback.set(true));
+            scope.close();
+            ui.take().run();
+            scope.dispatch(() -> callback.set(true));
+
+            assertFalse(callback.get());
+            assertTrue(ui.isEmpty());
+        }
+    }
+
+    @Test
+    void surfacesFatalErrorsWithoutRecoverableCallbackOrFutureGet() throws Exception {
+        try (FxTaskRunner runner = new FxTaskRunner()) {
+            CountDownLatch surfaced = new CountDownLatch(1);
+            AtomicReference<Error> fatal = new AtomicReference<>();
+            FxTaskScope scope = runner.scope(Runnable::run, error -> {
+                fatal.set(error);
+                surfaced.countDown();
+            });
+            AtomicBoolean failureCallback = new AtomicBoolean();
+
+            scope.submit(() -> {
+                throw new AssertionError("fatal");
+            }, ignored -> { }, error -> failureCallback.set(true));
+
+            assertTrue(surfaced.await(2, TimeUnit.SECONDS));
+            assertTrue(fatal.get() instanceof AssertionError);
+            assertFalse(failureCallback.get());
+            scope.close();
+        }
+    }
 }

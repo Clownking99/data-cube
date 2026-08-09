@@ -63,7 +63,7 @@ public final class AppShell {
     private final FxTaskRunner tasks = new FxTaskRunner();
 
     private final ContentTabPane contentTabs = new ContentTabPane();
-    private final LazyValue<MigrationPane> migrationPane = new LazyValue<>(MigrationPane::new);
+    private final LazyValue<MigrationPane> migrationPane = new LazyValue<>(() -> new MigrationPane(tasks));
     private final LazyValue<UpdateService> updateService =
             new LazyValue<>(() -> new UpdateService(tasks::submit, Platform::runLater));
     private final SqlHistoryStore sqlHistory = new SqlHistoryStore();

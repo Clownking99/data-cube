@@ -5,30 +5,44 @@ import com.datacube.core.MigrationLogger;
 import java.sql.*;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 public class PgVerifier {
 
     private final MigrationLogger logger;
+    private final MigrationCancellation cancellation;
 
     public PgVerifier(MigrationLogger logger) {
+        this(logger, new MigrationCancellation());
+    }
+
+    public PgVerifier(MigrationLogger logger, MigrationCancellation cancellation) {
         this.logger = logger;
+        this.cancellation = Objects.requireNonNull(cancellation, "cancellation");
     }
 
     public void verify(String pgUrl, String pgUser, String pgPass, String schema) throws Exception {
         logger.logSection("验证：" + schema);
 
-        try (Connection conn = DriverManager.getConnection(pgUrl + "?currentSchema=" + schema, pgUser, pgPass)) {
+        Connection conn = null;
+        try {
+            conn = cancellation.register(
+                    DriverManager.getConnection(pgUrl + "?currentSchema=" + schema, pgUser, pgPass));
             Statement s = conn.createStatement();
 
+            cancellation.checkCancelled();
             ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='" + schema + "'");
             rs.next(); int tables = rs.getInt(1);
 
+            cancellation.checkCancelled();
             rs = s.executeQuery("SELECT SUM(n_live_tup) FROM pg_stat_user_tables WHERE schemaname='" + schema + "'");
             rs.next(); long rows = rs.getLong(1);
 
+            cancellation.checkCancelled();
             rs = s.executeQuery("SELECT COUNT(*) FROM information_schema.sequences WHERE sequence_schema='" + schema + "'");
             rs.next(); int seqs = rs.getInt(1);
 
+            cancellation.checkCancelled();
             rs = s.executeQuery("SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema='" + schema + "'");
             rs.next(); int funcs = rs.getInt(1);
 
@@ -43,12 +57,15 @@ public class PgVerifier {
             System.out.println("  数据量 TOP 10:");
             logger.logToFile("数据量 TOP 10:");
             while (rs.next()) {
+                cancellation.checkCancelled();
                 String name = rs.getString(1);
                 long cnt = rs.getLong(2);
                 System.out.println("    " + String.format("%-40s", name) + String.format("%,d", cnt) + " 行");
                 logger.logToFile("  " + name + ": " + cnt + " 行");
             }
             System.out.println();
+        } finally {
+            cancellation.release(conn);
         }
     }
 }

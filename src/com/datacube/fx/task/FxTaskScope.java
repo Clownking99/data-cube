@@ -5,6 +5,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
@@ -16,12 +17,15 @@ public final class FxTaskScope implements AutoCloseable {
 
     private final FxTaskRunner runner;
     private final Consumer<Runnable> uiDispatcher;
+    private final Consumer<? super Error> fatalErrorHandler;
     private final Set<Future<?>> tasks = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    FxTaskScope(FxTaskRunner runner, Consumer<Runnable> uiDispatcher) {
+    FxTaskScope(FxTaskRunner runner, Consumer<Runnable> uiDispatcher,
+                Consumer<? super Error> fatalErrorHandler) {
         this.runner = Objects.requireNonNull(runner, "runner");
         this.uiDispatcher = Objects.requireNonNull(uiDispatcher, "uiDispatcher");
+        this.fatalErrorHandler = Objects.requireNonNull(fatalErrorHandler, "fatalErrorHandler");
     }
 
     public <T> Future<?> submit(Callable<T> operation, Consumer<? super T> success,
@@ -35,7 +39,7 @@ public final class FxTaskScope implements AutoCloseable {
             try {
                 T value = operation.call();
                 dispatch(() -> success.accept(value));
-            } catch (Throwable error) {
+            } catch (Exception error) {
                 if (error instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 } else if (!(error instanceof CancellationException)) {
@@ -70,7 +74,9 @@ public final class FxTaskScope implements AutoCloseable {
         tasks.clear();
     }
 
-    private void dispatch(Runnable callback) {
+    /** Dispatches owner UI work while suppressing callbacks after this scope closes. */
+    public void dispatch(Runnable callback) {
+        Objects.requireNonNull(callback, "callback");
         if (closed.get()) return;
         uiDispatcher.accept(() -> {
             if (!closed.get()) callback.run();
@@ -85,6 +91,15 @@ public final class FxTaskScope implements AutoCloseable {
         @Override
         protected void done() {
             tasks.remove(this);
+            if (isCancelled()) return;
+            try {
+                get();
+            } catch (ExecutionException failure) {
+                if (failure.getCause() instanceof Error fatal) fatalErrorHandler.accept(fatal);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } catch (CancellationException ignored) {
+            }
         }
     }
 }

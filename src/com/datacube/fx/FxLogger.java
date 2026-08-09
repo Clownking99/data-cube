@@ -11,18 +11,27 @@ import java.text.SimpleDateFormat;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Consumer;
 
 public class FxLogger implements MigrationLogger {
 
     private final TextArea logArea;
     private final ProgressBar progressBar;
     private final Label statusLabel;
+    private final Consumer<Runnable> uiDispatcher;
     private PrintWriter logWriter;
 
     public FxLogger(TextArea logArea, ProgressBar progressBar, Label statusLabel) {
+        this(logArea, progressBar, statusLabel, Platform::runLater);
+    }
+
+    FxLogger(TextArea logArea, ProgressBar progressBar, Label statusLabel,
+             Consumer<Runnable> uiDispatcher) {
         this.logArea = logArea;
         this.progressBar = progressBar;
         this.statusLabel = statusLabel;
+        this.uiDispatcher = Objects.requireNonNull(uiDispatcher, "uiDispatcher");
         openLog();
     }
 
@@ -78,7 +87,7 @@ public class FxLogger implements MigrationLogger {
     @Override
     public void logProgress(String label, int done, int total) {
         double progress = total > 0 ? (double) done / total : 0;
-        Platform.runLater(() -> {
+        uiDispatcher.accept(() -> {
             progressBar.setProgress(progress);
             statusLabel.setText(label + " (" + done + "/" + total + ")");
         });
@@ -125,7 +134,7 @@ public class FxLogger implements MigrationLogger {
     }
 
     private void appendLog(String text) {
-        Platform.runLater(() -> {
+        uiDispatcher.accept(() -> {
             logArea.appendText(text + "\n");
         });
     }

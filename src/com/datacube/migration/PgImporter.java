@@ -19,10 +19,15 @@ public class PgImporter {
 
     private final MigrationLogger logger;
     private int maxConcurrency = 20;
-    private final java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final MigrationCancellation cancellation;
 
     public PgImporter(MigrationLogger logger) {
+        this(logger, new MigrationCancellation());
+    }
+
+    public PgImporter(MigrationLogger logger, MigrationCancellation cancellation) {
         this.logger = logger;
+        this.cancellation = Objects.requireNonNull(cancellation, "cancellation");
     }
 
     public void setMaxConcurrency(int concurrency) {
@@ -31,18 +36,20 @@ public class PgImporter {
         this.maxConcurrency = concurrency;
     }
 
-    public void cancel() { cancelled.set(true); }
-    public void resetCancel() { cancelled.set(false); }
-    public boolean isCancelled() { return cancelled.get(); }
+    public void cancel() { cancellation.cancel(); }
+    public void resetCancel() { cancellation.reset(); }
+    public boolean isCancelled() { return cancellation.isCancelled(); }
 
     public void importToPg(String pgUrl, String pgUser, String pgPass, String owner, String schema, boolean incremental) throws Exception {
-        cancelled.set(false);
+        cancellation.checkCancelled();
         String mode = incremental ? "增量模式" : "完整模式";
         logger.logSection("导入到 PostgreSQL：" + owner + " → " + schema + "（" + mode + "）");
 
         String basePath = BASE_DIR + "/" + schema.toLowerCase();
 
-        try (Connection conn = DriverManager.getConnection(pgUrl, pgUser, pgPass)) {
+        Connection conn = null;
+        try {
+            conn = cancellation.register(DriverManager.getConnection(pgUrl, pgUser, pgPass));
             ensureSchema(conn, schema);
 
             Statement stmt = conn.createStatement();
@@ -55,7 +62,7 @@ public class PgImporter {
 
             int beforeTableCount = existingTables.size();
 
-            if (cancelled.get()) { logger.logWarn("已取消，跳过导入"); return; }
+            if (cancellation.isCancelled()) { logger.logWarn("已取消，跳过导入"); return; }
 
             if (incremental) {
                 logger.logInfo("[1/7] 建表（增量: 仅创建缺失表）...");
@@ -65,25 +72,30 @@ public class PgImporter {
                 execSqlFile(conn, basePath + "/02_tables.sql");
             }
 
-            if (cancelled.get()) { logger.logWarn("已取消"); return; }
+            if (cancellation.isCancelled()) { logger.logWarn("已取消"); return; }
             logger.logInfo("[2/7] 检测并修复缺失表...");
             int fixed = fixMissing(conn, schema, basePath + "/02_tables.sql");
             if (fixed > 0) logger.logOk("修复了 " + fixed + " 个缺失表");
             else logger.logOk("无缺失表");
 
             logger.logInfo("[3/7] 建序列...");
+            cancellation.checkCancelled();
             execSqlFile(conn, basePath + "/01_sequences.sql");
 
             logger.logInfo("[4/7] 建索引...");
+            cancellation.checkCancelled();
             execSqlFile(conn, basePath + "/03_indexes.sql");
 
             logger.logInfo("[5/7] 导入数据（虚拟线程, 并发上限 " + maxConcurrency + ", 批大小 " + BATCH_SIZE + "）...");
+            cancellation.checkCancelled();
             importData(pgUrl, pgUser, pgPass, schema, basePath + "/data", incremental);
 
             logger.logInfo("[6/7] 建约束（主键/唯一）...");
+            cancellation.checkCancelled();
             execSqlFile(conn, basePath + "/04_constraints.sql");
 
             logger.logInfo("[7/7] 建触发器...");
+            cancellation.checkCancelled();
             execSqlFile(conn, basePath + "/07_triggers.sql");
 
             rs = conn.createStatement().executeQuery(
@@ -96,6 +108,8 @@ public class PgImporter {
             stats.put("导入后表数", afterTableCount);
             stats.put("新增表数", afterTableCount - beforeTableCount);
             logger.logSummary("导入统计", stats);
+        } finally {
+            cancellation.release(conn);
         }
     }
 
@@ -143,17 +157,22 @@ public class PgImporter {
         List<Future<?>> futures = new ArrayList<>();
 
         for (File file : files) {
-            if (cancelled.get()) break;
+            if (cancellation.isCancelled()) break;
             futures.add(pool.submit(() -> {
-                semaphore.acquireUninterruptibly();
+                boolean acquired = false;
                 try {
-                    if (cancelled.get()) return;
+                    semaphore.acquire();
+                    acquired = true;
+                    cancellation.checkCancelled();
                     String tableName = file.getName().replace(".sql", "");
                     long rows = 0;
                     boolean success = false;
                     for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
-                        if (cancelled.get()) break;
-                        try (Connection conn = DriverManager.getConnection(pgUrl, pgUser, pgPass)) {
+                        if (cancellation.isCancelled()) break;
+                        Connection conn = null;
+                        try {
+                            conn = cancellation.register(
+                                    DriverManager.getConnection(pgUrl, pgUser, pgPass));
                             conn.createStatement().execute("SET search_path TO " + schema);
                             rows = execDataFileBatch(conn, file, incremental);
                             if (rows == 0 && incremental) skip.incrementAndGet();
@@ -161,30 +180,40 @@ public class PgImporter {
                             ok.incrementAndGet();
                             success = true;
                             break;
+                        } catch (CancellationException cancelled) {
+                            break;
                         } catch (Exception e) {
                             logger.logToFile("[ERR]   " + tableName + " (attempt " + attempt + "): " + e.getMessage());
+                        } finally {
+                            cancellation.release(conn);
                         }
                     }
-                    if (!success) {
+                    if (!success && !cancellation.isCancelled()) {
                         fail.incrementAndGet();
                         failedTables.add(file.getName().replace(".sql", ""));
                         synchronized (logger) {
                             logger.logErr("导入失败: " + file.getName().replace(".sql", ""));
                         }
                     }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
                 } finally {
-                    semaphore.release();
+                    if (acquired) semaphore.release();
                 }
 
-                int d = done.incrementAndGet();
-                logger.logProgress("导入数据", d, total);
+                if (!cancellation.isCancelled()) {
+                    int d = done.incrementAndGet();
+                    logger.logProgress("导入数据", d, total);
+                }
             }));
         }
 
-        for (Future<?> f : futures) {
-            try { f.get(1, TimeUnit.HOURS); } catch (Exception ignored) {}
+        boolean completed = MigrationTaskCoordinator.awaitAll(futures, pool, cancellation,
+                java.time.Duration.ofHours(1));
+        if (!completed) {
+            logger.logWarn("数据导入已取消，已停止剩余表任务");
+            return;
         }
-        pool.shutdown();
 
         logger.logOk("数据导入完成: " + ok.get() + " 个表处理, " + fail.get() + " 个失败, "
                 + skip.get() + " 个跳过(已有数据), 共 " + totalRows.get() + " 行");
@@ -215,6 +244,7 @@ public class PgImporter {
              Statement stmt = conn.createStatement()) {
             String line;
             while ((line = br.readLine()) != null) {
+                cancellation.checkCancelled();
                 line = line.trim();
                 if (line.isEmpty() || line.startsWith("--")) continue;
                 if (line.endsWith(";")) line = line.substring(0, line.length() - 1).trim();
