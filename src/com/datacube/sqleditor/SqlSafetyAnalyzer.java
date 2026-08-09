@@ -13,6 +13,7 @@ import java.util.Set;
  * 注释、PostgreSQL dollar quote、Oracle q quote 以及括号中的内容。
  */
 public final class SqlSafetyAnalyzer {
+    private static final int MAX_CTE_SCOPES = 64;
     private static final Set<String> READ_KEYWORDS = Set.of(
             "SELECT", "SHOW", "DESCRIBE", "DESC", "VALUES", "TABLE");
     private static final Set<String> WRITE_KEYWORDS = Set.of(
@@ -69,7 +70,7 @@ public final class SqlSafetyAnalyzer {
         EnumSet<Risk> risks = EnumSet.noneOf(Risk.class);
         int withIndex = cteWithIndex(tokens, first);
         if (withIndex >= 0) {
-            CteSummary ctes = analyzeCteBodies(lexicalTokens, tokens, withIndex + 1);
+            CteSummary ctes = analyzeCteBodies(lexicalTokens, tokens.get(withIndex));
             if (ctes.write()) {
                 kind = StatementKind.WRITE;
             } else if (ctes.unknown()) {
@@ -102,51 +103,78 @@ public final class SqlSafetyAnalyzer {
         return -1;
     }
 
-    private static CteSummary analyzeCteBodies(List<Token> lexicalTokens,
-                                               List<Token> topLevelTokens,
-                                               int commandSearchStart) {
-        Token mainCommand = commandTokenAfterWith(topLevelTokens, commandSearchStart);
-        if (mainCommand == null) return new CteSummary(false, true, false);
+    private static CteSummary analyzeCteBodies(List<Token> lexicalTokens, Token initialWith) {
+        List<WithScope> pending = new ArrayList<>();
+        pending.add(new WithScope(initialWith, Integer.MAX_VALUE));
+        CteSummary summary = new CteSummary(false, false, false);
 
-        boolean write = false;
-        boolean unknown = false;
-        boolean missingWhere = false;
-        for (Token token : topLevelTokens) {
-            if (token.offset() >= mainCommand.offset()) break;
-            if (!"AS".equals(token.word())) continue;
-
-            Token bodyCommand = lexicalTokens.stream()
-                    .filter(candidate -> candidate.offset() > token.offset()
-                            && candidate.offset() < mainCommand.offset()
-                            && candidate.depth() > 0)
+        for (int cursor = 0; cursor < pending.size() && cursor < MAX_CTE_SCOPES; cursor++) {
+            WithScope scope = pending.get(cursor);
+            Token mainCommand = lexicalTokens.stream()
+                    .filter(candidate -> candidate.offset() > scope.with().offset()
+                            && candidate.offset() < scope.endOffset()
+                            && candidate.depth() == scope.with().depth()
+                            && CTE_COMMAND_KEYWORDS.contains(candidate.word()))
                     .findFirst()
                     .orElse(null);
-            if (bodyCommand == null) {
-                unknown = true;
+            if (mainCommand == null) {
+                summary = summary.merge(new CteSummary(false, true, true));
                 continue;
             }
 
-            int bodyEnd = lexicalTokens.stream()
-                    .filter(candidate -> candidate.offset() > bodyCommand.offset()
-                            && candidate.depth() == 0)
-                    .mapToInt(Token::offset)
-                    .findFirst()
-                    .orElse(mainCommand.offset());
-            StatementKind bodyKind = classify(bodyCommand.word(), List.of(bodyCommand), false);
-            if (bodyKind == StatementKind.WRITE) {
-                write = true;
-            } else if (bodyKind != StatementKind.READ) {
-                unknown = true;
+            boolean foundBody = false;
+            for (Token token : lexicalTokens) {
+                if (token.offset() <= scope.with().offset()) continue;
+                if (token.offset() >= mainCommand.offset()) break;
+                if (token.depth() != scope.with().depth() || !"AS".equals(token.word())) continue;
+                foundBody = true;
+
+                Token bodyCommand = lexicalTokens.stream()
+                        .filter(candidate -> candidate.offset() > token.offset()
+                                && candidate.offset() < mainCommand.offset()
+                                && candidate.depth() > scope.with().depth())
+                        .findFirst()
+                        .orElse(null);
+                if (bodyCommand == null) {
+                    summary = summary.merge(new CteSummary(false, true, true));
+                    continue;
+                }
+                int bodyEnd = lexicalTokens.stream()
+                        .filter(candidate -> candidate.offset() > bodyCommand.offset()
+                                && candidate.depth() <= scope.with().depth())
+                        .mapToInt(Token::offset)
+                        .findFirst()
+                        .orElse(mainCommand.offset());
+                if ("WITH".equals(bodyCommand.word())) {
+                    if (pending.size() < MAX_CTE_SCOPES) {
+                        pending.add(new WithScope(bodyCommand, bodyEnd));
+                    } else {
+                        summary = summary.merge(new CteSummary(false, true, true));
+                    }
+                } else {
+                    summary = summary.merge(summarizeCommand(
+                            lexicalTokens, bodyCommand, bodyEnd));
+                }
             }
-            if (("UPDATE".equals(bodyCommand.word()) || "DELETE".equals(bodyCommand.word()))
-                    && lexicalTokens.stream().noneMatch(candidate ->
-                    candidate.offset() > bodyCommand.offset()
-                            && candidate.offset() < bodyEnd
-                            && candidate.depth() == bodyCommand.depth()
-                            && "WHERE".equals(candidate.word()))) {
-                missingWhere = true;
-            }
+            if (!foundBody) summary = summary.merge(new CteSummary(false, true, true));
+            summary = summary.merge(summarizeCommand(
+                    lexicalTokens, mainCommand, scope.endOffset()));
         }
+
+        return summary;
+    }
+
+    private static CteSummary summarizeCommand(List<Token> lexicalTokens, Token command,
+                                               int endOffset) {
+        StatementKind kind = classify(command.word(), List.of(command), false);
+        boolean write = kind == StatementKind.WRITE;
+        boolean unknown = kind != StatementKind.READ && kind != StatementKind.WRITE;
+        boolean missingWhere = ("UPDATE".equals(command.word()) || "DELETE".equals(command.word()))
+                && lexicalTokens.stream().noneMatch(candidate ->
+                candidate.offset() > command.offset()
+                        && candidate.offset() < endOffset
+                        && candidate.depth() == command.depth()
+                        && "WHERE".equals(candidate.word()));
         return new CteSummary(write, unknown, missingWhere);
     }
 
@@ -233,7 +261,8 @@ public final class SqlSafetyAnalyzer {
                         state = State.ORACLE_Q_QUOTE;
                         i += quote.prefixLength();
                     } else {
-                        String delimiter = SqlLexicalRules.dollarDelimiterAt(sql, i);
+                        String delimiter = SqlLexicalRules.dollarDelimiterAt(
+                                sql, i, oracleMode);
                         if (delimiter != null) {
                             dollarDelimiter = delimiter;
                             state = State.DOLLAR_QUOTE;
@@ -324,5 +353,12 @@ public final class SqlSafetyAnalyzer {
 
     private record Token(String word, int depth, int offset) {}
 
-    private record CteSummary(boolean write, boolean unknown, boolean missingWhere) {}
+    private record WithScope(Token with, int endOffset) {}
+
+    private record CteSummary(boolean write, boolean unknown, boolean missingWhere) {
+        CteSummary merge(CteSummary other) {
+            return new CteSummary(write || other.write, unknown || other.unknown,
+                    missingWhere || other.missingWhere);
+        }
+    }
 }

@@ -39,6 +39,25 @@ class SqlSafetyPolicyTest {
     }
 
     @Test
+    void developmentRequiresConfirmationForNestedCteDeleteWithoutWhere() {
+        ConnectionSafetyOptions options =
+                new ConnectionSafetyOptions(ConnectionEnvironment.DEVELOPMENT, false, 60);
+        String sql = """
+                with outer_change as (
+                  with inner_read as (select 1)
+                  delete from account returning id
+                )
+                select * from outer_change
+                """;
+
+        var decision = SqlSafetyPolicy.decide(SqlSafetyAnalyzer.analyze(sql, false), options);
+
+        assertFalse(decision.blocked());
+        assertTrue(decision.confirmationRequired());
+        assertEquals(1, decision.relevantStatements().size());
+    }
+
+    @Test
     void sessionStateConflictsAreAlwaysBlocked() {
         ConnectionSafetyOptions options =
                 new ConnectionSafetyOptions(ConnectionEnvironment.DEVELOPMENT, false, 60);

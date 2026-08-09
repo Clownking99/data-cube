@@ -89,6 +89,24 @@ class SqlScriptSplitterTest {
     }
 
     @Test
+    void identifierDollarSequencesAndOracleModeCannotOpenDollarQuotes() {
+        String[] pgScripts = {
+                "select 1 as foo$bar$; delete from account",
+                "select 1 as foo$$; delete from account"
+        };
+        for (String script : pgScripts) {
+            List<String> stmts = SqlScriptSplitter.split(script, false);
+            assertEquals(2, stmts.size(), "标识符中的 $ 不能吞掉后续语句：" + stmts);
+            assertTrue(stmts.get(1).toLowerCase().startsWith("delete from account"));
+        }
+
+        List<String> oracle = SqlScriptSplitter.split(
+                "select $$ marker; delete from account", true);
+        assertEquals(2, oracle.size(), "Oracle 模式不能启用 PostgreSQL dollar quote：" + oracle);
+        assertTrue(oracle.get(1).toLowerCase().startsWith("delete from account"));
+    }
+
+    @Test
     void pgEscapeStringDoesNotHideFollowingStatement() {
         List<String> stmts = SqlScriptSplitter.split(
                 "select E'it\\'s'; delete from account", false);

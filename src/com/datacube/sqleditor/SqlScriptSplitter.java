@@ -110,7 +110,7 @@ public final class SqlScriptSplitter {
                             plsqlBlock = false;
                             i = advancePastLine(sql, i);
                         } else if (c == '$') {
-                            String tag = SqlLexicalRules.dollarDelimiterAt(sql, i);
+                            String tag = SqlLexicalRules.dollarDelimiterAt(sql, i, plsql);
                             if (tag != null) {
                                 cur.append(tag);
                                 state = State.IN_DOLLAR;

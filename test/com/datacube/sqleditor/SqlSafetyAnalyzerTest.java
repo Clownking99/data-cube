@@ -53,6 +53,25 @@ class SqlSafetyAnalyzerTest {
     }
 
     @Test
+    void identifierDollarSequencesCannotHideFollowingWrites() {
+        String[] scripts = {
+                "select 1 as foo$bar$; delete from account",
+                "select 1 as foo$$; delete from account"
+        };
+        for (String script : scripts) {
+            var analysis = SqlSafetyAnalyzer.analyze(script, false);
+            assertEquals(2, analysis.statements().size(), script);
+            assertEquals(WRITE, analysis.statements().get(1).kind(), script);
+            assertTrue(analysis.statements().get(1).risks().contains(MISSING_WHERE), script);
+        }
+
+        var oracle = SqlSafetyAnalyzer.analyze(
+                "select $$ marker; delete from account", true);
+        assertEquals(2, oracle.statements().size());
+        assertEquals(WRITE, oracle.statements().get(1).kind());
+    }
+
+    @Test
     void classifiesExplainAnalyzeAndSessionStateConflicts() {
         assertEquals(READ, SqlSafetyAnalyzer.analyze(
                 "explain select * from t", false).statements().getFirst().kind());
@@ -85,6 +104,21 @@ class SqlSafetyAnalyzerTest {
                 "with opaque as (vacuum account) select * from opaque", false);
         assertEquals(UNKNOWN, unknown.statements().getFirst().kind());
         assertTrue(unknown.statements().getFirst().risks().contains(UNKNOWN_STATEMENT));
+    }
+
+    @Test
+    void nestedWithInsideCteCannotHideDeleteWithoutWhere() {
+        String sql = """
+                with outer_change as (
+                  with inner_read as (select 1)
+                  delete from account returning id
+                )
+                select * from outer_change
+                """;
+
+        var statement = SqlSafetyAnalyzer.analyze(sql, false).statements().getFirst();
+        assertEquals(WRITE, statement.kind());
+        assertTrue(statement.risks().contains(MISSING_WHERE));
     }
 
     @Test

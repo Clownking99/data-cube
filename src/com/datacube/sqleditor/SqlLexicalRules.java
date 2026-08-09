@@ -40,8 +40,11 @@ final class SqlLexicalRules {
         });
     }
 
-    static String dollarDelimiterAt(String sql, int offset) {
-        if (offset < 0 || offset >= sql.length() || sql.charAt(offset) != '$') return null;
+    static String dollarDelimiterAt(String sql, int offset, boolean oracleMode) {
+        if (oracleMode || offset < 0 || offset >= sql.length() || sql.charAt(offset) != '$'
+                || offset > 0 && isWordPart(sql.charAt(offset - 1))) {
+            return null;
+        }
         int i = offset + 1;
         while (i < sql.length() && (Character.isLetterOrDigit(sql.charAt(i))
                 || sql.charAt(i) == '_')) {
