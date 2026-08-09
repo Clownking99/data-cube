@@ -4,6 +4,46 @@ package com.datacube.sqleditor;
 final class SqlLexicalRules {
     private SqlLexicalRules() {}
 
+    enum TriviaStatus { TRIVIA, EXECUTABLE, INVALID }
+
+    static TriviaStatus triviaStatus(String sql, boolean oracleMode) {
+        int i = 0;
+        while (i < sql.length()) {
+            char current = sql.charAt(i);
+            char next = i + 1 < sql.length() ? sql.charAt(i + 1) : 0;
+            if (Character.isWhitespace(current)) {
+                i++;
+            } else if (current == '-' && next == '-') {
+                i += 2;
+                while (i < sql.length()
+                        && sql.charAt(i) != '\n' && sql.charAt(i) != '\r') i++;
+            } else if (current == '/' && next == '*') {
+                int depth = 1;
+                i += 2;
+                while (i < sql.length() && depth > 0) {
+                    current = sql.charAt(i);
+                    next = i + 1 < sql.length() ? sql.charAt(i + 1) : 0;
+                    if (current == '/' && next == '*') {
+                        if (oracleMode) return TriviaStatus.INVALID;
+                        depth++;
+                        i += 2;
+                    } else if (current == '*' && next == '/') {
+                        depth--;
+                        i += 2;
+                    } else {
+                        i++;
+                    }
+                }
+                if (depth != 0) return TriviaStatus.INVALID;
+            } else if (current == '*' && next == '/') {
+                return TriviaStatus.INVALID;
+            } else {
+                return TriviaStatus.EXECUTABLE;
+            }
+        }
+        return TriviaStatus.TRIVIA;
+    }
+
     static boolean isPostgresEscapeStringQuote(String sql, int quoteOffset, boolean oracleMode) {
         if (oracleMode || quoteOffset < 1 || sql.charAt(quoteOffset) != '\'') return false;
         char prefix = sql.charAt(quoteOffset - 1);

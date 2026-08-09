@@ -44,25 +44,10 @@ public final class SqlScriptSplitter {
         return new SplitState(plsql).run(sql);
     }
 
-    /** 剥离注释后是否仍含可执行内容；供共享轻量词法判断复用。 */
-    static boolean hasExecutableContent(String sql) {
-        int n = sql.length();
-        int i = 0;
-        while (i < n) {
-            char c = sql.charAt(i);
-            if (c == '-' && i + 1 < n && sql.charAt(i + 1) == '-') {
-                while (i < n && sql.charAt(i) != '\n' && sql.charAt(i) != '\r') i++;
-            } else if (c == '/' && i + 1 < n && sql.charAt(i + 1) == '*') {
-                int end = sql.indexOf("*/", i + 2);
-                if (end < 0) return false;
-                i = end + 2;
-            } else if (!Character.isWhitespace(c)) {
-                return true;
-            } else {
-                i++;
-            }
-        }
-        return false;
+    /** 剥离方言注释后是否仍含可执行内容。 */
+    static boolean hasExecutableContent(String sql, boolean oracleMode) {
+        return SqlLexicalRules.triviaStatus(sql, oracleMode)
+                == SqlLexicalRules.TriviaStatus.EXECUTABLE;
     }
 
     private enum State {
@@ -77,6 +62,7 @@ public final class SqlScriptSplitter {
         private State state = State.NORMAL;
         private String dollarTag;
         private boolean backslashEscapes;
+        private int blockCommentDepth;
         private char oracleQuoteClose;
         private final boolean plsql;
         private boolean plsqlBlock;
@@ -123,8 +109,9 @@ public final class SqlScriptSplitter {
                             i++;
                         } else if (c == '/' && i + 1 < n && sql.charAt(i + 1) == '*') {
                             state = State.IN_BLOCK_COMMENT;
-                            cur.append(c);
-                            i++;
+                            blockCommentDepth = 1;
+                            cur.append("/*");
+                            i += 2;
                         } else if (plsql && c == '/' && isLineAloneSlash(sql, i)) {
                             // SQL*Plus 终止符：单独成行的 /
                             flush();
@@ -191,12 +178,17 @@ public final class SqlScriptSplitter {
                         break;
 
                     case IN_BLOCK_COMMENT:
-                        cur.append(c);
-                        if (c == '*' && i + 1 < n && sql.charAt(i + 1) == '/') {
-                            cur.append('/');
-                            state = State.NORMAL;
+                        if (!plsql && c == '/' && i + 1 < n && sql.charAt(i + 1) == '*') {
+                            cur.append("/*");
+                            blockCommentDepth++;
+                            i += 2;
+                        } else if (c == '*' && i + 1 < n && sql.charAt(i + 1) == '/') {
+                            cur.append("*/");
+                            blockCommentDepth--;
+                            if (blockCommentDepth == 0) state = State.NORMAL;
                             i += 2;
                         } else {
+                            cur.append(c);
                             i++;
                         }
                         break;
@@ -236,7 +228,7 @@ public final class SqlScriptSplitter {
             String s = cur.toString().trim();
             // 仅含注释/空白的单元不作为语句：整段被注释掉的 SQL 不应发往数据库
             // （Oracle 对纯注释文本报 ORA-00900）。
-            if (!s.isEmpty() && hasExecutableContent(s)) stmts.add(s);
+            if (!s.isEmpty() && hasExecutableContent(s, plsql)) stmts.add(s);
             cur.setLength(0);
         }
 

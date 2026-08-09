@@ -205,6 +205,56 @@ class JdbcEditorSessionTest {
     }
 
     @Test
+    void unterminatedTransactionCommentFallsBackToRunner() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        StubRunner runner = new StubRunner(QueryResult.error("syntax error", 1));
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
+                jdbc::open, runner);
+        session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
+
+        JdbcEditorSession.ExecutionBatch batch = session.executeScript(
+                "COMMIT /* unterminated", null, 100, null, false);
+
+        assertEquals(0, jdbc.commits.get());
+        assertEquals(1, runner.scriptCalls.get());
+        assertEquals(QueryResult.FailureKind.SQL_ERROR,
+                batch.outcomes().getFirst().result().failureKind);
+        assertEquals(JdbcEditorSession.TransactionState.ERROR_PENDING,
+                session.snapshot().transactionState());
+        session.close();
+    }
+
+    @Test
+    void postgresNestedTransactionCommentCompletesWhileOracleFallsBack() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        StubRunner runner = new StubRunner(QueryResult.update(1, 1));
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
+                jdbc::open, runner);
+        session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
+        session.executeScript("select 1", null, 100, null, false);
+
+        session.executeScript(
+                "COMMIT /* outer /* inner */ tail */;", null, 100, null, false);
+
+        assertEquals(1, jdbc.commits.get());
+        assertEquals(1, runner.scriptCalls.get());
+        assertEquals(JdbcEditorSession.TransactionState.IDLE,
+                session.snapshot().transactionState());
+
+        session.executeScript("select 2", null, 100, null, true);
+        session.executeScript(
+                "COMMIT /* outer /* inner */ tail */;", null, 100, null, true);
+
+        assertEquals(1, jdbc.commits.get(), "Oracle nested comment must not bypass the runner");
+        assertEquals(3, runner.scriptCalls.get());
+        assertEquals(JdbcEditorSession.TransactionState.ACTIVE,
+                session.snapshot().transactionState());
+        session.close();
+    }
+
+    @Test
     void failedCommitKeepsPendingStateForExplicitRecovery() throws Exception {
         JdbcStub jdbc = new JdbcStub();
         JdbcEditorSession session = new JdbcEditorSession(
@@ -247,11 +297,15 @@ class JdbcEditorSessionTest {
         runner.release.countDown();
         join(execution);
 
+        IllegalStateException executeFailure = assertThrows(IllegalStateException.class,
+                () -> session.executeScript("select after broken", null, 100, null, false));
         IllegalStateException failure = assertThrows(IllegalStateException.class, session::commit);
 
+        assertTrue(executeFailure.getMessage().contains("重新连接"));
         assertTrue(failure.getMessage().contains("重新连接"));
         assertNull(executionFailure.get());
         assertEquals(1, jdbc.opens.get());
+        assertEquals(2, runner.scriptCalls.get(), "broken pending SQL must not reach the runner");
         assertEquals(JdbcEditorSession.ConnectionState.BROKEN,
                 session.snapshot().connectionState());
         assertEquals(JdbcEditorSession.TransactionState.ACTIVE,
@@ -276,10 +330,14 @@ class JdbcEditorSessionTest {
         runner.release.countDown();
         join(execution);
 
+        IllegalStateException explainFailure = assertThrows(IllegalStateException.class,
+                () -> session.explain("select after broken", null, false));
         IllegalStateException failure = assertThrows(IllegalStateException.class, session::rollback);
 
+        assertTrue(explainFailure.getMessage().contains("重新连接"));
         assertTrue(failure.getMessage().contains("重新连接"));
         assertEquals(1, jdbc.opens.get());
+        assertEquals(0, runner.explainCalls.get(), "broken pending explain must not reach the runner");
         assertEquals(JdbcEditorSession.ConnectionState.BROKEN,
                 session.snapshot().connectionState());
         assertEquals(JdbcEditorSession.TransactionState.ERROR_PENDING,
@@ -466,6 +524,76 @@ class JdbcEditorSessionTest {
         assertNull(firstFailure.get());
         assertInstanceOf(IllegalStateException.class, secondFailure.get());
         assertEquals(1, runner.scriptCalls.get(), "queued SQL must never reach the runner");
+        assertEquals(JdbcEditorSession.ConnectionState.CLOSED,
+                session.snapshot().connectionState());
+    }
+
+    @Test
+    void closeBetweenPrecheckAndPublicationPreventsExecuteFromOpeningJdbc() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        StubRunner runner = new StubRunner(QueryResult.update(1, 1));
+        CountDownLatch beforePublish = new CountDownLatch(1);
+        CountDownLatch allowPublish = new CountDownLatch(1);
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
+                jdbc::open, runner, () -> {
+                    beforePublish.countDown();
+                    awaitUnchecked(allowPublish);
+                });
+        AtomicReference<Throwable> executionFailure = new AtomicReference<>();
+        Thread execution = Thread.ofVirtual().start(() -> {
+            try {
+                session.executeScript("select must-not-run", null, 100, null, false);
+            } catch (Throwable failure) {
+                executionFailure.set(failure);
+            }
+        });
+        await(beforePublish);
+
+        Thread closer = Thread.ofVirtual().start(session::close);
+        awaitWaiting(closer);
+        allowPublish.countDown();
+        join(execution);
+        join(closer);
+
+        assertInstanceOf(IllegalStateException.class, executionFailure.get());
+        assertEquals(0, jdbc.opens.get());
+        assertEquals(0, runner.scriptCalls.get());
+        assertEquals(JdbcEditorSession.ConnectionState.CLOSED,
+                session.snapshot().connectionState());
+    }
+
+    @Test
+    void closeBetweenPrecheckAndPublicationPreventsExplainFromOpeningJdbc() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        StubRunner runner = new StubRunner(QueryResult.update(1, 1));
+        CountDownLatch beforePublish = new CountDownLatch(1);
+        CountDownLatch allowPublish = new CountDownLatch(1);
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
+                jdbc::open, runner, () -> {
+                    beforePublish.countDown();
+                    awaitUnchecked(allowPublish);
+                });
+        AtomicReference<Throwable> executionFailure = new AtomicReference<>();
+        Thread execution = Thread.ofVirtual().start(() -> {
+            try {
+                session.explain("select must-not-run", null, false);
+            } catch (Throwable failure) {
+                executionFailure.set(failure);
+            }
+        });
+        await(beforePublish);
+
+        Thread closer = Thread.ofVirtual().start(session::close);
+        awaitWaiting(closer);
+        allowPublish.countDown();
+        join(execution);
+        join(closer);
+
+        assertInstanceOf(IllegalStateException.class, executionFailure.get());
+        assertEquals(0, jdbc.opens.get());
+        assertEquals(0, runner.explainCalls.get());
         assertEquals(JdbcEditorSession.ConnectionState.CLOSED,
                 session.snapshot().connectionState());
     }
@@ -666,6 +794,7 @@ class JdbcEditorSessionTest {
     private static final class StubRunner implements SqlRunner {
         private final QueryResult result;
         private final AtomicInteger scriptCalls = new AtomicInteger();
+        private final AtomicInteger explainCalls = new AtomicInteger();
         private ScriptErrorPolicy lastPolicy;
         private SqlExecutionOptions lastOptions;
 
@@ -699,6 +828,7 @@ class JdbcEditorSessionTest {
                 String schema,
                 boolean analyze,
                 SqlExecutionOptions options) {
+            explainCalls.incrementAndGet();
             lastOptions = options;
             return result;
         }
@@ -734,7 +864,8 @@ class JdbcEditorSessionTest {
     private static final class FirstThenBlockingRunner implements SqlRunner {
         private final QueryResult firstResult;
         private final QueryResult blockedResult;
-        private final AtomicInteger calls = new AtomicInteger();
+        private final AtomicInteger scriptCalls = new AtomicInteger();
+        private final AtomicInteger explainCalls = new AtomicInteger();
         private final CountDownLatch blocked = new CountDownLatch(1);
         private final CountDownLatch release = new CountDownLatch(1);
 
@@ -754,7 +885,7 @@ class JdbcEditorSessionTest {
                 Connection connection, String script, String schema,
                 SqlExecutionOptions options, ScriptErrorPolicy policy) {
             QueryResult result;
-            if (calls.getAndIncrement() == 0) {
+            if (scriptCalls.getAndIncrement() == 0) {
                 result = firstResult;
             } else {
                 blocked.countDown();
@@ -768,6 +899,7 @@ class JdbcEditorSessionTest {
         public QueryResult explain(
                 Connection connection, String sql, String schema, boolean analyze,
                 SqlExecutionOptions options) {
+            explainCalls.incrementAndGet();
             return firstResult;
         }
     }

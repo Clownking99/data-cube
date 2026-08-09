@@ -71,8 +71,10 @@ public final class SqlSafetyAnalyzer {
         if (!"COMMIT".equals(token.word()) && !"ROLLBACK".equals(token.word())) return "";
         String before = statement.substring(0, token.offset());
         String after = statement.substring(token.offset() + token.word().length());
-        return !SqlScriptSplitter.hasExecutableContent(before)
-                && !SqlScriptSplitter.hasExecutableContent(after) ? token.word() : "";
+        return SqlLexicalRules.triviaStatus(before, oracleMode)
+                == SqlLexicalRules.TriviaStatus.TRIVIA
+                && SqlLexicalRules.triviaStatus(after, oracleMode)
+                == SqlLexicalRules.TriviaStatus.TRIVIA ? token.word() : "";
     }
 
     private static StatementAnalysis analyzeStatement(int index, String sql, boolean oracleMode) {

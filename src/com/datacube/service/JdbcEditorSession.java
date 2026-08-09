@@ -20,6 +20,8 @@ import java.util.concurrent.locks.ReentrantLock;
 /** Caller-owned JDBC session for one SQL editor tab. */
 public final class JdbcEditorSession implements AutoCloseable {
 
+    private static final Runnable NO_OPERATION_PUBLISH_HOOK = () -> {};
+
     public enum ConnectionState { DISCONNECTED, CONNECTED, BROKEN, CLOSED }
     public enum TransactionMode { AUTO_COMMIT, MANUAL }
     public enum TransactionState { IDLE, ACTIVE, ERROR_PENDING }
@@ -54,6 +56,7 @@ public final class JdbcEditorSession implements AutoCloseable {
     private final ConnectionSafetyOptions safety;
     private final ConnectionOpener opener;
     private final SqlRunner runner;
+    private final Runnable beforeOperationPublish;
     private final ReentrantLock singleFlight = new ReentrantLock();
     private final AtomicReference<Connection> connection = new AtomicReference<>();
     private final AtomicReference<SqlExecutionControl> activeControl = new AtomicReference<>();
@@ -74,10 +77,21 @@ public final class JdbcEditorSession implements AutoCloseable {
             ConnectionSafetyOptions safety,
             ConnectionOpener opener,
             SqlRunner runner) {
+        this(connectionId, safety, opener, runner, NO_OPERATION_PUBLISH_HOOK);
+    }
+
+    JdbcEditorSession(
+            String connectionId,
+            ConnectionSafetyOptions safety,
+            ConnectionOpener opener,
+            SqlRunner runner,
+            Runnable beforeOperationPublish) {
         this.connectionId = Objects.requireNonNull(connectionId, "connectionId");
         this.safety = Objects.requireNonNull(safety, "safety");
         this.opener = Objects.requireNonNull(opener, "opener");
         this.runner = Objects.requireNonNull(runner, "runner");
+        this.beforeOperationPublish = Objects.requireNonNull(
+                beforeOperationPublish, "beforeOperationPublish");
     }
 
     public ExecutionBatch executeScript(
@@ -93,6 +107,7 @@ public final class JdbcEditorSession implements AutoCloseable {
         try {
             ensureOpen();
             control = beginOperation();
+            ensureOpen();
             if (transactionMode == TransactionMode.MANUAL) {
                 TransactionCommand command = transactionCommand(script, oracleMode);
                 if (command != null) {
@@ -128,6 +143,7 @@ public final class JdbcEditorSession implements AutoCloseable {
         try {
             ensureOpen();
             control = beginOperation();
+            ensureOpen();
             SqlExecutionOptions options =
                     new SqlExecutionOptions(0, safety.queryTimeoutSeconds(), control);
             QueryResult result = runner.explain(connection(control), sql, schema, analyze, options);
@@ -287,6 +303,7 @@ public final class JdbcEditorSession implements AutoCloseable {
 
     private SqlExecutionControl beginOperation() {
         SqlExecutionControl control = new SqlExecutionControl();
+        beforeOperationPublish.run();
         cancelling.set(false);
         activeControl.set(control);
         running.set(true);
@@ -303,6 +320,7 @@ public final class JdbcEditorSession implements AutoCloseable {
 
     private Connection connection(SqlExecutionControl control) throws SQLException {
         Connection current = connection.get();
+        requireOwnedTransactionConnection(current);
         if (current != null) return current;
         if (cleanupConnection != null) {
             connectionState = ConnectionState.BROKEN;
@@ -338,22 +356,30 @@ public final class JdbcEditorSession implements AutoCloseable {
 
     private void updateTransactionState(List<ScriptOutcome> outcomes) {
         if (transactionMode != TransactionMode.MANUAL) return;
+        TransactionState previous = transactionState;
         boolean failed = outcomes.stream()
                 .map(ScriptOutcome::result)
                 .anyMatch(result -> result != null && result.kind == QueryResult.Kind.ERROR);
-        transactionState = failed ? TransactionState.ERROR_PENDING : TransactionState.ACTIVE;
-        transactionConnection = connection.get();
+        transactionState = failed || previous == TransactionState.ERROR_PENDING
+                ? TransactionState.ERROR_PENDING : TransactionState.ACTIVE;
+        if (previous == TransactionState.IDLE) transactionConnection = connection.get();
     }
 
     private Connection transactionTarget(SqlExecutionControl control) throws SQLException {
         if (transactionState == TransactionState.IDLE) return connection(control);
         Connection current = connection.get();
-        if (connectionState != ConnectionState.CONNECTED
+        requireOwnedTransactionConnection(current);
+        return current;
+    }
+
+    private void requireOwnedTransactionConnection(Connection current) {
+        if (transactionMode == TransactionMode.MANUAL
+                && transactionState != TransactionState.IDLE
+                && (connectionState != ConnectionState.CONNECTED
                 || current == null
-                || current != transactionConnection) {
+                || current != transactionConnection)) {
             throw new IllegalStateException("事务所属连接已断开，请先重新连接");
         }
-        return current;
     }
 
     private void breakConnection() {

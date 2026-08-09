@@ -146,6 +146,16 @@ class SqlScriptSplitterTest {
     }
 
     @Test
+    void postgresNestedBlockCommentKeepsInnerTailSemicolonInsideOneStatement() {
+        List<String> stmts = SqlScriptSplitter.split(
+                "select 1 /* outer /* inner */ tail; */; select 2", false);
+
+        assertEquals(2, stmts.size(), "PostgreSQL nested block comment must retain outer depth");
+        assertTrue(stmts.getFirst().contains("tail; */"));
+        assertEquals("select 2", stmts.get(1));
+    }
+
+    @Test
     void lineCommentOnlyUnitDropped() {
         List<String> stmts = SqlScriptSplitter.split("-- 注释一\n-- 注释二\n; SELECT 1");
         assertEquals(1, stmts.size(), "纯行注释单元应被丢弃：" + stmts);

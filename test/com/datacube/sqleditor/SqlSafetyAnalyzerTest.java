@@ -8,6 +8,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SqlSafetyAnalyzerTest {
     @Test
+    void transactionCompletionRequiresValidDialectTrivia() {
+        assertEquals("", SqlSafetyAnalyzer.transactionCompletionKeyword(
+                "COMMIT /* unterminated", false));
+        assertEquals("COMMIT", SqlSafetyAnalyzer.transactionCompletionKeyword(
+                "COMMIT /* outer /* inner */ tail */;", false));
+        assertEquals("", SqlSafetyAnalyzer.transactionCompletionKeyword(
+                "COMMIT /* outer /* inner */ tail */;", true));
+    }
+
+    @Test
     void detectsMissingTopLevelWhereWithoutBeingFooledBySubqueryOrLiteral() {
         var unsafe = SqlSafetyAnalyzer.analyze(
                 "update account set state='where' where_note=(select note from audit where id=1)", false);
