@@ -52,7 +52,8 @@ class ConnectionManagerDedicatedSessionTest {
         Connection sharedSecond = manager.acquire("conn");
         assertSame(sharedFirst, sharedSecond);
         assertEquals(3, factory.opens.size());
-        assertEquals(5, resolutions.get(), "all provider paths use the injected resolver");
+        assertEquals(3, resolutions.get(),
+                "sessions resolve once at creation; shared acquire resolves once when opening");
 
         first.close();
         second.close();
@@ -102,6 +103,46 @@ class ConnectionManagerDedicatedSessionTest {
     }
 
     @Test
+    void editorSessionKeepsItsOriginalConfigProviderRunnerAndSafetyAfterReregister() throws Exception {
+        CredentialCipher cipher = new CredentialCipher();
+        RecordingConnectionFactory originalFactory = new RecordingConnectionFactory();
+        RecordingConnectionFactory replacementFactory = new RecordingConnectionFactory();
+        RecordingRunner originalRunner = new RecordingRunner();
+        RecordingRunner replacementRunner = new RecordingRunner();
+        DatabaseProvider originalProvider = provider(
+                DbType.POSTGRESQL, originalFactory, originalRunner);
+        DatabaseProvider replacementProvider = provider(
+                DbType.ORACLE, replacementFactory, replacementRunner);
+        List<DbType> resolutions = new ArrayList<>();
+        ConnectionManager manager = new ConnectionManager(cipher, type -> {
+            resolutions.add(type);
+            return type == DbType.POSTGRESQL ? originalProvider : replacementProvider;
+        });
+        ConnConfig original = jdbcConfig(cipher, DbType.POSTGRESQL, "original-host",
+                "original-secret", true, 19);
+        manager.register(original);
+        JdbcEditorSession session = manager.openEditorSession("conn");
+
+        manager.register(jdbcConfig(cipher, DbType.ORACLE, "replacement-host",
+                "replacement-secret", false, 91));
+        session.executeScript("select 1", null, 10, null, false);
+        session.reconnect();
+
+        assertEquals(List.of(DbType.POSTGRESQL), resolutions);
+        assertEquals(2, originalFactory.opens.size());
+        assertEquals(0, replacementFactory.opens.size());
+        assertEquals(1, originalRunner.connections.size());
+        assertEquals(0, replacementRunner.connections.size());
+        assertTrue(originalFactory.openConfigs.stream()
+                .allMatch(config -> config.type() == DbType.POSTGRESQL
+                        && config.host().equals("original-host")
+                        && config.props().get("__plainPassword").equals("original-secret")));
+        assertTrue(session.snapshot().safety().readOnly());
+        assertEquals(19, session.snapshot().safety().queryTimeoutSeconds());
+        session.close();
+    }
+
+    @Test
     void redisCannotCreateJdbcEditorSessionAndDoesNotConsultProviderResolver() {
         CredentialCipher cipher = new CredentialCipher();
         AtomicInteger resolutions = new AtomicInteger();
@@ -125,12 +166,32 @@ class ConnectionManagerDedicatedSessionTest {
                 "queryTimeoutSeconds", "31"));
     }
 
+    private static ConnConfig jdbcConfig(
+            CredentialCipher cipher,
+            DbType type,
+            String host,
+            String password,
+            boolean readOnly,
+            int timeout) {
+        return new ConnConfig("conn", type.name(), type, host,
+                type == DbType.POSTGRESQL ? 5432 : 1521,
+                "db", "user", cipher.encrypt(password), Map.of(
+                "environment", "TEST",
+                "readOnly", Boolean.toString(readOnly),
+                "queryTimeoutSeconds", Integer.toString(timeout)));
+    }
+
     private static DatabaseProvider provider(
             RecordingConnectionFactory factory, RecordingRunner runner) {
+        return provider(DbType.POSTGRESQL, factory, runner);
+    }
+
+    private static DatabaseProvider provider(
+            DbType type, RecordingConnectionFactory factory, RecordingRunner runner) {
         return (DatabaseProvider) Proxy.newProxyInstance(
                 ConnectionManagerDedicatedSessionTest.class.getClassLoader(),
                 new Class<?>[]{DatabaseProvider.class}, (proxy, method, args) -> switch (method.getName()) {
-                    case "type" -> DbType.POSTGRESQL;
+                    case "type" -> type;
                     case "supports" -> true;
                     case "connectionFactory" -> factory;
                     case "sqlRunner" -> runner;

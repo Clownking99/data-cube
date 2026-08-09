@@ -57,6 +57,24 @@ public final class SqlSafetyAnalyzer {
         return new ScriptAnalysis(analyses);
     }
 
+    /**
+     * 返回脚本中唯一可执行事务完成关键字（COMMIT/ROLLBACK）；否则返回空字符串。
+     * 注释和空分句由共享 splitter/lexer 处理，不引入完整 SQL parser。
+     */
+    public static String transactionCompletionKeyword(String script, boolean oracleMode) {
+        List<String> statements = SqlScriptSplitter.split(script, oracleMode);
+        if (statements.size() != 1) return "";
+        String statement = statements.getFirst();
+        List<Token> tokens = lexicalTokens(statement, oracleMode);
+        if (tokens.size() != 1) return "";
+        Token token = tokens.getFirst();
+        if (!"COMMIT".equals(token.word()) && !"ROLLBACK".equals(token.word())) return "";
+        String before = statement.substring(0, token.offset());
+        String after = statement.substring(token.offset() + token.word().length());
+        return !SqlScriptSplitter.hasExecutableContent(before)
+                && !SqlScriptSplitter.hasExecutableContent(after) ? token.word() : "";
+    }
+
     private static StatementAnalysis analyzeStatement(int index, String sql, boolean oracleMode) {
         List<Token> lexicalTokens = lexicalTokens(sql, oracleMode);
         List<Token> tokens = lexicalTokens.stream().filter(token -> token.depth() == 0).toList();

@@ -78,7 +78,7 @@ public final class ConnectionManager {
     }
 
     /** 该 connId 对应的 provider。 */
-    public DatabaseProvider provider(String connId) {
+    public synchronized DatabaseProvider provider(String connId) {
         ConnConfig cfg = requireConfig(connId);
         if (cfg.type() == DbType.REDIS) {
             throw new IllegalStateException("Redis 不使用 JDBC DatabaseProvider");
@@ -108,19 +108,28 @@ public final class ConnectionManager {
 
     /** 创建不进入共享缓存、由调用方独占并负责关闭的 JDBC 连接。 */
     public Connection openDedicated(String connId) throws SQLException {
-        ConnConfig cfg = requireConfig(connId);
-        if (cfg.type() == DbType.REDIS) {
-            throw new IllegalStateException("Redis 连接不能创建 JDBC 编辑器会话");
+        ConnConfig cfg;
+        DatabaseProvider provider;
+        synchronized (this) {
+            cfg = requireConfig(connId);
+            if (cfg.type() == DbType.REDIS) {
+                throw new IllegalStateException("Redis 连接不能创建 JDBC 编辑器会话");
+            }
+            provider = providerResolver.apply(cfg.type());
         }
-        return providerResolver.apply(cfg.type()).connectionFactory().open(withPlainPassword(cfg));
+        return openDedicated(cfg, provider);
     }
 
     /** 为 SQL 编辑器创建一个拥有独立 JDBC 连接生命周期的新会话。 */
-    public JdbcEditorSession openEditorSession(String connId) {
+    public synchronized JdbcEditorSession openEditorSession(String connId) {
         ConnConfig cfg = requireConfig(connId);
-        DatabaseProvider provider = provider(connId);
-        return new JdbcEditorSession(connId, ConnectionSafetyOptions.from(cfg),
-                () -> openDedicated(connId), provider.sqlRunner());
+        if (cfg.type() == DbType.REDIS) {
+            throw new IllegalStateException("Redis 不使用 JDBC DatabaseProvider");
+        }
+        DatabaseProvider provider = providerResolver.apply(cfg.type());
+        ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(cfg);
+        return new JdbcEditorSession(connId, safety,
+                () -> openDedicated(cfg, provider), provider.sqlRunner());
     }
 
     /** 释放指定连接。 */
@@ -169,7 +178,7 @@ public final class ConnectionManager {
 
     // ---------- 内部 ----------
 
-    private ConnConfig requireConfig(String connId) {
+    private synchronized ConnConfig requireConfig(String connId) {
         ConnConfig cfg = configs.get(connId);
         if (cfg == null) throw new IllegalStateException("未注册的连接: " + connId);
         return cfg;
@@ -182,6 +191,10 @@ public final class ConnectionManager {
         props.put("__plainPassword", plain);
         return new ConnConfig(cfg.id(), cfg.name(), cfg.type(), cfg.host(), cfg.port(),
                 cfg.database(), cfg.username(), cfg.encryptedPassword(), props);
+    }
+
+    private Connection openDedicated(ConnConfig cfg, DatabaseProvider provider) throws SQLException {
+        return provider.connectionFactory().open(withPlainPassword(cfg));
     }
 
     private static boolean isValid(Connection c) {

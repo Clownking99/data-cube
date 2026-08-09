@@ -44,6 +44,27 @@ public final class SqlScriptSplitter {
         return new SplitState(plsql).run(sql);
     }
 
+    /** 剥离注释后是否仍含可执行内容；供共享轻量词法判断复用。 */
+    static boolean hasExecutableContent(String sql) {
+        int n = sql.length();
+        int i = 0;
+        while (i < n) {
+            char c = sql.charAt(i);
+            if (c == '-' && i + 1 < n && sql.charAt(i + 1) == '-') {
+                while (i < n && sql.charAt(i) != '\n' && sql.charAt(i) != '\r') i++;
+            } else if (c == '/' && i + 1 < n && sql.charAt(i + 1) == '*') {
+                int end = sql.indexOf("*/", i + 2);
+                if (end < 0) return false;
+                i = end + 2;
+            } else if (!Character.isWhitespace(c)) {
+                return true;
+            } else {
+                i++;
+            }
+        }
+        return false;
+    }
+
     private enum State {
         NORMAL, IN_QUOTE, IN_DQUOTE, IN_LINE_COMMENT, IN_BLOCK_COMMENT, IN_DOLLAR,
         IN_ORACLE_Q_QUOTE
@@ -223,26 +244,6 @@ public final class SqlScriptSplitter {
          * 剥离 {@code --} 行注释与 {@code /* ... *}{@code /} 块注释后是否仍有非空白内容。
          * 引号内的注释起始符不误判（如 {@code SELECT '--'} 为可执行语句）。
          */
-        private static boolean hasExecutableContent(String s) {
-            int n = s.length();
-            int i = 0;
-            while (i < n) {
-                char c = s.charAt(i);
-                if (c == '-' && i + 1 < n && s.charAt(i + 1) == '-') {
-                    while (i < n && s.charAt(i) != '\n' && s.charAt(i) != '\r') i++;
-                } else if (c == '/' && i + 1 < n && s.charAt(i + 1) == '*') {
-                    int end = s.indexOf("*/", i + 2);
-                    if (end < 0) return false; // 未闭合块注释：其后内容也属于注释
-                    i = end + 2;
-                } else if (!Character.isWhitespace(c)) {
-                    return true; // 非空白且不在注释内（含引号起始）→ 可执行
-                } else {
-                    i++;
-                }
-            }
-            return false;
-        }
-
         private static boolean isBlank(StringBuilder sb) {
             for (int k = 0; k < sb.length(); k++) {
                 if (!Character.isWhitespace(sb.charAt(k))) return false;

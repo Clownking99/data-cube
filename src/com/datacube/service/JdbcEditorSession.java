@@ -1,5 +1,6 @@
 package com.datacube.service;
 
+import com.datacube.sqleditor.SqlSafetyAnalyzer;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
@@ -58,10 +59,14 @@ public final class JdbcEditorSession implements AutoCloseable {
     private final AtomicReference<SqlExecutionControl> activeControl = new AtomicReference<>();
     private final AtomicBoolean running = new AtomicBoolean();
     private final AtomicBoolean cancelling = new AtomicBoolean();
+    private final AtomicBoolean closeRequested = new AtomicBoolean();
+    private final Object cleanupMonitor = new Object();
 
     private volatile ConnectionState connectionState = ConnectionState.DISCONNECTED;
     private volatile TransactionMode transactionMode = TransactionMode.AUTO_COMMIT;
     private volatile TransactionState transactionState = TransactionState.IDLE;
+    private volatile Connection transactionConnection;
+    private volatile Connection cleanupConnection;
     private volatile boolean timeoutSupported = true;
 
     JdbcEditorSession(
@@ -89,7 +94,7 @@ public final class JdbcEditorSession implements AutoCloseable {
             ensureOpen();
             control = beginOperation();
             if (transactionMode == TransactionMode.MANUAL) {
-                TransactionCommand command = transactionCommand(script);
+                TransactionCommand command = transactionCommand(script, oracleMode);
                 if (command != null) {
                     return executeTransactionCommand(command, script, startedAt, control);
                 }
@@ -105,7 +110,7 @@ public final class JdbcEditorSession implements AutoCloseable {
             long elapsedMillis = System.currentTimeMillis() - startedAt;
             return new ExecutionBatch(outcomes, elapsedMillis);
         } catch (SQLException failure) {
-            QueryResult result = QueryResult.error(message(failure), System.currentTimeMillis() - startedAt);
+            QueryResult result = executionFailure(failure, startedAt, control);
             List<ScriptOutcome> outcomes = List.of(new ScriptOutcome(1, script, result));
             updateTransactionState(outcomes);
             return new ExecutionBatch(outcomes, System.currentTimeMillis() - startedAt);
@@ -129,7 +134,7 @@ public final class JdbcEditorSession implements AutoCloseable {
             updateTransactionState(List.of(new ScriptOutcome(1, sql, result)));
             return result;
         } catch (SQLException failure) {
-            QueryResult result = QueryResult.error(message(failure), System.currentTimeMillis() - startedAt);
+            QueryResult result = executionFailure(failure, startedAt, control);
             updateTransactionState(List.of(new ScriptOutcome(1, sql, result)));
             return result;
         } finally {
@@ -160,8 +165,9 @@ public final class JdbcEditorSession implements AutoCloseable {
         try {
             ensureOpen();
             requireManual();
-            connection(null).commit();
+            transactionTarget(null).commit();
             transactionState = TransactionState.IDLE;
+            transactionConnection = null;
         } finally {
             singleFlight.unlock();
         }
@@ -172,8 +178,9 @@ public final class JdbcEditorSession implements AutoCloseable {
         try {
             ensureOpen();
             requireManual();
-            connection(null).rollback();
+            transactionTarget(null).rollback();
             transactionState = TransactionState.IDLE;
+            transactionConnection = null;
         } finally {
             singleFlight.unlock();
         }
@@ -210,8 +217,10 @@ public final class JdbcEditorSession implements AutoCloseable {
             }
             closeCurrentConnection(ConnectionState.DISCONNECTED);
             transactionState = TransactionState.IDLE;
+            transactionConnection = null;
             if (rollbackFailure != null) throw rollbackFailure;
             connection(null);
+            timeoutSupported = true;
         } finally {
             singleFlight.unlock();
         }
@@ -231,11 +240,10 @@ public final class JdbcEditorSession implements AutoCloseable {
 
     @Override
     public void close() {
-        if (connectionState == ConnectionState.CLOSED) return;
+        closeRequested.set(true);
         cancel();
         singleFlight.lock();
         try {
-            if (connectionState == ConnectionState.CLOSED) return;
             Connection current = connection.getAndSet(null);
             if (current != null
                     && transactionMode == TransactionMode.MANUAL
@@ -246,8 +254,9 @@ public final class JdbcEditorSession implements AutoCloseable {
                     // Closing the owned connection remains mandatory.
                 }
             }
-            closeQuietly(current);
+            closeOrRetain(current);
             transactionState = TransactionState.IDLE;
+            transactionConnection = null;
             connectionState = ConnectionState.CLOSED;
         } finally {
             singleFlight.unlock();
@@ -261,14 +270,15 @@ public final class JdbcEditorSession implements AutoCloseable {
             SqlExecutionControl control) {
         try {
             if (command == TransactionCommand.COMMIT) {
-                connection(control).commit();
+                transactionTarget(control).commit();
             } else {
-                connection(control).rollback();
+                transactionTarget(control).rollback();
             }
             transactionState = TransactionState.IDLE;
+            transactionConnection = null;
             return new ExecutionBatch(List.of(), System.currentTimeMillis() - startedAt);
         } catch (SQLException failure) {
-            QueryResult result = QueryResult.error(message(failure), System.currentTimeMillis() - startedAt);
+            QueryResult result = executionFailure(failure, startedAt, control);
             return new ExecutionBatch(
                     List.of(new ScriptOutcome(1, script, result)),
                     System.currentTimeMillis() - startedAt);
@@ -285,7 +295,7 @@ public final class JdbcEditorSession implements AutoCloseable {
 
     private void finishOperation(SqlExecutionControl control) {
         if (control == null) return;
-        timeoutSupported = control.timeoutSupported();
+        timeoutSupported = timeoutSupported && control.timeoutSupported();
         running.set(false);
         activeControl.compareAndSet(control, null);
         cancelling.set(false);
@@ -294,6 +304,10 @@ public final class JdbcEditorSession implements AutoCloseable {
     private Connection connection(SqlExecutionControl control) throws SQLException {
         Connection current = connection.get();
         if (current != null) return current;
+        if (cleanupConnection != null) {
+            connectionState = ConnectionState.BROKEN;
+            throw new SQLException("前一 JDBC 连接尚未完成关闭");
+        }
         if (control != null && control.cancellationRequested()) {
             throw new SQLException("SQL execution cancelled");
         }
@@ -315,8 +329,8 @@ public final class JdbcEditorSession implements AutoCloseable {
             }
             return opened;
         } catch (SQLException failure) {
-            if (opened != null && connection.compareAndSet(opened, null)) closeQuietly(opened);
-            else if (opened != null && connection.get() != opened) closeQuietly(opened);
+            if (opened != null && connection.compareAndSet(opened, null)) closeOrRetain(opened);
+            else if (opened != null && connection.get() != opened) closeOrRetain(opened);
             if (connectionState != ConnectionState.CLOSED) connectionState = ConnectionState.BROKEN;
             throw failure;
         }
@@ -328,17 +342,29 @@ public final class JdbcEditorSession implements AutoCloseable {
                 .map(ScriptOutcome::result)
                 .anyMatch(result -> result != null && result.kind == QueryResult.Kind.ERROR);
         transactionState = failed ? TransactionState.ERROR_PENDING : TransactionState.ACTIVE;
+        transactionConnection = connection.get();
+    }
+
+    private Connection transactionTarget(SqlExecutionControl control) throws SQLException {
+        if (transactionState == TransactionState.IDLE) return connection(control);
+        Connection current = connection.get();
+        if (connectionState != ConnectionState.CONNECTED
+                || current == null
+                || current != transactionConnection) {
+            throw new IllegalStateException("事务所属连接已断开，请先重新连接");
+        }
+        return current;
     }
 
     private void breakConnection() {
         Connection current = connection.getAndSet(null);
         if (connectionState != ConnectionState.CLOSED) connectionState = ConnectionState.BROKEN;
-        closeQuietly(current);
+        closeOrRetain(current);
     }
 
     private void closeCurrentConnection(ConnectionState nextState) {
         Connection current = connection.getAndSet(null);
-        closeQuietly(current);
+        closeOrRetain(current);
         connectionState = nextState;
     }
 
@@ -349,16 +375,15 @@ public final class JdbcEditorSession implements AutoCloseable {
     }
 
     private void ensureOpen() {
-        if (connectionState == ConnectionState.CLOSED) {
+        if (closeRequested.get() || connectionState == ConnectionState.CLOSED) {
             throw new IllegalStateException("JDBC 编辑器会话已关闭");
         }
     }
 
-    private static TransactionCommand transactionCommand(String script) {
-        String normalized = script.trim();
-        if (normalized.endsWith(";")) normalized = normalized.substring(0, normalized.length() - 1).trim();
-        if (normalized.equalsIgnoreCase("COMMIT")) return TransactionCommand.COMMIT;
-        if (normalized.equalsIgnoreCase("ROLLBACK")) return TransactionCommand.ROLLBACK;
+    private static TransactionCommand transactionCommand(String script, boolean oracleMode) {
+        String keyword = SqlSafetyAnalyzer.transactionCompletionKeyword(script, oracleMode);
+        if (keyword.equals("COMMIT")) return TransactionCommand.COMMIT;
+        if (keyword.equals("ROLLBACK")) return TransactionCommand.ROLLBACK;
         return null;
     }
 
@@ -367,12 +392,29 @@ public final class JdbcEditorSession implements AutoCloseable {
         return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
 
-    private static void closeQuietly(Connection connection) {
-        if (connection == null) return;
-        try {
-            connection.close();
-        } catch (SQLException ignored) {
-            // The session has relinquished ownership even if the driver reports close failure.
+    private static QueryResult executionFailure(
+            SQLException failure, long startedAt, SqlExecutionControl control) {
+        long elapsedMillis = System.currentTimeMillis() - startedAt;
+        return control != null && control.cancellationRequested()
+                ? QueryResult.cancelled(message(failure), elapsedMillis)
+                : QueryResult.error(message(failure), elapsedMillis);
+    }
+
+    private void closeOrRetain(Connection connection) {
+        synchronized (cleanupMonitor) {
+            if (connection != null && cleanupConnection == null) cleanupConnection = connection;
+            Connection cleanup = cleanupConnection;
+            if (cleanup == null) return;
+            try {
+                cleanup.close();
+                cleanupConnection = null;
+            } catch (SQLException ignored) {
+                try {
+                    if (cleanup.isClosed()) cleanupConnection = null;
+                } catch (SQLException unconfirmed) {
+                    // Keep the reference so a later close() can retry.
+                }
+            }
         }
     }
 
