@@ -53,6 +53,15 @@ class ConnectionSafetyOptionsTest {
         assertEquals("0", updated.props().get("queryTimeoutSeconds"));
     }
 
+    @Test
+    void acceptsMaximumQueryTimeout() {
+        ConnectionSafetyOptions options = ConnectionSafetyOptions.from(config(Map.of(
+                "queryTimeoutSeconds", "3600")));
+
+        assertEquals(3600, options.queryTimeoutSeconds());
+        assertEquals("3600", options.toPersistentProps().get("queryTimeoutSeconds"));
+    }
+
     private static ConnConfig config(Map<String, String> props) {
         return new ConnConfig("id", "name", DbType.POSTGRESQL, "localhost", 5432,
                 "db", "user", "encrypted", props);

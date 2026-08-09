@@ -258,12 +258,17 @@ public final class ConnectionStore {
     }
 
     private static int parseIntOrDefault(String value, int fallback) {
+        return parseTimeout(value, fallback).value();
+    }
+
+    private static TimeoutParseResult parseTimeout(String value, int fallback) {
         try {
             int parsed = value == null ? fallback : Integer.parseInt(value.trim());
-            return parsed >= 0 && parsed <= ConnectionSafetyOptions.MAX_QUERY_TIMEOUT_SECONDS
-                    ? parsed : fallback;
+            boolean valid = value != null && parsed >= 0
+                    && parsed <= ConnectionSafetyOptions.MAX_QUERY_TIMEOUT_SECONDS;
+            return new TimeoutParseResult(valid ? parsed : fallback, valid);
         } catch (NumberFormatException invalid) {
-            return fallback;
+            return new TimeoutParseResult(fallback, false);
         }
     }
 
@@ -279,14 +284,13 @@ public final class ConnectionStore {
             LOG.warning("连接只读值无效，已回退到 false");
         }
         String timeout = values.get("queryTimeoutSeconds");
-        if (timeout != null && parseIntOrDefault(
-                timeout, ConnectionSafetyOptions.DEFAULT_QUERY_TIMEOUT_SECONDS)
-                == ConnectionSafetyOptions.DEFAULT_QUERY_TIMEOUT_SECONDS
-                && !timeout.trim().equals(Integer.toString(
-                        ConnectionSafetyOptions.DEFAULT_QUERY_TIMEOUT_SECONDS))) {
+        if (timeout != null && !parseTimeout(
+                timeout, ConnectionSafetyOptions.DEFAULT_QUERY_TIMEOUT_SECONDS).valid()) {
             LOG.warning("连接查询超时值无效，已回退到 60 秒");
         }
     }
+
+    private record TimeoutParseResult(int value, boolean valid) {}
 
     private static int skipWhitespace(String text, int from) {
         int i = from;

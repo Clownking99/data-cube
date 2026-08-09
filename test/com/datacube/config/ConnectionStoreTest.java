@@ -9,9 +9,13 @@ import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -181,6 +185,60 @@ class ConnectionStoreTest {
         assertEquals(Map.of(), loaded.get(1).props());
         assertFalse(json.contains("__plainPassword"));
         assertFalse(json.contains("driverFlag"));
+    }
+
+    @Test
+    void defaultsMissingAndInvalidSafetyValuesFromLegacyRelationalJson() throws Exception {
+        Path file = tempDir.resolve("connections.json");
+        Files.writeString(file, """
+                [
+                  {"id":"missing","name":"missing","type":"POSTGRESQL","host":"localhost","port":5432,"database":"db","username":"user","encryptedPassword":"encrypted"},
+                  {"id":"invalid","name":"invalid","type":"ORACLE","host":"localhost","port":1521,"database":"svc","username":"user","encryptedPassword":"encrypted","environment":"unknown","readOnly":"not-boolean","queryTimeoutSeconds":"3601"}
+                ]
+                """);
+
+        List<ConnConfig> loaded = new ConnectionStore(file).loadAll();
+        Map<String, String> defaults = Map.of(
+                "environment", "DEVELOPMENT",
+                "readOnly", "false",
+                "queryTimeoutSeconds", "60");
+
+        assertEquals(defaults, loaded.get(0).props());
+        assertEquals(defaults, loaded.get(1).props());
+    }
+
+    @Test
+    void acceptsNonCanonicalTimeoutTextWithoutInvalidValueWarning() throws Exception {
+        Path file = tempDir.resolve("connections.json");
+        Files.writeString(file, """
+                [
+                  {"id":"leading-zero","name":"leading-zero","type":"POSTGRESQL","host":"localhost","port":5432,"database":"db","username":"user","encryptedPassword":"encrypted","environment":"DEVELOPMENT","readOnly":"false","queryTimeoutSeconds":"060"},
+                  {"id":"leading-plus","name":"leading-plus","type":"ORACLE","host":"localhost","port":1521,"database":"svc","username":"user","encryptedPassword":"encrypted","environment":"TEST","readOnly":"true","queryTimeoutSeconds":"+60"}
+                ]
+                """);
+        Logger logger = Logger.getLogger(ConnectionStore.class.getName());
+        List<String> messages = new ArrayList<>();
+        Handler handler = new Handler() {
+            @Override
+            public void publish(LogRecord record) {
+                messages.add(record.getMessage());
+            }
+
+            @Override public void flush() {}
+            @Override public void close() {}
+        };
+        logger.addHandler(handler);
+
+        List<ConnConfig> loaded;
+        try {
+            loaded = new ConnectionStore(file).loadAll();
+        } finally {
+            logger.removeHandler(handler);
+        }
+
+        assertEquals("60", loaded.get(0).props().get("queryTimeoutSeconds"));
+        assertEquals("60", loaded.get(1).props().get("queryTimeoutSeconds"));
+        assertFalse(messages.stream().anyMatch(message -> message.contains("查询超时值无效")));
     }
 
     private static ConnConfig config(String id, DbType type) {
