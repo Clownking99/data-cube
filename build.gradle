@@ -58,13 +58,15 @@ sourceSets {
 
 // 生成版本资源：把 project.version 写入 com/datacube/version.properties。
 // CI 中 project.version 与 release tag 对齐，运行时据此判断是否有新版。
+// 配置阶段冻结字符串，避免任务执行阶段访问 Task.project（Gradle 10 不再允许）。
+def generatedAppVersion = project.version.toString()
 tasks.register('generateVersionProperties') {
     def outFile = file('build/generated/version/com/datacube/version.properties')
-    inputs.property('version', project.version.toString())
+    inputs.property('version', generatedAppVersion)
     outputs.file(outFile)
     doLast {
         outFile.parentFile.mkdirs()
-        outFile.text = "version=${project.version}\n"
+        outFile.text = "version=${generatedAppVersion}\n"
     }
 }
 tasks.named('processResources') {
@@ -113,6 +115,11 @@ dependencies {
 // 允许测试类以同包方式访问 JdbcDataEditor 的包内私有静态纯函数；不影响 jlink/主模块。
 tasks.named('compileTestJava') {
     modularity.inferModulePath = false
+}
+// 主源码兼容性门禁：把项目可控的弃用 API 和不安全泛型调用在引入时直接拦截。
+// 仅约束 compileJava，不把第三方 jlink 生成步骤的 JDK 提示混入项目源码门禁。
+tasks.named('compileJava') {
+    options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked', '-Werror']
 }
 tasks.named('test') {
     modularity.inferModulePath = false

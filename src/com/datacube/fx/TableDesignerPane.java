@@ -170,7 +170,7 @@ public final class TableDesignerPane implements AutoCloseable {
     private Node columnsPane() {
         columnTable = new TableView<>(columnRows);
         columnTable.setEditable(true);
-        columnTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        columnTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
         TableColumn<ColumnRow, String> nameCol = new TableColumn<>("列名");
         nameCol.setCellValueFactory(cd -> cd.getValue().name);
@@ -224,7 +224,7 @@ public final class TableDesignerPane implements AutoCloseable {
     private Node indexesPane() {
         indexTable = new TableView<>(indexRows);
         indexTable.setEditable(true);
-        indexTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        indexTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
 
         TableColumn<IndexRow, String> nameCol = new TableColumn<>("索引名");
         nameCol.setCellValueFactory(cd -> cd.getValue().name);

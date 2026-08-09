@@ -388,9 +388,9 @@ public final class ConnectionTreePane implements AutoCloseable {
     private void loadInto(TreeItem<NodeData> item, Callable<List<TreeItem<NodeData>>> loader) {
         tasks.submit(loader,
                 children -> item.getChildren().setAll(children),
-                failure -> item.getChildren().setAll(new TreeItem<>(
+                failure -> item.getChildren().setAll(List.of(new TreeItem<>(
                         new NodeData(item.getValue().kind, "错误: " + message(failure),
-                                null, null, null, null))));
+                                null, null, null, null)))));
     }
 
     private static String message(Throwable failure) {
