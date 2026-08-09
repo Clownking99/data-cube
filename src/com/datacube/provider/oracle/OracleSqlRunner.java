@@ -39,8 +39,9 @@ public final class OracleSqlRunner implements SqlRunner {
         try {
             applySchema(conn, schema, options);
             try (Statement stmt = conn.createStatement()) {
-                options.control().activate(stmt, options.queryTimeoutSeconds());
+                var activation = options.control().activate(stmt, options.queryTimeoutSeconds());
                 try {
+                    options.control().ensureNotCancelled(activation);
                     boolean hasResult = stmt.execute(strip(sql));
                     long elapsed = System.currentTimeMillis() - t0;
                     if (hasResult) {
@@ -55,7 +56,7 @@ public final class OracleSqlRunner implements SqlRunner {
                         return QueryResult.update(elapsed, stmt.getUpdateCount());
                     }
                 } finally {
-                    options.control().release(stmt);
+                    options.control().release(activation);
                 }
             }
         } catch (SQLTimeoutException e) {
@@ -73,9 +74,11 @@ public final class OracleSqlRunner implements SqlRunner {
         List<ScriptOutcome> outcomes = new ArrayList<>(stmts.size());
         boolean continueAll = false;
         for (int i = 0; i < stmts.size(); i++) {
+            if (options.control().cancellationRequested()) break;
             String sql = stmts.get(i);
             QueryResult r = execute(conn, sql, schema, options);
             outcomes.add(new ScriptOutcome(i + 1, sql, r));
+            if (r.failureKind == QueryResult.FailureKind.CANCELLED) break;
             if (r.kind == QueryResult.Kind.ERROR && !continueAll) {
                 ScriptErrorPolicy.Decision d = policy == null
                         ? ScriptErrorPolicy.Decision.ABORT
@@ -83,6 +86,7 @@ public final class OracleSqlRunner implements SqlRunner {
                 if (d == ScriptErrorPolicy.Decision.ABORT) break;
                 if (d == ScriptErrorPolicy.Decision.CONTINUE_ALL) continueAll = true;
             }
+            if (options.control().cancellationRequested()) break;
         }
         return outcomes;
     }
@@ -96,17 +100,19 @@ public final class OracleSqlRunner implements SqlRunner {
             applySchema(conn, schema, options);
             if (analyze) {
                 try (Statement s = conn.createStatement()) {
-                    options.control().activate(s, options.queryTimeoutSeconds());
+                    var activation = options.control().activate(s, options.queryTimeoutSeconds());
                     try {
+                        options.control().ensureNotCancelled(activation);
                         s.execute("ALTER SESSION SET STATISTICS_LEVEL = ALL");
                     } finally {
-                        options.control().release(s);
+                        options.control().release(activation);
                     }
                 }
                 // 实际执行以采集运行时统计（消费结果集）
                 try (Statement s = conn.createStatement()) {
-                    options.control().activate(s, options.queryTimeoutSeconds());
+                    var activation = options.control().activate(s, options.queryTimeoutSeconds());
                     try {
+                        options.control().ensureNotCancelled(activation);
                         boolean has = s.execute(stmt);
                         if (has) {
                             try (ResultSet rs = s.getResultSet()) {
@@ -114,7 +120,7 @@ public final class OracleSqlRunner implements SqlRunner {
                             }
                         }
                     } finally {
-                        options.control().release(s);
+                        options.control().release(activation);
                     }
                 }
                 return execute(conn,
@@ -122,11 +128,12 @@ public final class OracleSqlRunner implements SqlRunner {
                         null, options);
             } else {
                 try (Statement s = conn.createStatement()) {
-                    options.control().activate(s, options.queryTimeoutSeconds());
+                    var activation = options.control().activate(s, options.queryTimeoutSeconds());
                     try {
+                        options.control().ensureNotCancelled(activation);
                         s.execute("EXPLAIN PLAN FOR " + stmt);
                     } finally {
-                        options.control().release(s);
+                        options.control().release(activation);
                     }
                 }
                 return execute(conn,
@@ -144,11 +151,12 @@ public final class OracleSqlRunner implements SqlRunner {
         String schemaSql = dialect.currentSchemaSql(schema);
         if (schemaSql != null) {
             try (Statement s = conn.createStatement()) {
-                options.control().activate(s, options.queryTimeoutSeconds());
+                var activation = options.control().activate(s, options.queryTimeoutSeconds());
                 try {
+                    options.control().ensureNotCancelled(activation);
                     s.execute(schemaSql);
                 } finally {
-                    options.control().release(s);
+                    options.control().release(activation);
                 }
             }
         }

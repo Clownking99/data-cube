@@ -128,6 +128,102 @@ class SqlExecutionControlTest {
     }
 
     @Test
+    void cancelBeforePublishIsDeliveredToTheNextOwnerAndStopsActivation() throws Exception {
+        AtomicInteger cancelCalls = new AtomicInteger();
+        Statement statement = statement((proxy, method, args) -> {
+            if (method.getName().equals("cancel")) cancelCalls.incrementAndGet();
+            return defaultValue(method.getReturnType());
+        });
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        assertFalse(control.cancel());
+        assertThrows(SQLException.class, () -> control.activate(statement, 0));
+
+        assertEquals(1, cancelCalls.get());
+        assertTrue(control.cancellationRequested());
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void cancelBetweenOwnersIsDeliveredToTheNextOwner() throws Exception {
+        Statement first = statement((proxy, method, args) -> defaultValue(method.getReturnType()));
+        AtomicInteger secondCancelCalls = new AtomicInteger();
+        Statement second = statement((proxy, method, args) -> {
+            if (method.getName().equals("cancel")) secondCancelCalls.incrementAndGet();
+            return defaultValue(method.getReturnType());
+        });
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        control.activate(first, 0);
+        control.release(first);
+        assertFalse(control.cancel());
+        assertThrows(SQLException.class, () -> control.activate(second, 0));
+
+        assertEquals(1, secondCancelCalls.get());
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void failedJdbcCancelCanBeRetriedForTheSameOwner() throws Exception {
+        AtomicInteger cancelCalls = new AtomicInteger();
+        Statement statement = statement((proxy, method, args) -> {
+            if (method.getName().equals("cancel") && cancelCalls.incrementAndGet() == 1) {
+                throw new SQLException("temporary cancel failure");
+            }
+            return defaultValue(method.getReturnType());
+        });
+        SqlExecutionControl control = new SqlExecutionControl();
+        control.activate(statement, 0);
+
+        assertThrows(SQLException.class, control::cancel);
+        assertTrue(control.cancel());
+        control.release(statement);
+
+        assertEquals(2, cancelCalls.get());
+        assertTrue(control.cancellationRequested());
+    }
+
+    @Test
+    void eachNewOwnerHasIndependentCancelDeliveryState() throws Exception {
+        AtomicInteger firstCancelCalls = new AtomicInteger();
+        AtomicInteger secondCancelCalls = new AtomicInteger();
+        Statement first = statement((proxy, method, args) -> {
+            if (method.getName().equals("cancel")) firstCancelCalls.incrementAndGet();
+            return defaultValue(method.getReturnType());
+        });
+        Statement second = statement((proxy, method, args) -> {
+            if (method.getName().equals("cancel")) secondCancelCalls.incrementAndGet();
+            return defaultValue(method.getReturnType());
+        });
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        control.activate(first, 0);
+        assertTrue(control.cancel());
+        control.release(first);
+        assertThrows(SQLException.class, () -> control.activate(second, 0));
+
+        assertEquals(1, firstCancelCalls.get());
+        assertEquals(1, secondCancelCalls.get());
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void lateReleaseFromPriorOwnerCannotClearTheCurrentOwner() throws Exception {
+        Statement first = statement((proxy, method, args) -> defaultValue(method.getReturnType()));
+        Statement second = statement((proxy, method, args) -> defaultValue(method.getReturnType()));
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        SqlExecutionControl.Activation firstOwner = control.activate(first, 0);
+        control.release(firstOwner);
+        SqlExecutionControl.Activation secondOwner = control.activate(second, 0);
+        control.release(firstOwner);
+
+        assertTrue(control.hasActiveStatement());
+        control.release(secondOwner);
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
     void optionsNormalizeBoundsAndQueryResultKeepsTypedFailuresCompatible() {
         SqlExecutionControl control = new SqlExecutionControl();
         SqlExecutionOptions options = new SqlExecutionOptions(-5, -9, control);

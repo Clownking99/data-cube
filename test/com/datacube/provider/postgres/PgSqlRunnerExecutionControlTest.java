@@ -3,6 +3,7 @@ package com.datacube.provider.postgres;
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.model.QueryResult;
+import com.datacube.spi.model.ScriptOutcome;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
@@ -71,6 +72,66 @@ class PgSqlRunnerExecutionControlTest {
         assertEquals(QueryResult.FailureKind.CANCELLED, cancelled.failureKind);
         assertEquals(1, cancelJdbc.cancelCalls.get());
         assertFalse(cancelControl.hasActiveStatement());
+    }
+
+    @Test
+    void cancelBeforeStatementPublicationReturnsCancelledWithoutExecutingSql() throws Exception {
+        JdbcScenario jdbc = new JdbcScenario();
+        SqlExecutionControl control = new SqlExecutionControl();
+        assertFalse(control.cancel());
+
+        QueryResult result = runner.execute(jdbc.connection(), "DELETE FROM things", null,
+                new SqlExecutionOptions(0, 0, control));
+
+        assertEquals(QueryResult.FailureKind.CANCELLED, result.failureKind);
+        assertTrue(jdbc.executedSql.isEmpty());
+        assertEquals(1, jdbc.cancelCalls.get());
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void cancelledScriptStopsWithoutConsultingContinueAll() {
+        JdbcScenario jdbc = new JdbcScenario();
+        SqlExecutionControl control = new SqlExecutionControl();
+        AtomicInteger policyCalls = new AtomicInteger();
+        jdbc.beforeExecute = sql -> cancel(control);
+        jdbc.failure = sql -> new SQLException("cancelled by driver");
+
+        List<ScriptOutcome> outcomes = runner.executeScript(jdbc.connection(),
+                "UPDATE first_table SET value = 1; UPDATE second_table SET value = 2;", null,
+                new SqlExecutionOptions(0, 0, control), (index, sql, message) -> {
+                    policyCalls.incrementAndGet();
+                    return com.datacube.spi.ScriptErrorPolicy.Decision.CONTINUE_ALL;
+                });
+
+        assertEquals(1, outcomes.size());
+        assertEquals(QueryResult.FailureKind.CANCELLED, outcomes.getFirst().result().failureKind);
+        assertEquals(List.of("UPDATE first_table SET value = 1"), jdbc.executedSql);
+        assertEquals(0, policyCalls.get());
+    }
+
+    @Test
+    void terminalCancellationBetweenScriptStatementsPreventsTheNextSql() {
+        JdbcScenario jdbc = new JdbcScenario();
+        SqlExecutionControl control = new SqlExecutionControl();
+        jdbc.beforeExecute = sql -> cancel(control);
+
+        List<ScriptOutcome> outcomes = runner.executeScript(jdbc.connection(),
+                "UPDATE first_table SET value = 1; UPDATE second_table SET value = 2;", null,
+                new SqlExecutionOptions(0, 0, control), (index, sql, message) ->
+                        com.datacube.spi.ScriptErrorPolicy.Decision.CONTINUE_ALL);
+
+        assertEquals(1, outcomes.size());
+        assertEquals(QueryResult.Kind.UPDATE, outcomes.getFirst().result().kind);
+        assertEquals(List.of("UPDATE first_table SET value = 1"), jdbc.executedSql);
+    }
+
+    private static void cancel(SqlExecutionControl control) {
+        try {
+            assertTrue(control.cancel());
+        } catch (SQLException e) {
+            throw new AssertionError(e);
+        }
     }
 
     private static final class JdbcScenario {

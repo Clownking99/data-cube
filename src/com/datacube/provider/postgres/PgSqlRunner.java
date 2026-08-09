@@ -33,8 +33,9 @@ public final class PgSqlRunner implements SqlRunner {
         try {
             applySchema(conn, schema, options);
             try (Statement stmt = conn.createStatement()) {
-                options.control().activate(stmt, options.queryTimeoutSeconds());
+                var activation = options.control().activate(stmt, options.queryTimeoutSeconds());
                 try {
+                    options.control().ensureNotCancelled(activation);
                     boolean hasResult = stmt.execute(sql);
                     long elapsed = System.currentTimeMillis() - t0;
                     if (hasResult) {
@@ -49,7 +50,7 @@ public final class PgSqlRunner implements SqlRunner {
                         return QueryResult.update(elapsed, stmt.getUpdateCount());
                     }
                 } finally {
-                    options.control().release(stmt);
+                    options.control().release(activation);
                 }
             }
         } catch (SQLTimeoutException e) {
@@ -71,9 +72,11 @@ public final class PgSqlRunner implements SqlRunner {
         List<ScriptOutcome> outcomes = new ArrayList<>(stmts.size());
         boolean continueAll = false;
         for (int i = 0; i < stmts.size(); i++) {
+            if (options.control().cancellationRequested()) break;
             String sql = stmts.get(i);
             QueryResult r = execute(conn, sql, schema, options);
             outcomes.add(new ScriptOutcome(i + 1, sql, r));
+            if (r.failureKind == QueryResult.FailureKind.CANCELLED) break;
             if (r.kind == QueryResult.Kind.ERROR && !continueAll) {
                 ScriptErrorPolicy.Decision d = policy == null
                         ? ScriptErrorPolicy.Decision.ABORT
@@ -81,6 +84,7 @@ public final class PgSqlRunner implements SqlRunner {
                 if (d == ScriptErrorPolicy.Decision.ABORT) break;
                 if (d == ScriptErrorPolicy.Decision.CONTINUE_ALL) continueAll = true;
             }
+            if (options.control().cancellationRequested()) break;
         }
         return outcomes;
     }
@@ -96,11 +100,12 @@ public final class PgSqlRunner implements SqlRunner {
         String schemaSql = dialect.currentSchemaSql(schema);
         if (schemaSql == null) return;
         try (Statement statement = conn.createStatement()) {
-            options.control().activate(statement, options.queryTimeoutSeconds());
+            var activation = options.control().activate(statement, options.queryTimeoutSeconds());
             try {
+                options.control().ensureNotCancelled(activation);
                 statement.execute(schemaSql);
             } finally {
-                options.control().release(statement);
+                options.control().release(activation);
             }
         }
     }
