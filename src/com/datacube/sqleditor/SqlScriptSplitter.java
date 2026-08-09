@@ -229,7 +229,7 @@ public final class SqlScriptSplitter {
             while (i < n) {
                 char c = s.charAt(i);
                 if (c == '-' && i + 1 < n && s.charAt(i + 1) == '-') {
-                    while (i < n && s.charAt(i) != '\n') i++;
+                    while (i < n && s.charAt(i) != '\n' && s.charAt(i) != '\r') i++;
                 } else if (c == '/' && i + 1 < n && s.charAt(i + 1) == '*') {
                     int end = s.indexOf("*/", i + 2);
                     if (end < 0) return false; // 未闭合块注释：其后内容也属于注释

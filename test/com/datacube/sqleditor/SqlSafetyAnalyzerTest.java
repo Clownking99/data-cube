@@ -216,6 +216,21 @@ class SqlSafetyAnalyzerTest {
         }
     }
 
+    @Test
+    void commentOnlyPrefixCannotHideExecutableWriteFromAnalysis() {
+        String[] lineEndings = {"\n", "\r\n", "\r"};
+        for (String lineEnding : lineEndings) {
+            var analysis = SqlSafetyAnalyzer.analyze(
+                    "-- harmless" + lineEnding + "delete from account; select 1", false);
+
+            assertEquals(2, analysis.statements().size(), escaped(lineEnding));
+            assertEquals(WRITE, analysis.statements().get(0).kind(), escaped(lineEnding));
+            assertTrue(analysis.statements().get(0).risks().contains(MISSING_WHERE),
+                    escaped(lineEnding));
+            assertEquals(READ, analysis.statements().get(1).kind(), escaped(lineEnding));
+        }
+    }
+
     private static String nestedWith(int layers) {
         String sql = "delete from account returning id";
         for (int layer = layers; layer >= 1; layer--) {

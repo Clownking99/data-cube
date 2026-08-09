@@ -165,6 +165,19 @@ class SqlScriptSplitterTest {
     }
 
     @Test
+    void commentOnlyPrefixCannotCauseExecutableStatementToBeDropped() {
+        String[] lineEndings = {"\n", "\r\n", "\r"};
+        for (String lineEnding : lineEndings) {
+            List<String> stmts = SqlScriptSplitter.split(
+                    "-- harmless" + lineEnding + "delete from account; select 1", false);
+
+            assertEquals(2, stmts.size(), "注释前缀后的语句不能被丢弃：" + escaped(lineEnding));
+            assertTrue(stmts.get(0).toLowerCase().contains("delete from account"));
+            assertTrue(stmts.get(1).toLowerCase().startsWith("select 1"));
+        }
+    }
+
+    @Test
     void commentBeforeStatementKept() {
         List<String> stmts = SqlScriptSplitter.split("/* 说明 */ SELECT 1; -- 尾注\nSELECT 2");
         assertEquals(2, stmts.size(), "注释+语句混合单元应保留：" + stmts);
