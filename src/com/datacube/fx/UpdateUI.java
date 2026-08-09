@@ -20,8 +20,8 @@ import javafx.stage.Window;
 /**
  * 自动更新相关的 UI 呈现：更新提示弹窗、下载进度、结果反馈。
  *
- * <p>{@link UpdateService} 的回调在后台线程触发，本类统一包装到
- * {@code Platform.runLater} 再操作 UI。
+ * <p>{@link UpdateService} 通过应用注入的 JavaFX 分发器触发回调，
+ * 因此本类直接更新 UI；{@link Platform} 仅用于更新就绪后退出应用。
  */
 final class UpdateUI {
 
@@ -80,48 +80,40 @@ final class UpdateUI {
         svc.downloadAndApply(info, new UpdateService.ApplyCallback() {
             @Override
             public void onProgress(long bytesRead, long total) {
-                Platform.runLater(() -> {
-                    if (total > 0) {
-                        double r = (double) bytesRead / total;
-                        bar.setProgress(r);
-                        pct.setText(String.format("%.0f%%  (%.1f / %.1f MB)",
-                                r * 100, bytesRead / 1048576.0, total / 1048576.0));
-                    } else {
-                        bar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
-                        pct.setText(String.format("%.1f MB", bytesRead / 1048576.0));
-                    }
-                });
+                if (total > 0) {
+                    double r = (double) bytesRead / total;
+                    bar.setProgress(r);
+                    pct.setText(String.format("%.0f%%  (%.1f / %.1f MB)",
+                            r * 100, bytesRead / 1048576.0, total / 1048576.0));
+                } else {
+                    bar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+                    pct.setText(String.format("%.1f MB", bytesRead / 1048576.0));
+                }
             }
 
             @Override
             public void onReadyToRestart() {
-                Platform.runLater(() -> {
-                    dialog.close();
-                    Alert done = new Alert(Alert.AlertType.INFORMATION,
-                            "更新包已就绪，应用将关闭以完成更新。", ButtonType.OK);
-                    done.setTitle("更新");
-                    done.setHeaderText(null);
-                    if (owner != null) done.initOwner(owner);
-                    done.showAndWait();
-                    Platform.exit();
-                });
+                dialog.close();
+                Alert done = new Alert(Alert.AlertType.INFORMATION,
+                        "更新包已就绪，应用将关闭以完成更新。", ButtonType.OK);
+                done.setTitle("更新");
+                done.setHeaderText(null);
+                if (owner != null) done.initOwner(owner);
+                done.showAndWait();
+                Platform.exit();
             }
 
             @Override
             public void onOpenPage(String url) {
-                Platform.runLater(() -> {
-                    dialog.close();
-                    openUrl(url);
-                    info(owner, "已在浏览器打开下载页，请手动下载安装。");
-                });
+                dialog.close();
+                openUrl(url);
+                info(owner, "已在浏览器打开下载页，请手动下载安装。");
             }
 
             @Override
             public void onError(Exception e) {
-                Platform.runLater(() -> {
-                    dialog.close();
-                    error(owner, "更新失败：" + msg(e));
-                });
+                dialog.close();
+                error(owner, "更新失败：" + msg(e));
             }
         });
     }
@@ -131,17 +123,17 @@ final class UpdateUI {
         svc.checkManually(new UpdateService.CheckCallback() {
             @Override
             public void onUpdateAvailable(ReleaseInfo info) {
-                Platform.runLater(() -> promptUpdate(svc, info, owner));
+                promptUpdate(svc, info, owner);
             }
 
             @Override
             public void onUpToDate() {
-                Platform.runLater(() -> info(owner, "已是最新版本。"));
+                info(owner, "已是最新版本。");
             }
 
             @Override
             public void onError(Exception e) {
-                Platform.runLater(() -> error(owner, "检查失败，请稍后重试。\n" + msg(e)));
+                error(owner, "检查失败，请稍后重试。\n" + msg(e));
             }
         });
     }

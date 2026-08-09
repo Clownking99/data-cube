@@ -64,7 +64,8 @@ public final class AppShell {
 
     private final ContentTabPane contentTabs = new ContentTabPane();
     private final LazyValue<MigrationPane> migrationPane = new LazyValue<>(MigrationPane::new);
-    private final LazyValue<UpdateService> updateService = new LazyValue<>(UpdateService::new);
+    private final LazyValue<UpdateService> updateService =
+            new LazyValue<>(() -> new UpdateService(tasks::submit, Platform::runLater));
     private final SqlHistoryStore sqlHistory = new SqlHistoryStore();
     private final ShortcutSettings shortcuts = new ShortcutSettings();
     private final TreeActions treeActions = new TreeActions();
@@ -174,9 +175,8 @@ public final class AppShell {
     /** 启动后台静默自检：仅在发现新版时在 UI 线程弹出更新提示（失败静默）。 */
     public void checkForUpdatesOnStartup() {
         UpdateService service = updateService.get();
-        service.checkInBackground(info ->
-                Platform.runLater(() -> UpdateUI.promptUpdate(service, info,
-                        root.getScene() == null ? null : root.getScene().getWindow())));
+        service.checkInBackground(info -> UpdateUI.promptUpdate(service, info,
+                root.getScene() == null ? null : root.getScene().getWindow()));
     }
 
     /** 释放全部资源：标签页、迁移任务、后台任务与活动连接。 */
@@ -191,9 +191,13 @@ public final class AppShell {
                     migrationPane.ifInitialized(MigrationPane::shutdown);
                 } finally {
                     try {
-                        tasks.close();
+                        updateService.ifInitialized(UpdateService::close);
                     } finally {
-                        connMgr.closeAll();
+                        try {
+                            tasks.close();
+                        } finally {
+                            connMgr.closeAll();
+                        }
                     }
                 }
             }
