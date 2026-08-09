@@ -1,5 +1,6 @@
 package com.datacube.fx;
 
+import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
@@ -44,6 +45,29 @@ public final class ContentTabPane {
         Tab tab = openTab(title, content);
         Runnable close = managedTabs.register(tab, disposer);
         tab.setOnClosed(event -> close.run());
+        return tab;
+    }
+
+    /** 打开带异步关闭守卫的受管标签；守卫批准后才从界面移除并释放资源。 */
+    public Tab openManagedTab(
+            String title,
+            Node content,
+            AsyncTabCloseGuard guard,
+            Runnable disposer) {
+        Tab tab = openTab(title, content);
+        Runnable dispose = managedTabs.register(tab, disposer);
+        AsyncCloseGate gate = new AsyncCloseGate();
+        tab.setOnCloseRequest(event -> {
+            event.consume();
+            if (!gate.beginRequest()) return;
+            guard.requestClose(approved -> Platform.runLater(() ->
+                    gate.complete(approved, () -> {
+                        tab.setOnCloseRequest(null);
+                        tabPane.getTabs().remove(tab);
+                        dispose.run();
+                    })));
+        });
+        tab.setOnClosed(event -> dispose.run());
         return tab;
     }
 
