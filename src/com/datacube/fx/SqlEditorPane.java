@@ -64,7 +64,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -143,7 +142,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private volatile boolean running = false;
     private final AtomicBoolean resourcesClosed = new AtomicBoolean();
     private final AtomicBoolean uiFinalized = new AtomicBoolean();
-    private CompletionStage<Boolean> closeRequest;
+    private final AsyncTabCloseGuard closeGuard;
     /** 最近一次单条查询结果（用于注释显示模式切换后即时重渲染表头）；非查询视图时为 null。 */
     private QueryResult lastQueryResult;
     /** 最近一次单条查询的原 SQL（用于「复制 INSERT」解析目标表）；与 lastQueryResult 同生命周期。 */
@@ -163,6 +162,10 @@ public final class SqlEditorPane implements AutoCloseable {
         this.shortcuts = shortcuts;
         this.tasks = runner.scope();
         this.metadataTasks = new FxSerialTaskQueue(runner);
+        this.closeGuard = AsyncTabCloseGuards.blockingAttempt(() -> {
+            CloseSnapshot snapshot = captureCloseSnapshot();
+            return () -> closeInBackground(snapshot);
+        });
         this.commentModeListener = (obs, oldMode, newMode) -> {
             if (lastQueryResult != null) showQueryResult(lastQueryResult);
         };
@@ -210,8 +213,8 @@ public final class SqlEditorPane implements AutoCloseable {
     @Override
     @Deprecated(forRemoval = false)
     public void close() {
-        Runnable beginClose = () -> requestClose().whenComplete((approved, failure) -> {
-            if (failure != null || !Boolean.TRUE.equals(approved)) {
+        Runnable beginClose = () -> requestClose().whenComplete((outcome, failure) -> {
+            if (failure != null || outcome != CloseGuardOutcome.APPROVED) {
                 if (failure != null) failure.printStackTrace(System.err);
                 return;
             }
@@ -224,31 +227,22 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /**
      * Captures JavaFX state immediately, then persists history and closes task/JDBC resources on
-     * one virtual thread. The returned stage completes {@code true} only after that blocking phase
-     * reaches its safe terminal state. Repeated calls share the same in-flight/completed request.
+     * one virtual thread. The returned stage reaches {@link CloseGuardOutcome#APPROVED} only after
+     * that blocking phase is safe. Repeated calls share only in-flight, approved, or fatal attempts.
      */
-    public synchronized CompletionStage<Boolean> requestClose() {
-        if (closeRequest != null) return closeRequest;
+    public CompletionStage<CloseGuardOutcome> requestClose() {
         if (!Platform.isFxApplicationThread()) {
-            CompletableFuture<Boolean> rejected = new CompletableFuture<>();
-            rejected.completeExceptionally(
+            return java.util.concurrent.CompletableFuture.failedFuture(
                     new IllegalStateException("SqlEditorPane.requestClose must start on the FX Application Thread"));
-            return rejected;
         }
-
-        CloseSnapshot snapshot = captureCloseSnapshot();
-        closeRequest = AsyncTabCloseGuards.blocking(() -> {
-            closeResources();
-            persistCloseSnapshot(snapshot);
-        }).requestClose();
-        return closeRequest;
+        return closeGuard.requestClose();
     }
 
     /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
     void closeResources() {
-        if (!resourcesClosed.compareAndSet(false, true)) return;
-        metadataTasks.close();
-        tasks.close();
+        if (resourcesClosed.get()) return;
+        BestEffortCloseSequence.run(metadataTasks::close, tasks::close);
+        resourcesClosed.set(true);
     }
 
     /** Lightweight JavaFX phase; callers invoke this only on the FX Application Thread. */
@@ -272,6 +266,19 @@ public final class SqlEditorPane implements AutoCloseable {
     private void persistCloseSnapshot(CloseSnapshot snapshot) {
         if (history == null || snapshot.sql() == null) return;
         history.record(snapshot.connectionName(), snapshot.schema(), snapshot.sql());
+    }
+
+    /** Virtual-thread-only close chain; every step is attempted before a terminal outcome is chosen. */
+    private void closeInBackground(CloseSnapshot snapshot) {
+        if (resourcesClosed.get()) {
+            persistCloseSnapshot(snapshot);
+            return;
+        }
+        BestEffortCloseSequence.run(
+                metadataTasks::close,
+                tasks::close,
+                () -> persistCloseSnapshot(snapshot));
+        resourcesClosed.set(true);
     }
 
     private void build() {

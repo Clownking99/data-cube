@@ -27,11 +27,11 @@ public final class ContentTabPane {
                 int restoreIndex = change.getFrom();
                 for (Tab removed : change.getRemoved()) {
                     int index = restoreIndex++;
-                    CompletionStage<Boolean> close = guardedTabs.requestClose(removed);
-                    AsyncTabRemovalRecovery.restoreOnRejection(
+                    CompletionStage<TabCloseOutcome> close = guardedTabs.requestClose(removed);
+                    AsyncTabRemovalRecovery.restoreOnIncomplete(
                             close,
                             ContentTabPane::dispatchFx,
-                            () -> restoreRemovedTab(removed, index),
+                            disabled -> restoreRemovedTab(removed, index, disabled),
                             ContentTabPane::reportCloseFailure);
                 }
             }
@@ -85,13 +85,25 @@ public final class ContentTabPane {
                 AsyncTabCloseCoordinator.DEFAULT_TIMEOUT,
                 AsyncTabCloseCoordinator::scheduleTimeout,
                 ContentTabPane::dispatchFx,
+                () -> tab.setDisable(true),
+                () -> tab.setDisable(false),
                 () -> tabPane.getTabs().remove(tab),
                 () -> {
                     guardedTabs.unregister(tab);
                     uiFinalizer.run();
                 },
                 ContentTabPane::reportCloseFailure);
-        guardedTabs.register(tab, coordinator);
+        if (!guardedTabs.register(tab, coordinator)) {
+            reportCloseFailure(new IllegalStateException("managed tab rejected while registry is closing"));
+            coordinator.requestClose().whenComplete((outcome, failure) -> {
+                if (failure != null) reportCloseFailure(failure);
+                else if (outcome != TabCloseOutcome.COMPLETED) {
+                    reportCloseFailure(new IllegalStateException(
+                            "rejected managed tab cleanup ended as " + outcome));
+                }
+            });
+            return null;
+        }
         tabPane.getTabs().add(tab);
         tabPane.getSelectionModel().select(tab);
         tab.setOnCloseRequest(event -> {
@@ -106,12 +118,12 @@ public final class ContentTabPane {
      * 异步关闭所有受管标签；受守卫标签先完成阻塞清理，再在 FX 线程执行 UI finalizer。
      * 返回的 stage 在所有守卫到达批准、拒绝、失败或超时终态后完成。
      */
-    public CompletionStage<Boolean> closeAllManagedTabs() {
+    public CompletionStage<TabCloseOutcome> closeAllManagedTabs() {
         if (!Platform.isFxApplicationThread()) {
-            CompletableFuture<Boolean> dispatched = new CompletableFuture<>();
+            CompletableFuture<TabCloseOutcome> dispatched = new CompletableFuture<>();
             try {
-                Platform.runLater(() -> closeAllManagedTabs().whenComplete((approved, failure) -> {
-                    if (failure == null) dispatched.complete(approved);
+                Platform.runLater(() -> closeAllManagedTabs().whenComplete((outcome, failure) -> {
+                    if (failure == null) dispatched.complete(outcome);
                     else dispatched.completeExceptionally(failure);
                 }));
             } catch (Throwable failure) {
@@ -122,14 +134,18 @@ public final class ContentTabPane {
         return guardedTabs.closeAll();
     }
 
-    /** @deprecated 使用并等待 {@link #closeAllManagedTabs()} 的 Boolean 结果。 */
+    /** @deprecated 使用并等待 {@link #closeAllManagedTabs()} 的显式结果。 */
     @Deprecated(forRemoval = false)
     public void disposeAll() {
         closeAllManagedTabs();
     }
 
-    private void restoreRemovedTab(Tab tab, int requestedIndex) {
-        if (tabPane.getTabs().contains(tab)) return;
+    private void restoreRemovedTab(Tab tab, int requestedIndex, boolean disabled) {
+        tab.setDisable(disabled);
+        if (tabPane.getTabs().contains(tab)) {
+            tabPane.getSelectionModel().select(tab);
+            return;
+        }
         int index = Math.max(0, Math.min(requestedIndex, tabPane.getTabs().size()));
         tabPane.getTabs().add(index, tab);
         tabPane.getSelectionModel().select(tab);

@@ -14,33 +14,34 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AsyncManagedTabRegistryTest {
 
     @Test
-    void closeAllAggregatesBooleanAndReopensAfterRejection() {
-        AsyncManagedTabRegistry<Object> registry = new AsyncManagedTabRegistry<>();
-        registry.register(new Object(), immediateCoordinator(true));
-        registry.register(new Object(), immediateCoordinator(false));
+    void closeAllAggregatesWorstExplicitOutcomeAndReopensOnlyWhenRetryable() {
+        AsyncManagedTabRegistry<Object> cancelled = new AsyncManagedTabRegistry<>();
+        assertTrue(cancelled.register(new Object(), immediateCoordinator(CloseGuardOutcome.APPROVED)));
+        assertTrue(cancelled.register(new Object(), immediateCoordinator(CloseGuardOutcome.REJECTED)));
+        assertEquals(TabCloseOutcome.CANCELLED, cancelled.closeAll().toCompletableFuture().join());
+        assertTrue(cancelled.register(new Object(), immediateCoordinator(CloseGuardOutcome.APPROVED)));
 
-        assertFalse(registry.closeAll().toCompletableFuture().join());
-
-        registry.register(new Object(), immediateCoordinator(true));
+        AsyncManagedTabRegistry<Object> fatal = new AsyncManagedTabRegistry<>();
+        assertTrue(fatal.register(new Object(), immediateCoordinator(CloseGuardOutcome.FAILED_PARTIAL)));
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL, fatal.closeAll().toCompletableFuture().join());
+        assertFalse(fatal.register(new Object(), immediateCoordinator(CloseGuardOutcome.APPROVED)));
     }
 
     @Test
-    void registerRacingCloseAllIsEitherIncludedOrRejected() throws Exception {
+    void registerRacingCloseAllIsEitherIncludedOrSafelyRejected() throws Exception {
         for (int iteration = 0; iteration < 100; iteration++) {
             AsyncManagedTabRegistry<Object> registry = new AsyncManagedTabRegistry<>();
-            CompletableFuture<Boolean> firstCleanup = new CompletableFuture<>();
-            registry.register(new Object(), coordinator(() -> firstCleanup));
+            CompletableFuture<CloseGuardOutcome> firstCleanup = new CompletableFuture<>();
+            assertTrue(registry.register(new Object(), coordinator(() -> firstCleanup)));
             AtomicInteger secondGuardCalls = new AtomicInteger();
-            Object second = new Object();
             CountDownLatch start = new CountDownLatch(1);
             AtomicBoolean registered = new AtomicBoolean();
-            AtomicReference<CompletionStage<Boolean>> closeAll = new AtomicReference<>();
+            AtomicReference<CompletionStage<TabCloseOutcome>> closeAll = new AtomicReference<>();
 
             Thread closer = Thread.startVirtualThread(() -> {
                 await(start);
@@ -48,80 +49,94 @@ class AsyncManagedTabRegistryTest {
             });
             Thread registrar = Thread.startVirtualThread(() -> {
                 await(start);
-                try {
-                    registry.register(second, coordinator(() -> {
-                        secondGuardCalls.incrementAndGet();
-                        return CompletableFuture.completedFuture(true);
-                    }));
-                    registered.set(true);
-                } catch (IllegalStateException closing) {
-                    // Explicit rejection is the other valid linearization.
-                }
+                registered.set(registry.register(new Object(), coordinator(() -> {
+                    secondGuardCalls.incrementAndGet();
+                    return CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED);
+                })));
             });
 
             start.countDown();
             closer.join(2_000);
             registrar.join(2_000);
-            firstCleanup.complete(true);
+            firstCleanup.complete(CloseGuardOutcome.APPROVED);
 
-            assertTrue(closeAll.get().toCompletableFuture().join());
+            assertEquals(TabCloseOutcome.COMPLETED, closeAll.get().toCompletableFuture().join());
             assertEquals(registered.get() ? 1 : 0, secondGuardCalls.get());
         }
     }
 
     @Test
-    void timeoutMakesCloseAllFalseAndLateCleanupMustFinishBeforeRetryStarts() {
+    void timeoutLateApprovalUnregistersAutomaticallyAndNextCloseAllCompletes() {
         AsyncManagedTabRegistry<Object> registry = new AsyncManagedTabRegistry<>();
         Object tab = new Object();
-        CompletableFuture<Boolean> firstCleanup = new CompletableFuture<>();
-        CompletableFuture<Boolean> secondCleanup = new CompletableFuture<>();
-        AtomicReference<CompletionStage<Boolean>> current = new AtomicReference<>(firstCleanup);
+        CompletableFuture<CloseGuardOutcome> cleanup = new CompletableFuture<>();
         ManualTimeoutScheduler timeouts = new ManualTimeoutScheduler();
-        AtomicInteger guardCalls = new AtomicInteger();
         AtomicInteger finalizers = new AtomicInteger();
-        AsyncTabCloseCoordinator coordinator = coordinator(() -> {
-            guardCalls.incrementAndGet();
-            return current.get();
-        }, timeouts, () -> {
-            registry.unregister(tab);
-            finalizers.incrementAndGet();
-        });
-        registry.register(tab, coordinator);
+        AsyncTabCloseCoordinator coordinator = coordinator(
+                () -> cleanup,
+                timeouts,
+                () -> {
+                    registry.unregister(tab);
+                    finalizers.incrementAndGet();
+                });
+        assertTrue(registry.register(tab, coordinator));
 
-        CompletionStage<Boolean> firstCloseAll = registry.closeAll();
+        CompletionStage<TabCloseOutcome> firstCloseAll = registry.closeAll();
         timeouts.fireNext();
-        assertFalse(firstCloseAll.toCompletableFuture().join());
+        assertEquals(TabCloseOutcome.TIMED_OUT_STILL_CLOSING,
+                firstCloseAll.toCompletableFuture().join());
 
-        current.set(secondCleanup);
-        assertFalse(registry.closeAll().toCompletableFuture().join());
-        assertEquals(1, guardCalls.get());
+        cleanup.complete(CloseGuardOutcome.APPROVED);
 
-        firstCleanup.complete(true);
-        CompletionStage<Boolean> retryCloseAll = registry.closeAll();
-        secondCleanup.complete(true);
-
-        assertTrue(retryCloseAll.toCompletableFuture().join());
-        assertEquals(2, guardCalls.get());
+        assertEquals(TabCloseOutcome.COMPLETED, registry.closeAll().toCompletableFuture().join());
         assertEquals(1, finalizers.get());
     }
 
     @Test
-    void closingRegistryRejectsNewRegistrationUntilFalseResultReopensIt() {
+    void timeoutLateRejectionReopensExistingEntryForRealRetry() {
         AsyncManagedTabRegistry<Object> registry = new AsyncManagedTabRegistry<>();
-        CompletableFuture<Boolean> cleanup = new CompletableFuture<>();
-        registry.register(new Object(), coordinator(() -> cleanup));
+        CompletableFuture<CloseGuardOutcome> firstCleanup = new CompletableFuture<>();
+        CompletableFuture<CloseGuardOutcome> secondCleanup = new CompletableFuture<>();
+        AtomicReference<CompletionStage<CloseGuardOutcome>> current = new AtomicReference<>(firstCleanup);
+        ManualTimeoutScheduler timeouts = new ManualTimeoutScheduler();
+        AtomicInteger guardCalls = new AtomicInteger();
+        assertTrue(registry.register(new Object(), coordinator(() -> {
+            guardCalls.incrementAndGet();
+            return current.get();
+        }, timeouts, () -> {})));
 
-        CompletionStage<Boolean> closing = registry.closeAll();
-        assertThrows(IllegalStateException.class,
-                () -> registry.register(new Object(), immediateCoordinator(true)));
-        cleanup.complete(false);
-        assertFalse(closing.toCompletableFuture().join());
+        CompletionStage<TabCloseOutcome> first = registry.closeAll();
+        timeouts.fireNext();
+        assertEquals(TabCloseOutcome.TIMED_OUT_STILL_CLOSING, first.toCompletableFuture().join());
+        assertEquals(TabCloseOutcome.TIMED_OUT_STILL_CLOSING,
+                registry.closeAll().toCompletableFuture().join());
+        assertEquals(1, guardCalls.get());
 
-        registry.register(new Object(), immediateCoordinator(true));
+        firstCleanup.complete(CloseGuardOutcome.REJECTED);
+        current.set(secondCleanup);
+        CompletionStage<TabCloseOutcome> retry = registry.closeAll();
+        secondCleanup.complete(CloseGuardOutcome.APPROVED);
+
+        assertEquals(TabCloseOutcome.COMPLETED, retry.toCompletableFuture().join());
+        assertEquals(2, guardCalls.get());
     }
 
-    private static AsyncTabCloseCoordinator immediateCoordinator(boolean approved) {
-        return coordinator(() -> CompletableFuture.completedFuture(approved));
+    @Test
+    void registerReturnsFalseRatherThanThrowingWhileRegistryIsClosing() {
+        AsyncManagedTabRegistry<Object> registry = new AsyncManagedTabRegistry<>();
+        CompletableFuture<CloseGuardOutcome> cleanup = new CompletableFuture<>();
+        assertTrue(registry.register(new Object(), coordinator(() -> cleanup)));
+
+        CompletionStage<TabCloseOutcome> closing = registry.closeAll();
+        assertFalse(registry.register(new Object(), immediateCoordinator(CloseGuardOutcome.APPROVED)));
+        cleanup.complete(CloseGuardOutcome.REJECTED);
+        assertEquals(TabCloseOutcome.CANCELLED, closing.toCompletableFuture().join());
+
+        assertTrue(registry.register(new Object(), immediateCoordinator(CloseGuardOutcome.APPROVED)));
+    }
+
+    private static AsyncTabCloseCoordinator immediateCoordinator(CloseGuardOutcome outcome) {
+        return coordinator(() -> CompletableFuture.completedFuture(outcome));
     }
 
     private static AsyncTabCloseCoordinator coordinator(AsyncTabCloseGuard guard) {
@@ -137,6 +152,8 @@ class AsyncManagedTabRegistryTest {
                 Duration.ofSeconds(5),
                 timeouts,
                 Runnable::run,
+                () -> {},
+                () -> {},
                 () -> {},
                 finalizer,
                 ignored -> {});
@@ -163,7 +180,7 @@ class AsyncManagedTabRegistryTest {
         }
 
         void fireNext() {
-            scheduled.removeFirst().fire();
+            scheduled.stream().filter(timeout -> !timeout.cancelled).findFirst().orElseThrow().fire();
         }
     }
 

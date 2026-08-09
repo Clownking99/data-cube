@@ -3,25 +3,38 @@ package com.datacube.fx;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
-/** Restores a tab removed outside the guarded close path when cleanup is not approved. */
+/** Restores a tab removed outside the guarded close path with the correct interaction state. */
 final class AsyncTabRemovalRecovery {
 
     private AsyncTabRemovalRecovery() {}
 
-    static void restoreOnRejection(
-            CompletionStage<Boolean> close,
+    static void restoreOnIncomplete(
+            CompletionStage<TabCloseOutcome> close,
             Consumer<Runnable> fxDispatcher,
-            Runnable restore,
+            Consumer<Boolean> restoreWithDisabledState,
             Consumer<? super Throwable> failureReporter) {
         try {
-            close.whenComplete((approved, failure) -> {
-                if (failure == null && Boolean.TRUE.equals(approved)) return;
+            close.whenComplete((outcome, failure) -> {
+                if (failure == null && outcome == TabCloseOutcome.COMPLETED) return;
                 if (failure != null) report(failureReporter, failure);
-                dispatchRestore(fxDispatcher, restore, failureReporter);
+                else if (outcome == null) {
+                    report(failureReporter, new NullPointerException("tab close completed with null outcome"));
+                }
+                boolean disabled = failure != null
+                        || outcome == null
+                        || outcome == TabCloseOutcome.TIMED_OUT_STILL_CLOSING
+                        || outcome == TabCloseOutcome.FAILED_PARTIAL;
+                dispatchRestore(
+                        fxDispatcher,
+                        () -> restoreWithDisabledState.accept(disabled),
+                        failureReporter);
             });
         } catch (Throwable failure) {
             report(failureReporter, failure);
-            dispatchRestore(fxDispatcher, restore, failureReporter);
+            dispatchRestore(
+                    fxDispatcher,
+                    () -> restoreWithDisabledState.accept(true),
+                    failureReporter);
         }
     }
 

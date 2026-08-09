@@ -188,34 +188,23 @@ public final class AppShell {
     /**
      * 异步释放全部资源。受守卫标签完成关闭后，其余潜在阻塞清理在虚拟线程执行。
      */
-    public CompletionStage<Boolean> shutdownAsync() {
+    public CompletionStage<ShutdownOutcome> shutdownAsync() {
         return shutdown.shutdown();
     }
 
-    /** @deprecated 使用并等待 {@link #shutdownAsync()} 的 Boolean 结果。 */
+    /** @deprecated 使用并等待 {@link #shutdownAsync()} 的显式结果。 */
     @Deprecated(forRemoval = false)
     public void shutdown() {
         shutdownAsync();
     }
 
     private void shutdownRemaining() {
-        try {
-            connectionTree.close();
-        } finally {
-            try {
-                migrationPane.ifInitialized(MigrationPane::shutdown);
-            } finally {
-                try {
-                    updateService.ifInitialized(UpdateService::close);
-                } finally {
-                    try {
-                        tasks.close();
-                    } finally {
-                        connMgr.closeAll();
-                    }
-                }
-            }
-        }
+        BestEffortCloseSequence.run(
+                connectionTree::close,
+                () -> migrationPane.ifInitialized(MigrationPane::shutdown),
+                () -> updateService.ifInitialized(UpdateService::close),
+                tasks::close,
+                connMgr::closeAll);
     }
 
     private static void reportShutdownFailure(Throwable failure) {

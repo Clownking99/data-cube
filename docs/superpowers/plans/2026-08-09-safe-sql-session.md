@@ -1141,15 +1141,16 @@ Expected: session state and isolation tests pass.
 
 **Interfaces:**
 
-- `AsyncTabCloseGuard.requestClose()` immediately returns `CompletionStage<Boolean>`.
+- `AsyncTabCloseGuard.requestClose()` immediately returns
+  `CompletionStage<CloseGuardOutcome>` (`APPROVED`, `REJECTED`, or `FAILED_PARTIAL`).
 - `ContentTabPane` adds `openManagedTab(String, Node, AsyncTabCloseGuard, Runnable)`; the final
   `Runnable` is an FX-only, non-blocking UI finalizer.
 - The deprecated three-argument overload remains source-compatible, but runs its disposer on one
   virtual thread. New callers must use the four-argument phase-split API.
-- `closeAllManagedTabs()` and `AppShell.shutdownAsync()` return an aggregate
-  `CompletionStage<Boolean>`; destructive application teardown starts only after `true`.
-  A refused close completes `false`; close-all or virtual-thread startup failure completes
-  exceptionally. Both outcomes reset the window-closing latch and permit retry.
+- `closeAllManagedTabs()` returns `CompletionStage<TabCloseOutcome>` and `shutdownAsync()` returns
+  `CompletionStage<ShutdownOutcome>`. Only `COMPLETED` may start/finish destructive teardown and
+  close the window. `CANCELLED` is retryable; `FAILED_PARTIAL` is terminal and must not be presented
+  as a usable/retryable application. Pre-teardown failures complete exceptionally and permit retry.
 
 - [ ] **Step 1: Write failing close-gate tests**
 
@@ -1203,7 +1204,7 @@ import java.util.concurrent.CompletionStage;
 
 @FunctionalInterface
 public interface AsyncTabCloseGuard {
-    CompletionStage<Boolean> requestClose();
+    CompletionStage<CloseGuardOutcome> requestClose();
 }
 ~~~
 
@@ -1215,10 +1216,12 @@ coalesces duplicate requests and owns exception/null/cancellation/timeout normal
 
 The guarded overload registers its coordinator before adding the tab. Guard cleanup may block only
 off the FX thread. Approval is dispatched back to FX for tab removal and the lightweight finalizer.
-External `tabs.remove(tab)` is also intercepted: rejection/failure/timeout restores the tab at its
-original index and selection. Timeout completes the caller with `false`, but retains the underlying
-cleanup single-flight until that stage reaches a safe terminal state; only then may a new generation
-start. Normal completion cancels and removes its daemon-scheduler timer.
+External `tabs.remove(tab)` is also intercepted. `CANCELLED` restores an enabled tab at its original
+index and selection. A timeout yields `TIMED_OUT_STILL_CLOSING`, restores/keeps the tab disabled, and
+retains the underlying cleanup single-flight. Late `APPROVED` automatically removes/finalizes the
+tab; late `REJECTED` or a retryable exception re-enables it and permits a new generation;
+`FAILED_PARTIAL` remains disabled and terminal. Normal completion cancels and removes its
+daemon-scheduler timer. Root FX-dispatch rejection is never reported as `COMPLETED`.
 
 - [ ] **Step 5: Verify GREEN and commit**
 
@@ -1246,7 +1249,7 @@ Expected: gate, contract, and exactly-once lifecycle tests pass.
 
 **Interfaces:**
 
-- SqlEditorPane adds `CompletionStage<Boolean> requestClose()`.
+- SqlEditorPane adds `CompletionStage<CloseGuardOutcome> requestClose()`.
 - SqlEditorPane lazily binds a previously unbound tab once and owns one JdbcEditorSession.
 - All execution and explain calls go through JdbcEditorSession, never ConnectionManager.acquire.
 - AppShell passes pane::requestClose to the guarded ContentTabPane overload.
@@ -1385,16 +1388,24 @@ QueryResult FailureKind.CANCELLED displays “已取消”; TIMEOUT displays “
 - [ ] **Step 6: Implement asynchronous close decisions**
 
 `requestClose()` is called on FX and immediately captures the editor/history state plus the user's
-close decision. It returns one shared `CompletionStage<Boolean>` for the in-flight attempt.
+close decision. It returns one shared `CompletionStage<CloseGuardOutcome>` for the in-flight
+attempt. The retry cache retains only in-flight, `APPROVED`, and `FAILED_PARTIAL` attempts;
+`REJECTED`, virtual-thread startup failure, and retryable pre-cleanup exceptions clear via CAS so a
+later request starts a real new attempt.
 `requestCancelRollbackClose` offers “取消执行、回滚并关闭 / 取消关闭”;
 `requestTransactionClose` offers “提交并关闭 / 回滚并关闭 / 取消”. After the FX decision, run
 cancel, wait-for-execution, rollback/commit, history persistence, task-scope close, and JDBC close on
-the existing `FxTaskRunner` or a JDK 25 virtual thread. Complete `true` only after all required
-blocking cleanup reaches its safe terminal state. A user refusal completes `false`; failure completes
-`false` or exceptionally. Never run JDBC/session cleanup from the FX finalizer.
+the existing `FxTaskRunner` or a JDK 25 virtual thread. Use `BestEffortCloseSequence` so history,
+both task scopes, cancel/wait, rollback/commit, and JDBC close are all attempted even when an earlier
+step fails. Return `APPROVED` only after every required step reaches a safe terminal state; user
+refusal returns `REJECTED`; any failure after irreversible cleanup begins returns `FAILED_PARTIAL`.
+Only failures known to precede irreversible cleanup may complete exceptionally and be retried. Never
+run JDBC/session cleanup or history persistence from the FX finalizer.
 
 The FX finalizer remains idempotent and lightweight: it only removes listeners and hides UI state.
-The coordinator invokes it on the FX Application Thread after the guard completes `true`.
+The coordinator invokes it on the FX Application Thread after the guard returns `APPROVED`. A root
+FX-dispatch rejection becomes `FAILED_PARTIAL`; an exception thrown inside an actually invoked
+finalizer is reported and swallowed without a second invocation.
 
 - [ ] **Step 7: Bind AppShell SQL tabs to the guarded overload**
 

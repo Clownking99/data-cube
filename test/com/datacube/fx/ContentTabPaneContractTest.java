@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.concurrent.CompletionStage;
 
@@ -34,6 +36,7 @@ class ContentTabPaneContractTest {
 
         assertEquals(1, methods.length);
         assertEquals(CompletionStage.class, methods[0].getReturnType());
+        assertTrue(methods[0].getGenericReturnType().getTypeName().contains("CloseGuardOutcome"));
         assertEquals(0, methods[0].getParameterCount());
     }
 
@@ -43,6 +46,19 @@ class ContentTabPaneContractTest {
         Method shutdown = AppShell.class.getDeclaredMethod("shutdownAsync");
 
         assertEquals(CompletionStage.class, closeAll.getReturnType());
+        assertTrue(closeAll.getGenericReturnType().getTypeName().contains("TabCloseOutcome"));
         assertEquals(CompletionStage.class, shutdown.getReturnType());
+        assertTrue(shutdown.getGenericReturnType().getTypeName().contains("ShutdownOutcome"));
+    }
+
+    @Test
+    void managedOpenSafelyReportsRegistryRejectionInsteadOfThrowingIntoFxHandler() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/ContentTabPane.java"));
+
+        int rejection = source.indexOf("if (!guardedTabs.register(tab, coordinator))");
+        int rejectedReturn = source.indexOf("return null;", rejection);
+        String rejectionBlock = source.substring(rejection, rejectedReturn);
+        assertTrue(rejectionBlock.contains("reportCloseFailure"));
+        assertTrue(rejectionBlock.contains("coordinator.requestClose()"));
     }
 }

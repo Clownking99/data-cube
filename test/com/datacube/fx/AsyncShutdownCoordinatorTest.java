@@ -14,78 +14,100 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AsyncShutdownCoordinatorTest {
 
     @Test
-    void falseCloseAllSkipsTeardownAndAllowsRetry() {
-        AtomicReference<CompletionStage<Boolean>> tabs =
-                new AtomicReference<>(CompletableFuture.completedFuture(false));
+    void cancelledCloseAllSkipsTeardownAndAllowsRetry() {
+        AtomicReference<CompletionStage<TabCloseOutcome>> tabs =
+                new AtomicReference<>(CompletableFuture.completedFuture(TabCloseOutcome.CANCELLED));
         Queue<Runnable> workers = new ArrayDeque<>();
         AtomicInteger teardowns = new AtomicInteger();
         AsyncShutdownCoordinator shutdown = new AsyncShutdownCoordinator(
                 tabs::get, workers::add, teardowns::incrementAndGet, ignored -> {});
 
-        assertFalse(shutdown.shutdown().toCompletableFuture().join());
+        assertEquals(ShutdownOutcome.CANCELLED, shutdown.shutdown().toCompletableFuture().join());
         assertEquals(0, teardowns.get());
-        tabs.set(CompletableFuture.completedFuture(true));
-        CompletionStage<Boolean> retry = shutdown.shutdown();
+        tabs.set(CompletableFuture.completedFuture(TabCloseOutcome.COMPLETED));
+        CompletionStage<ShutdownOutcome> retry = shutdown.shutdown();
         workers.remove().run();
 
-        assertTrue(retry.toCompletableFuture().join());
+        assertEquals(ShutdownOutcome.COMPLETED, retry.toCompletableFuture().join());
         assertEquals(1, teardowns.get());
     }
 
     @Test
     void exceptionalCloseAllAndThreadStartFailureBothResetForRetry() {
-        CompletableFuture<Boolean> failedTabs = new CompletableFuture<>();
+        CompletableFuture<TabCloseOutcome> failedTabs = new CompletableFuture<>();
         failedTabs.completeExceptionally(new IllegalStateException("tabs"));
-        AtomicReference<CompletionStage<Boolean>> tabs = new AtomicReference<>(failedTabs);
+        AtomicReference<CompletionStage<TabCloseOutcome>> tabs = new AtomicReference<>(failedTabs);
         AtomicBoolean failStart = new AtomicBoolean(true);
         Queue<Runnable> workers = new ArrayDeque<>();
         List<Throwable> failures = new ArrayList<>();
-        AtomicInteger teardowns = new AtomicInteger();
         AsyncShutdownCoordinator shutdown = new AsyncShutdownCoordinator(
                 tabs::get,
                 task -> {
                     if (failStart.getAndSet(false)) throw new IllegalStateException("start");
                     workers.add(task);
                 },
-                teardowns::incrementAndGet,
+                () -> {},
                 failures::add);
 
-        CompletionException tabsFailure = assertThrows(
-                CompletionException.class,
-                () -> shutdown.shutdown().toCompletableFuture().join());
-        assertEquals("tabs", tabsFailure.getCause().getMessage());
-        tabs.set(CompletableFuture.completedFuture(true));
-        CompletionException startFailure = assertThrows(
-                CompletionException.class,
-                () -> shutdown.shutdown().toCompletableFuture().join());
-        assertEquals("start", startFailure.getCause().getMessage());
-        CompletionStage<Boolean> retry = shutdown.shutdown();
+        assertThrows(CompletionException.class, () -> shutdown.shutdown().toCompletableFuture().join());
+        tabs.set(CompletableFuture.completedFuture(TabCloseOutcome.COMPLETED));
+        assertThrows(CompletionException.class, () -> shutdown.shutdown().toCompletableFuture().join());
+        CompletionStage<ShutdownOutcome> retry = shutdown.shutdown();
         workers.remove().run();
 
-        assertTrue(retry.toCompletableFuture().join());
-        assertEquals(1, teardowns.get());
+        assertEquals(ShutdownOutcome.COMPLETED, retry.toCompletableFuture().join());
         assertEquals(2, failures.size());
     }
 
     @Test
+    void teardownFailureIsFatalPartialAndNeverMasqueradesAsSuccessOrRetryable() {
+        Queue<Runnable> workers = new ArrayDeque<>();
+        IllegalStateException failure = new IllegalStateException("teardown");
+        List<Throwable> failures = new ArrayList<>();
+        AsyncShutdownCoordinator shutdown = new AsyncShutdownCoordinator(
+                () -> CompletableFuture.completedFuture(TabCloseOutcome.COMPLETED),
+                workers::add,
+                () -> { throw failure; },
+                failures::add);
+
+        CompletionStage<ShutdownOutcome> first = shutdown.shutdown();
+        workers.remove().run();
+
+        assertEquals(ShutdownOutcome.FAILED_PARTIAL, first.toCompletableFuture().join());
+        assertSame(first, shutdown.shutdown());
+        assertEquals(List.of(failure), failures);
+    }
+
+    @Test
+    void fatalTabCloseDoesNotStartApplicationTeardown() {
+        AtomicInteger teardowns = new AtomicInteger();
+        AsyncShutdownCoordinator shutdown = new AsyncShutdownCoordinator(
+                () -> CompletableFuture.completedFuture(TabCloseOutcome.FAILED_PARTIAL),
+                Runnable::run,
+                teardowns::incrementAndGet,
+                ignored -> {});
+
+        assertEquals(ShutdownOutcome.FAILED_PARTIAL, shutdown.shutdown().toCompletableFuture().join());
+        assertEquals(0, teardowns.get());
+    }
+
+    @Test
     void duplicateShutdownRequestsShareOneAttempt() {
-        CompletableFuture<Boolean> tabs = new CompletableFuture<>();
+        CompletableFuture<TabCloseOutcome> tabs = new CompletableFuture<>();
         Queue<Runnable> workers = new ArrayDeque<>();
         AsyncShutdownCoordinator shutdown = new AsyncShutdownCoordinator(
                 () -> tabs, workers::add, () -> {}, ignored -> {});
 
-        CompletionStage<Boolean> first = shutdown.shutdown();
+        CompletionStage<ShutdownOutcome> first = shutdown.shutdown();
         assertSame(first, shutdown.shutdown());
-        tabs.complete(true);
+        tabs.complete(TabCloseOutcome.COMPLETED);
         workers.remove().run();
-        assertTrue(first.toCompletableFuture().join());
+        assertEquals(ShutdownOutcome.COMPLETED, first.toCompletableFuture().join());
     }
 }

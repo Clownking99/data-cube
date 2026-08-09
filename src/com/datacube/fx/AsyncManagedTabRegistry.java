@@ -12,66 +12,90 @@ final class AsyncManagedTabRegistry<K> {
 
     private final Map<K, AsyncTabCloseCoordinator> entries = new IdentityHashMap<>();
     private State state = State.OPEN;
-    private CompletableFuture<Boolean> closing;
+    private CompletableFuture<TabCloseOutcome> closing;
 
-    synchronized void register(K key, AsyncTabCloseCoordinator coordinator) {
-        if (state != State.OPEN) throw new IllegalStateException("tab registry is closing");
+    synchronized boolean register(K key, AsyncTabCloseCoordinator coordinator) {
+        if (state != State.OPEN) return false;
         entries.put(key, coordinator);
+        return true;
     }
 
     synchronized void unregister(K key) {
         entries.remove(key);
     }
 
-    CompletionStage<Boolean> requestClose(K key) {
+    CompletionStage<TabCloseOutcome> requestClose(K key) {
         AsyncTabCloseCoordinator coordinator;
         synchronized (this) {
             coordinator = entries.get(key);
         }
         return coordinator == null
-                ? CompletableFuture.completedFuture(true)
+                ? CompletableFuture.completedFuture(TabCloseOutcome.COMPLETED)
                 : coordinator.requestClose();
     }
 
-    CompletionStage<Boolean> closeAll() {
+    CompletionStage<TabCloseOutcome> closeAll() {
         List<AsyncTabCloseCoordinator> snapshot;
-        CompletableFuture<Boolean> result;
+        CompletableFuture<TabCloseOutcome> result;
         synchronized (this) {
-            if (state == State.CLOSED) return CompletableFuture.completedFuture(true);
-            if (state == State.CLOSING) return closing;
+            if (state == State.CLOSED) {
+                return CompletableFuture.completedFuture(TabCloseOutcome.COMPLETED);
+            }
+            if (state == State.CLOSING || state == State.FAILED_PARTIAL) return closing;
             state = State.CLOSING;
             snapshot = List.copyOf(entries.values());
             result = new CompletableFuture<>();
             closing = result;
         }
 
-        List<CompletableFuture<Boolean>> closes = new ArrayList<>(snapshot.size());
+        List<CompletableFuture<TabCloseOutcome>> closes = new ArrayList<>(snapshot.size());
         for (AsyncTabCloseCoordinator coordinator : snapshot) {
             try {
                 closes.add(coordinator.requestClose().handle(
-                        (approved, failure) -> failure == null && Boolean.TRUE.equals(approved))
+                        (outcome, failure) -> failure == null && outcome != null
+                                ? outcome
+                                : TabCloseOutcome.FAILED_PARTIAL)
                         .toCompletableFuture());
             } catch (Throwable failure) {
-                closes.add(CompletableFuture.completedFuture(false));
+                closes.add(CompletableFuture.completedFuture(TabCloseOutcome.FAILED_PARTIAL));
             }
         }
         CompletableFuture.allOf(closes.toArray(CompletableFuture[]::new))
-                .whenComplete((ignored, failure) -> {
-                    boolean approved = failure == null
-                            && closes.stream().allMatch(close -> Boolean.TRUE.equals(close.join()));
-                    finishCloseAll(result, approved);
-                });
+                .whenComplete((ignored, failure) -> finishCloseAll(
+                        result,
+                        failure == null ? aggregate(closes) : TabCloseOutcome.FAILED_PARTIAL));
         return result;
     }
 
-    private void finishCloseAll(CompletableFuture<Boolean> expected, boolean approved) {
-        synchronized (this) {
-            if (closing != expected) return;
-            state = approved ? State.CLOSED : State.OPEN;
-            if (!approved) closing = null;
+    private static TabCloseOutcome aggregate(List<CompletableFuture<TabCloseOutcome>> closes) {
+        TabCloseOutcome aggregate = TabCloseOutcome.COMPLETED;
+        for (CompletableFuture<TabCloseOutcome> close : closes) {
+            TabCloseOutcome outcome = close.join();
+            if (outcome == TabCloseOutcome.FAILED_PARTIAL) return outcome;
+            if (outcome == TabCloseOutcome.TIMED_OUT_STILL_CLOSING) {
+                aggregate = TabCloseOutcome.TIMED_OUT_STILL_CLOSING;
+            } else if (outcome == TabCloseOutcome.CANCELLED
+                    && aggregate == TabCloseOutcome.COMPLETED) {
+                aggregate = TabCloseOutcome.CANCELLED;
+            }
         }
-        expected.complete(approved);
+        return aggregate;
     }
 
-    private enum State { OPEN, CLOSING, CLOSED }
+    private void finishCloseAll(
+            CompletableFuture<TabCloseOutcome> expected,
+            TabCloseOutcome outcome) {
+        synchronized (this) {
+            if (closing != expected) return;
+            state = switch (outcome) {
+                case COMPLETED -> State.CLOSED;
+                case FAILED_PARTIAL -> State.FAILED_PARTIAL;
+                case CANCELLED, TIMED_OUT_STILL_CLOSING -> State.OPEN;
+            };
+            if (state == State.OPEN) closing = null;
+        }
+        expected.complete(outcome);
+    }
+
+    private enum State { OPEN, CLOSING, CLOSED, FAILED_PARTIAL }
 }

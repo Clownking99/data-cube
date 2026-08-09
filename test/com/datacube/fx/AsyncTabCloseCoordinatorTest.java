@@ -7,12 +7,11 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
-import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,167 +23,165 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AsyncTabCloseCoordinatorTest {
 
     @Test
-    void mergesDuplicateRequestsAndRunsUiFinalizerOnlyAfterCleanupApproval() {
-        CompletableFuture<Boolean> cleanup = new CompletableFuture<>();
+    void duplicateRequestsMergeAndApprovalFinalizesOnFxAfterCleanup() {
+        CompletableFuture<CloseGuardOutcome> cleanup = new CompletableFuture<>();
         Harness harness = new Harness(() -> cleanup);
 
-        CompletionStage<Boolean> first = harness.coordinator.requestClose();
-        CompletionStage<Boolean> duplicate = harness.coordinator.requestClose();
+        CompletionStage<TabCloseOutcome> first = harness.coordinator.requestClose();
+        assertSame(first, harness.coordinator.requestClose());
+        harness.drainFx();
+        assertTrue(harness.disabled);
 
-        assertSame(first, duplicate);
-        assertEquals(1, harness.guardCalls.get());
-        cleanup.complete(true);
+        cleanup.complete(CloseGuardOutcome.APPROVED);
         assertEquals(1, harness.timeouts.cancelledCount());
         assertFalse(first.toCompletableFuture().isDone());
+        harness.drainFx();
 
-        harness.runNextFxTask();
-        assertTrue(first.toCompletableFuture().join());
-        assertEquals(1, harness.removals.get());
+        assertEquals(TabCloseOutcome.COMPLETED, first.toCompletableFuture().join());
+        assertFalse(harness.present);
         assertEquals(1, harness.finalizers.get());
     }
 
     @Test
-    void timeoutKeepsUnderlyingCleanupSingleFlightUntilItsTerminalState() {
-        CompletableFuture<Boolean> firstCleanup = new CompletableFuture<>();
-        CompletableFuture<Boolean> secondCleanup = new CompletableFuture<>();
-        AtomicReference<CompletionStage<Boolean>> current = new AtomicReference<>(firstCleanup);
+    void timeoutLateApprovalAutomaticallyRemovesAndFinalizesDisabledTab() {
+        CompletableFuture<CloseGuardOutcome> cleanup = new CompletableFuture<>();
+        Harness harness = new Harness(() -> cleanup);
+
+        CompletionStage<TabCloseOutcome> close = harness.coordinator.requestClose();
+        harness.drainFx();
+        harness.timeouts.fireNext();
+
+        assertEquals(TabCloseOutcome.TIMED_OUT_STILL_CLOSING, close.toCompletableFuture().join());
+        assertTrue(harness.disabled);
+        assertTrue(harness.present);
+        cleanup.complete(CloseGuardOutcome.APPROVED);
+        harness.drainFx();
+
+        assertFalse(harness.present);
+        assertEquals(1, harness.finalizers.get());
+    }
+
+    @Test
+    void timeoutLateRejectionReenablesAndAllowsANewGeneration() {
+        CompletableFuture<CloseGuardOutcome> firstCleanup = new CompletableFuture<>();
+        CompletableFuture<CloseGuardOutcome> secondCleanup = new CompletableFuture<>();
+        AtomicReference<CompletionStage<CloseGuardOutcome>> current = new AtomicReference<>(firstCleanup);
         Harness harness = new Harness(current::get);
 
-        CompletionStage<Boolean> first = harness.coordinator.requestClose();
+        CompletionStage<TabCloseOutcome> first = harness.coordinator.requestClose();
+        harness.drainFx();
         harness.timeouts.fireNext();
-        assertFalse(first.toCompletableFuture().join());
+        assertEquals(TabCloseOutcome.TIMED_OUT_STILL_CLOSING, first.toCompletableFuture().join());
+        assertSame(first, harness.coordinator.requestClose());
+
+        firstCleanup.complete(CloseGuardOutcome.REJECTED);
+        harness.drainFx();
+        assertFalse(harness.disabled);
 
         current.set(secondCleanup);
-        CompletionStage<Boolean> whileCleanupStillRunning = harness.coordinator.requestClose();
-        assertSame(first, whileCleanupStillRunning);
-        assertEquals(1, harness.guardCalls.get());
-
-        firstCleanup.complete(true);
-        CompletionStage<Boolean> retry = harness.coordinator.requestClose();
+        CompletionStage<TabCloseOutcome> retry = harness.coordinator.requestClose();
         assertNotSame(first, retry);
         assertEquals(2, harness.guardCalls.get());
-        secondCleanup.complete(true);
-        harness.runNextFxTask();
-
-        assertTrue(retry.toCompletableFuture().join());
-        assertEquals(1, harness.finalizers.get());
+        secondCleanup.complete(CloseGuardOutcome.APPROVED);
+        harness.drainFx();
+        assertEquals(TabCloseOutcome.COMPLETED, retry.toCompletableFuture().join());
     }
 
     @Test
-    void normalFalseExceptionalAndCancelledTerminalsCancelTheirTimers() {
-        CompletableFuture<Boolean> rejected = new CompletableFuture<>();
-        CompletableFuture<Boolean> exceptional = new CompletableFuture<>();
-        CompletableFuture<Boolean> cancelled = new CompletableFuture<>();
-        Queue<CompletionStage<Boolean>> attempts = new ArrayDeque<>();
-        attempts.add(rejected);
-        attempts.add(exceptional);
-        attempts.add(cancelled);
-        Harness harness = new Harness(attempts::remove);
+    void lateFatalPartialStaysDisabledAndIsVisibleToLaterCallers() {
+        CompletableFuture<CloseGuardOutcome> cleanup = new CompletableFuture<>();
+        Harness harness = new Harness(() -> cleanup);
 
-        CompletionStage<Boolean> first = harness.coordinator.requestClose();
-        rejected.complete(false);
-        assertFalse(first.toCompletableFuture().join());
+        CompletionStage<TabCloseOutcome> timedOut = harness.coordinator.requestClose();
+        harness.drainFx();
+        harness.timeouts.fireNext();
+        cleanup.complete(CloseGuardOutcome.FAILED_PARTIAL);
 
-        CompletionStage<Boolean> second = harness.coordinator.requestClose();
-        exceptional.completeExceptionally(new IllegalArgumentException("async"));
-        assertFalse(second.toCompletableFuture().join());
-
-        CompletionStage<Boolean> third = harness.coordinator.requestClose();
-        cancelled.cancel(false);
-        assertFalse(third.toCompletableFuture().join());
-
-        assertEquals(3, harness.timeouts.cancelledCount());
-        assertTrue(harness.failures.stream().anyMatch(IllegalArgumentException.class::isInstance));
-        assertTrue(harness.failures.stream().anyMatch(CancellationException.class::isInstance));
+        assertEquals(TabCloseOutcome.TIMED_OUT_STILL_CLOSING, timedOut.toCompletableFuture().join());
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL,
+                harness.coordinator.requestClose().toCompletableFuture().join());
+        assertTrue(harness.disabled);
     }
 
     @Test
-    void synchronousFailureNullStageAndNullResultResetForRetry() {
-        Queue<Supplier<CompletionStage<Boolean>>> attempts = new ArrayDeque<>();
+    void rejectedExceptionalNullStageAndNullOutcomeAreRetryable() {
+        Queue<Supplier<CompletionStage<CloseGuardOutcome>>> attempts = new ArrayDeque<>();
+        attempts.add(() -> CompletableFuture.completedFuture(CloseGuardOutcome.REJECTED));
         attempts.add(() -> { throw new IllegalStateException("sync"); });
         attempts.add(() -> null);
         attempts.add(() -> CompletableFuture.completedFuture(null));
-        attempts.add(() -> CompletableFuture.completedFuture(true));
+        attempts.add(() -> CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED));
         Harness harness = new Harness(() -> attempts.remove().get());
 
-        assertFalse(harness.coordinator.requestClose().toCompletableFuture().join());
-        assertFalse(harness.coordinator.requestClose().toCompletableFuture().join());
-        assertFalse(harness.coordinator.requestClose().toCompletableFuture().join());
-        CompletionStage<Boolean> accepted = harness.coordinator.requestClose();
-        harness.runNextFxTask();
+        for (int i = 0; i < 4; i++) {
+            CompletionStage<TabCloseOutcome> rejected = harness.coordinator.requestClose();
+            harness.drainFx();
+            assertEquals(TabCloseOutcome.CANCELLED, rejected.toCompletableFuture().join());
+            assertFalse(harness.disabled);
+        }
+        CompletionStage<TabCloseOutcome> accepted = harness.coordinator.requestClose();
+        harness.drainFx();
 
-        assertTrue(accepted.toCompletableFuture().join());
-        assertEquals(4, harness.guardCalls.get());
-        assertEquals(3, harness.failures.size());
+        assertEquals(TabCloseOutcome.COMPLETED, accepted.toCompletableFuture().join());
+        assertEquals(5, harness.guardCalls.get());
     }
 
     @Test
-    void timeoutSchedulerFailureRejectsAttemptAndAllowsRetry() {
-        CompletableFuture<Boolean> firstCleanup = new CompletableFuture<>();
-        CompletableFuture<Boolean> secondCleanup = new CompletableFuture<>();
-        AtomicReference<CompletionStage<Boolean>> current = new AtomicReference<>(firstCleanup);
-        AtomicBoolean failScheduling = new AtomicBoolean(true);
-        Queue<Runnable> fxTasks = new ArrayDeque<>();
+    void rootFxDispatcherRejectionAfterCleanupCannotCompleteSuccessfully() {
+        AtomicInteger dispatches = new AtomicInteger();
+        AtomicInteger finalizers = new AtomicInteger();
         List<Throwable> failures = new ArrayList<>();
         AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
-                current::get,
+                () -> CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED),
                 Duration.ofSeconds(5),
-                (delay, task) -> {
-                    if (failScheduling.getAndSet(false)) throw new IllegalStateException("scheduler");
-                    return () -> {};
+                new ManualTimeoutScheduler(),
+                action -> {
+                    if (dispatches.incrementAndGet() == 1) action.run();
+                    else throw new IllegalStateException("dispatcher rejected");
                 },
-                fxTasks::add,
                 () -> {},
                 () -> {},
+                () -> {},
+                finalizers::incrementAndGet,
                 failures::add);
 
-        CompletionStage<Boolean> first = coordinator.requestClose();
-        assertFalse(first.toCompletableFuture().join());
-        current.set(secondCleanup);
-        assertSame(first, coordinator.requestClose());
-        firstCleanup.complete(true);
-        CompletionStage<Boolean> retry = coordinator.requestClose();
-        secondCleanup.complete(true);
-        fxTasks.remove().run();
-
-        assertTrue(retry.toCompletableFuture().join());
-        assertTrue(failures.stream().anyMatch(IllegalStateException.class::isInstance));
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL,
+                coordinator.requestClose().toCompletableFuture().join());
+        assertEquals(0, finalizers.get());
+        assertTrue(failures.stream().anyMatch(f -> "dispatcher rejected".equals(f.getMessage())));
     }
 
     @Test
-    void alreadyRemovedTabStillFinalizesExactlyOnceAndReportsFinalizerFailure() {
-        CompletableFuture<Boolean> cleanup = new CompletableFuture<>();
+    void invokedFinalizerFailureIsReportedButStillCountsAsCompleted() {
         IllegalStateException failure = new IllegalStateException("ui finalizer");
-        Harness harness = new Harness(() -> cleanup, () -> { throw failure; });
-        harness.present.set(false);
+        Harness harness = new Harness(
+                () -> CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED),
+                () -> { throw failure; });
 
-        CompletionStage<Boolean> close = harness.coordinator.requestClose();
-        cleanup.complete(true);
-        harness.runNextFxTask();
+        CompletionStage<TabCloseOutcome> close = harness.coordinator.requestClose();
+        harness.drainFx();
 
-        assertTrue(close.toCompletableFuture().join());
-        assertEquals(0, harness.removals.get());
+        assertEquals(TabCloseOutcome.COMPLETED, close.toCompletableFuture().join());
         assertEquals(1, harness.finalizerInvocations.get());
         assertEquals(List.of(failure), harness.failures);
-        assertSame(close, harness.coordinator.requestClose());
     }
 
     private static final class Harness {
         private final AtomicInteger guardCalls = new AtomicInteger();
         private final ManualTimeoutScheduler timeouts = new ManualTimeoutScheduler();
         private final Queue<Runnable> fxTasks = new ArrayDeque<>();
-        private final AtomicBoolean present = new AtomicBoolean(true);
-        private final AtomicInteger removals = new AtomicInteger();
+        private boolean present = true;
+        private boolean disabled;
         private final AtomicInteger finalizers = new AtomicInteger();
         private final AtomicInteger finalizerInvocations = new AtomicInteger();
         private final List<Throwable> failures = new ArrayList<>();
         private final AsyncTabCloseCoordinator coordinator;
 
-        private Harness(Supplier<CompletionStage<Boolean>> cleanup) {
-            this(cleanup, NO_OP_FINALIZER);
+        private Harness(Supplier<CompletionStage<CloseGuardOutcome>> cleanup) {
+            this(cleanup, () -> {});
         }
 
-        private Harness(Supplier<CompletionStage<Boolean>> cleanup, Runnable uiFinalizer) {
+        private Harness(Supplier<CompletionStage<CloseGuardOutcome>> cleanup, Runnable uiFinalizer) {
             AsyncTabCloseGuard guard = () -> {
                 guardCalls.incrementAndGet();
                 return cleanup.get();
@@ -194,19 +191,22 @@ class AsyncTabCloseCoordinatorTest {
                     Duration.ofSeconds(5),
                     timeouts,
                     fxTasks::add,
-                    () -> {
-                        if (present.compareAndSet(true, false)) removals.incrementAndGet();
-                    },
+                    () -> disabled = true,
+                    () -> disabled = false,
+                    () -> present = false,
                     () -> {
                         finalizerInvocations.incrementAndGet();
-                        if (uiFinalizer == NO_OP_FINALIZER) finalizers.incrementAndGet();
-                        else uiFinalizer.run();
+                        if (uiFinalizer == null) finalizers.incrementAndGet();
+                        else {
+                            finalizers.incrementAndGet();
+                            uiFinalizer.run();
+                        }
                     },
                     failures::add);
         }
 
-        private void runNextFxTask() {
-            fxTasks.remove().run();
+        private void drainFx() {
+            while (!fxTasks.isEmpty()) fxTasks.remove().run();
         }
     }
 
@@ -244,9 +244,7 @@ class AsyncTabCloseCoordinatorTest {
         }
 
         private void fire() {
-            task.run();
+            if (!cancelled) task.run();
         }
     }
-
-    private static final Runnable NO_OP_FINALIZER = () -> {};
 }

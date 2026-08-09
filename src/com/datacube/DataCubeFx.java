@@ -2,6 +2,7 @@ package com.datacube;
 
 import com.datacube.fx.AppShell;
 import com.datacube.fx.BrandLogo;
+import com.datacube.fx.ShutdownOutcome;
 import com.datacube.fx.SplashScreen;
 import javafx.animation.PauseTransition;
 import javafx.application.Application;
@@ -53,17 +54,22 @@ public class DataCubeFx extends Application {
                     }
                 }
                 if (!closing.compareAndSet(false, true)) return;
-                appShell.shutdownAsync().whenComplete((approved, failure) -> Platform.runLater(() -> {
+                appShell.shutdownAsync().whenComplete((outcome, failure) -> Platform.runLater(() -> {
                     if (failure != null) {
                         System.err.println("[DataCube] shutdown failure: " + failure);
                         failure.printStackTrace(System.err);
                         closing.set(false);
                         return;
                     }
-                    if (!Boolean.TRUE.equals(approved)) {
+                    if (outcome == ShutdownOutcome.CANCELLED) {
                         closing.set(false);
                         return;
                     }
+                    if (outcome == ShutdownOutcome.FAILED_PARTIAL) {
+                        System.err.println("[DataCube] shutdown partially failed; application is not retryable");
+                        return;
+                    }
+                    if (outcome != ShutdownOutcome.COMPLETED) return;
                     primaryStage.setOnCloseRequest(null);
                     primaryStage.close();
                 }));

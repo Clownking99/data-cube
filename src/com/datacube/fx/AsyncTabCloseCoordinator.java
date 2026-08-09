@@ -5,16 +5,13 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
-/**
- * Coordinates one guarded tab's blocking cleanup and FX-only finalization phases.
- * Exactly-once finalization means the finalizer is invoked once; its failure is reported, not retried.
- */
+/** Coordinates background cleanup, timeout state, and FX-only finalization for one managed tab. */
 final class AsyncTabCloseCoordinator {
 
     static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
@@ -25,6 +22,8 @@ final class AsyncTabCloseCoordinator {
     private final Duration timeout;
     private final TimeoutScheduler timeoutScheduler;
     private final Consumer<Runnable> fxDispatcher;
+    private final Runnable markClosing;
+    private final Runnable markRetryable;
     private final Runnable removeTabIfPresent;
     private final Runnable uiFinalizer;
     private final Consumer<? super Throwable> failureReporter;
@@ -46,6 +45,8 @@ final class AsyncTabCloseCoordinator {
             Duration timeout,
             TimeoutScheduler timeoutScheduler,
             Consumer<Runnable> fxDispatcher,
+            Runnable markClosing,
+            Runnable markRetryable,
             Runnable removeTabIfPresent,
             Runnable uiFinalizer,
             Consumer<? super Throwable> failureReporter) {
@@ -53,34 +54,48 @@ final class AsyncTabCloseCoordinator {
         this.timeout = Objects.requireNonNull(timeout, "timeout");
         this.timeoutScheduler = Objects.requireNonNull(timeoutScheduler, "timeoutScheduler");
         this.fxDispatcher = Objects.requireNonNull(fxDispatcher, "fxDispatcher");
+        this.markClosing = Objects.requireNonNull(markClosing, "markClosing");
+        this.markRetryable = Objects.requireNonNull(markRetryable, "markRetryable");
         this.removeTabIfPresent = Objects.requireNonNull(removeTabIfPresent, "removeTabIfPresent");
         this.uiFinalizer = Objects.requireNonNull(uiFinalizer, "uiFinalizer");
         this.failureReporter = Objects.requireNonNull(failureReporter, "failureReporter");
     }
 
-    CompletionStage<Boolean> requestClose() {
+    CompletionStage<TabCloseOutcome> requestClose() {
         Attempt attempt;
         synchronized (this) {
-            if (current != null) return current.result;
+            if (current != null) {
+                return current.terminalForNewRequests == null
+                        ? current.result
+                        : CompletableFuture.completedFuture(current.terminalForNewRequests);
+            }
             AsyncCloseGate.Request request = gate.beginRequest();
             if (request == null) throw new IllegalStateException("closed coordinator has no result");
             attempt = new Attempt(request);
             current = attempt;
+        }
+
+        try {
+            fxDispatcher.accept(() -> runReported(markClosing));
+        } catch (Throwable failure) {
+            report(failure);
+            cancelBeforeCleanup(attempt);
+            return attempt.result;
         }
         start(attempt);
         return attempt.result;
     }
 
     private void start(Attempt attempt) {
-        CompletionStage<Boolean> cleanup;
+        CompletionStage<CloseGuardOutcome> cleanup;
         try {
             cleanup = guard.requestClose();
         } catch (Throwable failure) {
-            rejectBeforeCleanup(attempt, failure);
+            finishRetryable(attempt, failure);
             return;
         }
         if (cleanup == null) {
-            rejectBeforeCleanup(attempt, new NullPointerException("close guard returned null stage"));
+            finishRetryable(attempt, new NullPointerException("close guard returned null stage"));
             return;
         }
 
@@ -90,66 +105,86 @@ final class AsyncTabCloseCoordinator {
                 attempt.timeoutHandle = Objects.requireNonNull(handle, "timeout handle");
             }
         } catch (Throwable failure) {
-            abandonCallerButAwaitCleanup(attempt, failure);
+            timeOut(attempt, failure);
         }
 
         try {
-            cleanup.whenComplete((approved, failure) ->
-                    cleanupCompleted(attempt, approved, unwrap(failure)));
+            cleanup.whenComplete((outcome, failure) ->
+                    cleanupCompleted(attempt, outcome, unwrap(failure)));
         } catch (Throwable failure) {
-            cleanupCompleted(attempt, false, failure);
+            cleanupCompleted(attempt, null, failure);
         }
     }
 
     private void timeOut(Attempt attempt) {
-        abandonCallerButAwaitCleanup(
-                attempt, new TimeoutException("tab close timed out after " + timeout));
+        timeOut(attempt, new TimeoutException("tab close timed out after " + timeout));
     }
 
-    private void abandonCallerButAwaitCleanup(Attempt attempt, Throwable failure) {
+    private void timeOut(Attempt attempt, Throwable failure) {
         synchronized (this) {
-            if (current != attempt || attempt.cleanupTerminal || attempt.callerAbandoned) return;
-            attempt.callerAbandoned = true;
+            if (current != attempt || attempt.cleanupTerminal || attempt.callerTimedOut) return;
+            attempt.callerTimedOut = true;
         }
         report(failure);
-        attempt.result.complete(false);
+        attempt.result.complete(TabCloseOutcome.TIMED_OUT_STILL_CLOSING);
     }
 
-    private void cleanupCompleted(Attempt attempt, Boolean approved, Throwable failure) {
-        boolean abandoned;
-        boolean closeApproved;
+    private void cleanupCompleted(
+            Attempt attempt,
+            CloseGuardOutcome outcome,
+            Throwable failure) {
         synchronized (this) {
             if (current != attempt || attempt.cleanupTerminal) return;
             attempt.cleanupTerminal = true;
             attempt.timeoutHandle.cancel();
-            abandoned = attempt.callerAbandoned;
-            closeApproved = failure == null && Boolean.TRUE.equals(approved) && !abandoned;
-
-            if (!closeApproved) {
-                gate.complete(attempt.request, false, () -> {}, failureReporter);
-                current = null;
-            }
         }
 
-        if (failure != null) report(failure);
-        else if (approved == null) report(new NullPointerException("close guard completed with null"));
-        if (abandoned) return;
-        if (!closeApproved) {
-            attempt.result.complete(false);
-            return;
+        if (failure != null) {
+            finishRetryable(attempt, failure);
+        } else if (outcome == null) {
+            finishRetryable(attempt, new NullPointerException("close guard completed with null outcome"));
+        } else if (outcome == CloseGuardOutcome.REJECTED) {
+            finishRetryable(attempt, null);
+        } else if (outcome == CloseGuardOutcome.FAILED_PARTIAL) {
+            finishFatal(attempt);
+        } else {
+            gate.complete(attempt.request, true, () -> dispatchFinalizer(attempt), failureReporter);
         }
-        gate.complete(attempt.request, true, () -> dispatchFinalizer(attempt), failureReporter);
     }
 
-    private void rejectBeforeCleanup(Attempt attempt, Throwable failure) {
+    private void finishRetryable(Attempt attempt, Throwable failure) {
+        if (failure != null) report(failure);
+        try {
+            fxDispatcher.accept(() -> runReported(markRetryable));
+        } catch (Throwable dispatchFailure) {
+            report(dispatchFailure);
+            finishFatal(attempt);
+            return;
+        }
         synchronized (this) {
             if (current != attempt) return;
-            attempt.cleanupTerminal = true;
             gate.complete(attempt.request, false, () -> {}, failureReporter);
             current = null;
         }
-        report(failure);
-        attempt.result.complete(false);
+        if (!attempt.callerTimedOut) attempt.result.complete(TabCloseOutcome.CANCELLED);
+    }
+
+    private void finishFatal(Attempt attempt) {
+        synchronized (this) {
+            if (current != attempt) return;
+            gate.complete(attempt.request, true, () -> {}, failureReporter);
+            attempt.terminalForNewRequests = TabCloseOutcome.FAILED_PARTIAL;
+        }
+        if (!attempt.callerTimedOut) attempt.result.complete(TabCloseOutcome.FAILED_PARTIAL);
+    }
+
+    private void cancelBeforeCleanup(Attempt attempt) {
+        synchronized (this) {
+            if (current != attempt) return;
+            gate.complete(attempt.request, false, () -> {}, failureReporter);
+            current = null;
+        }
+        attempt.result.complete(TabCloseOutcome.CANCELLED);
     }
 
     private void dispatchFinalizer(Attempt attempt) {
@@ -157,11 +192,14 @@ final class AsyncTabCloseCoordinator {
             fxDispatcher.accept(() -> {
                 runReported(removeTabIfPresent);
                 runReported(uiFinalizer);
-                attempt.result.complete(true);
+                synchronized (AsyncTabCloseCoordinator.this) {
+                    attempt.terminalForNewRequests = TabCloseOutcome.COMPLETED;
+                }
+                if (!attempt.callerTimedOut) attempt.result.complete(TabCloseOutcome.COMPLETED);
             });
         } catch (Throwable failure) {
             report(failure);
-            attempt.result.complete(true);
+            finishFatal(attempt);
         }
     }
 
@@ -206,10 +244,11 @@ final class AsyncTabCloseCoordinator {
 
     private static final class Attempt {
         private final AsyncCloseGate.Request request;
-        private final CompletableFuture<Boolean> result = new CompletableFuture<>();
+        private final CompletableFuture<TabCloseOutcome> result = new CompletableFuture<>();
         private TimeoutHandle timeoutHandle = () -> {};
-        private boolean callerAbandoned;
+        private boolean callerTimedOut;
         private boolean cleanupTerminal;
+        private TabCloseOutcome terminalForNewRequests;
 
         private Attempt(AsyncCloseGate.Request request) {
             this.request = request;

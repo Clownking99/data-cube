@@ -7,10 +7,11 @@ import java.util.concurrent.CompletionStage;
  *
  * <p>The returned stage may approve closing only after cancellation, rollback and resource cleanup
  * have finished. Implementations must run blocking JDBC work on a JDK 25 virtual thread or the
- * application's existing task runner. A {@code false}, exceptional, cancelled, null or timed-out
- * result rejects that attempt and leaves the tab retryable.
+ * application's existing task runner. {@link CloseGuardOutcome#REJECTED} and failures known to
+ * precede irreversible cleanup are retryable. Implementations must return
+ * {@link CloseGuardOutcome#FAILED_PARTIAL} after any partial destructive cleanup.
  */
 @FunctionalInterface
 public interface AsyncTabCloseGuard {
-    CompletionStage<Boolean> requestClose();
+    CompletionStage<CloseGuardOutcome> requestClose();
 }
