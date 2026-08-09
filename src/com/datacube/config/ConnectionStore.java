@@ -1,6 +1,8 @@
 package com.datacube.config;
 
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.ConnectionEnvironment;
+import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.DbType;
 
 import java.io.IOException;
@@ -153,22 +155,43 @@ public final class ConnectionStore {
         sb.append("\"database\":").append(quote(c.database())).append(',');
         sb.append("\"username\":").append(quote(c.username())).append(',');
         sb.append("\"encryptedPassword\":").append(quote(c.encryptedPassword()));
+        if (c.type() != DbType.REDIS) {
+            ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(c);
+            sb.append(',').append("\"environment\":").append(quote(safety.environment().name()));
+            sb.append(',').append("\"readOnly\":").append(safety.readOnly());
+            sb.append(',').append("\"queryTimeoutSeconds\":").append(safety.queryTimeoutSeconds());
+        }
         sb.append('}');
         return sb.toString();
     }
 
     private static ConnConfig fromMap(Map<String, String> m) {
-        String type = m.getOrDefault("type", DbType.POSTGRESQL.name());
+        DbType dbType = DbType.valueOf(m.getOrDefault("type", DbType.POSTGRESQL.name()));
+        Map<String, String> props;
+        if (dbType == DbType.REDIS) {
+            props = Map.of();
+        } else {
+            warnInvalidSafetyValues(m);
+            props = Map.of(
+                    "environment", ConnectionEnvironment.parse(m.get("environment")).name(),
+                    "readOnly", Boolean.toString(Boolean.parseBoolean(m.getOrDefault("readOnly", "false"))),
+                    "queryTimeoutSeconds", Integer.toString(new ConnectionSafetyOptions(
+                            ConnectionEnvironment.parse(m.get("environment")),
+                            Boolean.parseBoolean(m.getOrDefault("readOnly", "false")),
+                            parseIntOrDefault(m.get("queryTimeoutSeconds"),
+                                    ConnectionSafetyOptions.DEFAULT_QUERY_TIMEOUT_SECONDS))
+                            .queryTimeoutSeconds()));
+        }
         return new ConnConfig(
                 require(m, "id"),
                 m.getOrDefault("name", ""),
-                DbType.valueOf(type),
+                dbType,
                 m.getOrDefault("host", ""),
                 parseInt(m.get("port")),
                 m.getOrDefault("database", ""),
                 m.getOrDefault("username", ""),
                 m.getOrDefault("encryptedPassword", ""),
-                Map.of());
+                props);
     }
 
     private static String require(Map<String, String> m, String key) {
@@ -232,6 +255,37 @@ public final class ConnectionStore {
             i = skipWhitespace(json, i + 1);
         }
         throw new IllegalArgumentException("连接配置数组未闭合");
+    }
+
+    private static int parseIntOrDefault(String value, int fallback) {
+        try {
+            int parsed = value == null ? fallback : Integer.parseInt(value.trim());
+            return parsed >= 0 && parsed <= ConnectionSafetyOptions.MAX_QUERY_TIMEOUT_SECONDS
+                    ? parsed : fallback;
+        } catch (NumberFormatException invalid) {
+            return fallback;
+        }
+    }
+
+    private static void warnInvalidSafetyValues(Map<String, String> values) {
+        String environment = values.get("environment");
+        if (environment != null && java.util.Arrays.stream(ConnectionEnvironment.values())
+                .noneMatch(candidate -> candidate.name().equalsIgnoreCase(environment.trim()))) {
+            LOG.warning("连接安全环境值无效，已回退到 DEVELOPMENT");
+        }
+        String readOnly = values.get("readOnly");
+        if (readOnly != null && !readOnly.equalsIgnoreCase("true")
+                && !readOnly.equalsIgnoreCase("false")) {
+            LOG.warning("连接只读值无效，已回退到 false");
+        }
+        String timeout = values.get("queryTimeoutSeconds");
+        if (timeout != null && parseIntOrDefault(
+                timeout, ConnectionSafetyOptions.DEFAULT_QUERY_TIMEOUT_SECONDS)
+                == ConnectionSafetyOptions.DEFAULT_QUERY_TIMEOUT_SECONDS
+                && !timeout.trim().equals(Integer.toString(
+                        ConnectionSafetyOptions.DEFAULT_QUERY_TIMEOUT_SECONDS))) {
+            LOG.warning("连接查询超时值无效，已回退到 60 秒");
+        }
     }
 
     private static int skipWhitespace(String text, int from) {

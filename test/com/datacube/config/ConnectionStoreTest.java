@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ConnectionStoreTest {
@@ -155,8 +156,39 @@ class ConnectionStoreTest {
         assertEquals("ok", loaded.getFirst().id());
     }
 
+    @Test
+    void persistsOnlyRelationalSafetyPropertiesAndKeepsRedisShape() throws Exception {
+        Path file = tempDir.resolve("connections.json");
+        ConnectionStore store = new ConnectionStore(file);
+        ConnConfig postgres = new ConnConfig("pg", "pg", DbType.POSTGRESQL, "localhost", 5432,
+                "db", "user", "encrypted", Map.of(
+                        "environment", "PRODUCTION",
+                        "readOnly", "true",
+                        "queryTimeoutSeconds", "15",
+                        "__plainPassword", "secret",
+                        "driverFlag", "not-persistent"));
+        ConnConfig redis = new ConnConfig("redis", "redis", DbType.REDIS, "localhost", 6379,
+                "0", "", "encrypted", Map.of("environment", "PRODUCTION"));
+
+        store.saveAll(List.of(postgres, redis));
+
+        String json = Files.readString(file);
+        List<ConnConfig> loaded = store.loadAll();
+        assertEquals(Map.of(
+                "environment", "PRODUCTION",
+                "readOnly", "true",
+                "queryTimeoutSeconds", "15"), loaded.get(0).props());
+        assertEquals(Map.of(), loaded.get(1).props());
+        assertFalse(json.contains("__plainPassword"));
+        assertFalse(json.contains("driverFlag"));
+    }
+
     private static ConnConfig config(String id, DbType type) {
-        return new ConnConfig(id, id, type, "localhost", type.defaultPort(), "0", "user", "encrypted", Map.of());
+        Map<String, String> props = type == DbType.REDIS ? Map.of() : Map.of(
+                "environment", "DEVELOPMENT",
+                "readOnly", "false",
+                "queryTimeoutSeconds", "60");
+        return new ConnConfig(id, id, type, "localhost", type.defaultPort(), "0", "user", "encrypted", props);
     }
 
     private static long temporaryFiles(Path file) throws IOException {

@@ -3,6 +3,8 @@ package com.datacube.fx;
 import com.datacube.config.CredentialCipher;
 import com.datacube.service.ConnectionManager;
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.ConnectionEnvironment;
+import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.DbType;
 
 import javafx.geometry.Insets;
@@ -53,9 +55,39 @@ public final class ConnectionDialog {
         TextField dbField = new TextField();
         TextField userField = new TextField();
         PasswordField passField = new PasswordField();
+        ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(existing);
+        ComboBox<ConnectionEnvironment> environmentBox = new ComboBox<>();
+        environmentBox.getItems().addAll(ConnectionEnvironment.values());
+        environmentBox.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(ConnectionEnvironment value) {
+                return value == null ? "" : value.label();
+            }
+
+            @Override public ConnectionEnvironment fromString(String value) {
+                return ConnectionEnvironment.parse(value);
+            }
+        });
+        environmentBox.setValue(safety.environment());
+        environmentBox.setMaxWidth(Double.MAX_VALUE);
+        CheckBox readOnlyCheck = new CheckBox("只读连接");
+        readOnlyCheck.setSelected(safety.readOnly());
+        TextField timeoutField = new TextField(Integer.toString(safety.queryTimeoutSeconds()));
         Label dbLabel = new Label("数据库:");
         Label userLabel = new Label("用户名:");
         Label passLabel = new Label("密码:");
+        Label environmentLabel = new Label("环境:");
+        Label readOnlyLabel = new Label("访问:");
+        Label timeoutLabel = new Label("查询超时(秒):");
+
+        var relational = typeBox.valueProperty().isNotEqualTo(DbType.REDIS);
+        for (Control control : new Control[]{environmentBox, readOnlyCheck, timeoutField}) {
+            control.visibleProperty().bind(relational);
+            control.managedProperty().bind(relational);
+        }
+        for (Label label : new Label[]{environmentLabel, readOnlyLabel, timeoutLabel}) {
+            label.visibleProperty().bind(relational);
+            label.managedProperty().bind(relational);
+        }
 
         // 类型切换：联动默认端口、“数据库/服务名”标签与提示、标题
         typeBox.valueProperty().addListener((obs, old, nv) -> {
@@ -106,6 +138,9 @@ public final class ConnectionDialog {
         grid.addRow(4, dbLabel, dbField);
         grid.addRow(5, userLabel, userField);
         grid.addRow(6, passLabel, passField);
+        grid.addRow(7, environmentLabel, environmentBox);
+        grid.addRow(8, readOnlyLabel, readOnlyCheck);
+        grid.addRow(9, timeoutLabel, timeoutField);
         dialog.getDialogPane().setContent(grid);
 
         // 测试连接：拦截 OTHER 按钮，不关闭对话框
@@ -113,7 +148,7 @@ public final class ConnectionDialog {
         testBtn.addEventFilter(javafx.event.ActionEvent.ACTION, evt -> {
             evt.consume();
             ConnConfig probe = build(existing, cipher, typeBox.getValue(), nameField, hostField, portField,
-                    dbField, userField, passField);
+                    dbField, userField, passField, environmentBox, readOnlyCheck, timeoutField);
             if (probe == null) return;
             String err = connMgr.test(probe);
             Alert alert = new Alert(err == null ? Alert.AlertType.INFORMATION : Alert.AlertType.ERROR,
@@ -125,7 +160,7 @@ public final class ConnectionDialog {
         dialog.setResultConverter(bt -> {
             if (bt == saveType) {
                 return build(existing, cipher, typeBox.getValue(), nameField, hostField, portField,
-                        dbField, userField, passField);
+                        dbField, userField, passField, environmentBox, readOnlyCheck, timeoutField);
             }
             return null;
         });
@@ -133,9 +168,19 @@ public final class ConnectionDialog {
         return dialog.showAndWait();
     }
 
-    private static ConnConfig build(ConnConfig existing, CredentialCipher cipher, DbType type,
-                                    TextField nameField, TextField hostField, TextField portField,
-                                    TextField dbField, TextField userField, PasswordField passField) {
+    private static ConnConfig build(
+            ConnConfig existing,
+            CredentialCipher cipher,
+            DbType type,
+            TextField nameField,
+            TextField hostField,
+            TextField portField,
+            TextField dbField,
+            TextField userField,
+            PasswordField passField,
+            ComboBox<ConnectionEnvironment> environmentBox,
+            CheckBox readOnlyCheck,
+            TextField timeoutField) {
         String name = nameField.getText().trim();
         String host = hostField.getText().trim();
         String db = dbField.getText().trim();
@@ -163,6 +208,20 @@ public final class ConnectionDialog {
             return null;
         }
 
+        int timeoutSeconds = ConnectionSafetyOptions.DEFAULT_QUERY_TIMEOUT_SECONDS;
+        if (type != DbType.REDIS) {
+            try {
+                timeoutSeconds = Integer.parseInt(timeoutField.getText().trim());
+                if (timeoutSeconds < 0
+                        || timeoutSeconds > ConnectionSafetyOptions.MAX_QUERY_TIMEOUT_SECONDS) {
+                    throw new NumberFormatException();
+                }
+            } catch (NumberFormatException e) {
+                warn("查询超时必须是 0-3600 的整数秒");
+                return null;
+            }
+        }
+
         String enc;
         String plain = passField.getText();
         if (existing != null && plain.isEmpty()) {
@@ -172,7 +231,11 @@ public final class ConnectionDialog {
         }
 
         String id = existing != null ? existing.id() : UUID.randomUUID().toString();
-        return new ConnConfig(id, name, type, host, port, db, user, enc, Map.of());
+        Map<String, String> props = type == DbType.REDIS ? Map.of() : new ConnectionSafetyOptions(
+                environmentBox.getValue(),
+                readOnlyCheck.isSelected(),
+                timeoutSeconds).toPersistentProps();
+        return new ConnConfig(id, name, type, host, port, db, user, enc, props);
     }
 
     private static void warn(String msg) {
