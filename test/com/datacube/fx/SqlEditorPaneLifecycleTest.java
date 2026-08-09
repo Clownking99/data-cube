@@ -36,7 +36,7 @@ class SqlEditorPaneLifecycleTest {
         assertNotNull(SqlEditorPane.class.getDeclaredMethod("closeResources"));
         assertNotNull(SqlEditorPane.class.getDeclaredMethod("finalizeCloseOnFx"));
         assertEquals(CompletionStage.class,
-                SqlEditorPane.class.getDeclaredMethod("requestClose").getReturnType());
+                SqlEditorPane.class.getMethod("requestClose").getReturnType());
     }
 
     @Test
@@ -53,7 +53,7 @@ class SqlEditorPaneLifecycleTest {
     void backgroundCloseUsesBestEffortSequenceAndRetryableGuardCache() throws Exception {
         String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
 
-        assertTrue(source.contains("AsyncTabCloseGuards.blockingAttempt"));
+        assertTrue(source.contains("AsyncTabCloseGuards.retryable"));
         assertTrue(source.contains("BestEffortCloseSequence.run"));
         assertTrue(source.contains("metadataTasks::close"));
         assertTrue(source.contains("tasks::close"));

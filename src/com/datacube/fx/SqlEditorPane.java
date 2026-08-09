@@ -11,14 +11,19 @@ import com.datacube.fx.task.FxSerialTaskQueue;
 import com.datacube.fx.task.FxTaskRunner;
 import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.ConnectionManager;
+import com.datacube.service.JdbcEditorSession;
 import com.datacube.service.ObjectTreeService;
 import com.datacube.sqleditor.InsertSqlGenerator;
 import com.datacube.sqleditor.SqlFormatter;
+import com.datacube.sqleditor.SqlSafetyAnalyzer;
+import com.datacube.sqleditor.SqlSafetyPolicy;
 import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.spi.SqlRunner;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.model.ColumnInfo;
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.ConnectionEnvironment;
+import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.model.QueryResult;
 import com.datacube.spi.model.SchemaInfo;
@@ -55,7 +60,6 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 
-import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -66,7 +70,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.LockSupport;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -102,11 +108,10 @@ public final class SqlEditorPane implements AutoCloseable {
     private final AppSettings settings;
     /** Ctrl+点击表名时打开表设计器（connId, 表引用）；由 AppShell 注入。 */
     private final java.util.function.BiConsumer<String, TableRef> openDesigner;
-    /**
-     * 本编辑页绑定的连接（打开时确定）。不为 null 时，执行/补全/跳转均使用它，
-     * 与全局“活动连接”解耦，避免切到其它连接后旧页去错连接执行；为 null 时回退到全局活动连接。
-     */
-    private final ConnConfig boundConn;
+    /** Once selected, an editor connection is pinned for the lifetime of this tab. */
+    private volatile ConnConfig editorConnection;
+    /** One caller-owned JDBC session; its physical connection remains lazy. */
+    private volatile JdbcEditorSession jdbcSession;
 
     /** 近期 SQL 历史存储（可空）：执行/执行计划时记录，关闭标签时快照，供“找回”。 */
     private final SqlHistoryStore history;
@@ -138,6 +143,15 @@ public final class SqlEditorPane implements AutoCloseable {
     private MenuButton exportResultBtn;
     private Button copyInsertBtn;
     private CheckBox analyzeCheck;
+    private ComboBox<JdbcEditorSession.TransactionMode> transactionModeBox;
+    private Button commitBtn;
+    private Button rollbackBtn;
+    private Button cancelBtn;
+    private Label environmentBadge;
+    private Label readOnlyBadge;
+    private Label connectionBadge;
+    private Label transactionStatus;
+    private boolean updatingTransactionMode;
 
     private volatile boolean running = false;
     private final AtomicBoolean resourcesClosed = new AtomicBoolean();
@@ -157,7 +171,7 @@ public final class SqlEditorPane implements AutoCloseable {
         this.treeSvc = treeSvc;
         this.settings = settings;
         this.openDesigner = openDesigner;
-        this.boundConn = boundConn;
+        this.editorConnection = boundConn;
         this.history = history;
         this.shortcuts = shortcuts;
         ConstructionOwner construction = new ConstructionOwner();
@@ -166,15 +180,20 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(tasks::close);
             this.metadataTasks = new FxSerialTaskQueue(runner);
             construction.own(metadataTasks::close);
-            this.closeGuard = AsyncTabCloseGuards.blockingAttempt(() -> {
-                CloseSnapshot snapshot = captureCloseSnapshot();
-                return () -> closeInBackground(snapshot);
-            });
+            if (editorConnection != null) {
+                JdbcEditorSession jdbcSession = connections.openEditorSession(editorConnection.id());
+                construction.ownBlocking(jdbcSession::close);
+                this.jdbcSession = jdbcSession;
+            }
+            this.closeGuard = AsyncTabCloseGuards.retryable(this::startCloseAttempt);
             this.commentModeListener = (obs, oldMode, newMode) -> {
                 if (lastQueryResult != null) showQueryResult(lastQueryResult);
             };
             this.activeConnectionListener = (obs, oldConnection, connection) -> {
-                if (connection != null) prewarm(connection);
+                if (editorConnection == null) {
+                    if (connection != null && connection.type() != DbType.REDIS) prewarm(connection);
+                    renderDisconnectedCandidate(connection);
+                }
             };
             construction.own(() -> settings.commentModeProperty().removeListener(commentModeListener));
             construction.own(() -> session.activeConnectionProperty().removeListener(activeConnectionListener));
@@ -183,6 +202,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 schemaField.setText(initialSchema.trim());
             }
             settings.commentModeProperty().addListener(commentModeListener);
+            renderInitialSessionState();
             construction.commit();
         } catch (Throwable failure) {
             throw construction.close(failure).failure();
@@ -196,22 +216,33 @@ public final class SqlEditorPane implements AutoCloseable {
         applyHighlighting(sql);
     }
 
-    /** 记录一条 SQL 到历史（连接名/schema 取当前上下文）；history 为空则忽略。 */
-    private void recordHistory(String sql) {
-        if (history == null) return;
-        ConnConfig c = currentConn();
-        history.record(c == null ? null : c.name(), schemaField.getText().trim(), sql);
+    /** Captures history data on FX; persistence itself always runs on a virtual thread. */
+    private HistorySnapshot captureHistory(String sql, ConnConfig connection, String schema) {
+        return new HistorySnapshot(connection == null ? null : connection.name(), schema, sql);
+    }
+
+    private void recordHistory(HistorySnapshot snapshot) {
+        if (history == null || snapshot == null || snapshot.sql() == null) return;
+        history.record(snapshot.connectionName(), snapshot.schema(), snapshot.sql());
     }
 
     /** 将当前编辑区内容快照到历史（供关闭标签时调用，留存未执行的草稿）。 */
     public void snapshotToHistory() {
         if (history == null || editorArea == null) return;
-        recordHistory(editorArea.getText());
+        HistorySnapshot snapshot = captureHistory(
+                editorArea.getText(), currentConn(), schemaField.getText().trim());
+        tasks.submit(() -> {
+            recordHistory(snapshot);
+            return null;
+        }, ignored -> {}, failure -> failure.printStackTrace(System.err));
     }
 
-    /** 本编辑页当前应执行的连接：优先用绑定连接，否则回退到全局活动连接。 */
+    /** Uses the pinned editor connection, otherwise the current relational candidate. */
     private ConnConfig currentConn() {
-        return boundConn != null ? boundConn : session.getActiveConnection();
+        ConnConfig pinned = editorConnection;
+        if (pinned != null) return pinned;
+        ConnConfig candidate = session.getActiveConnection();
+        return candidate == null || candidate.type() == DbType.REDIS ? null : candidate;
     }
 
     public Node getNode() {
@@ -249,7 +280,12 @@ public final class SqlEditorPane implements AutoCloseable {
     /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
     void closeResources() {
         if (resourcesClosed.get()) return;
-        BestEffortCloseSequence.run(metadataTasks::close, tasks::close);
+        JdbcEditorSession editorSession = jdbcSession;
+        BestEffortCloseSequence.run(
+                metadataTasks::close,
+                tasks::close,
+                () -> { if (editorSession != null) editorSession.cancel(); },
+                () -> { if (editorSession != null) editorSession.close(); });
         resourcesClosed.set(true);
     }
 
@@ -257,36 +293,126 @@ public final class SqlEditorPane implements AutoCloseable {
     void finalizeCloseOnFx() {
         if (!uiFinalized.compareAndSet(false, true)) return;
         settings.commentModeProperty().removeListener(commentModeListener);
-        if (boundConn == null) {
-            session.activeConnectionProperty().removeListener(activeConnectionListener);
-        }
+        session.activeConnectionProperty().removeListener(activeConnectionListener);
         if (autoComplete != null) autoComplete.hide();
     }
 
-    private CloseSnapshot captureCloseSnapshot() {
+    private ClosePlan captureClosePlan() {
         ConnConfig connection = currentConn();
-        return new CloseSnapshot(
+        JdbcEditorSession editorSession = jdbcSession;
+        JdbcEditorSession.Snapshot sessionSnapshot =
+                editorSession == null ? null : editorSession.snapshot();
+        CloseDecision decision;
+        if (sessionSnapshot != null && (sessionSnapshot.running() || sessionSnapshot.cancelling())) {
+            decision = requestCancelRollbackClose();
+        } else if (sessionSnapshot != null && sessionSnapshot.hasPendingTransaction()) {
+            decision = requestTransactionClose();
+        } else {
+            decision = CloseDecision.CLOSE;
+        }
+        return new ClosePlan(
                 connection == null ? null : connection.name(),
                 schemaField == null ? null : schemaField.getText().trim(),
-                editorArea == null ? null : editorArea.getText());
+                editorArea == null ? null : editorArea.getText(),
+                editorSession,
+                decision);
     }
 
-    private void persistCloseSnapshot(CloseSnapshot snapshot) {
-        if (history == null || snapshot.sql() == null) return;
-        history.record(snapshot.connectionName(), snapshot.schema(), snapshot.sql());
+    private CompletionStage<CloseGuardOutcome> startCloseAttempt() {
+        ClosePlan plan = captureClosePlan();
+        if (plan.decision() == CloseDecision.CANCEL_CLOSE) {
+            return CompletableFuture.completedFuture(CloseGuardOutcome.REJECTED);
+        }
+        CompletableFuture<CloseGuardOutcome> result = new CompletableFuture<>();
+        try {
+            Thread.startVirtualThread(() -> {
+                try {
+                    closeInBackground(plan);
+                    result.complete(CloseGuardOutcome.APPROVED);
+                } catch (Throwable partialFailure) {
+                    partialFailure.printStackTrace(System.err);
+                    result.complete(CloseGuardOutcome.FAILED_PARTIAL);
+                }
+            });
+        } catch (Throwable startupFailure) {
+            result.completeExceptionally(startupFailure);
+        }
+        return result;
     }
 
-    /** Virtual-thread-only close chain; every step is attempted before a terminal outcome is chosen. */
-    private void closeInBackground(CloseSnapshot snapshot) {
+    private CloseDecision requestCancelRollbackClose() {
+        ButtonType close = new ButtonType("取消执行、回滚并关闭", ButtonBar.ButtonData.OK_DONE);
+        ButtonType reject = new ButtonType("取消关闭", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                "SQL 仍在执行。关闭将取消执行，并回滚未提交事务。", close, reject);
+        alert.setTitle("关闭 SQL 编辑器");
+        alert.setHeaderText(null);
+        return alert.showAndWait().orElse(reject) == close
+                ? CloseDecision.CANCEL_ROLLBACK : CloseDecision.CANCEL_CLOSE;
+    }
+
+    private CloseDecision requestTransactionClose() {
+        ButtonType commit = new ButtonType("提交并关闭", ButtonBar.ButtonData.YES);
+        ButtonType rollback = new ButtonType("回滚并关闭", ButtonBar.ButtonData.NO);
+        ButtonType reject = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                "当前编辑器有未提交事务，请选择关闭方式。", commit, rollback, reject);
+        alert.setTitle("未提交事务");
+        alert.setHeaderText(null);
+        ButtonType chosen = alert.showAndWait().orElse(reject);
+        if (chosen == commit) return CloseDecision.COMMIT;
+        if (chosen == rollback) return CloseDecision.ROLLBACK;
+        return CloseDecision.CANCEL_CLOSE;
+    }
+
+    private void persistCloseSnapshot(ClosePlan snapshot) {
+        recordHistory(new HistorySnapshot(
+                snapshot.connectionName(), snapshot.schema(), snapshot.sql()));
+    }
+
+    private static void awaitExecutionTerminal(JdbcEditorSession editorSession) {
+        while (editorSession.snapshot().running()) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new IllegalStateException("等待 SQL 执行结束时被中断");
+            }
+            LockSupport.parkNanos(java.time.Duration.ofMillis(10).toNanos());
+        }
+    }
+
+    /** Virtual-thread-only close chain; every required step is attempted. */
+    private void closeInBackground(ClosePlan snapshot) {
         if (resourcesClosed.get()) {
             persistCloseSnapshot(snapshot);
             return;
         }
+        JdbcEditorSession editorSession = snapshot.editorSession();
         BestEffortCloseSequence.run(
+                () -> { if (editorSession != null) editorSession.cancel(); },
+                () -> { if (editorSession != null) awaitExecutionTerminal(editorSession); },
+                () -> resolveCloseTransaction(editorSession, snapshot.decision()),
+                () -> persistCloseSnapshot(snapshot),
                 metadataTasks::close,
                 tasks::close,
-                () -> persistCloseSnapshot(snapshot));
+                () -> { if (editorSession != null) editorSession.close(); });
         resourcesClosed.set(true);
+    }
+
+    private static void resolveCloseTransaction(
+            JdbcEditorSession editorSession, CloseDecision decision) {
+        if (editorSession == null) return;
+        try {
+            if (decision == CloseDecision.COMMIT) editorSession.commit();
+            else if (decision == CloseDecision.ROLLBACK) editorSession.rollback();
+            else if (decision == CloseDecision.CANCEL_ROLLBACK) {
+                JdbcEditorSession.Snapshot snapshot = editorSession.snapshot();
+                if (snapshot.transactionMode() == JdbcEditorSession.TransactionMode.MANUAL
+                        && snapshot.hasPendingTransaction()) {
+                    editorSession.rollback();
+                }
+            }
+        } catch (Exception failure) {
+            throw new RuntimeException(failure);
+        }
     }
 
     private void build() {
@@ -302,8 +428,8 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private Node toolbar() {
-        HBox box = new HBox(8);
-        box.setAlignment(Pos.CENTER_LEFT);
+        HBox primary = new HBox(8);
+        primary.setAlignment(Pos.CENTER_LEFT);
 
         schemaField = new TextField();
         schemaField.setPromptText("schema（可选）");
@@ -346,15 +472,118 @@ public final class SqlEditorPane implements AutoCloseable {
         copyInsertBtn.setDisable(true);
         copyInsertBtn.setOnAction(e -> onCopyInsert());
 
-        box.getChildren().addAll(new Label("Schema:"), schemaField, executeBtn, explainBtn, analyzeCheck, formatBtn, exportResultBtn, copyInsertBtn, clearBtn);
-        if (boundConn != null) {
-            Region spacer = new Region();
-            HBox.setHgrow(spacer, Priority.ALWAYS);
-            Label connLabel = new Label("🔗 " + boundConn.name());
-            connLabel.setStyle("-fx-text-fill: -brand-fg-muted;");
-            box.getChildren().addAll(spacer, connLabel);
+        primary.getChildren().addAll(new Label("Schema:"), schemaField, executeBtn, explainBtn,
+                analyzeCheck, formatBtn, exportResultBtn, copyInsertBtn, clearBtn);
+
+        environmentBadge = new Label();
+        readOnlyBadge = new Label();
+        connectionBadge = new Label();
+        transactionModeBox = new ComboBox<>(FXCollections.observableArrayList(
+                JdbcEditorSession.TransactionMode.values()));
+        transactionModeBox.setPrefWidth(125);
+        transactionModeBox.setOnAction(e -> onTransactionModeChanged());
+        commitBtn = new Button("提交");
+        commitBtn.setOnAction(e -> submitTransactionAction(true));
+        rollbackBtn = new Button("回滚");
+        rollbackBtn.setOnAction(e -> submitTransactionAction(false));
+        cancelBtn = new Button("取消执行");
+        cancelBtn.setOnAction(e -> onCancelExecution());
+        transactionStatus = new Label();
+        transactionStatus.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
+
+        HBox safety = new HBox(8,
+                connectionBadge, environmentBadge, readOnlyBadge,
+                new Label("事务:"), transactionModeBox,
+                commitBtn, rollbackBtn, cancelBtn, transactionStatus);
+        safety.setAlignment(Pos.CENTER_LEFT);
+        safety.setPadding(new Insets(2, 0, 0, 0));
+        return new VBox(4, primary, safety);
+    }
+
+    private void renderInitialSessionState() {
+        JdbcEditorSession editorSession = jdbcSession;
+        if (editorSession != null) renderSessionSnapshot(editorSession.snapshot());
+        else renderDisconnectedCandidate(currentConn());
+    }
+
+    private void renderDisconnectedCandidate(ConnConfig candidate) {
+        if (connectionBadge == null) return;
+        if (candidate == null || candidate.type() == DbType.REDIS) {
+            connectionBadge.setText("🔌 未绑定连接");
+            environmentBadge.setText("开发");
+            environmentBadge.setStyle("-fx-text-fill: -brand-fg-muted;");
+            readOnlyBadge.setText("");
+        } else {
+            ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(candidate);
+            connectionBadge.setText("🔗 待绑定: " + candidate.name());
+            renderSafetyBadges(safety);
         }
-        return box;
+        updatingTransactionMode = true;
+        transactionModeBox.setValue(JdbcEditorSession.TransactionMode.AUTO_COMMIT);
+        updatingTransactionMode = false;
+        transactionModeBox.setDisable(candidate == null || candidate.type() == DbType.REDIS);
+        commitBtn.setDisable(true);
+        rollbackBtn.setDisable(true);
+        cancelBtn.setDisable(true);
+        transactionStatus.setText("尚未创建专用会话");
+    }
+
+    private void renderSafetyBadges(ConnectionSafetyOptions safety) {
+        environmentBadge.setText("环境: " + safety.environment().label());
+        String style = switch (safety.environment()) {
+            case PRODUCTION -> "-fx-text-fill: #d32f2f; -fx-font-weight: bold;";
+            case TEST -> "-fx-text-fill: #d58a00; -fx-font-weight: bold;";
+            case DEVELOPMENT -> "-fx-text-fill: -brand-fg-muted;";
+        };
+        environmentBadge.setStyle(style);
+        readOnlyBadge.setText(safety.readOnly() ? "只读" : "可写");
+        readOnlyBadge.setStyle(safety.readOnly()
+                ? "-fx-text-fill: #1976d2; -fx-font-weight: bold;"
+                : "-fx-text-fill: -brand-fg-muted;");
+    }
+
+    private void renderSessionSnapshot(JdbcEditorSession.Snapshot snapshot) {
+        if (snapshot == null || connectionBadge == null) return;
+        ConnConfig connection = editorConnection;
+        String connectionName = connection == null ? snapshot.connectionId() : connection.name();
+        connectionBadge.setText("🔗 " + connectionName + " · " + connectionStateText(snapshot));
+        renderSafetyBadges(snapshot.safety());
+        updatingTransactionMode = true;
+        transactionModeBox.setValue(snapshot.transactionMode());
+        updatingTransactionMode = false;
+        boolean busy = snapshot.running() || snapshot.cancelling();
+        transactionModeBox.setDisable(busy || snapshot.connectionState()
+                == JdbcEditorSession.ConnectionState.CLOSED);
+        boolean pendingManual = snapshot.transactionMode() == JdbcEditorSession.TransactionMode.MANUAL
+                && snapshot.hasPendingTransaction();
+        commitBtn.setDisable(busy || !pendingManual);
+        rollbackBtn.setDisable(busy || !pendingManual);
+        cancelBtn.setDisable(!snapshot.running() || snapshot.cancelling());
+        String timeout = snapshot.safety().queryTimeoutSeconds() == 0
+                ? "无超时限制" : snapshot.safety().queryTimeoutSeconds() + " 秒超时";
+        if (!snapshot.timeoutSupported()) timeout += "（驱动不支持）";
+        transactionStatus.setText(transactionStateText(snapshot) + " · " + timeout);
+        setButtonsRunning(busy);
+    }
+
+    private static String connectionStateText(JdbcEditorSession.Snapshot snapshot) {
+        return switch (snapshot.connectionState()) {
+            case DISCONNECTED -> "未连接";
+            case CONNECTED -> "已连接";
+            case BROKEN -> "连接异常";
+            case CLOSED -> "已关闭";
+        };
+    }
+
+    private static String transactionStateText(JdbcEditorSession.Snapshot snapshot) {
+        if (snapshot.transactionMode() == JdbcEditorSession.TransactionMode.AUTO_COMMIT) {
+            return "自动提交";
+        }
+        return switch (snapshot.transactionState()) {
+            case IDLE -> "手动事务 · 空闲";
+            case ACTIVE -> "手动事务 · 待提交";
+            case ERROR_PENDING -> "手动事务 · 错误待处理";
+        };
     }
 
     private Node editor() {
@@ -488,42 +717,104 @@ public final class SqlEditorPane implements AutoCloseable {
             showAlert("请先在左侧选择一个活动连接");
             return;
         }
-        final String connId = active.id();
+        if (!allowBySafetyPolicy(sql, active)) return;
         final String schema = schemaField.getText().trim();
-        recordHistory(sql);
+        final boolean oracle = active.type() == DbType.ORACLE;
+        HistorySnapshot historySnapshot = captureHistory(sql, active, schema);
 
         running = true;
         setButtonsRunning(true);
         statusLabel.setText("执行中...");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
-        tasks.submit(() -> doExecute(connId, sql, schema, settings.getMaxResultRows()), result -> {
+        tasks.submit(() -> {
+            recordHistory(historySnapshot);
+            JdbcEditorSession editorSession = ensureEditorSession(active);
+            return editorSession.executeScript(
+                    sql,
+                    schema.isEmpty() ? null : schema,
+                    settings.getMaxResultRows(),
+                    this::askScriptError,
+                    oracle);
+        }, batch -> {
             running = false;
-            setButtonsRunning(false);
-            if (result.error() != null) {
-                showError(result.error(), result.elapsedMillis());
-            } else {
-                showScriptResults(result.outcomes(), result.elapsedMillis());
-            }
+            JdbcEditorSession editorSession = jdbcSession;
+            if (editorSession != null) renderSessionSnapshot(editorSession.snapshot());
+            else setButtonsRunning(false);
+            showScriptResults(batch.outcomes(), batch.elapsedMillis());
         }, failure -> {
             running = false;
-            setButtonsRunning(false);
+            JdbcEditorSession editorSession = jdbcSession;
+            if (editorSession != null) renderSessionSnapshot(editorSession.snapshot());
+            else setButtonsRunning(false);
             showError(message(failure), 0);
         });
     }
 
-    private ExecutionResult doExecute(String connId, String sql, String schema, int maxRows) {
-        long t0 = System.currentTimeMillis();
-        try {
-            Connection conn = connections.acquire(connId);
-            SqlRunner runner = connections.provider(connId).sqlRunner();
-            List<ScriptOutcome> outcomes = runner.executeScript(conn, sql,
-                    schema.isEmpty() ? null : schema, maxRows,
-                    this::askScriptError);
-            return new ExecutionResult(outcomes, null, System.currentTimeMillis() - t0);
-        } catch (Exception e) {
-            return new ExecutionResult(null, message(e), System.currentTimeMillis() - t0);
+    private synchronized JdbcEditorSession ensureEditorSession(ConnConfig active) {
+        JdbcEditorSession existing = jdbcSession;
+        if (existing != null) return existing;
+        if (editorConnection == null) {
+            if (active == null || active.type() == DbType.REDIS) {
+                throw new IllegalStateException("SQL 编辑器需要关系型数据库连接");
+            }
+            editorConnection = active;
         }
+        ConstructionOwner construction = new ConstructionOwner();
+        try {
+            JdbcEditorSession jdbcSession = connections.openEditorSession(editorConnection.id());
+            construction.ownBlocking(jdbcSession::close);
+            this.jdbcSession = jdbcSession;
+            construction.commit();
+            return jdbcSession;
+        } catch (Throwable failure) {
+            throw construction.close(failure).failure();
+        }
+    }
+
+    private boolean allowBySafetyPolicy(String sql, ConnConfig active) {
+        boolean oracle = active.type() == DbType.ORACLE;
+        SqlSafetyAnalyzer.ScriptAnalysis analysis = SqlSafetyAnalyzer.analyze(sql, oracle);
+        ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(active);
+        SqlSafetyPolicy.Decision decision = SqlSafetyPolicy.decide(analysis, safety);
+        if (decision.blocked()) {
+            showAlert(decision.message());
+            return false;
+        }
+        return !decision.confirmationRequired() || confirmSafety(decision, active);
+    }
+
+    private boolean confirmSafety(SqlSafetyPolicy.Decision decision, ConnConfig active) {
+        ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(active);
+        StringBuilder details = new StringBuilder()
+                .append("环境: ").append(safety.environment().label()).append('\n')
+                .append("连接: ").append(active.name()).append('\n')
+                .append("风险语句:\n");
+        for (SqlSafetyAnalyzer.StatementAnalysis statement : decision.relevantStatements()) {
+            details.append("  #").append(statement.index())
+                    .append("  ").append(riskSummary(statement.risks()))
+                    .append("\n  ").append(truncate(statement.sql().replaceAll("\\s+", " "), 180))
+                    .append('\n');
+        }
+        ButtonType confirm = new ButtonType(
+                safety.environment() == ConnectionEnvironment.PRODUCTION
+                        ? "确认在生产环境执行" : "确认执行",
+                ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION, details.toString(), confirm, cancel);
+        alert.setTitle("SQL 安全确认");
+        alert.setHeaderText(decision.message());
+        return alert.showAndWait().orElse(cancel) == confirm;
+    }
+
+    private static String riskSummary(Set<SqlSafetyAnalyzer.Risk> risks) {
+        if (risks.isEmpty()) return "生产环境写入确认";
+        List<String> labels = new ArrayList<>();
+        if (risks.contains(SqlSafetyAnalyzer.Risk.MISSING_WHERE)) labels.add("缺少 WHERE");
+        if (risks.contains(SqlSafetyAnalyzer.Risk.DESTRUCTIVE_DDL)) labels.add("破坏性 DDL");
+        if (risks.contains(SqlSafetyAnalyzer.Risk.UNKNOWN_STATEMENT)) labels.add("未知语句");
+        if (risks.contains(SqlSafetyAnalyzer.Risk.SESSION_STATE_CONFLICT)) labels.add("会话状态冲突");
+        return String.join("、", labels);
     }
 
     /**
@@ -562,6 +853,103 @@ public final class SqlEditorPane implements AutoCloseable {
             return ScriptErrorPolicy.Decision.ABORT;
         }
         return ref.get();
+    }
+
+    private void onTransactionModeChanged() {
+        if (updatingTransactionMode) return;
+        JdbcEditorSession.TransactionMode selected = transactionModeBox.getValue();
+        if (selected == null) return;
+        ConnConfig active = currentConn();
+        if (active == null) {
+            showAlert("请先在左侧选择一个活动连接");
+            renderDisconnectedCandidate(null);
+            return;
+        }
+        JdbcEditorSession editorSession = jdbcSession;
+        JdbcEditorSession.Snapshot snapshot = editorSession == null ? null : editorSession.snapshot();
+        TransactionModeDecision pendingDecision = TransactionModeDecision.NONE;
+        if (snapshot != null
+                && snapshot.transactionMode() == JdbcEditorSession.TransactionMode.MANUAL
+                && selected == JdbcEditorSession.TransactionMode.AUTO_COMMIT
+                && snapshot.hasPendingTransaction()) {
+            pendingDecision = requestPendingModeChange();
+            if (pendingDecision == TransactionModeDecision.CANCEL) {
+                renderSessionSnapshot(snapshot);
+                return;
+            }
+        }
+        TransactionModeDecision decision = pendingDecision;
+        transactionModeBox.setDisable(true);
+        tasks.submit(() -> {
+            JdbcEditorSession session = ensureEditorSession(active);
+            if (decision == TransactionModeDecision.COMMIT) session.commit();
+            else if (decision == TransactionModeDecision.ROLLBACK) session.rollback();
+            session.setTransactionMode(selected);
+            return session.snapshot();
+        }, this::renderSessionSnapshot, failure -> {
+            JdbcEditorSession session = jdbcSession;
+            if (session != null) renderSessionSnapshot(session.snapshot());
+            showError(message(failure), 0);
+        });
+    }
+
+    private TransactionModeDecision requestPendingModeChange() {
+        ButtonType commit = new ButtonType("提交", ButtonBar.ButtonData.YES);
+        ButtonType rollback = new ButtonType("回滚", ButtonBar.ButtonData.NO);
+        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                "切换为自动提交前，必须先处理当前未提交事务。", commit, rollback, cancel);
+        alert.setTitle("处理未提交事务");
+        alert.setHeaderText(null);
+        ButtonType selected = alert.showAndWait().orElse(cancel);
+        if (selected == commit) return TransactionModeDecision.COMMIT;
+        if (selected == rollback) return TransactionModeDecision.ROLLBACK;
+        return TransactionModeDecision.CANCEL;
+    }
+
+    private void submitTransactionAction(boolean commit) {
+        JdbcEditorSession editorSession = jdbcSession;
+        if (editorSession == null) return;
+        setTransactionControlsDisabled(true);
+        tasks.submit(() -> {
+            if (commit) editorSession.commit();
+            else editorSession.rollback();
+            return editorSession.snapshot();
+        }, this::renderSessionSnapshot, failure -> {
+            renderSessionSnapshot(editorSession.snapshot());
+            showError(message(failure), 0);
+        });
+    }
+
+    private void onCancelExecution() {
+        JdbcEditorSession editorSession = jdbcSession;
+        if (editorSession == null) return;
+        cancelBtn.setDisable(true);
+        transactionStatus.setText("正在取消...");
+        tasks.submit(editorSession::cancel,
+                outcome -> renderCancelled(outcome, editorSession.snapshot()),
+                failure -> {
+                    renderSessionSnapshot(editorSession.snapshot());
+                    showError(message(failure), 0);
+                });
+    }
+
+    private void renderCancelled(
+            JdbcEditorSession.CancelOutcome outcome, JdbcEditorSession.Snapshot snapshot) {
+        renderSessionSnapshot(snapshot);
+        if (outcome == JdbcEditorSession.CancelOutcome.NOTHING_RUNNING) {
+            statusLabel.setText("没有正在执行的 SQL");
+        } else {
+            statusLabel.setText("已请求取消");
+            statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
+        }
+    }
+
+    private void setTransactionControlsDisabled(boolean disabled) {
+        transactionModeBox.setDisable(disabled);
+        commitBtn.setDisable(disabled);
+        rollbackBtn.setDisable(disabled);
+        cancelBtn.setDisable(disabled);
     }
 
     // ---------- Ctrl+点击跳转表设计器 ----------
@@ -660,7 +1048,7 @@ public final class SqlEditorPane implements AutoCloseable {
             showAlert("请先在左侧选择一个活动连接");
             return;
         }
-        List<String> stmts = SqlScriptSplitter.split(text);
+        List<String> stmts = SqlScriptSplitter.split(text, active.type() == DbType.ORACLE);
         if (stmts.isEmpty()) {
             showAlert("请输入 SQL");
             return;
@@ -668,31 +1056,27 @@ public final class SqlEditorPane implements AutoCloseable {
         final String sql = stmts.get(0);
         final int total = stmts.size();
         final boolean analyze = analyzeCheck.isSelected();
-        // 写类语句勾 ANALYZE 会实际执行，二次确认
-        if (analyze && isWriteStatement(sql)) {
-            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                    "EXPLAIN ANALYZE 会实际执行该语句（可能产生写入）。确定继续？",
-                    ButtonType.OK, ButtonType.CANCEL);
-            confirm.setHeaderText(null);
-            if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
-        }
-        final String connId = active.id();
+        // ANALYZE is executable; ordinary EXPLAIN is still classified through the shared analyzer.
+        if (!allowBySafetyPolicy(sql, active)) return;
         final String schema = schemaField.getText().trim();
-        recordHistory(text);
+        HistorySnapshot historySnapshot = captureHistory(text, active, schema);
 
         running = true;
         setButtonsRunning(true);
         statusLabel.setText(analyze ? "执行计划(ANALYZE)中..." : "生成执行计划中...");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
-        tasks.submit(() -> doExplain(connId, sql, schema, analyze), outcome -> {
+        tasks.submit(() -> {
+            recordHistory(historySnapshot);
+            JdbcEditorSession editorSession = ensureEditorSession(active);
+            return editorSession.explain(sql, schema.isEmpty() ? null : schema, analyze);
+        }, result -> {
             running = false;
-            setButtonsRunning(false);
-            QueryResult result = outcome.result();
-            if (outcome.error() != null) {
-                showError(outcome.error(), 0);
-            } else if (result.kind == QueryResult.Kind.ERROR) {
-                showError(result.errorMessage, result.elapsedMillis);
+            JdbcEditorSession editorSession = jdbcSession;
+            if (editorSession != null) renderSessionSnapshot(editorSession.snapshot());
+            else setButtonsRunning(false);
+            if (result.kind == QueryResult.Kind.ERROR) {
+                showFailure(result);
             } else if (result.kind == QueryResult.Kind.QUERY) {
                 StringBuilder plan = new StringBuilder();
                 for (List<Object> row : result.rows) {
@@ -705,21 +1089,11 @@ public final class SqlEditorPane implements AutoCloseable {
             }
         }, failure -> {
             running = false;
-            setButtonsRunning(false);
+            JdbcEditorSession editorSession = jdbcSession;
+            if (editorSession != null) renderSessionSnapshot(editorSession.snapshot());
+            else setButtonsRunning(false);
             showError(message(failure), 0);
         });
-    }
-
-    private ExplainResult doExplain(String connId, String sql, String schema, boolean analyze) {
-        try {
-            Connection conn = connections.acquire(connId);
-            var provider = connections.provider(connId);
-            QueryResult result = provider.sqlRunner().explain(
-                    conn, sql, schema.isEmpty() ? null : schema, analyze);
-            return new ExplainResult(result, null);
-        } catch (Exception e) {
-            return new ExplainResult(null, message(e));
-        }
     }
 
     private void showPlan(String planText, long elapsed, int totalStmts) {
@@ -769,16 +1143,6 @@ public final class SqlEditorPane implements AutoCloseable {
         resultPane.setText("结果（执行计划）");
     }
 
-    /** 启发式判断是否写类语句（非 SELECT/WITH/VALUES/SHOW/TABLE/EXPLAIN 开头）。 */
-    private static boolean isWriteStatement(String sql) {
-        String s = sql.trim();
-        int i = 0;
-        while (i < s.length() && (s.charAt(i) == '(' || Character.isWhitespace(s.charAt(i)))) i++;
-        s = s.substring(i).toUpperCase();
-        return !(s.startsWith("SELECT") || s.startsWith("WITH") || s.startsWith("VALUES")
-                || s.startsWith("SHOW") || s.startsWith("TABLE") || s.startsWith("EXPLAIN"));
-    }
-
     private void showError(String msg, long elapsed) {
         lastQueryResult = null;
         lastQuerySql = null;
@@ -795,6 +1159,18 @@ public final class SqlEditorPane implements AutoCloseable {
         resultTable.setItems(rows);
         statusLabel.setText("ERROR - " + elapsed + "ms");
         statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
+    }
+
+    private void showFailure(QueryResult result) {
+        if (result.failureKind == QueryResult.FailureKind.CANCELLED) {
+            showError(result.errorMessage, result.elapsedMillis);
+            statusLabel.setText("已取消");
+        } else if (result.failureKind == QueryResult.FailureKind.TIMEOUT) {
+            showError(result.errorMessage, result.elapsedMillis);
+            statusLabel.setText("执行超时");
+        } else {
+            showError(result.errorMessage, result.elapsedMillis);
+        }
     }
 
     private void showScriptResults(List<ScriptOutcome> outcomes, long totalElapsed) {
@@ -839,7 +1215,7 @@ public final class SqlEditorPane implements AutoCloseable {
                     statusLabel.setText("OK - " + r.updateCount + " rows affected - " + r.elapsedMillis + "ms");
                     statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
                 }
-                case ERROR -> showError(r.errorMessage, r.elapsedMillis);
+                case ERROR -> showFailure(r);
             }
         }
     }
@@ -848,7 +1224,11 @@ public final class SqlEditorPane implements AutoCloseable {
         return switch (r.kind) {
             case QUERY -> r.rows.size() + " rows";
             case UPDATE -> r.updateCount + " affected";
-            case ERROR -> "ERR: " + truncate(r.errorMessage, 80);
+            case ERROR -> switch (r.failureKind) {
+                case CANCELLED -> "已取消";
+                case TIMEOUT -> "执行超时";
+                case SQL_ERROR -> "ERR: " + truncate(r.errorMessage, 80);
+            };
         };
     }
 
@@ -1108,8 +1488,8 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** 预热元数据名称（每连接一次）：绑定连接只预热它；未绑定时监听全局活动连接变化。 */
     private void installMetadataPrewarm() {
-        if (boundConn != null) {
-            prewarm(boundConn);
+        if (editorConnection != null) {
+            prewarm(editorConnection);
             return;
         }
         session.activeConnectionProperty().addListener(activeConnectionListener);
@@ -1122,7 +1502,7 @@ public final class SqlEditorPane implements AutoCloseable {
      * 若并发冲突或失败则静默跳过并允许下次重试，不影响关键字补全。
      */
     private void prewarm(ConnConfig cfg) {
-        if (tasks.isClosed()) return;
+        if (tasks.isClosed() || cfg == null || cfg.type() == DbType.REDIS) return;
         final String connId = cfg.id();
         final String database = cfg.database();
         if (!prewarmed.add(connId)) return;
@@ -1347,9 +1727,18 @@ public final class SqlEditorPane implements AutoCloseable {
         return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
     }
 
-    private record ExecutionResult(List<ScriptOutcome> outcomes, String error, long elapsedMillis) {}
-    private record ExplainResult(QueryResult result, String error) {}
-    private record CloseSnapshot(String connectionName, String schema, String sql) {}
+    private enum CloseDecision { CLOSE, COMMIT, ROLLBACK, CANCEL_ROLLBACK, CANCEL_CLOSE }
+
+    private enum TransactionModeDecision { NONE, COMMIT, ROLLBACK, CANCEL }
+
+    private record HistorySnapshot(String connectionName, String schema, String sql) {}
+
+    private record ClosePlan(
+            String connectionName,
+            String schema,
+            String sql,
+            JdbcEditorSession editorSession,
+            CloseDecision decision) {}
 
     private void showAlert(String msg) {
         Alert alert = new Alert(Alert.AlertType.WARNING, msg, ButtonType.OK);

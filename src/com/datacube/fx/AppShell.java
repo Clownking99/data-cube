@@ -141,7 +141,10 @@ public final class AppShell {
         Button refreshBtn = new Button("⟳ 刷新");
         refreshBtn.setOnAction(e -> treePane.refresh());
         Button newSqlBtn = new Button("🗒 新建 SQL");
-        newSqlBtn.setOnAction(e -> treeActions.openSqlEditor(session.getActiveConnection(), null));
+        newSqlBtn.setOnAction(e -> {
+            ConnConfig active = session.getActiveConnection();
+            treeActions.openSqlEditor(active != null && active.type() == DbType.REDIS ? null : active, null);
+        });
         Button historyBtn = new Button("🕘 SQL 历史");
         historyBtn.setOnAction(e -> openSqlHistory());
         Separator sep = new Separator(Orientation.VERTICAL);
@@ -221,7 +224,8 @@ public final class AppShell {
     private void openSqlHistory() {
         javafx.stage.Window owner = root.getScene() == null ? null : root.getScene().getWindow();
         SqlHistoryDialog.show(sqlHistory, owner, themeManager).ifPresent(entry -> {
-            ConnConfig conn = resolveConnByName(entry.connName());
+            ConnConfig resolved = resolveConnByName(entry.connName());
+            ConnConfig conn = resolved != null && resolved.type() == DbType.REDIS ? null : resolved;
             if (conn != null) session.setActiveConnection(conn);
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
             openSqlTab(name,
