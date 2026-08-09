@@ -252,6 +252,33 @@ class AsyncTabCloseCoordinatorTest {
     }
 
     @Test
+    void removeMutationThenThrowKeepsOwnershipTombstoneAndStillFinalizes() {
+        AtomicInteger ownershipReleases = new AtomicInteger();
+        AtomicInteger finalizers = new AtomicInteger();
+        AtomicInteger mutations = new AtomicInteger();
+        AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
+                () -> CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED),
+                Duration.ofSeconds(5), new ManualTimeoutScheduler(), Runnable::run,
+                () -> {}, () -> {},
+                () -> {
+                    mutations.incrementAndGet();
+                    throw new IllegalStateException("listener after mutation");
+                },
+                ownershipReleases::incrementAndGet,
+                finalizers::incrementAndGet,
+                ignored -> {});
+
+        CloseAttempt attempt = coordinator.requestClose();
+
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL,
+                attempt.settlement().toCompletableFuture().join());
+        assertEquals(1, mutations.get());
+        assertEquals(0, ownershipReleases.get());
+        assertEquals(1, finalizers.get());
+        assertSame(attempt, coordinator.requestClose());
+    }
+
+    @Test
     void invokedFinalizerFailureIsReportedButSettlementIsCompleted() {
         IllegalStateException failure = new IllegalStateException("ui finalizer");
         Harness harness = new Harness(

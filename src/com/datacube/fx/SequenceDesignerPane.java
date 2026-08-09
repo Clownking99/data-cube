@@ -79,9 +79,13 @@ public final class SequenceDesignerPane implements AutoCloseable {
         this.schema = schema;
         this.name = name;
         this.supportsOrder = dbType == DbType.ORACLE;
-        this.tasks = runner.scope();
-        build();
-        reload();
+        try (ConstructionOwner construction = new ConstructionOwner()) {
+            this.tasks = runner.scope();
+            construction.own(tasks::close);
+            build();
+            reload();
+            construction.commit();
+        }
     }
 
     public Node getNode() {

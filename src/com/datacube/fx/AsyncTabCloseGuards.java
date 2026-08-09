@@ -4,6 +4,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /** Factories for retry-aware asynchronous close guards. */
@@ -12,13 +13,26 @@ final class AsyncTabCloseGuards {
     private AsyncTabCloseGuards() {}
 
     static AsyncTabCloseGuard blocking(Runnable cleanup) {
-        Objects.requireNonNull(cleanup, "cleanup");
-        return fatalOnce(cleanup);
+        return fatalOnce(Objects.requireNonNull(cleanup, "cleanup"), ignored -> {});
+    }
+
+    static AsyncTabCloseGuard blocking(
+            Runnable cleanup,
+            Consumer<? super Throwable> reporter) {
+        return fatalOnce(Objects.requireNonNull(cleanup, "cleanup"),
+                Objects.requireNonNull(reporter, "reporter"));
     }
 
     /** Mandatory ownership-abort cleanup: never asks the user and any failure is permanently fatal. */
     static AsyncTabCloseGuard mandatoryAbort(Runnable cleanup) {
-        return fatalOnce(Objects.requireNonNull(cleanup, "cleanup"));
+        return fatalOnce(Objects.requireNonNull(cleanup, "cleanup"), ignored -> {});
+    }
+
+    static AsyncTabCloseGuard mandatoryAbort(
+            Runnable cleanup,
+            Consumer<? super Throwable> reporter) {
+        return fatalOnce(Objects.requireNonNull(cleanup, "cleanup"),
+                Objects.requireNonNull(reporter, "reporter"));
     }
 
     /** Explicitly retryable background action for work known not to have destructive partial effects. */
@@ -51,7 +65,9 @@ final class AsyncTabCloseGuards {
         });
     }
 
-    private static AsyncTabCloseGuard fatalOnce(Runnable cleanup) {
+    private static AsyncTabCloseGuard fatalOnce(
+            Runnable cleanup,
+            Consumer<? super Throwable> reporter) {
         AtomicReference<CompletableFuture<CloseGuardOutcome>> current = new AtomicReference<>();
         return () -> {
             CompletableFuture<CloseGuardOutcome> existing = current.get();
@@ -64,14 +80,20 @@ final class AsyncTabCloseGuards {
                         cleanup.run();
                         created.complete(CloseGuardOutcome.APPROVED);
                     } catch (Throwable failure) {
+                        report(reporter, failure);
                         created.complete(CloseGuardOutcome.FAILED_PARTIAL);
                     }
                 });
             } catch (Throwable failure) {
+                report(reporter, failure);
                 created.complete(CloseGuardOutcome.FAILED_PARTIAL);
             }
             return created;
         };
+    }
+
+    private static void report(Consumer<? super Throwable> reporter, Throwable failure) {
+        try { reporter.accept(failure); } catch (Throwable ignored) { }
     }
 
     /** Caches only an in-flight, approved, or fatal-partial attempt; retryable terminals are cleared. */

@@ -160,25 +160,30 @@ public final class SqlEditorPane implements AutoCloseable {
         this.boundConn = boundConn;
         this.history = history;
         this.shortcuts = shortcuts;
-        this.tasks = runner.scope();
-        this.metadataTasks = new FxSerialTaskQueue(runner);
-        this.closeGuard = AsyncTabCloseGuards.blockingAttempt(() -> {
-            CloseSnapshot snapshot = captureCloseSnapshot();
-            return () -> closeInBackground(snapshot);
-        });
-        this.commentModeListener = (obs, oldMode, newMode) -> {
-            if (lastQueryResult != null) showQueryResult(lastQueryResult);
-        };
-        this.activeConnectionListener = (obs, oldConnection, connection) -> {
-            if (connection != null) prewarm(connection);
-        };
-        build();
-        // 依据打开位置回填 schema（如从表/schema 节点右键打开）；定位不到则保持空
-        if (initialSchema != null && !initialSchema.isBlank()) {
-            schemaField.setText(initialSchema.trim());
+        try (ConstructionOwner construction = new ConstructionOwner()) {
+            this.tasks = runner.scope();
+            construction.own(tasks::close);
+            this.metadataTasks = new FxSerialTaskQueue(runner);
+            construction.own(metadataTasks::close);
+            this.closeGuard = AsyncTabCloseGuards.blockingAttempt(() -> {
+                CloseSnapshot snapshot = captureCloseSnapshot();
+                return () -> closeInBackground(snapshot);
+            });
+            this.commentModeListener = (obs, oldMode, newMode) -> {
+                if (lastQueryResult != null) showQueryResult(lastQueryResult);
+            };
+            this.activeConnectionListener = (obs, oldConnection, connection) -> {
+                if (connection != null) prewarm(connection);
+            };
+            construction.own(() -> settings.commentModeProperty().removeListener(commentModeListener));
+            construction.own(() -> session.activeConnectionProperty().removeListener(activeConnectionListener));
+            build();
+            if (initialSchema != null && !initialSchema.isBlank()) {
+                schemaField.setText(initialSchema.trim());
+            }
+            settings.commentModeProperty().addListener(commentModeListener);
+            construction.commit();
         }
-        // 注释显示模式变化 → 对当前查询结果即时重渲染表头（不重跑 SQL）
-        settings.commentModeProperty().addListener(commentModeListener);
     }
 
     /** 载入指定 SQL 文本到编辑区（用于历史“找回”）。 */

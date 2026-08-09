@@ -61,9 +61,13 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
                                FxTaskRunner runner) {
         this.manager = manager;
         this.config = config;
-        this.io = new FxSerialTaskQueue(runner);
-        build(initialDatabase);
-        restartSession(initialDatabase);
+        try (ConstructionOwner construction = new ConstructionOwner()) {
+            this.io = new FxSerialTaskQueue(runner);
+            construction.own(this::close);
+            build(initialDatabase);
+            restartSession(initialDatabase);
+            construction.commit();
+        }
     }
 
     public Node getNode() {

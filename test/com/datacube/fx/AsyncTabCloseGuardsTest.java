@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
@@ -93,6 +95,18 @@ class AsyncTabCloseGuardsTest {
         assertSame(first, abort.requestClose());
         assertTrue(virtual.get());
         assertEquals(1, invocations.get());
+    }
+
+    @Test
+    void fatalOnceReportsOriginalThrowableWithoutLosingFatalOutcome() {
+        IllegalStateException failure = new IllegalStateException("original cleanup failure");
+        List<Throwable> reported = new ArrayList<>();
+        AsyncTabCloseGuard guard = AsyncTabCloseGuards.blocking(
+                () -> { throw failure; }, reported::add);
+
+        assertEquals(CloseGuardOutcome.FAILED_PARTIAL,
+                guard.requestClose().toCompletableFuture().join());
+        assertEquals(List.of(failure), reported);
     }
 
     @Test

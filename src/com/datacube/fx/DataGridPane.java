@@ -13,6 +13,7 @@ import com.datacube.spi.model.TableRef;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.beans.value.ChangeListener;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -45,6 +46,7 @@ public final class DataGridPane implements AutoCloseable {
     /** 是否强制只读（如视图）：禁用新增/删除/编辑，仅查看数据。 */
     private final boolean readOnly;
     private final FxTaskScope tasks;
+    private final ChangeListener<CommentMode> commentModeListener;
 
     private final VBox root = new VBox(8);
     private TableView<EditableGridModel.Row> grid;
@@ -71,10 +73,16 @@ public final class DataGridPane implements AutoCloseable {
         this.table = table;
         this.settings = settings;
         this.readOnly = readOnly;
-        this.tasks = runner.scope();
-        build();
-        settings.commentModeProperty().addListener((o, a, b) -> reapplyHeaders());
-        load();
+        this.commentModeListener = (o, a, b) -> reapplyHeaders();
+        try (ConstructionOwner construction = new ConstructionOwner()) {
+            this.tasks = runner.scope();
+            construction.own(tasks::close);
+            build();
+            settings.commentModeProperty().addListener(commentModeListener);
+            construction.own(() -> settings.commentModeProperty().removeListener(commentModeListener));
+            load();
+            construction.commit();
+        }
     }
 
     public Node getNode() {

@@ -34,9 +34,14 @@ public final class RedisConsolePane implements AutoCloseable {
         this.manager = manager;
         this.config = config;
         int database = parseDatabase(config.database());
-        this.session = manager.openRedisSession(config.id(), database);
-        this.io = new FxSerialTaskQueue(runner);
-        build(database);
+        try (ConstructionOwner construction = new ConstructionOwner()) {
+            this.session = manager.openRedisSession(config.id(), database);
+            construction.own(() -> manager.closeRedisSession(session));
+            this.io = new FxSerialTaskQueue(runner);
+            construction.own(io::close);
+            build(database);
+            construction.commit();
+        }
     }
 
     public Node getNode() {

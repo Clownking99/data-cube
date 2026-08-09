@@ -38,7 +38,7 @@ import javafx.scene.layout.Region;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -224,15 +224,11 @@ public final class AppShell {
             ConnConfig conn = resolveConnByName(entry.connName());
             if (conn != null) session.setActiveConnection(conn);
             String name = conn == null ? "SQL" : "SQL - " + conn.name();
-            AtomicReference<SqlEditorPane> created = new AtomicReference<>();
-            openSqlTab(name, () -> {
-                SqlEditorPane pane = new SqlEditorPane(session, connMgr, treeSvc, settings,
-                        treeActions::openTableDesigner, conn, entry.schema(), sqlHistory, shortcuts, tasks);
-                created.set(pane);
-                return pane;
-            });
-            SqlEditorPane pane = created.get();
-            if (pane != null) pane.setSqlText(entry.sql());
+            openSqlTab(name,
+                    () -> new SqlEditorPane(session, connMgr, treeSvc, settings,
+                            treeActions::openTableDesigner, conn, entry.schema(), sqlHistory,
+                            shortcuts, tasks),
+                    pane -> pane.setSqlText(entry.sql()));
         });
     }
 
@@ -246,20 +242,31 @@ public final class AppShell {
     }
 
     private void openSqlTab(String title, Supplier<SqlEditorPane> factory) {
-        contentTabs.openManagedTab(title, () -> {
-            SqlEditorPane pane = factory.get();
-            return new ContentTabPane.ManagedTabSpec(
-                    pane.getNode(), pane::requestClose, pane::finalizeCloseOnFx, pane::closeResources);
-        });
+        openSqlTab(title, factory, ignored -> {});
+    }
+
+    private void openSqlTab(
+            String title,
+            Supplier<SqlEditorPane> factory,
+            Consumer<SqlEditorPane> initialize) {
+        contentTabs.openManagedTab(title, binding -> ManagedTabFactorySequence.create(
+                factory,
+                pane -> binding.bind(pane::closeResources),
+                initialize,
+                pane -> new ContentTabPane.ManagedTabSpec(
+                        pane.getNode(), pane::requestClose,
+                        pane::finalizeCloseOnFx, pane::closeResources)));
     }
 
     private void openBackgroundCleanupTab(String title, Supplier<BackgroundTab> factory) {
-        contentTabs.openManagedTab(title, () -> {
-            BackgroundTab tab = factory.get();
-            return new ContentTabPane.ManagedTabSpec(
-                    tab.content(), AsyncTabCloseGuards.blocking(tab.cleanup()),
-                    () -> {}, tab.cleanup());
-        });
+        contentTabs.openManagedTab(title, binding -> ManagedTabFactorySequence.create(
+                factory,
+                tab -> binding.bind(tab.cleanup()),
+                ignored -> {},
+                tab -> new ContentTabPane.ManagedTabSpec(
+                        tab.content(), AsyncTabCloseGuards.blocking(
+                                tab.cleanup(), AppShell::reportShutdownFailure),
+                        () -> {}, tab.cleanup())));
     }
 
     /** 连接树动作实现：将树操作转为内容标签。 */

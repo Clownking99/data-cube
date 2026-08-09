@@ -1145,10 +1145,13 @@ Expected: session state and isolation tests pass.
   `CompletionStage<CloseGuardOutcome>` (`APPROVED`, `REJECTED`, or `FAILED_PARTIAL`).
 - `ContentTabPane` adds `openManagedTab(String, Node, AsyncTabCloseGuard, Runnable)`; the final
   `Runnable` is an FX-only, non-blocking UI finalizer.
-- New resource-owning callers use `openManagedTab(String, Supplier<ManagedTabSpec>)`. The container
-  acquires an `AutoCloseable` registry reservation before invoking the supplier; Task 6 must not
-  construct `SqlEditorPane`/`JdbcEditorSession` before that reservation. `ManagedTabSpec` also
-  supplies mandatory abort cleanup which never prompts or rejects if registration cannot finish.
+- New resource-owning callers use `openManagedTab(String, ManagedTabFactory)`. Before invoking the
+  factory, the container atomically acquires both an `AutoCloseable` registry reservation and a
+  mandatory-abort tracker lease. Task 6 must not construct `SqlEditorPane`/`JdbcEditorSession`
+  before both leases exist. Immediately after a pane or JDBC session is created, bind its mandatory
+  abort cleanup through the provided `AbortBinding`, before any fallible initialization. The lease
+  is bound to the abort terminal before its virtual thread starts, so a reentrant close-all cannot
+  observe an empty abort snapshot.
 - The deprecated three-argument overload remains source-compatible, but runs its disposer on one
   virtual thread. New callers must use the four-argument phase-split API.
 - `closeAllManagedTabs()` returns `CompletionStage<TabCloseOutcome>` and `shutdownAsync()` returns
@@ -1420,15 +1423,20 @@ Both openSqlHistory and TreeActions.openSqlEditor must reserve ownership before 
 pane. Use the factory overload and provide the non-interactive background abort path:
 
 ~~~java
-contentTabs.openManagedTab(name, () -> {
-    SqlEditorPane pane = new SqlEditorPane(/* existing arguments */);
-    return new ContentTabPane.ManagedTabSpec(
-            pane.getNode(),
-            pane::requestClose,
-            pane::finalizeCloseOnFx,
-            pane::closeResources);
-});
+contentTabs.openManagedTab(name, abortBinding -> ManagedTabFactorySequence.create(
+        () -> new SqlEditorPane(/* existing arguments */),
+        pane -> abortBinding.bind(pane::closeResources),
+        pane -> pane.setSqlText(historySql),
+        pane -> new ContentTabPane.ManagedTabSpec(
+                pane.getNode(), pane::requestClose,
+                pane::finalizeCloseOnFx, pane::closeResources)));
 ~~~
+
+`SqlEditorPane` and `JdbcEditorSession` constructors use a `ConstructionOwner`: every task scope,
+queue, socket, and dedicated JDBC session is registered immediately after allocation; constructor
+failure rolls them back in reverse order with best-effort aggregation. Only successful construction
+commits ownership to the pane. In Task 6, `openEditorSession` must be followed immediately by
+`construction.own(jdbcSession::close)` before schema lookup, UI initialization, or query startup.
 
 The guard completes `APPROVED` only after JdbcEditorSession cancel/wait/rollback-or-commit/close,
 history persistence, and both task scopes have finished on a virtual thread. A user cancel returns

@@ -20,22 +20,15 @@ public final class ContentTabPane {
 
     private final TabPane tabPane = new TabPane();
     private final AsyncManagedTabRegistry<Tab> guardedTabs = new AsyncManagedTabRegistry<>();
-    private final MandatoryAbortTracker mandatoryAborts = new MandatoryAbortTracker();
+    private MandatoryAbortTracker mandatoryAborts = new MandatoryAbortTracker();
+    private final Object ownershipLock = new Object();
     private boolean internalTabMutation;
-    private Tab lastSelected;
+    private final ManagedSelectionTracker<Tab> selectionTracker = new ManagedSelectionTracker<>();
 
     public ContentTabPane() {
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.SELECTED_TAB);
         tabPane.getSelectionModel().selectedItemProperty().addListener(
-                (ignored, before, selected) -> {
-                    if (!internalTabMutation && selected != null) {
-                        deferFx(() -> {
-                            if (tabPane.getSelectionModel().getSelectedItem() == selected) {
-                                lastSelected = selected;
-                            }
-                        });
-                    }
-                });
+                (ignored, before, selected) -> selectionTracker.changed(before, selected));
         tabPane.getTabs().addListener((ListChangeListener<Tab>) change -> {
             if (internalTabMutation) return;
             while (change.next()) {
@@ -44,8 +37,10 @@ public final class ContentTabPane {
                         .filter(tab -> !guardedTabs.isRemovalAuthorized(tab))
                         .toList();
                 if (managed.isEmpty()) continue;
+                Tab originalSelection = selectionTracker.originalSelection(
+                        managed, tabPane.getSelectionModel().getSelectedItem());
                 ManagedTabRemovalBatch<Tab> batch = ManagedTabRemovalBatch.capture(
-                        change.getFrom(), managed, lastSelected);
+                        change.getFrom(), managed, originalSelection);
                 guardedTabs.requestExternalClose(managed, () -> {
                     internalTabMutation = true;
                     try {
@@ -81,11 +76,12 @@ public final class ContentTabPane {
 
     /**
      * 旧式单一 disposer API。disposer 现在在一次性虚拟线程 guard 中运行，调用方应迁移到
-     * 明确拆分 blocking cleanup 与 FX finalizer 的四参数重载。
+     * reservation factory，并明确拆分 blocking cleanup 与 FX finalizer。
      */
     @Deprecated(forRemoval = false)
     public Tab openManagedTab(String title, Node content, Runnable disposer) {
-        return openManagedTab(title, content, AsyncTabCloseGuards.blocking(disposer),
+        return openManagedTab(title, content, AsyncTabCloseGuards.blocking(
+                        disposer, ContentTabPane::reportCloseFailure),
                 () -> {}, disposer);
     }
 
@@ -113,14 +109,36 @@ public final class ContentTabPane {
      * try/finally internally for partially constructed resources and provide mandatory abort cleanup.
      */
     public Tab openManagedTab(String title, Supplier<ManagedTabSpec> factory) {
-        AsyncManagedTabRegistry<Tab>.Reservation reservation = guardedTabs.reserve();
-        if (!reservation.acquired()) return null;
-        ManagedTabSpec spec = null;
-        try (reservation) {
-            spec = factory.get();
-            return openReservedManagedTab(title, spec, reservation);
+        return openManagedTab(title, binding -> {
+            ManagedTabSpec spec = factory.get();
+            binding.bind(spec.mandatoryAbortCleanup());
+            return spec;
+        });
+    }
+
+    /** Opens only after both registry and abort-accounting leases are acquired. */
+    public Tab openManagedTab(String title, ManagedTabFactory factory) {
+        AsyncManagedTabRegistry<Tab>.Reservation reservation;
+        ManagedOpenLease lease;
+        synchronized (ownershipLock) {
+            reservation = guardedTabs.reserve();
+            lease = ManagedOpenLease.acquire(
+                    reservation.acquired(), reservation, mandatoryAborts);
+        }
+        if (!lease.acquired()) return null;
+        AbortBinding binding = new AbortBinding();
+        try {
+            ManagedTabSpec spec = factory.create(binding);
+            if (!binding.isBound()) binding.bind(spec.mandatoryAbortCleanup());
+            Tab tab = openReservedManagedTab(title, spec, reservation);
+            if (tab == null) {
+                lease.abort(binding.guard());
+                return null;
+            }
+            lease.installed();
+            return tab;
         } catch (Throwable failure) {
-            if (spec != null) trackMandatoryAbort(spec.mandatoryAbortCleanup());
+            lease.abort(binding.guard());
             reportCloseFailure(failure);
             return null;
         }
@@ -132,17 +150,29 @@ public final class ContentTabPane {
             AsyncTabCloseGuard guard,
             Runnable uiFinalizer,
             Runnable mandatoryAbortCleanup) {
-        AsyncManagedTabRegistry<Tab>.Reservation reservation = guardedTabs.reserve();
-        if (!reservation.acquired()) {
-            trackMandatoryAbort(mandatoryAbortCleanup);
+        AsyncManagedTabRegistry<Tab>.Reservation reservation;
+        ManagedOpenLease lease;
+        synchronized (ownershipLock) {
+            reservation = guardedTabs.reserve();
+            lease = ManagedOpenLease.acquire(
+                    reservation.acquired(), reservation, mandatoryAborts);
+        }
+        if (!lease.acquired()) {
+            AsyncTabCloseGuards.mandatoryAbort(
+                    mandatoryAbortCleanup, ContentTabPane::reportCloseFailure).requestClose();
             reportCloseFailure(new IllegalStateException("managed tab rejected while registry is closing"));
             return null;
         }
-        try (reservation) {
-            return openReservedManagedTab(title,
+        try {
+            Tab tab = openReservedManagedTab(title,
                     new ManagedTabSpec(content, guard, uiFinalizer, mandatoryAbortCleanup), reservation);
+            if (tab == null) lease.abort(AsyncTabCloseGuards.mandatoryAbort(
+                    mandatoryAbortCleanup, ContentTabPane::reportCloseFailure));
+            else lease.installed();
+            return tab;
         } catch (Throwable failure) {
-            trackMandatoryAbort(mandatoryAbortCleanup);
+            lease.abort(AsyncTabCloseGuards.mandatoryAbort(
+                    mandatoryAbortCleanup, ContentTabPane::reportCloseFailure));
             reportCloseFailure(failure);
             return null;
         }
@@ -165,14 +195,10 @@ public final class ContentTabPane {
                 () -> tab.setDisable(true),
                 () -> tab.setDisable(false),
                 () -> tabPane.getTabs().remove(tab),
-                () -> {
-                    // A failed removal must retain fatal ownership so closeAll cannot report success.
-                    if (!tabPane.getTabs().contains(tab)) guardedTabs.unregister(tab);
-                    uiFinalizer.run();
-                },
+                () -> guardedTabs.unregister(tab),
+                uiFinalizer,
                 ContentTabPane::reportCloseFailure);
         if (!reservation.register(tab, coordinator)) {
-            trackMandatoryAbort(spec.mandatoryAbortCleanup());
             reportCloseFailure(new IllegalStateException("managed tab reservation was released before register"));
             return null;
         }
@@ -208,22 +234,28 @@ public final class ContentTabPane {
             }
             return dispatched;
         }
-        CompletionStage<TabCloseOutcome> tabs = guardedTabs.closeAll();
-        CompletionStage<TabCloseOutcome> aborts = mandatoryAborts.settlement();
-        return tabs.thenCombine(aborts, ContentTabPane::aggregate);
+        MandatoryAbortTracker tracker;
+        CompletionStage<TabCloseOutcome> tabs;
+        CompletionStage<TabCloseOutcome> aborts;
+        synchronized (ownershipLock) {
+            tracker = mandatoryAborts;
+            tabs = guardedTabs.closeAll();
+            aborts = tracker.seal();
+        }
+        return tabs.thenCombine(aborts, ContentTabPane::aggregate).thenApply(outcome -> {
+            if (outcome == TabCloseOutcome.CANCELLED) {
+                synchronized (ownershipLock) {
+                    if (mandatoryAborts == tracker) mandatoryAborts = new MandatoryAbortTracker();
+                }
+            }
+            return outcome;
+        });
     }
 
     /** @deprecated 使用并等待 {@link #closeAllManagedTabs()} 的显式结果。 */
     @Deprecated(forRemoval = false)
     public void disposeAll() {
         closeAllManagedTabs();
-    }
-
-    private void trackMandatoryAbort(Runnable cleanup) {
-        AsyncTabCloseGuard abort = AsyncTabCloseGuards.mandatoryAbort(cleanup);
-        if (!mandatoryAborts.track(abort.requestClose())) {
-            reportCloseFailure(new IllegalStateException("mandatory abort started after close-all snapshot"));
-        }
     }
 
     private static TabCloseOutcome aggregate(TabCloseOutcome left, TabCloseOutcome right) {
@@ -239,10 +271,6 @@ public final class ContentTabPane {
     private static void dispatchFx(Runnable action) {
         if (Platform.isFxApplicationThread()) action.run();
         else Platform.runLater(action);
-    }
-
-    private static void deferFx(Runnable action) {
-        Platform.runLater(action);
     }
 
     private static void reportCloseFailure(Throwable failure) {
@@ -275,6 +303,30 @@ public final class ContentTabPane {
                     || mandatoryAbortCleanup == null) {
                 throw new NullPointerException("managed tab spec fields");
             }
+        }
+    }
+
+    @FunctionalInterface
+    public interface ManagedTabFactory {
+        ManagedTabSpec create(AbortBinding abortBinding);
+    }
+
+    public static final class AbortBinding {
+        private Runnable cleanup;
+
+        public void bind(Runnable mandatoryAbortCleanup) {
+            if (cleanup != null) throw new IllegalStateException("mandatory abort already bound");
+            cleanup = java.util.Objects.requireNonNull(mandatoryAbortCleanup, "mandatoryAbortCleanup");
+        }
+
+        boolean isBound() { return cleanup != null; }
+
+        AsyncTabCloseGuard guard() {
+            if (cleanup == null) {
+                return () -> CompletableFuture.completedFuture(CloseGuardOutcome.FAILED_PARTIAL);
+            }
+            return AsyncTabCloseGuards.mandatoryAbort(
+                    cleanup, ContentTabPane::reportCloseFailure);
         }
     }
 }

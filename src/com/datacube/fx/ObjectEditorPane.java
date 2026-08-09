@@ -59,9 +59,13 @@ public final class ObjectEditorPane implements AutoCloseable {
         this.title = title;
         this.fetch = fetch;
         this.executor = executor;
-        this.tasks = runner.scope();
-        build();
-        load();
+        try (ConstructionOwner construction = new ConstructionOwner()) {
+            this.tasks = runner.scope();
+            construction.own(tasks::close);
+            build();
+            load();
+            construction.commit();
+        }
     }
 
     public Node getNode() {

@@ -22,6 +22,7 @@ final class AsyncTabCloseCoordinator {
     private final Runnable markClosing;
     private final Runnable markRetryable;
     private final Runnable removeTabIfPresent;
+    private final Runnable releaseOwnership;
     private final Runnable uiFinalizer;
     private final Consumer<? super Throwable> failureReporter;
     private final AsyncCloseGate gate = new AsyncCloseGate();
@@ -37,6 +38,21 @@ final class AsyncTabCloseCoordinator {
             Runnable removeTabIfPresent,
             Runnable uiFinalizer,
             Consumer<? super Throwable> failureReporter) {
+        this(guard, timeout, timeoutScheduler, fxDispatcher, markClosing, markRetryable,
+                removeTabIfPresent, () -> {}, uiFinalizer, failureReporter);
+    }
+
+    AsyncTabCloseCoordinator(
+            AsyncTabCloseGuard guard,
+            Duration timeout,
+            TimeoutScheduler timeoutScheduler,
+            Consumer<Runnable> fxDispatcher,
+            Runnable markClosing,
+            Runnable markRetryable,
+            Runnable removeTabIfPresent,
+            Runnable releaseOwnership,
+            Runnable uiFinalizer,
+            Consumer<? super Throwable> failureReporter) {
         this.guard = Objects.requireNonNull(guard, "guard");
         this.timeout = Objects.requireNonNull(timeout, "timeout");
         this.timeoutScheduler = Objects.requireNonNull(timeoutScheduler, "timeoutScheduler");
@@ -44,6 +60,7 @@ final class AsyncTabCloseCoordinator {
         this.markClosing = Objects.requireNonNull(markClosing, "markClosing");
         this.markRetryable = Objects.requireNonNull(markRetryable, "markRetryable");
         this.removeTabIfPresent = Objects.requireNonNull(removeTabIfPresent, "removeTabIfPresent");
+        this.releaseOwnership = Objects.requireNonNull(releaseOwnership, "releaseOwnership");
         this.uiFinalizer = Objects.requireNonNull(uiFinalizer, "uiFinalizer");
         this.failureReporter = Objects.requireNonNull(failureReporter, "failureReporter");
     }
@@ -179,6 +196,14 @@ final class AsyncTabCloseCoordinator {
             } catch (Throwable failure) {
                 removeFailed = true;
                 report(failure);
+            }
+            if (!removeFailed) {
+                try {
+                    releaseOwnership.run();
+                } catch (Throwable failure) {
+                    removeFailed = true;
+                    report(failure);
+                }
             }
             invokeUiFinalizer(attempt);
             attempt.exposed.settle(removeFailed

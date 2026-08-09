@@ -154,6 +154,26 @@ class AsyncManagedTabRegistryTest {
         assertEquals(0, teardowns.get());
     }
 
+    @Test
+    void removalMutationThenListenerThrowRetainsFatalTombstoneForCloseAll() {
+        AsyncManagedTabRegistry<Object> registry = new AsyncManagedTabRegistry<>();
+        Object tab = new Object();
+        AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
+                () -> CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED),
+                Duration.ofSeconds(5), new ManualTimeoutScheduler(), Runnable::run,
+                () -> {}, () -> {},
+                () -> { throw new IllegalStateException("listener after physical mutation"); },
+                () -> registry.unregister(tab),
+                () -> {}, ignored -> {});
+        assertTrue(registry.register(tab, coordinator));
+
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL,
+                registry.requestClose(tab).toCompletableFuture().join());
+
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL,
+                registry.closeAll().toCompletableFuture().join());
+    }
+
     private static AsyncTabCloseCoordinator immediateCoordinator(CloseGuardOutcome outcome) {
         return coordinator(() -> CompletableFuture.completedFuture(outcome));
     }

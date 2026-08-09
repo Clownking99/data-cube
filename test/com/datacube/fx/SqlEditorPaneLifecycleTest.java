@@ -45,6 +45,8 @@ class SqlEditorPaneLifecycleTest {
 
         assertTrue(source.contains("pane::requestClose"));
         assertFalse(source.contains("AsyncTabCloseGuards.blocking(pane::closeResources)"));
+        assertTrue(source.contains("pane -> binding.bind(pane::closeResources)"));
+        assertTrue(source.contains("pane -> pane.setSqlText(entry.sql())"));
     }
 
     @Test
@@ -55,6 +57,10 @@ class SqlEditorPaneLifecycleTest {
         assertTrue(source.contains("BestEffortCloseSequence.run"));
         assertTrue(source.contains("metadataTasks::close"));
         assertTrue(source.contains("tasks::close"));
+        assertTrue(source.contains("construction.own(() -> settings.commentModeProperty()"
+                + ".removeListener(commentModeListener))"));
+        assertTrue(source.contains("construction.own(() -> session.activeConnectionProperty()"
+                + ".removeListener(activeConnectionListener))"));
         assertTrue(source.indexOf("metadataTasks::close") < source.indexOf("persistCloseSnapshot"));
         assertTrue(source.indexOf("tasks::close") < source.indexOf("persistCloseSnapshot"));
     }

@@ -23,10 +23,13 @@ class ContentTabPaneContractTest {
                 "openManagedTab", String.class, Node.class, AsyncTabCloseGuard.class, Runnable.class);
         Method reservedFactory = ContentTabPane.class.getDeclaredMethod(
                 "openManagedTab", String.class, Supplier.class);
+        Method leasedFactory = ContentTabPane.class.getDeclaredMethod(
+                "openManagedTab", String.class, ContentTabPane.ManagedTabFactory.class);
 
         assertNotNull(existing);
         assertNotNull(guarded);
         assertNotNull(reservedFactory);
+        assertNotNull(leasedFactory);
         assertTrue(existing.isAnnotationPresent(Deprecated.class));
     }
 
