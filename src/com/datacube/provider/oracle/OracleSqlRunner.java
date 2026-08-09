@@ -2,6 +2,7 @@ package com.datacube.provider.oracle;
 
 import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.spi.SqlDialect;
+import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.SqlRunner;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.model.QueryResult;
@@ -11,6 +12,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,39 +34,47 @@ public final class OracleSqlRunner implements SqlRunner {
     }
 
     @Override
-    public QueryResult execute(Connection conn, String sql, String schema, int maxRows) {
+    public QueryResult execute(Connection conn, String sql, String schema, SqlExecutionOptions options) {
         long t0 = System.currentTimeMillis();
         try {
-            applySchema(conn, schema);
+            applySchema(conn, schema, options);
             try (Statement stmt = conn.createStatement()) {
-                boolean hasResult = stmt.execute(strip(sql));
-                long elapsed = System.currentTimeMillis() - t0;
-                if (hasResult) {
-                    try (ResultSet rs = stmt.getResultSet()) {
-                        ResultSetMetaData md = rs.getMetaData();
-                        QueryResult r = QueryResult.fromResultSet(rs, elapsed, maxRows);
-                        // best-effort 解析列注释；失败或无表列时返回 null，不影响结果展示
-                        List<String> comments = OracleColumnComments.resolve(conn, md, sql, schema);
-                        return comments == null ? r : r.withColumnComments(comments);
+                options.control().activate(stmt, options.queryTimeoutSeconds());
+                try {
+                    boolean hasResult = stmt.execute(strip(sql));
+                    long elapsed = System.currentTimeMillis() - t0;
+                    if (hasResult) {
+                        try (ResultSet rs = stmt.getResultSet()) {
+                            ResultSetMetaData md = rs.getMetaData();
+                            QueryResult r = QueryResult.fromResultSet(rs, elapsed, options.maxRows());
+                            // best-effort 解析列注释；失败或无表列时返回 null，不影响结果展示
+                            List<String> comments = OracleColumnComments.resolve(conn, md, sql, schema);
+                            return comments == null ? r : r.withColumnComments(comments);
+                        }
+                    } else {
+                        return QueryResult.update(elapsed, stmt.getUpdateCount());
                     }
-                } else {
-                    return QueryResult.update(elapsed, stmt.getUpdateCount());
+                } finally {
+                    options.control().release(stmt);
                 }
             }
+        } catch (SQLTimeoutException e) {
+            return QueryResult.timeout(e.getMessage(), System.currentTimeMillis() - t0);
         } catch (SQLException e) {
-            return QueryResult.error(e.getMessage(), System.currentTimeMillis() - t0);
+            return failure(e, t0, options);
         }
     }
 
     @Override
-    public List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows,
+    public List<ScriptOutcome> executeScript(Connection conn, String script, String schema,
+                                             SqlExecutionOptions options,
                                              ScriptErrorPolicy policy) {
         List<String> stmts = SqlScriptSplitter.split(script, true);
         List<ScriptOutcome> outcomes = new ArrayList<>(stmts.size());
         boolean continueAll = false;
         for (int i = 0; i < stmts.size(); i++) {
             String sql = stmts.get(i);
-            QueryResult r = execute(conn, sql, schema, maxRows);
+            QueryResult r = execute(conn, sql, schema, options);
             outcomes.add(new ScriptOutcome(i + 1, sql, r));
             if (r.kind == QueryResult.Kind.ERROR && !continueAll) {
                 ScriptErrorPolicy.Decision d = policy == null
@@ -78,47 +88,77 @@ public final class OracleSqlRunner implements SqlRunner {
     }
 
     @Override
-    public QueryResult explain(Connection conn, String sql, String schema, boolean analyze) {
+    public QueryResult explain(Connection conn, String sql, String schema, boolean analyze,
+                               SqlExecutionOptions options) {
         long t0 = System.currentTimeMillis();
         String stmt = strip(sql);
         try {
-            applySchema(conn, schema);
+            applySchema(conn, schema, options);
             if (analyze) {
                 try (Statement s = conn.createStatement()) {
-                    s.execute("ALTER SESSION SET STATISTICS_LEVEL = ALL");
+                    options.control().activate(s, options.queryTimeoutSeconds());
+                    try {
+                        s.execute("ALTER SESSION SET STATISTICS_LEVEL = ALL");
+                    } finally {
+                        options.control().release(s);
+                    }
                 }
                 // 实际执行以采集运行时统计（消费结果集）
                 try (Statement s = conn.createStatement()) {
-                    boolean has = s.execute(stmt);
-                    if (has) {
-                        try (ResultSet rs = s.getResultSet()) {
-                            while (rs.next()) { /* drain */ }
+                    options.control().activate(s, options.queryTimeoutSeconds());
+                    try {
+                        boolean has = s.execute(stmt);
+                        if (has) {
+                            try (ResultSet rs = s.getResultSet()) {
+                                while (rs.next()) { /* drain */ }
+                            }
                         }
+                    } finally {
+                        options.control().release(s);
                     }
                 }
                 return execute(conn,
                         "SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY_CURSOR(NULL, NULL, 'ALLSTATS LAST'))",
-                        null, 0);
+                        null, options);
             } else {
                 try (Statement s = conn.createStatement()) {
-                    s.execute("EXPLAIN PLAN FOR " + stmt);
+                    options.control().activate(s, options.queryTimeoutSeconds());
+                    try {
+                        s.execute("EXPLAIN PLAN FOR " + stmt);
+                    } finally {
+                        options.control().release(s);
+                    }
                 }
                 return execute(conn,
                         "SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY())",
-                        null, 0);
+                        null, options);
             }
+        } catch (SQLTimeoutException e) {
+            return QueryResult.timeout(e.getMessage(), System.currentTimeMillis() - t0);
         } catch (SQLException e) {
-            return QueryResult.error(e.getMessage(), System.currentTimeMillis() - t0);
+            return failure(e, t0, options);
         }
     }
 
-    private void applySchema(Connection conn, String schema) throws SQLException {
+    private void applySchema(Connection conn, String schema, SqlExecutionOptions options) throws SQLException {
         String schemaSql = dialect.currentSchemaSql(schema);
         if (schemaSql != null) {
             try (Statement s = conn.createStatement()) {
-                s.execute(schemaSql);
+                options.control().activate(s, options.queryTimeoutSeconds());
+                try {
+                    s.execute(schemaSql);
+                } finally {
+                    options.control().release(s);
+                }
             }
         }
+    }
+
+    private static QueryResult failure(SQLException error, long startedAt, SqlExecutionOptions options) {
+        long elapsed = System.currentTimeMillis() - startedAt;
+        return options.control().cancellationRequested()
+                ? QueryResult.cancelled(error.getMessage(), elapsed)
+                : QueryResult.error(error.getMessage(), elapsed);
     }
 
     /** 剥离语句首尾空白与尾部分号（Oracle 单语句执行不接受尾分号）。 */

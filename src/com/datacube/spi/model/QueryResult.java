@@ -23,6 +23,9 @@ public final class QueryResult {
     /** 类型：查询 / 更新 / 错误 */
     public enum Kind { QUERY, UPDATE, ERROR }
 
+    /** ERROR 的细分原因；保留 {@link Kind#ERROR} 以兼容现有调用方。 */
+    public enum FailureKind { SQL_ERROR, CANCELLED, TIMEOUT }
+
     public final Kind kind;
     /** 列名（仅 QUERY 有） */
     public final List<String> columns;
@@ -36,9 +39,12 @@ public final class QueryResult {
     public final long elapsedMillis;
     /** 错误信息（仅 ERROR 有） */
     public final String errorMessage;
+    /** 错误细分（仅 ERROR 有；QUERY/UPDATE 为 null） */
+    public final FailureKind failureKind;
 
     private QueryResult(Kind kind, List<String> columns, List<String> columnComments,
-                        List<List<Object>> rows, int updateCount, long elapsedMillis, String errorMessage) {
+                        List<List<Object>> rows, int updateCount, long elapsedMillis, String errorMessage,
+                        FailureKind failureKind) {
         this.kind = kind;
         this.columns = columns != null ? columns : Collections.emptyList();
         this.columnComments = columnComments != null ? columnComments : Collections.emptyList();
@@ -46,18 +52,31 @@ public final class QueryResult {
         this.updateCount = updateCount;
         this.elapsedMillis = elapsedMillis;
         this.errorMessage = errorMessage;
+        this.failureKind = failureKind;
     }
 
     public static QueryResult query(List<String> columns, List<List<Object>> rows, long elapsedMillis) {
-        return new QueryResult(Kind.QUERY, columns, null, rows, -1, elapsedMillis, null);
+        return new QueryResult(Kind.QUERY, columns, null, rows, -1, elapsedMillis, null, null);
     }
 
     public static QueryResult update(long elapsedMillis, int updateCount) {
-        return new QueryResult(Kind.UPDATE, null, null, null, updateCount, elapsedMillis, null);
+        return new QueryResult(Kind.UPDATE, null, null, null, updateCount, elapsedMillis, null, null);
     }
 
     public static QueryResult error(String errorMessage, long elapsedMillis) {
-        return new QueryResult(Kind.ERROR, null, null, null, -1, elapsedMillis, errorMessage);
+        return failure(FailureKind.SQL_ERROR, errorMessage, elapsedMillis);
+    }
+
+    public static QueryResult cancelled(String errorMessage, long elapsedMillis) {
+        return failure(FailureKind.CANCELLED, errorMessage, elapsedMillis);
+    }
+
+    public static QueryResult timeout(String errorMessage, long elapsedMillis) {
+        return failure(FailureKind.TIMEOUT, errorMessage, elapsedMillis);
+    }
+
+    private static QueryResult failure(FailureKind kind, String message, long elapsedMillis) {
+        return new QueryResult(Kind.ERROR, null, null, null, -1, elapsedMillis, message, kind);
     }
 
     /**
@@ -65,7 +84,7 @@ public final class QueryResult {
      * 元素可为 null（该列取不到注释）。仅对 QUERY 结果有意义。
      */
     public QueryResult withColumnComments(List<String> comments) {
-        return new QueryResult(kind, columns, comments, rows, updateCount, elapsedMillis, errorMessage);
+        return new QueryResult(kind, columns, comments, rows, updateCount, elapsedMillis, errorMessage, failureKind);
     }
 
     /**

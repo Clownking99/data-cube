@@ -20,19 +20,28 @@ public interface SqlRunner {
      * @param conn    连接（调用方负责生命周期）
      * @param sql     单条 SQL（不含尾部分号）
      * @param schema  可选 schema；非空时先切换 search_path
-     * @param maxRows 查询结果最大保留行数（{@code <=0} 不限制）
+     * @param options 行数、超时与取消控制选项
      */
-    QueryResult execute(Connection conn, String sql, String schema, int maxRows);
+    QueryResult execute(Connection conn, String sql, String schema, SqlExecutionOptions options);
+
+    default QueryResult execute(Connection conn, String sql, String schema, int maxRows) {
+        return execute(conn, sql, schema, SqlExecutionOptions.defaults(maxRows));
+    }
 
     /**
      * 多语句逐条执行；遇失败语句时通过 {@code policy} 决定继续/全部继续/中止，
      * 每条结果（含失败）作为一条 {@link ScriptOutcome} 返回。
      *
-     * @param maxRows 每条查询结果最大保留行数（{@code <=0} 不限制）
+     * @param options 每条语句共享的行数、超时与取消控制选项
      * @param policy  遇错处置回调；{@code null} 时遇错即中止（等价历史行为）
      */
-    List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows,
-                                      ScriptErrorPolicy policy);
+    List<ScriptOutcome> executeScript(Connection conn, String script, String schema,
+                                      SqlExecutionOptions options, ScriptErrorPolicy policy);
+
+    default List<ScriptOutcome> executeScript(Connection conn, String script, String schema, int maxRows,
+                                              ScriptErrorPolicy policy) {
+        return executeScript(conn, script, schema, SqlExecutionOptions.defaults(maxRows), policy);
+    }
 
     /**
      * 生成执行计划，结果以单列多行文本承载（首列逐行拼接即计划文本）。
@@ -43,6 +52,12 @@ public interface SqlRunner {
      *
      * @param sql     单条 SQL（不含尾部分号）
      * @param analyze 是否实际执行以获取真实行数/耗时
+     * @param options 行数、超时与取消控制选项
      */
-    QueryResult explain(Connection conn, String sql, String schema, boolean analyze);
+    QueryResult explain(Connection conn, String sql, String schema, boolean analyze,
+                        SqlExecutionOptions options);
+
+    default QueryResult explain(Connection conn, String sql, String schema, boolean analyze) {
+        return explain(conn, sql, schema, analyze, SqlExecutionOptions.defaults(0));
+    }
 }
