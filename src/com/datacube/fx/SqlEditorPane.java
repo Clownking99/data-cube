@@ -436,15 +436,24 @@ public final class SqlEditorPane implements AutoCloseable {
     private void finishRetryableCloseFailure(
             CompletableFuture<CloseGuardOutcome> result, Throwable failure) {
         try {
-            Platform.runLater(() -> {
-                reopenAfterRejectedClose();
-                result.completeExceptionally(failure);
-            });
+            Platform.runLater(() -> SqlEditorCloseSequence.finishRetryableFailure(
+                    failure,
+                    this::reopenAfterRejectedClose,
+                    this::showCloseTransactionFailure,
+                    result::completeExceptionally));
         } catch (Throwable dispatchFailure) {
-            reopenAdmissionWithoutUi();
-            failure.addSuppressed(dispatchFailure);
-            result.completeExceptionally(failure);
+            SqlEditorCloseSequence.finishRetryableFailure(
+                    failure,
+                    this::reopenAdmissionWithoutUi,
+                    () -> {
+                        if (failure != dispatchFailure) failure.addSuppressed(dispatchFailure);
+                    },
+                    result::completeExceptionally);
         }
+    }
+
+    private void showCloseTransactionFailure() {
+        showAlert("提交或回滚失败，编辑器和事务已保留，请检查连接后重试。");
     }
 
     private CloseDecision requestCancelRollbackClose() {

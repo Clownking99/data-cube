@@ -168,4 +168,25 @@ class SqlEditorSessionContractTest {
         assertFalse(body.contains("requestTransactionClose"));
         assertFalse(body.contains("requestCancelRollbackClose"));
     }
+
+    @Test
+    void interactiveTransactionFailureAlwaysSettlesAfterSafeUserFeedback() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        int finish = source.indexOf("private void finishRetryableCloseFailure");
+        int afterFinish = source.indexOf("\n    private ", finish + 1);
+        String finishBody = source.substring(finish, afterFinish);
+        assertTrue(finishBody.contains("SqlEditorCloseSequence.finishRetryableFailure"));
+        assertTrue(finishBody.contains("this::showCloseTransactionFailure"));
+
+        int feedback = source.indexOf("private void showCloseTransactionFailure()");
+        int afterFeedback = source.indexOf("\n    private ", feedback + 1);
+        String feedbackBody = source.substring(feedback, afterFeedback);
+        assertTrue(feedbackBody.contains("提交或回滚失败"));
+        assertTrue(feedbackBody.contains("事务已保留"));
+        assertFalse(feedbackBody.contains("Throwable"));
+        assertFalse(feedbackBody.contains("message("));
+        assertFalse(feedbackBody.contains("sql"));
+        assertFalse(feedbackBody.contains("password"));
+    }
 }

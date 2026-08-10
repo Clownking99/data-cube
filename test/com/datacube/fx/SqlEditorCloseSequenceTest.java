@@ -4,10 +4,14 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SqlEditorCloseSequenceTest {
 
@@ -64,5 +68,40 @@ class SqlEditorCloseSequenceTest {
 
         assertEquals(CloseGuardOutcome.APPROVED, outcome);
         assertEquals(List.of("rollback", "strict-cleanup"), events);
+    }
+
+    @Test
+    void retryableFailureSettlesEvenWhenUiRestoreAndUserFeedbackBothThrow() {
+        RuntimeException transactionFailure = new RuntimeException("commit failed");
+        RuntimeException restoreFailure = new RuntimeException("restore failed");
+        RuntimeException feedbackFailure = new RuntimeException("feedback failed");
+        CompletableFuture<Void> terminal = new CompletableFuture<>();
+
+        SqlEditorCloseSequence.finishRetryableFailure(
+                transactionFailure,
+                () -> { throw restoreFailure; },
+                () -> { throw feedbackFailure; },
+                terminal::completeExceptionally);
+
+        CompletionException actual = assertThrows(CompletionException.class, terminal::join);
+        assertSame(transactionFailure, actual.getCause());
+        assertEquals(List.of(restoreFailure, feedbackFailure),
+                List.of(transactionFailure.getSuppressed()));
+    }
+
+    @Test
+    void retryableFailureAttemptsUserFeedbackAfterUiRestoreFailure() {
+        RuntimeException transactionFailure = new RuntimeException("rollback failed");
+        AtomicInteger feedback = new AtomicInteger();
+        CompletableFuture<Void> terminal = new CompletableFuture<>();
+
+        SqlEditorCloseSequence.finishRetryableFailure(
+                transactionFailure,
+                () -> { throw new IllegalStateException("refresh failed"); },
+                feedback::incrementAndGet,
+                terminal::completeExceptionally);
+
+        assertEquals(1, feedback.get());
+        assertTrue(terminal.isCompletedExceptionally());
     }
 }
