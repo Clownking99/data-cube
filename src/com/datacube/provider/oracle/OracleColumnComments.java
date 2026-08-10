@@ -6,6 +6,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -27,7 +29,8 @@ final class OracleColumnComments {
     private OracleColumnComments() {}
 
     /**
-     * 返回与列平行的注释列表（元素可为 null）。若无任何表列或发生异常，返回 {@code null}。
+     * 返回与列平行的注释列表（元素可为 null）。若无任何表列或普通查询异常，返回 {@code null}。
+     * 超时和用户取消保留显式执行终态，由 runner 统一映射。
      *
      * <p>Oracle thin 驱动的 {@link ResultSetMetaData} 不返回表名/模式名（恒为空串），
      * 故标准元数据路径在 Oracle 上取不到；此时回退到 {@link #resolveBySingleTable}，
@@ -38,7 +41,7 @@ final class OracleColumnComments {
             ResultSetMetaData md,
             String sql,
             String defaultSchema,
-            SqlExecutionOptions options) {
+            SqlExecutionOptions options) throws SQLException {
         try {
             int colCount = md.getColumnCount();
             String[] schemas = new String[colCount];
@@ -72,6 +75,11 @@ final class OracleColumnComments {
                 }
             }
             return out;
+        } catch (SQLTimeoutException timeout) {
+            throw timeout;
+        } catch (SQLException failure) {
+            if (options.control().cancellationRequested()) throw failure;
+            return null;
         } catch (Exception e) {
             return null;
         }

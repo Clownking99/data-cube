@@ -196,13 +196,14 @@ class OracleSqlRunnerExecutionControlTest {
             assertEquals(0, jdbc.mainStatementCancels.get(), path(metadataPath));
             assertEquals(1, jdbc.commentStatementCancels.get(), path(metadataPath));
             assertEquals(7, jdbc.commentQueryTimeout.get(), path(metadataPath));
-            assertEquals(QueryResult.Kind.QUERY, result.get().kind, path(metadataPath));
+            assertEquals(QueryResult.FailureKind.CANCELLED,
+                    result.get().failureKind, path(metadataPath));
             assertFalse(control.hasActiveStatement(), path(metadataPath));
         }
     }
 
     @Test
-    void timeoutOnBothColumnCommentPathsIsBestEffortAndReleasesActivation() {
+    void timeoutOnBothColumnCommentPathsIsReportedAndReleasesActivation() {
         for (boolean metadataPath : List.of(true, false)) {
             BlockingCommentJdbc jdbc = BlockingCommentJdbc.timingOut(metadataPath);
             SqlExecutionControl control = new SqlExecutionControl();
@@ -210,10 +211,25 @@ class OracleSqlRunnerExecutionControlTest {
             QueryResult result = runner.execute(jdbc.connection(), "select id from t", "App",
                     new SqlExecutionOptions(100, 13, control));
 
+            assertEquals(QueryResult.FailureKind.TIMEOUT, result.failureKind, path(metadataPath));
+            assertEquals(13, jdbc.commentQueryTimeout.get(), path(metadataPath));
+            assertFalse(control.hasActiveStatement(), path(metadataPath));
+        }
+    }
+
+    @Test
+    void ordinarySqlFailureOnBothCommentPathsRemainsBestEffort() {
+        for (boolean metadataPath : List.of(true, false)) {
+            BlockingCommentJdbc jdbc = BlockingCommentJdbc.failing(metadataPath);
+            SqlExecutionControl control = new SqlExecutionControl();
+
+            QueryResult result = runner.execute(jdbc.connection(), "select id from t", "App",
+                    new SqlExecutionOptions(100, 17, control));
+
             assertEquals(QueryResult.Kind.QUERY, result.kind, path(metadataPath));
             assertEquals(List.of("id"), result.columns, path(metadataPath));
             assertTrue(result.columnComments.isEmpty(), path(metadataPath));
-            assertEquals(13, jdbc.commentQueryTimeout.get(), path(metadataPath));
+            assertEquals(17, jdbc.commentQueryTimeout.get(), path(metadataPath));
             assertFalse(control.hasActiveStatement(), path(metadataPath));
         }
     }
@@ -290,19 +306,25 @@ class OracleSqlRunnerExecutionControlTest {
         private final AtomicInteger commentStatementCancels = new AtomicInteger();
         private final AtomicInteger commentQueryTimeout = new AtomicInteger(-1);
         private final boolean metadataPath;
-        private final boolean timeout;
+        private final SQLException immediateFailure;
 
-        private BlockingCommentJdbc(boolean metadataPath, boolean timeout) {
+        private BlockingCommentJdbc(boolean metadataPath, SQLException immediateFailure) {
             this.metadataPath = metadataPath;
-            this.timeout = timeout;
+            this.immediateFailure = immediateFailure;
         }
 
         private static BlockingCommentJdbc blocking(boolean metadataPath) {
-            return new BlockingCommentJdbc(metadataPath, false);
+            return new BlockingCommentJdbc(metadataPath, null);
         }
 
         private static BlockingCommentJdbc timingOut(boolean metadataPath) {
-            return new BlockingCommentJdbc(metadataPath, true);
+            return new BlockingCommentJdbc(
+                    metadataPath, new SQLTimeoutException("comment lookup timed out"));
+        }
+
+        private static BlockingCommentJdbc failing(boolean metadataPath) {
+            return new BlockingCommentJdbc(
+                    metadataPath, new SQLException("comment metadata unavailable"));
         }
 
         private Connection connection() {
@@ -350,7 +372,7 @@ class OracleSqlRunnerExecutionControlTest {
 
         private ResultSet executeCommentQuery() throws Exception {
             commentQueryStarted.countDown();
-            if (timeout) throw new SQLTimeoutException("comment lookup timed out");
+            if (immediateFailure != null) throw immediateFailure;
             while (!commentStatementCancelled.await(25, TimeUnit.MILLISECONDS)) {
                 if (forceRelease.getCount() == 0) return emptyResultSet();
             }

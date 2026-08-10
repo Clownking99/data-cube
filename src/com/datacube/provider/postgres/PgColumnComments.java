@@ -6,6 +6,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -26,9 +28,11 @@ final class PgColumnComments {
     private PgColumnComments() {}
 
     /**
-     * 返回与列平行的注释列表（元素可为 null）。若无任何表列或发生异常，返回 {@code null}。
+     * 返回与列平行的注释列表（元素可为 null）。若无任何表列或普通查询异常，返回 {@code null}。
+     * 超时和用户取消保留显式执行终态，由 runner 统一映射。
      */
-    static List<String> resolve(Connection conn, ResultSetMetaData md, SqlExecutionOptions options) {
+    static List<String> resolve(Connection conn, ResultSetMetaData md, SqlExecutionOptions options)
+            throws SQLException {
         try {
             int colCount = md.getColumnCount();
             // 每列底层三元组（schema/table/column），非表列为 null
@@ -63,6 +67,11 @@ final class PgColumnComments {
                 }
             }
             return out;
+        } catch (SQLTimeoutException timeout) {
+            throw timeout;
+        } catch (SQLException failure) {
+            if (options.control().cancellationRequested()) throw failure;
+            return null;
         } catch (Exception e) {
             return null;
         }

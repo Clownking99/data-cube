@@ -155,22 +155,35 @@ class PgSqlRunnerExecutionControlTest {
         assertEquals(0, jdbc.mainStatementCancels.get());
         assertEquals(1, jdbc.commentStatementCancels.get());
         assertEquals(7, jdbc.commentQueryTimeout.get());
-        assertEquals(QueryResult.Kind.QUERY, result.get().kind);
+        assertEquals(QueryResult.FailureKind.CANCELLED, result.get().failureKind);
         assertFalse(control.hasActiveStatement());
     }
 
     @Test
-    void commentTimeoutIsBestEffortAndReleasesItsActivation() {
+    void commentTimeoutIsReportedAndReleasesItsActivation() {
         BlockingCommentJdbc jdbc = BlockingCommentJdbc.timingOut();
         SqlExecutionControl control = new SqlExecutionControl();
 
         QueryResult result = runner.execute(jdbc.connection(), "select id from t", null,
                 new SqlExecutionOptions(100, 9, control));
 
+        assertEquals(QueryResult.FailureKind.TIMEOUT, result.failureKind);
+        assertEquals(9, jdbc.commentQueryTimeout.get());
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void ordinaryCommentSqlFailureRemainsBestEffort() {
+        BlockingCommentJdbc jdbc = BlockingCommentJdbc.failing();
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = runner.execute(jdbc.connection(), "select id from t", null,
+                new SqlExecutionOptions(100, 5, control));
+
         assertEquals(QueryResult.Kind.QUERY, result.kind);
         assertEquals(List.of("id"), result.columns);
         assertTrue(result.columnComments.isEmpty());
-        assertEquals(9, jdbc.commentQueryTimeout.get());
+        assertEquals(5, jdbc.commentQueryTimeout.get());
         assertFalse(control.hasActiveStatement());
     }
 
@@ -241,18 +254,22 @@ class PgSqlRunnerExecutionControlTest {
         private final AtomicInteger mainStatementCancels = new AtomicInteger();
         private final AtomicInteger commentStatementCancels = new AtomicInteger();
         private final AtomicInteger commentQueryTimeout = new AtomicInteger(-1);
-        private final boolean timeout;
+        private final SQLException immediateFailure;
 
-        private BlockingCommentJdbc(boolean timeout) {
-            this.timeout = timeout;
+        private BlockingCommentJdbc(SQLException immediateFailure) {
+            this.immediateFailure = immediateFailure;
         }
 
         private static BlockingCommentJdbc blocking() {
-            return new BlockingCommentJdbc(false);
+            return new BlockingCommentJdbc(null);
         }
 
         private static BlockingCommentJdbc timingOut() {
-            return new BlockingCommentJdbc(true);
+            return new BlockingCommentJdbc(new SQLTimeoutException("comment lookup timed out"));
+        }
+
+        private static BlockingCommentJdbc failing() {
+            return new BlockingCommentJdbc(new SQLException("comment metadata unavailable"));
         }
 
         private Connection connection() {
@@ -299,7 +316,7 @@ class PgSqlRunnerExecutionControlTest {
 
         private ResultSet executeCommentQuery() throws Exception {
             commentQueryStarted.countDown();
-            if (timeout) throw new SQLTimeoutException("comment lookup timed out");
+            if (immediateFailure != null) throw immediateFailure;
             while (!commentStatementCancelled.await(25, TimeUnit.MILLISECONDS)) {
                 if (forceRelease.getCount() == 0) return emptyResultSet();
             }
