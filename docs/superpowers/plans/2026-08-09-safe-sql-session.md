@@ -66,7 +66,7 @@ Existing units changed:
 - Persistence keys are exactly environment, readOnly, and queryTimeoutSeconds.
 - Defaults are DEVELOPMENT, false, and 60 seconds; valid timeout range is 0 through 3600.
 
-- [ ] **Step 1: Write failing model and persistence tests**
+- [x] **Step 1: Write failing model and persistence tests**
 
 Create ConnectionSafetyOptionsTest with these complete contract tests:
 
@@ -164,7 +164,7 @@ void persistsOnlyRelationalSafetyPropertiesAndKeepsRedisShape() throws Exception
 }
 ~~~
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -174,7 +174,7 @@ Run:
 
 Expected: compile failure because ConnectionEnvironment and ConnectionSafetyOptions do not exist.
 
-- [ ] **Step 3: Add the validated safety model**
+- [x] **Step 3: Add the validated safety model**
 
 Create ConnectionEnvironment:
 
@@ -269,7 +269,7 @@ public record ConnectionSafetyOptions(
 }
 ~~~
 
-- [ ] **Step 4: Persist only the whitelist**
+- [x] **Step 4: Persist only the whitelist**
 
 In ConnectionStore.toJson, append the three safety fields only when type is not REDIS:
 
@@ -343,7 +343,7 @@ private static void warnInvalidSafetyValues(Map<String, String> values) {
 
 Call this helper only for relational entries. Messages identify the field but never include the raw value, connection URL, username, password, or ciphertext.
 
-- [ ] **Step 5: Add relational-only fields to ConnectionDialog**
+- [x] **Step 5: Add relational-only fields to ConnectionDialog**
 
 Add a ComboBox<ConnectionEnvironment>, CheckBox, and timeout TextField. Bind their managed/visible properties to type != REDIS, initialize from ConnectionSafetyOptions.from(existing), validate timeout with the same 0..3600 range, and replace the final Map.of() with:
 
@@ -375,7 +375,7 @@ private static ConnConfig build(
 
 Both test-connection and save call sites pass the same three new controls.
 
-- [ ] **Step 6: Verify GREEN and commit**
+- [x] **Step 6: Verify GREEN and commit**
 
 Run:
 
@@ -406,7 +406,7 @@ Expected: focused tests pass and the commit contains no .testagent path.
 - Statement kinds are READ, WRITE, DDL, TRANSACTION_CONTROL, UNKNOWN.
 - Risks are MISSING_WHERE, DESTRUCTIVE_DDL, UNKNOWN_STATEMENT, SESSION_STATE_CONFLICT.
 
-- [ ] **Step 1: Write analyzer tests**
+- [x] **Step 1: Write analyzer tests**
 
 Create tests that assert exact classification and top-level WHERE behavior:
 
@@ -471,7 +471,7 @@ class SqlSafetyAnalyzerTest {
 }
 ~~~
 
-- [ ] **Step 2: Run analyzer tests and verify RED**
+- [x] **Step 2: Run analyzer tests and verify RED**
 
 Run:
 
@@ -481,7 +481,7 @@ Run:
 
 Expected: compile failure because SqlSafetyAnalyzer does not exist.
 
-- [ ] **Step 3: Implement the analyzer**
+- [x] **Step 3: Implement the analyzer**
 
 Create these public result types inside SqlSafetyAnalyzer:
 
@@ -537,7 +537,7 @@ private static StatementAnalysis analyzeStatement(int index, String sql) {
 
 The lexer uses a State enum with NORMAL, SINGLE_QUOTE, DOUBLE_QUOTE, LINE_COMMENT, BLOCK_COMMENT, DOLLAR_QUOTE, and ORACLE_Q_QUOTE. It records a word only while parentheses depth is zero. The WITH handler skips balanced CTE bodies and returns the first top-level SELECT, INSERT, UPDATE, DELETE, or MERGE after the CTE list. PL/SQL BEGIN/DECLARE and CALL/DO/EXEC/EXECUTE classify as WRITE unless they are the standalone transaction tokens listed above.
 
-- [ ] **Step 4: Write policy tests**
+- [x] **Step 4: Write policy tests**
 
 Create SqlSafetyPolicyTest:
 
@@ -592,7 +592,7 @@ class SqlSafetyPolicyTest {
 }
 ~~~
 
-- [ ] **Step 5: Implement the policy and verify GREEN**
+- [x] **Step 5: Implement the policy and verify GREEN**
 
 Use this immutable decision:
 
@@ -644,7 +644,7 @@ Expected: all analyzer and policy tests pass.
 - QueryResult adds FailureKind SQL_ERROR, CANCELLED, TIMEOUT, plus error, cancelled, and timeout factories.
 - Existing SqlRunner int-maxRows overloads remain as compatibility defaults.
 
-- [ ] **Step 1: Write failing execution-control tests**
+- [x] **Step 1: Write failing execution-control tests**
 
 Use a dynamic proxy Statement and assert timeout, active ownership, cancellation, and release:
 
@@ -693,7 +693,7 @@ class SqlExecutionControlTest {
 }
 ~~~
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -703,7 +703,7 @@ Run:
 
 Expected: compile failure because SqlExecutionControl does not exist.
 
-- [ ] **Step 3: Implement SqlExecutionControl and options**
+- [x] **Step 3: Implement SqlExecutionControl and options**
 
 Create SqlExecutionControl with one AtomicReference<Statement>, one AtomicBoolean cancellationRequested, and a volatile timeoutSupported flag. activate rejects a second active statement, applies setQueryTimeout when seconds > 0, treats SQLFeatureNotSupportedException as timeoutSupported=false, and propagates every other SQLException. cancel sets cancellationRequested before reading the active reference and returns false when no Statement is active.
 
@@ -731,7 +731,7 @@ public record SqlExecutionOptions(
 }
 ~~~
 
-- [ ] **Step 4: Add typed failure outcomes**
+- [x] **Step 4: Add typed failure outcomes**
 
 Extend QueryResult without changing Kind:
 
@@ -758,7 +758,7 @@ private static QueryResult failure(FailureKind kind, String message, long elapse
 
 Query and update factories pass null failureKind. withColumnComments preserves failureKind.
 
-- [ ] **Step 5: Evolve SqlRunner compatibly**
+- [x] **Step 5: Evolve SqlRunner compatibly**
 
 Define option-based abstract methods and keep old signatures as defaults:
 
@@ -785,7 +785,7 @@ default QueryResult explain(Connection conn, String sql, String schema, boolean 
 }
 ~~~
 
-- [ ] **Step 6: Update both providers and add contract tests**
+- [x] **Step 6: Update both providers and add contract tests**
 
 Every Statement creation path uses:
 
@@ -840,7 +840,7 @@ Expected: execution-control and provider tests pass, and existing SqlRunner call
 - JdbcEditorSession.explain(String, String, boolean) returns QueryResult.
 - Blocking methods are executeScript, explain, setTransactionMode, commit, rollback, cancel, reconnect, and close.
 
-- [ ] **Step 1: Write failing dedicated-session tests**
+- [x] **Step 1: Write failing dedicated-session tests**
 
 The session test uses Connection and SqlRunner stubs and asserts these state transitions:
 
@@ -981,7 +981,7 @@ private static Object defaultValue(Class<?> type) {
 
 ConnectionManagerDedicatedSessionTest constructs ConnectionManager with the package-private providerResolver constructor defined in Step 5, opens two editor sessions, executes one statement in each, and asserts two distinct proxy connections were opened. It separately calls acquire twice and asserts the shared path opens only one additional connection.
 
-- [ ] **Step 2: Run session tests and verify RED**
+- [x] **Step 2: Run session tests and verify RED**
 
 Run:
 
@@ -991,7 +991,7 @@ Run:
 
 Expected: compile failure because JdbcEditorSession and the dedicated manager methods do not exist.
 
-- [ ] **Step 3: Implement the session public model**
+- [x] **Step 3: Implement the session public model**
 
 Use these exact enums and snapshot:
 
@@ -1053,7 +1053,7 @@ public Snapshot snapshot()
 public void close()
 ~~~
 
-- [ ] **Step 4: Implement execution and transaction rules**
+- [x] **Step 4: Implement execution and transaction rules**
 
 executeScript creates a fresh SqlExecutionControl per operation and passes:
 
@@ -1073,7 +1073,7 @@ After manual execution, set ACTIVE when there is no error and ERROR_PENDING when
 
 commit and rollback require MANUAL, call JDBC, and set IDLE only after success. cancel calls control.cancel; if it returns false or throws SQLException, close only the dedicated connection and set BROKEN. close is idempotent, requests cancellation, rolls back pending manual work best-effort, closes the connection, and sets CLOSED.
 
-- [ ] **Step 5: Add ConnectionManager dedicated factories**
+- [x] **Step 5: Add ConnectionManager dedicated factories**
 
 Add a provider resolver test seam and route all existing provider lookups through it:
 
@@ -1114,7 +1114,7 @@ public JdbcEditorSession openEditorSession(String connId) {
 
 Do not add dedicated connections to live; their lifecycle belongs to JdbcEditorSession.
 
-- [ ] **Step 6: Verify GREEN and commit**
+- [x] **Step 6: Verify GREEN and commit**
 
 Run:
 
@@ -1163,7 +1163,7 @@ Expected: session state and isolation tests pass.
   close the window. `CANCELLED` is retryable; `FAILED_PARTIAL` is terminal and must not be presented
   as a usable/retryable application. Pre-teardown failures complete exceptionally and permit retry.
 
-- [ ] **Step 1: Write failing close-gate tests**
+- [x] **Step 1: Write failing close-gate tests**
 
 ~~~java
 package com.datacube.fx;
@@ -1196,7 +1196,7 @@ class AsyncCloseGateTest {
 ContentTabPaneContractTest uses reflection to assert both overloads exist, the legacy overload is
 deprecated, and AsyncTabCloseGuard has one no-argument method returning CompletionStage.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -1206,7 +1206,7 @@ Run:
 
 Expected: compile failure because the close guard types do not exist.
 
-- [ ] **Step 3: Implement the guard and gate**
+- [x] **Step 3: Implement the guard and gate**
 
 ~~~java
 package com.datacube.fx;
@@ -1223,7 +1223,7 @@ AsyncCloseGate issues a unique request handle/generation. Only that handle can f
 generation; late completion from an older generation cannot consume a newer retry. The coordinator
 coalesces duplicate requests and owns exception/null/cancellation/timeout normalization.
 
-- [ ] **Step 4: Wire ContentTabPane**
+- [x] **Step 4: Wire ContentTabPane**
 
 The guarded overload registers its coordinator before adding the tab. Guard cleanup may block only
 off the FX thread. Approval is dispatched back to FX for tab removal and the lightweight finalizer.
@@ -1237,7 +1237,7 @@ the tab; late `REJECTED` or a retryable exception re-enables it and permits a ne
 that settlement. Normal completion cancels and removes its daemon-scheduler timer. Root FX-dispatch
 or tab-removal failure is never reported as `COMPLETED`.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run:
 
@@ -1268,7 +1268,7 @@ Expected: gate, contract, and exactly-once lifecycle tests pass.
 - All execution and explain calls go through JdbcEditorSession, never ConnectionManager.acquire.
 - AppShell passes pane::requestClose to the guarded ContentTabPane overload.
 
-- [ ] **Step 1: Write failing source/lifecycle contract tests**
+- [x] **Step 1: Write failing source/lifecycle contract tests**
 
 Extend SqlEditorPaneLifecycleTest:
 
@@ -1288,7 +1288,7 @@ assertFalse(source.contains("connections.acquire(connId)"));
 assertTrue(source.contains("tasks.submit"));
 ~~~
 
-- [ ] **Step 2: Run contract tests and verify RED**
+- [x] **Step 2: Run contract tests and verify RED**
 
 Run:
 
@@ -1298,7 +1298,7 @@ Run:
 
 Expected: requestClose is absent and the source still uses connections.acquire.
 
-- [ ] **Step 3: Add editor session state and toolbar controls**
+- [x] **Step 3: Add editor session state and toolbar controls**
 
 Replace the immutable boundConn-only execution model with:
 
@@ -1318,7 +1318,7 @@ Initialize editorConnection from the constructor boundConn. ensureEditorSession 
 
 Add a second compact HBox below the existing toolbar with environment and read-only badges, transaction mode combo, commit, rollback, cancel, and timeout text. Production uses red inline CSS, test uses amber, development uses muted text.
 
-- [ ] **Step 4: Gate execution through SQL safety analysis**
+- [x] **Step 4: Gate execution through SQL safety analysis**
 
 Before recordHistory or background submission:
 
@@ -1358,7 +1358,7 @@ tasks.submit(() -> editorSession.executeScript(
 
 Explain uses the same analysis and policy. EXPLAIN ANALYZE analyzes the underlying SQL as executable; ordinary EXPLAIN requires no write confirmation for a read statement.
 
-- [ ] **Step 5: Wire transaction controls and status rendering**
+- [x] **Step 5: Wire transaction controls and status rendering**
 
 Each control submits one blocking session call:
 
@@ -1399,7 +1399,7 @@ When switching MANUAL to AUTO_COMMIT with pending work, show commit/rollback/can
 
 QueryResult FailureKind.CANCELLED displays “已取消”; TIMEOUT displays “执行超时”; SQL_ERROR keeps the existing error presentation.
 
-- [ ] **Step 6: Implement asynchronous close decisions**
+- [x] **Step 6: Implement asynchronous close decisions**
 
 `requestClose()` is called on FX and immediately captures the editor/history state plus the user's
 close decision. It returns one shared `CompletionStage<CloseGuardOutcome>` for the in-flight
@@ -1421,7 +1421,7 @@ The coordinator invokes it on the FX Application Thread after the guard returns 
 FX-dispatch rejection becomes `FAILED_PARTIAL`; an exception thrown inside an actually invoked
 finalizer is reported and swallowed without a second invocation.
 
-- [ ] **Step 7: Bind AppShell SQL tabs to the guarded overload**
+- [x] **Step 7: Bind AppShell SQL tabs to the guarded overload**
 
 Both openSqlHistory and TreeActions.openSqlEditor must reserve ownership before constructing the
 pane. Use the factory overload and provide the non-interactive background abort path:
@@ -1469,7 +1469,7 @@ history persistence, and both task scopes have finished on a virtual thread. A u
 
 If the generic SQL entry has an active Redis connection, open the tab disconnected rather than binding Redis. Existing tree Redis actions remain unchanged.
 
-- [ ] **Step 8: Verify focused behavior and commit**
+- [x] **Step 8: Verify focused behavior and commit**
 
 Run:
 
@@ -1498,7 +1498,7 @@ Expected: focused tests pass and rg returns no matches.
 - Documents the final user workflow, compatibility behavior, defaults, and limitations.
 - Produces fresh evidence for tests, jlink, Git diff, CodeGraph synchronization, and GitHub Actions.
 
-- [ ] **Step 1: Update README with exact user-visible behavior**
+- [x] **Step 1: Update README with exact user-visible behavior**
 
 Add a “安全 SQL 会话” section containing:
 
@@ -1514,7 +1514,7 @@ Add a “安全 SQL 会话” section containing:
 关系型连接默认查询超时为 60 秒，可配置为 0 表示不限制。客户端风险分析用于减少误操作，数据库账户权限仍是最终安全边界。
 ~~~
 
-- [ ] **Step 2: Run the complete local verification**
+- [x] **Step 2: Run the complete local verification**
 
 Run:
 
