@@ -1,5 +1,7 @@
 package com.datacube.service;
 
+import com.datacube.sqleditor.SqlSafetyAnalyzer;
+import com.datacube.sqleditor.SqlSafetyPolicy;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.SqlRunner;
@@ -27,6 +29,89 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class JdbcEditorSessionTest {
+
+    @Test
+    void safetyPolicyBlocksMultiStatementTransactionBeforeRunnerDispatch() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        StubRunner runner = new StubRunner(QueryResult.update(1, 1));
+        ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(config());
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", safety, jdbc::open, runner);
+
+        for (boolean oracleMode : List.of(false, true)) {
+            for (String sql : List.of(
+                    "COMMIT; ROLLBACK", "COMMIT; SELECT 1", "SELECT 1; ROLLBACK")) {
+                var decision = SqlSafetyPolicy.decide(
+                        SqlSafetyAnalyzer.analyze(sql, oracleMode), safety);
+                if (!decision.blocked()) {
+                    session.executeScript(sql, null, 100, null, oracleMode);
+                }
+            }
+        }
+
+        assertEquals(0, runner.scriptCalls.get());
+        assertEquals(0, jdbc.opens.get());
+        session.close();
+    }
+
+    @Test
+    void emptyOutcomesPreserveActiveAndErrorPendingTransactions() throws Exception {
+        for (QueryResult firstResult : List.of(
+                QueryResult.update(1, 1), QueryResult.error("boom", 1))) {
+            JdbcStub jdbc = new JdbcStub();
+            AtomicInteger calls = new AtomicInteger();
+            SqlRunner runner = new SqlRunner() {
+                @Override
+                public QueryResult execute(
+                        Connection connection, String sql, String schema,
+                        SqlExecutionOptions options) {
+                    return firstResult;
+                }
+
+                @Override
+                public List<ScriptOutcome> executeScript(
+                        Connection connection,
+                        String script,
+                        String schema,
+                        SqlExecutionOptions options,
+                        ScriptErrorPolicy policy) {
+                    return calls.getAndIncrement() == 0
+                            ? List.of(new ScriptOutcome(1, script, firstResult))
+                            : List.of();
+                }
+
+                @Override
+                public QueryResult explain(
+                        Connection connection,
+                        String sql,
+                        String schema,
+                        boolean analyze,
+                        SqlExecutionOptions options) {
+                    return firstResult;
+                }
+            };
+            JdbcEditorSession session = new JdbcEditorSession(
+                    "conn", ConnectionSafetyOptions.from(config()), jdbc::open, runner);
+            session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
+
+            session.executeScript("first", null, 100, null, false);
+            JdbcEditorSession.TransactionState pending =
+                    session.snapshot().transactionState();
+            session.executeScript("-- no outcomes", null, 100, null, false);
+
+            assertEquals(firstResult.kind == QueryResult.Kind.ERROR
+                            ? JdbcEditorSession.TransactionState.ERROR_PENDING
+                            : JdbcEditorSession.TransactionState.ACTIVE,
+                    pending);
+            assertEquals(pending, session.snapshot().transactionState());
+            session.close();
+            assertEquals(1, jdbc.rollbacks.get());
+            assertEquals(1, jdbc.closes.get());
+            assertEquals(1, jdbc.handles.size());
+            assertEquals(1, jdbc.handles.getFirst().rollbacks.get(),
+                    "the retained transaction connection owns rollback");
+        }
+    }
 
     @Test
     void manualTriviaOnlyScriptKeepsIdleTransaction() throws Exception {
@@ -1207,6 +1292,7 @@ class JdbcEditorSessionTest {
                             }
                             case "rollback" -> {
                                 rollbacks.incrementAndGet();
+                                handle.rollbacks.incrementAndGet();
                                 if (rollbackFailure != null) throw rollbackFailure;
                                 yield null;
                             }
@@ -1237,6 +1323,7 @@ class JdbcEditorSessionTest {
         private boolean autoCommit = true;
         private boolean readOnly;
         private boolean closed;
+        private final AtomicInteger rollbacks = new AtomicInteger();
     }
 
     private static void await(CountDownLatch latch) throws InterruptedException {

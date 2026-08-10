@@ -32,6 +32,28 @@ class SqlSafetyAnalyzerTest {
     }
 
     @Test
+    void transactionCompletionMustOwnTheEntireScript() {
+        for (boolean oracleMode : List.of(false, true)) {
+            for (String sql : List.of(
+                    "COMMIT; ROLLBACK", "COMMIT; SELECT 1", "SELECT 1; ROLLBACK")) {
+                var analysis = SqlSafetyAnalyzer.analyze(sql, oracleMode);
+                var transactionStatements = analysis.statements().stream()
+                        .filter(statement -> statement.kind() == TRANSACTION_CONTROL)
+                        .toList();
+
+                assertFalse(transactionStatements.isEmpty(), sql);
+                assertTrue(transactionStatements.stream()
+                        .allMatch(statement -> statement.risks().contains(SESSION_STATE_CONFLICT)),
+                        sql);
+            }
+
+            var reads = SqlSafetyAnalyzer.analyze("SELECT 1; SELECT 2", oracleMode);
+            assertTrue(reads.statements().stream()
+                    .noneMatch(statement -> statement.risks().contains(SESSION_STATE_CONFLICT)));
+        }
+    }
+
+    @Test
     void transactionCompletionRequiresValidDialectTrivia() {
         assertEquals("", SqlSafetyAnalyzer.transactionCompletionKeyword(
                 "COMMIT /* unterminated", false));

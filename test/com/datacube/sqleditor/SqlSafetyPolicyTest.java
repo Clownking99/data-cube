@@ -26,6 +26,24 @@ class SqlSafetyPolicyTest {
     }
 
     @Test
+    void multiStatementTransactionCompletionIsBlockedForWritableAndReadOnlyConnections() {
+        for (boolean oracleMode : List.of(false, true)) {
+            for (boolean readOnly : List.of(false, true)) {
+                ConnectionSafetyOptions options = new ConnectionSafetyOptions(
+                        ConnectionEnvironment.DEVELOPMENT, readOnly, 60);
+                for (String sql : List.of(
+                        "COMMIT; ROLLBACK", "COMMIT; SELECT 1", "SELECT 1; ROLLBACK")) {
+                    var decision = SqlSafetyPolicy.decide(
+                            SqlSafetyAnalyzer.analyze(sql, oracleMode), options);
+
+                    assertTrue(decision.blocked(), sql);
+                    assertFalse(decision.confirmationRequired(), sql);
+                }
+            }
+        }
+    }
+
+    @Test
     void readOnlyBlocksWritesDdlAndUnknownStatements() {
         ConnectionSafetyOptions options =
                 new ConnectionSafetyOptions(ConnectionEnvironment.DEVELOPMENT, true, 60);

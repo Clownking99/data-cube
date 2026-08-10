@@ -52,7 +52,18 @@ public final class SqlSafetyAnalyzer {
         List<String> statements = SqlScriptSplitter.split(script, oracleMode);
         List<StatementAnalysis> analyses = new ArrayList<>(statements.size());
         for (int i = 0; i < statements.size(); i++) {
-            analyses.add(analyzeStatement(i + 1, statements.get(i), oracleMode));
+            StatementAnalysis analysis = analyzeStatement(
+                    i + 1, statements.get(i), oracleMode);
+            if (statements.size() > 1
+                    && analysis.kind() == StatementKind.TRANSACTION_CONTROL) {
+                EnumSet<Risk> risks = EnumSet.noneOf(Risk.class);
+                risks.addAll(analysis.risks());
+                risks.add(Risk.SESSION_STATE_CONFLICT);
+                analysis = new StatementAnalysis(
+                        analysis.index(), analysis.sql(), analysis.firstKeyword(),
+                        analysis.kind(), risks);
+            }
+            analyses.add(analysis);
         }
         return new ScriptAnalysis(analyses);
     }
