@@ -1408,13 +1408,21 @@ attempt. The retry cache retains only in-flight, `APPROVED`, and `FAILED_PARTIAL
 later request starts a real new attempt.
 `requestCancelRollbackClose` offers “取消执行、回滚并关闭 / 取消关闭”;
 `requestTransactionClose` offers “提交并关闭 / 回滚并关闭 / 取消”. After the FX decision, run
-cancel, wait-for-execution, rollback/commit, history persistence, task-scope close, and JDBC close on
-the existing `FxTaskRunner` or a JDK 25 virtual thread. Use `BestEffortCloseSequence` so history,
-both task scopes, cancel/wait, rollback/commit, and JDBC close are all attempted even when an earlier
-step fails. Return `APPROVED` only after every required step reaches a safe terminal state; user
-refusal returns `REJECTED`; any failure after irreversible cleanup begins returns `FAILED_PARTIAL`.
-Only failures known to precede irreversible cleanup may complete exceptionally and be retried. Never
-run JDBC/session cleanup or history persistence from the FX finalizer.
+cancel and wait-for-execution on the existing `FxTaskRunner` or a JDK 25 virtual thread. Resolve the
+selected rollback/commit as a hard pre-cleanup transaction gate. Only after that gate succeeds may
+history persistence, task-scope close, and strict JDBC close start. A gate failure immediately stops
+the attempt, preserves the same tab and dedicated session, reopens admission/queue state, and remains
+retryable; it must never enter `BestEffortCloseSequence` or the auto-rollback `closeStrict()` path.
+After a successful transaction gate, use `BestEffortCloseSequence` only for the independent history,
+task-scope, and strict-cleanup phases. Return `APPROVED` only after every required step reaches a safe
+terminal state; user refusal returns `REJECTED`; any failure after destructive cleanup begins returns
+`FAILED_PARTIAL`. Never run JDBC/session cleanup or history persistence from the FX finalizer.
+
+Application exit uses the separate `requestMandatoryClose()` guard through
+`closeAllManagedTabsMandatory()`. It never opens a transaction dialog or offers commit: it cancels
+cancellable work, waits for non-cancellable work to settle, rolls back pending work as the same hard
+transaction gate, and only then starts destructive cleanup. Mandatory rollback failure returns
+`FAILED_PARTIAL`, remains owned by the managed registry, and does not continue into strict cleanup.
 
 The FX finalizer remains idempotent and lightweight: it only removes listeners and hides UI state.
 The coordinator invokes it on the FX Application Thread after the guard returns `APPROVED`. A root
@@ -1432,7 +1440,7 @@ contentTabs.openManagedTab(name, abortBinding -> ManagedTabFactorySequence.creat
         pane -> abortBinding.bind(pane::closeResources),
         pane -> pane.setSqlText(historySql),
         pane -> new ContentTabPane.ManagedTabSpec(
-                pane.getNode(), pane::requestClose,
+                pane.getNode(), pane::requestClose, pane::requestMandatoryClose,
                 pane::finalizeCloseOnFx, pane::closeResources)));
 ~~~
 
@@ -1461,11 +1469,13 @@ try {
 }
 ~~~
 
-The guard completes `APPROVED` only after JdbcEditorSession cancel/wait/rollback-or-commit/close,
-history persistence, and both task scopes have finished on a virtual thread. A user cancel returns
-`REJECTED` and is genuinely retryable. Once destructive cleanup starts, any partial failure is
-`FAILED_PARTIAL`; the mandatory abort path never opens a confirmation dialog and never returns
-`REJECTED`. The FX finalizer performs only lightweight listener/UI cleanup.
+The interactive guard completes `APPROVED` only after JdbcEditorSession cancel/wait, the selected
+transaction gate, history persistence, strict close, and both task scopes have finished on a virtual
+thread. A user cancel returns `REJECTED` and is genuinely retryable. Gate failure preserves the tab
+and session for a new attempt; once destructive cleanup starts, any partial failure is
+`FAILED_PARTIAL`. The mandatory guard never opens a confirmation dialog, never commits, and never
+returns `REJECTED`; `AppShell` shutdown invokes `closeAllManagedTabsMandatory()`. The FX finalizer
+performs only lightweight listener/UI cleanup.
 
 If the generic SQL entry has an active Redis connection, open the tab disconnected rather than binding Redis. Existing tree Redis actions remain unchanged.
 
