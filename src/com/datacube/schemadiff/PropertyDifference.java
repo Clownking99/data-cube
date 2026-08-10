@@ -12,6 +12,8 @@ import com.datacube.spi.schemadiff.SequenceDefinition;
 import com.datacube.spi.schemadiff.SnapshotCompleteness;
 import com.datacube.spi.schemadiff.TableDefinition;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -25,6 +27,15 @@ import java.util.Set;
 public record PropertyDifference(
         String path, Object sourceValue, Object targetValue, String explanation) {
     private static final String INVALID_VALUE_MESSAGE = "Property value type is not allowed";
+    private static final Set<Class<?>> IMMUTABLE_NUMBER_TYPES = Set.of(
+            Byte.class,
+            Short.class,
+            Integer.class,
+            Long.class,
+            Float.class,
+            Double.class,
+            BigInteger.class,
+            BigDecimal.class);
     private static final Set<Class<?>> TRUSTED_IMMUTABLE_RECORDS = Set.of(
             QualifiedName.class,
             ObjectKey.class,
@@ -55,7 +66,7 @@ public record PropertyDifference(
     }
 
     private static Object immutableCopy(Object value, Set<Object> visiting) {
-        if (value == null || value instanceof String || value instanceof Number
+        if (value == null || value instanceof String || IMMUTABLE_NUMBER_TYPES.contains(value.getClass())
                 || value instanceof Boolean || value instanceof Character || value instanceof Enum<?>
                 || TRUSTED_IMMUTABLE_RECORDS.contains(value.getClass())) {
             return value;

@@ -412,6 +412,48 @@ class SchemaDiffEngineTest {
     }
 
     @Test
+    void propertyDifferenceAllowsOnlyExactImmutableNumberClasses() {
+        List<Number> values = List.of(
+                Byte.valueOf((byte) 1),
+                Short.valueOf((short) 2),
+                Integer.valueOf(3),
+                Long.valueOf(4L),
+                Float.valueOf(5.5f),
+                Double.valueOf(6.5d),
+                new java.math.BigInteger("7"),
+                new java.math.BigDecimal("8.25"));
+
+        PropertyDifference difference = new PropertyDifference(
+                "numbers", values, null, "Property differs");
+
+        assertEquals(values, difference.sourceValue());
+    }
+
+    @Test
+    void propertyDifferenceRejectsAtomicIntegerInsteadOfRetainingItsMutableReference() {
+        java.util.concurrent.atomic.AtomicInteger value = new java.util.concurrent.atomic.AtomicInteger(1);
+
+        assertMutableNumberRejected(value, () -> value.set(2));
+    }
+
+    @Test
+    void propertyDifferenceRejectsAtomicLongAndLongAdder() {
+        java.util.concurrent.atomic.AtomicLong atomicLong = new java.util.concurrent.atomic.AtomicLong(1L);
+        java.util.concurrent.atomic.LongAdder longAdder = new java.util.concurrent.atomic.LongAdder();
+        longAdder.add(1L);
+
+        assertMutableNumberRejected(atomicLong, () -> atomicLong.set(2L));
+        assertMutableNumberRejected(longAdder, () -> longAdder.add(1L));
+    }
+
+    @Test
+    void propertyDifferenceRejectsCustomMutableNumber() {
+        MutableNumber value = new MutableNumber(1);
+
+        assertMutableNumberRejected(value, () -> value.set(2));
+    }
+
+    @Test
     void changedDefinitionPropertyStoresOnlySha256Digests() {
         String sourceSql = "select source_secret from credentials";
         String targetSql = "select target_secret from credentials";
@@ -558,5 +600,49 @@ class SchemaDiffEngineTest {
     private static <T> T only(List<T> values) {
         assertEquals(1, values.size());
         return values.getFirst();
+    }
+
+    private static void assertMutableNumberRejected(Number value, Runnable mutation) {
+        try {
+            new PropertyDifference("number", value, null, "Property differs");
+            long before = value.longValue();
+            mutation.run();
+            assertNotEquals(before, value.longValue());
+            fail("Mutable Number was accepted");
+        } catch (IllegalArgumentException failure) {
+            assertEquals(INVALID_PROPERTY_VALUE_MESSAGE, failure.getMessage());
+        }
+    }
+
+    private static final class MutableNumber extends Number {
+        private int value;
+
+        private MutableNumber(int value) {
+            this.value = value;
+        }
+
+        private void set(int value) {
+            this.value = value;
+        }
+
+        @Override
+        public int intValue() {
+            return value;
+        }
+
+        @Override
+        public long longValue() {
+            return value;
+        }
+
+        @Override
+        public float floatValue() {
+            return value;
+        }
+
+        @Override
+        public double doubleValue() {
+            return value;
+        }
     }
 }
