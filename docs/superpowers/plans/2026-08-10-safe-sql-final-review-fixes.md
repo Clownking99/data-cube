@@ -628,7 +628,7 @@ git commit -m "docs: 完成安全 SQL 终审修复说明"
 
 若 README 无需修改，不得为制造 diff 而改写；只暂存实际变更文件。
 
-- [ ] **Step 5: 独立终审交接**
+- [x] **Step 5: 独立终审交接**
 
 生成从 `d786207` 到新 HEAD 的 review package，fresh reviewer 必须复验原 1 Critical、3 Important、1 Minor，且最终报告 Critical/Important/Minor 均为零后才允许主控 push `main` 并观察 GitHub Verify。
 
