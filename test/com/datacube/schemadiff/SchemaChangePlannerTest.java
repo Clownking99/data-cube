@@ -135,6 +135,129 @@ class SchemaChangePlannerTest {
     }
 
     @Test
+    void definitionPropertiesCoalesceIntoOneStableAtomicReplacement() {
+        ObjectKey definitionKey = key(ObjectType.VIEW, "atomic_view");
+        ObjectKey oldDependency = key(ObjectType.TABLE, "old_dependency");
+        ObjectKey newDependency = key(ObjectType.TABLE, "new_dependency");
+        DefinitionObject source = new DefinitionObject(definitionKey, "select new", "source-secret",
+                Set.of(newDependency), DefinitionConfidence.HIGH);
+        DefinitionObject target = new DefinitionObject(definitionKey, "select old", "target-secret",
+                Set.of(oldDependency), DefinitionConfidence.HIGH);
+        PropertyDifference definition = new PropertyDifference(
+                "normalizedDefinition", "sha256:new", "sha256:old", "safe");
+        PropertyDifference dependencies = new PropertyDifference(
+                "dependencies", Set.of(newDependency), Set.of(oldDependency), "safe");
+        SchemaDifference ordered = difference(DifferenceKind.MODIFIED, definitionKey, source, target,
+                List.of(dependencies, definition), RiskLevel.HIGH,
+                AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of(oldDependency, newDependency));
+        SchemaDifference reorderedWithOtherValues = difference(
+                DifferenceKind.MODIFIED, definitionKey, source, target,
+                List.of(
+                        new PropertyDifference("normalizedDefinition", "sha256:other-new",
+                                "sha256:other-old", "safe"),
+                        new PropertyDifference("dependencies", Set.of(newDependency),
+                                Set.of(oldDependency), "safe")),
+                RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN,
+                Set.of(oldDependency, newDependency));
+
+        SchemaChangePlan first = planner.plan(result(
+                List.of(ordered), "source-stable", "target-stable", Instant.EPOCH));
+        SchemaChangePlan second = planner.plan(result(
+                List.of(reorderedWithOtherValues), "source-stable", "target-stable", Instant.MAX));
+
+        assertEquals(1, first.changes().size());
+        assertEquals(1, second.changes().size());
+        SchemaChange firstReplacement = first.changes().getFirst();
+        SchemaChange secondReplacement = second.changes().getFirst();
+        assertEquals(ChangeKind.REPLACE, firstReplacement.kind());
+        assertEquals("normalizedDefinition", firstReplacement.property().path());
+        assertEquals("normalizedDefinition", secondReplacement.property().path());
+        assertEquals(firstReplacement.id(), secondReplacement.id());
+        SchemaChangePlan firstSelected = planner.select(first, Set.of(firstReplacement.id()));
+        SchemaChangePlan secondSelected = planner.select(second, Set.of(secondReplacement.id()));
+        assertEquals(firstSelected.digest(), secondSelected.digest());
+    }
+
+    @Test
+    void dependencyOnlyDefinitionChangeProducesOneAtomicReplacement() {
+        ObjectKey definitionKey = key(ObjectType.FUNCTION, "dependent_function");
+        ObjectKey oldDependency = key(ObjectType.TABLE, "old_input");
+        ObjectKey newDependency = key(ObjectType.TABLE, "new_input");
+        DefinitionObject source = new DefinitionObject(definitionKey, "select value", "source-secret",
+                Set.of(newDependency), DefinitionConfidence.HIGH);
+        DefinitionObject target = new DefinitionObject(definitionKey, "select value", "target-secret",
+                Set.of(oldDependency), DefinitionConfidence.HIGH);
+        PropertyDifference dependencies = new PropertyDifference(
+                "dependencies", Set.of(newDependency), Set.of(oldDependency), "safe");
+
+        SchemaChangePlan plan = planner.plan(result(List.of(difference(
+                DifferenceKind.MODIFIED, definitionKey, source, target, List.of(dependencies),
+                RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN,
+                Set.of(oldDependency, newDependency)))));
+
+        assertEquals(1, plan.changes().size());
+        SchemaChange replacement = plan.changes().getFirst();
+        assertEquals(ChangeKind.REPLACE, replacement.kind());
+        assertEquals("dependencies", replacement.property().path());
+    }
+
+    @Test
+    void lowConfidenceDefinitionPropertiesCoalesceIntoOneManualChange() {
+        ObjectKey definitionKey = key(ObjectType.PROCEDURE, "low_atomic_procedure");
+        ObjectKey dependency = key(ObjectType.TABLE, "procedure_input");
+        DefinitionObject source = new DefinitionObject(definitionKey, "begin new; end", "source-secret",
+                Set.of(), DefinitionConfidence.LOW);
+        DefinitionObject target = new DefinitionObject(definitionKey, "begin old; end", "target-secret",
+                Set.of(dependency), DefinitionConfidence.HIGH);
+        List<PropertyDifference> properties = List.of(
+                new PropertyDifference("dependencies", Set.of(), Set.of(dependency), "safe"),
+                new PropertyDifference("normalizedDefinition", "sha256:new", "sha256:old", "safe"));
+
+        SchemaChangePlan plan = planner.plan(result(List.of(difference(
+                DifferenceKind.MODIFIED, definitionKey, source, target, properties,
+                RiskLevel.HIGH, AutomationLevel.MANUAL_ONLY, Set.of(dependency)))));
+
+        assertEquals(1, plan.changes().size());
+        SchemaChange manual = plan.changes().getFirst();
+        assertEquals(ChangeKind.MANUAL, manual.kind());
+        assertEquals(AutomationLevel.MANUAL_ONLY, manual.automation());
+        assertEquals("normalizedDefinition", manual.property().path());
+        assertTrue(plan.selectedChangeIds().isEmpty());
+    }
+
+    @Test
+    void nonIsolatableDefinitionPropertiesCoalesceIntoOneStableManualChange() {
+        ObjectKey definitionKey = key(ObjectType.VIEW, "manual_atomic_view");
+        ObjectKey dependency = key(ObjectType.TABLE, "manual_input");
+        DefinitionObject source = new DefinitionObject(definitionKey, "select value", "source-secret",
+                Set.of(), DefinitionConfidence.HIGH);
+        DefinitionObject target = new DefinitionObject(definitionKey, "select value", "target-secret",
+                Set.of(dependency), DefinitionConfidence.HIGH);
+        PropertyDifference dependencies = new PropertyDifference(
+                "dependencies", Set.of(), Set.of(dependency), "safe");
+        PropertyDifference unknown = new PropertyDifference(
+                "unknownShape", "source-value", "target-value", "safe");
+
+        SchemaChangePlan first = planner.plan(result(List.of(difference(
+                DifferenceKind.MODIFIED, definitionKey, source, target,
+                List.of(unknown, dependencies), RiskLevel.HIGH,
+                AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of(dependency)))));
+        SchemaChangePlan second = planner.plan(result(List.of(difference(
+                DifferenceKind.MODIFIED, definitionKey, source, target,
+                List.of(dependencies, unknown), RiskLevel.HIGH,
+                AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of(dependency)))));
+
+        assertEquals(1, first.changes().size());
+        assertEquals(1, second.changes().size());
+        SchemaChange manual = first.changes().getFirst();
+        assertEquals(ChangeKind.MANUAL, manual.kind());
+        assertEquals(AutomationLevel.MANUAL_ONLY, manual.automation());
+        assertEquals("dependencies", manual.property().path());
+        assertEquals(manual.id(), second.changes().getFirst().id());
+        assertTrue(first.selectedChangeIds().isEmpty());
+    }
+
+    @Test
     void lowConfidenceDefinitionsAndUnknownPropertyShapesAreManual() {
         DefinitionObject missingLow = definition(ObjectType.VIEW, "low_missing", DefinitionConfidence.LOW, Set.of());
         DefinitionObject sourceLow = definition(ObjectType.PROCEDURE, "low_modified", DefinitionConfidence.LOW,

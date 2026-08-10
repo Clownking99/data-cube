@@ -122,6 +122,10 @@ public final class SchemaChangePlanner {
                     ChangeKind.MANUAL, RiskLevel.HIGH, AutomationLevel.MANUAL_ONLY,
                     "The modification cannot be isolated safely"));
         }
+        if (difference.source() instanceof DefinitionObject
+                && difference.target() instanceof DefinitionObject) {
+            return List.of(modifiedDefinitionChange(difference));
+        }
         List<SchemaChange> changes = new ArrayList<>(difference.properties().size());
         for (PropertyDifference property : difference.properties()) {
             String path = canonicalPath(property.path());
@@ -131,11 +135,6 @@ public final class SchemaChangePlanner {
                 changes.add(change(difference, property, path,
                         ChangeKind.MANUAL, RiskLevel.HIGH, AutomationLevel.MANUAL_ONLY,
                         "The property modification requires manual review"));
-            } else if (difference.source() instanceof DefinitionObject
-                    && difference.target() instanceof DefinitionObject) {
-                changes.add(change(difference, property, path,
-                        ChangeKind.REPLACE, RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN,
-                        "Replacing a programmable definition requires explicit approval"));
             } else if (isSafeNullableColumnAddition(property)) {
                 changes.add(change(difference, property, path,
                         ChangeKind.ALTER, RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC,
@@ -147,6 +146,28 @@ public final class SchemaChangePlanner {
             }
         }
         return changes;
+    }
+
+    private static SchemaChange modifiedDefinitionChange(SchemaDifference difference) {
+        PropertyDifference representative = difference.properties().stream()
+                .filter(property -> canonicalPath(property.path()).equals("normalizedDefinition"))
+                .findFirst()
+                .orElseGet(() -> difference.properties().stream()
+                        .min(Comparator.comparing(property -> canonicalPath(property.path())))
+                        .orElseThrow());
+        String path = canonicalPath(representative.path());
+        boolean manual = isLowConfidenceDefinition(difference)
+                || difference.automation() == AutomationLevel.MANUAL_ONLY
+                || difference.properties().stream()
+                .anyMatch(property -> !isIsolatable(difference, property));
+        if (manual) {
+            return change(difference, representative, path,
+                    ChangeKind.MANUAL, RiskLevel.HIGH, AutomationLevel.MANUAL_ONLY,
+                    "The definition modification requires manual review");
+        }
+        return change(difference, representative, path,
+                ChangeKind.REPLACE, RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN,
+                "Replacing a programmable definition requires explicit approval");
     }
 
     private static boolean isLowConfidenceDefinition(SchemaDifference difference) {
