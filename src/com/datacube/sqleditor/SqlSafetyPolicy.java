@@ -57,8 +57,10 @@ public final class SqlSafetyPolicy {
     }
 
     private static boolean isCommitOrRollback(SqlSafetyAnalyzer.StatementAnalysis statement) {
-        return "COMMIT".equals(statement.firstKeyword())
-                || "ROLLBACK".equals(statement.firstKeyword());
+        return statement.kind() == SqlSafetyAnalyzer.StatementKind.TRANSACTION_CONTROL
+                && !statement.risks().contains(SqlSafetyAnalyzer.Risk.SESSION_STATE_CONFLICT)
+                && ("COMMIT".equals(statement.firstKeyword())
+                || "ROLLBACK".equals(statement.firstKeyword()));
     }
 
     private static boolean requiresProductionConfirmation(

@@ -29,6 +29,49 @@ import static org.junit.jupiter.api.Assertions.*;
 class JdbcEditorSessionTest {
 
     @Test
+    void manualTriviaOnlyScriptKeepsIdleTransaction() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        SqlRunner runner = new SqlRunner() {
+            @Override
+            public QueryResult execute(
+                    Connection connection, String sql, String schema, SqlExecutionOptions options) {
+                return QueryResult.update(1, 0);
+            }
+
+            @Override
+            public List<ScriptOutcome> executeScript(
+                    Connection connection,
+                    String script,
+                    String schema,
+                    SqlExecutionOptions options,
+                    ScriptErrorPolicy policy) {
+                return List.of();
+            }
+
+            @Override
+            public QueryResult explain(
+                    Connection connection,
+                    String sql,
+                    String schema,
+                    boolean analyze,
+                    SqlExecutionOptions options) {
+                return QueryResult.update(1, 0);
+            }
+        };
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", ConnectionSafetyOptions.from(config()), jdbc::open, runner);
+        session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
+
+        session.executeScript("-- comment only\n/* still trivia */", null, 100, null, false);
+
+        assertEquals(JdbcEditorSession.TransactionState.IDLE,
+                session.snapshot().transactionState());
+        assertEquals(0, jdbc.commits.get());
+        assertEquals(0, jdbc.rollbacks.get());
+        session.close();
+    }
+
+    @Test
     void manualExecutionCommitAndRollbackUpdateSnapshot() throws Exception {
         JdbcStub jdbc = new JdbcStub();
         StubRunner runner = new StubRunner(QueryResult.update(1, 1));

@@ -4,9 +4,27 @@ import com.datacube.spi.model.ConnectionEnvironment;
 import com.datacube.spi.model.ConnectionSafetyOptions;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class SqlSafetyPolicyTest {
+    @Test
+    void extendedTransactionCompletionIsBlockedWithoutConfirmationInEveryDialect() {
+        ConnectionSafetyOptions options =
+                new ConnectionSafetyOptions(ConnectionEnvironment.DEVELOPMENT, false, 60);
+        for (boolean oracleMode : List.of(false, true)) {
+            for (String sql : List.of(
+                    "commit work", "rollback work", "commit and chain", "rollback and no chain")) {
+                var decision = SqlSafetyPolicy.decide(
+                        SqlSafetyAnalyzer.analyze(sql, oracleMode), options);
+
+                assertTrue(decision.blocked(), sql);
+                assertFalse(decision.confirmationRequired(), sql);
+            }
+        }
+    }
+
     @Test
     void readOnlyBlocksWritesDdlAndUnknownStatements() {
         ConnectionSafetyOptions options =

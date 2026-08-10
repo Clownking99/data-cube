@@ -403,7 +403,7 @@ public final class JdbcEditorSession implements AutoCloseable {
     }
 
     private void updateTransactionState(List<ScriptOutcome> outcomes) {
-        if (transactionMode != TransactionMode.MANUAL) return;
+        if (transactionMode != TransactionMode.MANUAL || outcomes.isEmpty()) return;
         TransactionState previous = transactionState;
         boolean failed = outcomes.stream()
                 .map(ScriptOutcome::result)

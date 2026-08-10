@@ -2,11 +2,35 @@ package com.datacube.sqleditor;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static com.datacube.sqleditor.SqlSafetyAnalyzer.Risk.*;
 import static com.datacube.sqleditor.SqlSafetyAnalyzer.StatementKind.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SqlSafetyAnalyzerTest {
+    @Test
+    void extendedTransactionCompletionIsAlwaysAStateConflict() {
+        for (boolean oracleMode : List.of(false, true)) {
+            for (String sql : List.of(
+                    "commit work", "rollback work", "commit and chain", "rollback and no chain")) {
+                var statement = SqlSafetyAnalyzer.analyze(sql, oracleMode).statements().getFirst();
+
+                assertEquals(TRANSACTION_CONTROL, statement.kind(), sql);
+                assertTrue(statement.risks().contains(SESSION_STATE_CONFLICT), sql);
+            }
+        }
+    }
+
+    @Test
+    void canonicalCommitAndRollbackRemainOwnedByTheSession() {
+        for (String sql : List.of("commit", "rollback", "/*x*/ commit;", "rollback; --x")) {
+            var statement = SqlSafetyAnalyzer.analyze(sql, false).statements().getFirst();
+
+            assertFalse(statement.risks().contains(SESSION_STATE_CONFLICT), sql);
+        }
+    }
+
     @Test
     void transactionCompletionRequiresValidDialectTrivia() {
         assertEquals("", SqlSafetyAnalyzer.transactionCompletionKeyword(

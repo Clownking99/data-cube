@@ -106,8 +106,8 @@ public final class SqlSafetyAnalyzer {
         if ("DROP".equals(effective) || "TRUNCATE".equals(effective)) {
             risks.add(Risk.DESTRUCTIVE_DDL);
         }
-        if (Set.of("BEGIN", "START", "SET", "SAVEPOINT", "RELEASE").contains(effective)
-                && kind == StatementKind.TRANSACTION_CONTROL) {
+        if (kind == StatementKind.TRANSACTION_CONTROL
+                && transactionCompletionKeyword(sql, oracleMode).isEmpty()) {
             risks.add(Risk.SESSION_STATE_CONFLICT);
         }
         return new StatementAnalysis(index, sql, first, kind, risks);
