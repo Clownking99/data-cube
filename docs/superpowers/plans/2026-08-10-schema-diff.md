@@ -189,6 +189,20 @@ public record SchemaDiffResult(
         SchemaSnapshot source, SchemaSnapshot target,
         List<SchemaDifference> differences,
         List<RenameSuggestion> renameSuggestions) {}
+
+public enum DifferenceKind {
+    MISSING_IN_TARGET, EXTRA_IN_TARGET, MODIFIED, EQUIVALENT, UNSUPPORTED
+}
+
+public enum RiskLevel { LOW, MEDIUM, HIGH, CRITICAL }
+
+public enum AutomationLevel {
+    SAFE_AUTOMATIC, DESTRUCTIVE_OPT_IN, MANUAL_ONLY
+}
+
+public record RenameSuggestion(
+        ObjectKey sourceObject, ObjectKey targetObject,
+        double similarity, String explanation) {}
 ```
 
 Run focused tests and confirm missing symbols RED.
@@ -213,7 +227,7 @@ Run focused tests and confirm missing symbols RED.
 **Step 4: Commit**
 
 ```powershell
-git add src/com/datacube/schemadiff test/com/datacube/schemadiff
+git add src/com/datacube/schemadiff src/com/datacube/spi/schemadiff/RiskLevel.java src/com/datacube/spi/schemadiff/AutomationLevel.java test/com/datacube/schemadiff
 git commit -m "feat: 实现 Schema 语义差异引擎"
 ```
 
