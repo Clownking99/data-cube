@@ -3,6 +3,7 @@ package com.datacube.provider.postgres;
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.schemadiff.CanonicalDataType;
+import com.datacube.spi.schemadiff.ColumnDefinition;
 import com.datacube.spi.schemadiff.ConstraintDefinition;
 import com.datacube.spi.schemadiff.ConstraintKind;
 import com.datacube.spi.schemadiff.DefinitionConfidence;
@@ -252,7 +253,7 @@ class PgSchemaSnapshotReaderTest {
                 .fail("indexes", new SQLException(
                         "permission denied for schema app at jdbc:postgresql://host/db?password=secret", "42501"))
                 .fail("triggers", new SQLException(
-                        "select * from secret.app_trigger; credential=secret", "XX000"));
+                        "select * from secret.app_trigger; credential=secret", "0A000"));
         SqlExecutionControl control = new SqlExecutionControl();
 
         SchemaSnapshot snapshot = new PgSchemaSnapshotReader(jdbc.connection()).read(
@@ -262,12 +263,12 @@ class PgSchemaSnapshotReaderTest {
         assertFalse(snapshot.completeness().complete());
         assertEquals(SnapshotCompleteness.PERMISSION_DENIED,
                 snapshot.completeness().unavailableScopes().get(ObjectType.INDEX));
-        assertEquals(SnapshotCompleteness.METADATA_UNAVAILABLE,
+        assertEquals(SnapshotCompleteness.NOT_SUPPORTED,
                 snapshot.completeness().unavailableScopes().get(ObjectType.TRIGGER));
         assertEquals(SnapshotCompleteness.DEFINITION_UNAVAILABLE,
                 snapshot.completeness().unavailableScopes().get(ObjectType.FUNCTION));
         assertEquals(Set.of(SnapshotCompleteness.PERMISSION_DENIED,
-                        SnapshotCompleteness.METADATA_UNAVAILABLE,
+                        SnapshotCompleteness.NOT_SUPPORTED,
                         SnapshotCompleteness.DEFINITION_UNAVAILABLE),
                 Set.copyOf(snapshot.completeness().unavailableScopes().values()));
         assertEquals(DefinitionConfidence.LOW,
@@ -341,6 +342,360 @@ class PgSchemaSnapshotReaderTest {
         assertEquals(SnapshotFingerprint.compute(second), second.fingerprint());
     }
 
+    @Test
+    void catalogSqlUsesSafeAliasesPg11ArrayDetectionAndExactlyOneSchemaBinding() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("app");
+
+        new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+
+        assertEquals(12, jdbc.statements().size());
+        for (SnapshotJdbc.StatementTrace statement : jdbc.statements()) {
+            String sql = statement.sql.toLowerCase(java.util.Locale.ROOT);
+            assertEquals(Map.of(1, "app"), statement.bindings, statement.tag);
+            assertFalse(sql.matches("(?s).*\\b(?:from|join)\\s+pg_catalog\\.pg_constraint\\s+constraint\\b.*"),
+                    statement.tag);
+        }
+        String columns = jdbc.statement("columns").sql;
+        assertTrue(columns.contains("t.typcategory = 'A'"));
+        assertFalse(columns.contains("CASE WHEN t.typelem <> 0"));
+        assertTrue(columns.contains("a.attidentity"));
+        assertTrue(columns.contains("to_jsonb(a)->>'attgenerated'"));
+        assertTrue(columns.contains("ad.oid::bigint AS attrdef_oid"));
+    }
+
+    @Test
+    void columnSemanticsDistinguishScalarArrayDefaultIdentityAndGenerated() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("app")
+                .rows("tables", row("object_oid", 1L, "object_name", "sample"))
+                .rows("columns",
+                        column(1L, "pg_name", 1, "name", 0, null, "", ""),
+                        column(1L, "location", 2, "point", 0, null, "", ""),
+                        column(1L, "numbers", 3, "int4", 1, null, "", ""),
+                        column(1L, "matrix", 4, "int4", 3, null, "", ""),
+                        column(1L, "with_default", 5, "int4", 0, " 42; ", "", ""),
+                        column(1L, "identity_always", 6, "int8", 0, null, "a", ""),
+                        column(1L, "identity_default", 7, "int8", 0, null, "d", ""),
+                        column(1L, "generated_total", 8, "int8", 0, " qty * 2 ", "", "s"));
+
+        SchemaSnapshot snapshot = new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+
+        TableDefinition table = assertInstanceOf(TableDefinition.class,
+                snapshot.objects().get(key(ObjectType.TABLE, "app", "sample")));
+        Map<String, ColumnDefinition> columns = table.columns().stream().collect(
+                java.util.stream.Collectors.toMap(column -> column.name().original(), column -> column));
+        assertEquals(0, columns.get("\"pg_name\"").dataType().arrayDimensions());
+        assertEquals(0, columns.get("\"location\"").dataType().arrayDimensions());
+        assertEquals(1, columns.get("\"numbers\"").dataType().arrayDimensions());
+        assertEquals(3, columns.get("\"matrix\"").dataType().arrayDimensions());
+        assertNull(columns.get("\"pg_name\"").normalizedDefault());
+        assertEquals("42", columns.get("\"with_default\"").normalizedDefault());
+        assertEquals("ALWAYS", columns.get("\"identity_always\"").dataType()
+                .providerExtensions().get("pg.identity"));
+        assertEquals("GENERATED ALWAYS AS IDENTITY",
+                columns.get("\"identity_always\"").normalizedDefault());
+        assertEquals("BY DEFAULT", columns.get("\"identity_default\"").dataType()
+                .providerExtensions().get("pg.identity"));
+        assertEquals("GENERATED BY DEFAULT AS IDENTITY",
+                columns.get("\"identity_default\"").normalizedDefault());
+        assertEquals("STORED", columns.get("\"generated_total\"").dataType()
+                .providerExtensions().get("pg.generated"));
+        assertEquals("GENERATED ALWAYS AS (qty * 2) STORED",
+                columns.get("\"generated_total\"").normalizedDefault());
+    }
+
+    @Test
+    void emptyEnumAndCompositeRemainTypesAndChildCollationsAreStableDefinitionInput() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("app")
+                .rows("enums", row("type_oid", 80L, "array_oid", 180L,
+                        "type_name", "empty_enum", "sort_order", null, "enum_label", null))
+                .rows("composites",
+                        row("type_oid", 81L, "array_oid", 181L, "relation_oid", 281L,
+                                "type_name", "empty_pair", "position", null,
+                                "attribute_name", null, "attribute_type", null,
+                                "attribute_collation_schema", null, "attribute_collation_name", null),
+                        row("type_oid", 82L, "array_oid", 182L, "relation_oid", 282L,
+                                "type_name", "named_pair", "position", 1,
+                                "attribute_name", "label", "attribute_type", "\"pg_catalog\".\"text\"",
+                                "attribute_collation_schema", "app", "attribute_collation_name", "natural"));
+
+        SchemaSnapshot snapshot = new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+
+        assertEquals("CREATE TYPE \"app\".\"empty_enum\" AS ENUM ()",
+                definition(snapshot, ObjectType.TYPE, "app", "empty_enum", "enum")
+                        .normalizedDefinition());
+        assertEquals("CREATE TYPE \"app\".\"empty_pair\" AS ()",
+                definition(snapshot, ObjectType.TYPE, "app", "empty_pair", "composite")
+                        .normalizedDefinition());
+        assertTrue(definition(snapshot, ObjectType.TYPE, "app", "named_pair", "composite")
+                .normalizedDefinition().contains(
+                        "\"label\" \"pg_catalog\".\"text\" COLLATE \"app\".\"natural\""));
+
+        String enumsSql = jdbc.statement("enums").sql;
+        assertTrue(enumsSql.contains("LEFT JOIN pg_catalog.pg_enum"));
+        String compositesSql = jdbc.statement("composites").sql;
+        assertTrue(compositesSql.contains("LEFT JOIN pg_catalog.pg_attribute"));
+        assertTrue(compositesSql.contains("attribute.attnum > 0")
+                && compositesSql.indexOf("attribute.attnum > 0")
+                < compositesSql.indexOf("WHERE n.nspname"));
+        assertTrue(compositesSql.contains("attribute.atttypmod"));
+        assertTrue(jdbc.statement("domains").sql.contains("type.typtypmod"));
+    }
+
+    @Test
+    void compositeAndDomainCollationAloneChangesFingerprint() throws Exception {
+        SchemaSnapshot first = collationSnapshot("natural", "domain_natural");
+        SchemaSnapshot second = collationSnapshot("reverse", "domain_reverse");
+
+        org.junit.jupiter.api.Assertions.assertNotEquals(first.fingerprint(), second.fingerprint());
+        assertTrue(definition(first, ObjectType.TYPE, "app", "pair", "composite")
+                .normalizedDefinition().contains("COLLATE \"app\".\"natural\""));
+        assertTrue(definition(first, ObjectType.TYPE, "app", "label", "domain")
+                .normalizedDefinition().contains("COLLATE \"app\".\"domain_natural\""));
+    }
+
+    @Test
+    void dependencyAliasesRouteDefaultsRowTypesAndNestedObjectsToTopLevelTables() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("app")
+                .rows("tables",
+                        row("object_oid", 10L, "object_name", "orders",
+                                "row_type_oid", 110L, "array_type_oid", 111L),
+                        row("object_oid", 11L, "object_name", "archive",
+                                "row_type_oid", 112L, "array_type_oid", 113L))
+                .rows("columns", column(10L, "id", 1, "int8", 0,
+                        "nextval('app.orders_id_seq'::regclass)", "", ""))
+                .rows("constraints", row("constraint_oid", 130L, "table_oid", 10L,
+                        "constraint_name", "orders_check", "constraint_type", "c", "position", null,
+                        "column_name", null, "referenced_table_oid", null,
+                        "referenced_column_name", null, "check_expression", "id > 0",
+                        "update_action", null, "delete_action", null, "provider_generated", false))
+                .rows("indexes", row("index_oid", 140L, "table_oid", 10L,
+                        "index_name", "orders_expr_idx", "is_unique", false, "position", 1,
+                        "index_expression", "app.normalize_id(id)", "predicate", null,
+                        "provider_generated", false))
+                .rows("sequences", row("object_oid", 150L, "object_name", "orders_id_seq",
+                        "start_value", "1", "increment_by", "1", "minimum_value", "1",
+                        "maximum_value", "999", "cycle", false, "cache_size", 1))
+                .rows("routines", row("object_oid", 160L, "object_name", "normalize_id",
+                        "routine_kind", "f", "identity_arguments", "\"app\".\"orders\"",
+                        "definition", "CREATE FUNCTION app.normalize_id(app.orders) RETURNS bigint "
+                                + "LANGUAGE sql AS $$ SELECT $1.id $$;"))
+                .rows("triggers",
+                        row("object_oid", 170L, "object_name", "audit", "table_oid", 10L,
+                                "relation_name", "orders", "definition", "CREATE TRIGGER audit ..."),
+                        row("object_oid", 171L, "object_name", "audit", "table_oid", 11L,
+                                "relation_name", "archive", "definition", "CREATE TRIGGER audit ..."))
+                .rows("dependencies",
+                        row("source_catalog", "pg_attrdef", "source_oid", 901L,
+                                "source_schema", "app", "target_catalog", "pg_class",
+                                "target_oid", 150L, "target_schema", "app"),
+                        row("source_catalog", "pg_proc", "source_oid", 160L,
+                                "source_schema", "app", "target_catalog", "pg_type",
+                                "target_oid", 111L, "target_schema", "app"),
+                        row("source_catalog", "pg_class", "source_oid", 140L,
+                                "source_schema", "app", "target_catalog", "pg_proc",
+                                "target_oid", 160L, "target_schema", "app"),
+                        row("source_catalog", "pg_constraint", "source_oid", 130L,
+                                "source_schema", "app", "target_catalog", "pg_proc",
+                                "target_oid", 160L, "target_schema", "app"),
+                        row("source_catalog", "pg_proc", "source_oid", 160L,
+                                "source_schema", "app", "target_catalog", "pg_type",
+                                "target_oid", 9999L, "target_schema", "other"),
+                        row("source_catalog", "pg_proc", "source_oid", 160L,
+                                "source_schema", "app", "target_catalog", "pg_type",
+                                "target_oid", 9998L, "target_schema", "app"));
+
+        SchemaSnapshot snapshot = new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+
+        ObjectKey tableKey = key(ObjectType.TABLE, "app", "orders");
+        ObjectKey sequenceKey = key(ObjectType.SEQUENCE, "app", "orders_id_seq");
+        ObjectKey routineKey = new ObjectKey(ObjectType.FUNCTION,
+                PgSchemaIdentifierNormalizer.object("app", "normalize_id"), "\"app\".\"orders\"");
+        TableDefinition table = assertInstanceOf(TableDefinition.class, snapshot.objects().get(tableKey));
+        assertEquals(Set.of(sequenceKey, routineKey), table.dependencies());
+        assertEquals(Set.of(routineKey), table.indexes().getFirst().dependencies());
+        assertEquals(Set.of(routineKey), table.constraints().getFirst().dependencies());
+        assertEquals(Set.of(tableKey), ((DefinitionObject) snapshot.objects().get(routineKey)).dependencies());
+        assertEquals(2, snapshot.objects().keySet().stream()
+                .filter(key -> key.type() == ObjectType.TRIGGER && key.name().original().endsWith(".\"audit\""))
+                .count());
+        assertEquals(SnapshotCompleteness.DEPENDENCY_UNRESOLVED,
+                snapshot.completeness().unavailableScopes().get(ObjectType.FUNCTION));
+        assertTrue(jdbc.statement("tables").sql.contains("c.reltype"));
+        assertTrue(jdbc.statement("views").sql.contains("c.reltype"));
+        assertTrue(jdbc.statement("dependencies").sql.contains("pg_catalog.pg_attrdef"));
+    }
+
+    @Test
+    void partialCategoriesCommitNoMidstreamRowsAndMarkTopLevelTable() throws Exception {
+        SnapshotJdbc tables = new SnapshotJdbc("app")
+                .rows("tables",
+                        row("object_oid", 1L, "object_name", "first"),
+                        row("object_oid", 2L, "object_name", "second"))
+                .failAfter("tables", 1, new SQLException("secret schema app", "42501"));
+        SchemaSnapshot noHalfTables = new PgSchemaSnapshotReader(tables.connection()).read(
+                "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+        assertTrue(noHalfTables.objects().keySet().stream().noneMatch(key -> key.type() == ObjectType.TABLE));
+        assertEquals(SnapshotCompleteness.PERMISSION_DENIED,
+                noHalfTables.completeness().unavailableScopes().get(ObjectType.TABLE));
+
+        SnapshotJdbc children = new SnapshotJdbc("app")
+                .rows("tables", row("object_oid", 1L, "object_name", "orders"))
+                .rows("constraints",
+                        row("constraint_oid", 20L, "table_oid", 1L, "constraint_name", "first",
+                                "constraint_type", "c", "position", null, "column_name", null,
+                                "referenced_table_oid", null, "referenced_column_name", null,
+                                "check_expression", "id > 0", "update_action", null,
+                                "delete_action", null, "provider_generated", false),
+                        row("constraint_oid", 21L, "table_oid", 1L, "constraint_name", "second",
+                                "constraint_type", "c", "position", null, "column_name", null,
+                                "referenced_table_oid", null, "referenced_column_name", null,
+                                "check_expression", "id < 10", "update_action", null,
+                                "delete_action", null, "provider_generated", false))
+                .failAfter("constraints", 1, new SQLException("unsupported secret", "0A000"))
+                .rows("indexes",
+                        row("index_oid", 30L, "table_oid", 1L, "index_name", "first_idx",
+                                "is_unique", false, "position", 1, "index_expression", "id",
+                                "predicate", null, "provider_generated", false),
+                        row("index_oid", 31L, "table_oid", 1L, "index_name", "second_idx",
+                                "is_unique", false, "position", 1, "index_expression", "id + 1",
+                                "predicate", null, "provider_generated", false))
+                .failAfter("indexes", 1, new SQLException("permission secret", "42501"));
+        SchemaSnapshot noHalfChildren = new PgSchemaSnapshotReader(children.connection()).read(
+                "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+        TableDefinition table = assertInstanceOf(TableDefinition.class,
+                noHalfChildren.objects().get(key(ObjectType.TABLE, "app", "orders")));
+        assertTrue(table.constraints().isEmpty());
+        assertTrue(table.indexes().isEmpty());
+        assertEquals(SnapshotCompleteness.PERMISSION_DENIED,
+                noHalfChildren.completeness().unavailableScopes().get(ObjectType.TABLE));
+        assertEquals(SnapshotCompleteness.NOT_SUPPORTED,
+                noHalfChildren.completeness().unavailableScopes().get(ObjectType.CHECK_CONSTRAINT));
+        assertEquals(SnapshotCompleteness.PERMISSION_DENIED,
+                noHalfChildren.completeness().unavailableScopes().get(ObjectType.INDEX));
+    }
+
+    @Test
+    void syntaxConnectionServerAndUnknownSqlErrorsAreSanitizedTerminalFailures() {
+        for (String sqlState : java.util.Arrays.asList("42601", "08006", "57P01", "57P02",
+                "57P03", "XX000", null)) {
+            SqlExecutionControl control = new SqlExecutionControl();
+            SnapshotJdbc jdbc = new SnapshotJdbc("app").fail("views",
+                    new SQLException("SELECT secret FROM app.t jdbc:postgresql://host/db password=x",
+                            sqlState, 77));
+
+            SQLException failure = assertThrows(SQLException.class,
+                    () -> new PgSchemaSnapshotReader(jdbc.connection()).read(
+                            "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                            new SqlExecutionOptions(0, 3, control)), String.valueOf(sqlState));
+
+            assertEquals(sqlState, failure.getSQLState());
+            assertEquals(77, failure.getErrorCode());
+            assertNull(failure.getCause());
+            assertEquals("Snapshot metadata failed", failure.getMessage());
+            assertFalse(control.hasActiveStatement());
+        }
+    }
+
+    @Test
+    void deparsersUseCatalogSearchPathNonPrettyOutputAndStableRoutineTypeIdentity() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("app");
+        new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+
+        for (SnapshotJdbc.StatementTrace statement : jdbc.statements()) {
+            if (statement.sql.contains("pg_get_") || statement.sql.contains("format_type")) {
+                assertTrue(statement.sql.contains(
+                        "pg_catalog.set_config('search_path', 'pg_catalog', true)"), statement.tag);
+            }
+            assertFalse(statement.sql.matches("(?s).*pg_get_(?:viewdef|indexdef|constraintdef|"
+                    + "triggerdef|expr)\\([^)]*,\\s*true\\).*"), statement.tag);
+        }
+        String routines = jdbc.statement("routines").sql;
+        assertFalse(routines.contains("pg_get_function_identity_arguments"));
+        assertTrue(routines.contains("p.proargtypes"));
+        assertTrue(routines.contains("WITH ORDINALITY"));
+        assertTrue(routines.contains("argument_type.typnamespace"));
+        assertTrue(routines.contains("argument_type.typcategory = 'A'"));
+    }
+
+    @Test
+    void simulatedSessionSearchPathsProduceIdenticalDefinitionsSignaturesAndFingerprint() throws Exception {
+        Map<String, Object> canonicalView = row("object_oid", 60L, "object_name", "orders_view",
+                "relation_kind", "v", "definition", "SELECT id FROM app.orders;",
+                "row_type_oid", 160L, "array_type_oid", 161L);
+        SnapshotJdbc publicFirst = new SnapshotJdbc("app")
+                .sessionRows("views", canonicalView,
+                        row("object_oid", 60L, "object_name", "orders_view", "relation_kind", "v",
+                                "definition", "SELECT id FROM orders;",
+                                "row_type_oid", 160L, "array_type_oid", 161L))
+                .rows("routines", row("object_oid", 70L, "object_name", "accept_orders",
+                        "routine_kind", "f", "identity_arguments", "\"app\".\"orders\"[]",
+                        "definition", "CREATE FUNCTION app.accept_orders(app.orders[]) RETURNS void "
+                                + "LANGUAGE sql AS $$ SELECT $$;"));
+        SnapshotJdbc privateFirst = new SnapshotJdbc("app")
+                .sessionRows("views", canonicalView,
+                        row("object_oid", 60L, "object_name", "orders_view", "relation_kind", "v",
+                                "definition", "SELECT id FROM app.orders;",
+                                "row_type_oid", 160L, "array_type_oid", 161L))
+                .rows("routines", row("object_oid", 70L, "object_name", "accept_orders",
+                        "routine_kind", "f", "identity_arguments", "\"app\".\"orders\"[]",
+                        "definition", "CREATE FUNCTION app.accept_orders(app.orders[]) RETURNS void "
+                                + "LANGUAGE sql AS $$ SELECT $$;"));
+
+        SchemaSnapshot first = new PgSchemaSnapshotReader(publicFirst.connection()).read(
+                "first", PgSchemaIdentifierNormalizer.schema("app"), SqlExecutionOptions.defaults(0));
+        SchemaSnapshot second = new PgSchemaSnapshotReader(privateFirst.connection()).read(
+                "second", PgSchemaIdentifierNormalizer.schema("app"), SqlExecutionOptions.defaults(0));
+
+        assertEquals(first.objects(), second.objects());
+        assertEquals(first.fingerprint(), second.fingerprint());
+        assertTrue(first.objects().containsKey(new ObjectKey(ObjectType.FUNCTION,
+                PgSchemaIdentifierNormalizer.object("app", "accept_orders"),
+                "\"app\".\"orders\"[]")));
+    }
+
+    private static SchemaSnapshot collationSnapshot(String compositeCollation,
+                                                     String domainCollation) throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("app")
+                .rows("composites", row("type_oid", 81L, "array_oid", 181L,
+                        "relation_oid", 281L, "type_name", "pair", "position", 1,
+                        "attribute_name", "label", "attribute_type", "\"pg_catalog\".\"text\"",
+                        "attribute_collation_schema", "app",
+                        "attribute_collation_name", compositeCollation))
+                .rows("domains", row("type_oid", 82L, "array_oid", 182L,
+                        "type_name", "label", "base_type", "\"pg_catalog\".\"text\"",
+                        "not_null", false, "default_expression", null,
+                        "type_collation_schema", "app", "type_collation_name", domainCollation,
+                        "constraint_oid", null, "constraint_name", null,
+                        "constraint_definition", null));
+        return new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+    }
+
+    private static Map<String, Object> column(long tableOid, String name, int ordinal,
+                                               String baseType, int dimensions, String expression,
+                                               String identity, String generated) {
+        return row("table_oid", tableOid, "column_name", name, "ordinal_position", ordinal,
+                "base_type", baseType, "character_length", null, "numeric_precision", null,
+                "numeric_scale", null, "with_time_zone", false, "array_dimensions", dimensions,
+                "formatted_type", baseType + "[]".repeat(dimensions), "type_schema", "pg_catalog",
+                "nullable", true, "default_expression", expression, "comment", null,
+                "attrdef_oid", expression == null ? null : 900L + ordinal,
+                "identity_kind", identity, "generated_kind", generated);
+    }
+
     private static DefinitionObject definition(SchemaSnapshot snapshot, ObjectType type,
                                                String name, String signature) {
         return definition(snapshot, type, "Sales Data", name, signature);
@@ -369,6 +724,8 @@ class PgSchemaSnapshotReaderTest {
         private final String expectedSchema;
         private final Map<String, List<Map<String, Object>>> rows = new LinkedHashMap<>();
         private final Map<String, SQLException> failures = new LinkedHashMap<>();
+        private final Map<String, MidstreamFailure> midstreamFailures = new LinkedHashMap<>();
+        private final Map<String, SessionRows> sessionRows = new LinkedHashMap<>();
         private final List<StatementTrace> statements = new ArrayList<>();
 
         SnapshotJdbc(String expectedSchema) {
@@ -386,6 +743,17 @@ class PgSchemaSnapshotReaderTest {
             return this;
         }
 
+        SnapshotJdbc failAfter(String tag, int successfulRows, SQLException failure) {
+            midstreamFailures.put(tag, new MidstreamFailure(successfulRows, failure));
+            return this;
+        }
+
+        SnapshotJdbc sessionRows(String tag, Map<String, Object> canonical,
+                                 Map<String, Object> sessionDependent) {
+            sessionRows.put(tag, new SessionRows(List.of(canonical), List.of(sessionDependent)));
+            return this;
+        }
+
         Connection connection() {
             return (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
                     new Class<?>[]{Connection.class}, (proxy, method, args) -> switch (method.getName()) {
@@ -398,6 +766,11 @@ class PgSchemaSnapshotReaderTest {
 
         List<StatementTrace> statements() {
             return List.copyOf(statements);
+        }
+
+        StatementTrace statement(String tag) {
+            return statements.stream().filter(statement -> statement.tag.equals(tag))
+                    .findFirst().orElseThrow();
         }
 
         private PreparedStatement preparedStatement(String sql) {
@@ -420,7 +793,13 @@ class PgSchemaSnapshotReaderTest {
                             trace.executed = true;
                             SQLException failure = failures.get(trace.tag);
                             if (failure != null) throw failure;
-                            yield resultSet(rows.getOrDefault(trace.tag, List.of()));
+                            SessionRows variants = sessionRows.get(trace.tag);
+                            List<Map<String, Object>> queryRows = variants == null
+                                    ? rows.getOrDefault(trace.tag, List.of())
+                                    : (sql.contains("pg_catalog.set_config('search_path', 'pg_catalog', true)")
+                                    ? variants.canonical() : variants.sessionDependent());
+                            yield resultSet(queryRows,
+                                    midstreamFailures.get(trace.tag));
                         }
                         case "cancel" -> {
                             trace.cancelled = true;
@@ -436,12 +815,19 @@ class PgSchemaSnapshotReaderTest {
                     });
         }
 
-        private ResultSet resultSet(List<Map<String, Object>> queryRows) {
+        private ResultSet resultSet(List<Map<String, Object>> queryRows,
+                                    MidstreamFailure midstreamFailure) {
             int[] cursor = {-1};
             AtomicBoolean wasNull = new AtomicBoolean();
             return (ResultSet) Proxy.newProxyInstance(getClass().getClassLoader(),
                     new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
-                        case "next" -> ++cursor[0] < queryRows.size();
+                        case "next" -> {
+                            if (midstreamFailure != null
+                                    && cursor[0] + 1 >= midstreamFailure.successfulRows()) {
+                                throw midstreamFailure.failure();
+                            }
+                            yield ++cursor[0] < queryRows.size();
+                        }
                         case "getString" -> string(value(queryRows, cursor[0], args[0], wasNull));
                         case "getLong" -> number(value(queryRows, cursor[0], args[0], wasNull)).longValue();
                         case "getInt" -> number(value(queryRows, cursor[0], args[0], wasNull)).intValue();
@@ -508,6 +894,13 @@ class PgSchemaSnapshotReaderTest {
                 this.tag = tag;
                 this.sql = sql;
             }
+        }
+
+        private record MidstreamFailure(int successfulRows, SQLException failure) {
+        }
+
+        private record SessionRows(List<Map<String, Object>> canonical,
+                                   List<Map<String, Object>> sessionDependent) {
         }
     }
 }

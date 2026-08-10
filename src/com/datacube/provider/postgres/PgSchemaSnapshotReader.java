@@ -42,15 +42,20 @@ import java.util.TreeSet;
 public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
     private static final String TABLES_SQL = """
             /* snapshot:tables */
-            SELECT c.oid::bigint AS object_oid, c.relname AS object_name
+            SELECT c.oid::bigint AS object_oid, c.relname AS object_name,
+                   c.reltype::bigint AS row_type_oid, row_type.typarray::bigint AS array_type_oid
             FROM pg_catalog.pg_class c
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_catalog.pg_type row_type ON row_type.oid = c.reltype
             WHERE n.nspname = ? AND c.relkind IN ('r', 'p')
             ORDER BY c.relname, c.oid
             """;
 
     private static final String COLUMNS_SQL = """
             /* snapshot:columns */
+            WITH deparser_context AS (
+                SELECT pg_catalog.set_config('search_path', 'pg_catalog', true) AS search_path
+            )
             SELECT c.oid::bigint AS table_oid, a.attname AS column_name,
                    a.attnum AS ordinal_position,
                    COALESCE(et.typname, t.typname) AS base_type,
@@ -63,18 +68,21 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                                   THEN ((a.atttypmod - 4) & 65535) - 65536
                                   ELSE ((a.atttypmod - 4) & 65535) END END AS numeric_scale,
                    COALESCE(et.typname, t.typname) IN ('timestamptz', 'timetz') AS with_time_zone,
-                   CASE WHEN t.typelem <> 0 THEN GREATEST(a.attndims, 1) ELSE 0 END AS array_dimensions,
+                   CASE WHEN t.typcategory = 'A' THEN GREATEST(a.attndims, 1) ELSE 0 END AS array_dimensions,
                    pg_catalog.format_type(a.atttypid, a.atttypmod) AS formatted_type,
                    COALESCE(etn.nspname, tn.nspname) AS type_schema,
                    NOT a.attnotnull AS nullable,
-                   pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) AS default_expression,
+                   pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, false) AS default_expression,
+                   ad.oid::bigint AS attrdef_oid, a.attidentity::text AS identity_kind,
+                   COALESCE(pg_catalog.to_jsonb(a)->>'attgenerated', '') AS generated_kind,
                    pg_catalog.col_description(a.attrelid, a.attnum) AS comment
             FROM pg_catalog.pg_class c
+            CROSS JOIN deparser_context
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
             JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
             JOIN pg_catalog.pg_namespace tn ON tn.oid = t.typnamespace
-            LEFT JOIN pg_catalog.pg_type et ON et.oid = t.typelem AND t.typelem <> 0
+            LEFT JOIN pg_catalog.pg_type et ON et.oid = t.typelem AND t.typcategory = 'A'
             LEFT JOIN pg_catalog.pg_namespace etn ON etn.oid = et.typnamespace
             LEFT JOIN pg_catalog.pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
             WHERE n.nspname = ? AND c.relkind IN ('r', 'p')
@@ -84,18 +92,22 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
 
     private static final String CONSTRAINTS_SQL = """
             /* snapshot:constraints */
+            WITH deparser_context AS (
+                SELECT pg_catalog.set_config('search_path', 'pg_catalog', true) AS search_path
+            )
             SELECT con.oid::bigint AS constraint_oid, con.conrelid::bigint AS table_oid,
                    con.conname AS constraint_name, con.contype::text AS constraint_type,
                    positions.position, source_column.attname AS column_name,
                    NULLIF(con.confrelid, 0)::bigint AS referenced_table_oid,
                    target_column.attname AS referenced_column_name,
-                   pg_catalog.pg_get_expr(con.conbin, con.conrelid, true) AS check_expression,
+                   pg_catalog.pg_get_expr(con.conbin, con.conrelid, false) AS check_expression,
                    CASE con.confupdtype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT'
                         WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS update_action,
                    CASE con.confdeltype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT'
                         WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS delete_action,
                    false AS provider_generated
             FROM pg_catalog.pg_constraint con
+            CROSS JOIN deparser_context
             JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             LEFT JOIN LATERAL pg_catalog.generate_subscripts(con.conkey, 1) positions(position) ON true
@@ -111,13 +123,17 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
 
     private static final String INDEXES_SQL = """
             /* snapshot:indexes */
+            WITH deparser_context AS (
+                SELECT pg_catalog.set_config('search_path', 'pg_catalog', true) AS search_path
+            )
             SELECT index_class.oid::bigint AS index_oid, table_class.oid::bigint AS table_oid,
                    index_class.relname AS index_name, index_meta.indisunique AS is_unique,
                    positions.position,
-                   pg_catalog.pg_get_indexdef(index_class.oid, positions.position, true) AS index_expression,
-                   pg_catalog.pg_get_expr(index_meta.indpred, index_meta.indrelid, true) AS predicate,
+                   pg_catalog.pg_get_indexdef(index_class.oid, positions.position, false) AS index_expression,
+                   pg_catalog.pg_get_expr(index_meta.indpred, index_meta.indrelid, false) AS predicate,
                    false AS provider_generated
             FROM pg_catalog.pg_index index_meta
+            CROSS JOIN deparser_context
             JOIN pg_catalog.pg_class index_class ON index_class.oid = index_meta.indexrelid
             JOIN pg_catalog.pg_class table_class ON table_class.oid = index_meta.indrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = table_class.relnamespace
@@ -141,33 +157,65 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
 
     private static final String VIEWS_SQL = """
             /* snapshot:views */
+            WITH deparser_context AS (
+                SELECT pg_catalog.set_config('search_path', 'pg_catalog', true) AS search_path
+            )
             SELECT c.oid::bigint AS object_oid, c.relname AS object_name,
+                   c.reltype::bigint AS row_type_oid, row_type.typarray::bigint AS array_type_oid,
                    c.relkind::text AS relation_kind,
-                   pg_catalog.pg_get_viewdef(c.oid, true) AS definition
+                   pg_catalog.pg_get_viewdef(c.oid, false) AS definition
             FROM pg_catalog.pg_class c
+            CROSS JOIN deparser_context
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_catalog.pg_type row_type ON row_type.oid = c.reltype
             WHERE n.nspname = ? AND c.relkind IN ('v', 'm')
             ORDER BY c.relname, c.oid
             """;
 
     private static final String ROUTINES_SQL = """
             /* snapshot:routines */
+            WITH deparser_context AS (
+                SELECT pg_catalog.set_config('search_path', 'pg_catalog', true) AS search_path
+            )
             SELECT p.oid::bigint AS object_oid, p.proname AS object_name,
                    p.prokind::text AS routine_kind,
-                   pg_catalog.pg_get_function_identity_arguments(p.oid) AS identity_arguments,
+                   COALESCE((
+                       SELECT pg_catalog.string_agg(
+                           CASE WHEN argument_type.typcategory = 'A' AND argument_type.typelem <> 0
+                                THEN pg_catalog.quote_ident(element_namespace.nspname) || '.' ||
+                                     pg_catalog.quote_ident(element_type.typname) || '[]'
+                                ELSE pg_catalog.quote_ident(argument_type_namespace.nspname) || '.' ||
+                                     pg_catalog.quote_ident(argument_type.typname)
+                           END, ', ' ORDER BY argument.position)
+                       FROM pg_catalog.unnest(p.proargtypes::oid[]) WITH ORDINALITY
+                            AS argument(type_oid, position)
+                       JOIN pg_catalog.pg_type argument_type ON argument_type.oid = argument.type_oid
+                       JOIN pg_catalog.pg_namespace argument_type_namespace
+                            ON argument_type_namespace.oid = argument_type.typnamespace
+                       LEFT JOIN pg_catalog.pg_type element_type
+                            ON element_type.oid = argument_type.typelem
+                           AND argument_type.typcategory = 'A'
+                       LEFT JOIN pg_catalog.pg_namespace element_namespace
+                            ON element_namespace.oid = element_type.typnamespace
+                   ), '') AS identity_arguments,
                    pg_catalog.pg_get_functiondef(p.oid) AS definition
             FROM pg_catalog.pg_proc p
+            CROSS JOIN deparser_context
             JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = ? AND p.prokind IN ('f', 'p')
-            ORDER BY p.proname, pg_catalog.pg_get_function_identity_arguments(p.oid), p.oid
+            ORDER BY p.proname, p.oid
             """;
 
     private static final String TRIGGERS_SQL = """
             /* snapshot:triggers */
+            WITH deparser_context AS (
+                SELECT pg_catalog.set_config('search_path', 'pg_catalog', true) AS search_path
+            )
             SELECT trigger.oid::bigint AS object_oid, trigger.tgname AS object_name,
                    relation.oid::bigint AS table_oid, relation.relname AS relation_name,
-                   pg_catalog.pg_get_triggerdef(trigger.oid, true) AS definition
+                   pg_catalog.pg_get_triggerdef(trigger.oid, false) AS definition
             FROM pg_catalog.pg_trigger trigger
+            CROSS JOIN deparser_context
             JOIN pg_catalog.pg_class relation ON relation.oid = trigger.tgrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = relation.relnamespace
             WHERE n.nspname = ? AND NOT trigger.tgisinternal
@@ -181,7 +229,7 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                    enum.enumsortorder AS sort_order, enum.enumlabel AS enum_label
             FROM pg_catalog.pg_type type
             JOIN pg_catalog.pg_namespace n ON n.oid = type.typnamespace
-            JOIN pg_catalog.pg_enum enum ON enum.enumtypid = type.oid
+            LEFT JOIN pg_catalog.pg_enum enum ON enum.enumtypid = type.oid
             WHERE n.nspname = ? AND type.typtype = 'e'
             ORDER BY type.typname, enum.enumsortorder
             """;
@@ -191,31 +239,109 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             SELECT type.oid::bigint AS type_oid, type.typarray::bigint AS array_oid,
                    relation.oid::bigint AS relation_oid, type.typname AS type_name,
                    attribute.attnum AS position, attribute.attname AS attribute_name,
-                   pg_catalog.format_type(attribute.atttypid, attribute.atttypmod) AS attribute_type
+                   CASE WHEN attribute_type.typcategory = 'A' AND attribute_type.typelem <> 0
+                        THEN pg_catalog.quote_ident(attribute_element_namespace.nspname) || '.' ||
+                             pg_catalog.quote_ident(attribute_element_type.typname)
+                        ELSE pg_catalog.quote_ident(attribute_type_namespace.nspname) || '.' ||
+                             pg_catalog.quote_ident(attribute_type.typname)
+                   END ||
+                   CASE
+                       WHEN COALESCE(attribute_element_type.typname, attribute_type.typname)
+                                IN ('varchar', 'bpchar') AND attribute.atttypmod > 4
+                           THEN '(' || (attribute.atttypmod - 4)::text || ')'
+                       WHEN COALESCE(attribute_element_type.typname, attribute_type.typname) = 'numeric'
+                                AND attribute.atttypmod >= 4
+                           THEN '(' || (((attribute.atttypmod - 4) >> 16) & 65535)::text || ',' ||
+                                (CASE WHEN ((attribute.atttypmod - 4) & 65535) >= 32768
+                                      THEN ((attribute.atttypmod - 4) & 65535) - 65536
+                                      ELSE ((attribute.atttypmod - 4) & 65535) END)::text || ')'
+                       WHEN COALESCE(attribute_element_type.typname, attribute_type.typname)
+                                IN ('time', 'timetz', 'timestamp', 'timestamptz')
+                                AND attribute.atttypmod >= 0
+                           THEN '(' || attribute.atttypmod::text || ')'
+                       ELSE ''
+                   END ||
+                   CASE WHEN attribute_type.typcategory = 'A' AND attribute_type.typelem <> 0
+                        THEN pg_catalog.repeat('[]', GREATEST(attribute.attndims, 1)) ELSE '' END
+                   AS attribute_type,
+                   attribute_collation_namespace.nspname AS attribute_collation_schema,
+                   attribute_collation.collname AS attribute_collation_name
             FROM pg_catalog.pg_type type
             JOIN pg_catalog.pg_namespace n ON n.oid = type.typnamespace
             JOIN pg_catalog.pg_class relation ON relation.oid = type.typrelid
-            JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = relation.oid
+            LEFT JOIN pg_catalog.pg_attribute attribute
+                   ON attribute.attrelid = relation.oid
+                  AND attribute.attnum > 0 AND NOT attribute.attisdropped
+            LEFT JOIN pg_catalog.pg_type attribute_type ON attribute_type.oid = attribute.atttypid
+            LEFT JOIN pg_catalog.pg_namespace attribute_type_namespace
+                   ON attribute_type_namespace.oid = attribute_type.typnamespace
+            LEFT JOIN pg_catalog.pg_type attribute_element_type
+                   ON attribute_element_type.oid = attribute_type.typelem
+                  AND attribute_type.typcategory = 'A'
+            LEFT JOIN pg_catalog.pg_namespace attribute_element_namespace
+                   ON attribute_element_namespace.oid = attribute_element_type.typnamespace
+            LEFT JOIN pg_catalog.pg_collation attribute_collation
+                   ON attribute_collation.oid = attribute.attcollation AND attribute.attcollation <> 0
+            LEFT JOIN pg_catalog.pg_namespace attribute_collation_namespace
+                   ON attribute_collation_namespace.oid = attribute_collation.collnamespace
             WHERE n.nspname = ? AND type.typtype = 'c' AND relation.relkind = 'c'
-              AND attribute.attnum > 0 AND NOT attribute.attisdropped
             ORDER BY type.typname, attribute.attnum
             """;
 
     private static final String DOMAINS_SQL = """
             /* snapshot:domains */
+            WITH deparser_context AS (
+                SELECT pg_catalog.set_config('search_path', 'pg_catalog', true) AS search_path
+            )
             SELECT type.oid::bigint AS type_oid, type.typarray::bigint AS array_oid,
                    type.typname AS type_name,
-                   pg_catalog.format_type(type.typbasetype, type.typtypmod) AS base_type,
+                   CASE WHEN base_type.typcategory = 'A' AND base_type.typelem <> 0
+                        THEN pg_catalog.quote_ident(base_element_namespace.nspname) || '.' ||
+                             pg_catalog.quote_ident(base_element_type.typname)
+                        ELSE pg_catalog.quote_ident(base_namespace.nspname) || '.' ||
+                             pg_catalog.quote_ident(base_type.typname)
+                   END ||
+                   CASE
+                       WHEN COALESCE(base_element_type.typname, base_type.typname)
+                                IN ('varchar', 'bpchar') AND type.typtypmod > 4
+                           THEN '(' || (type.typtypmod - 4)::text || ')'
+                       WHEN COALESCE(base_element_type.typname, base_type.typname) = 'numeric'
+                                AND type.typtypmod >= 4
+                           THEN '(' || (((type.typtypmod - 4) >> 16) & 65535)::text || ',' ||
+                                (CASE WHEN ((type.typtypmod - 4) & 65535) >= 32768
+                                      THEN ((type.typtypmod - 4) & 65535) - 65536
+                                      ELSE ((type.typtypmod - 4) & 65535) END)::text || ')'
+                       WHEN COALESCE(base_element_type.typname, base_type.typname)
+                                IN ('time', 'timetz', 'timestamp', 'timestamptz')
+                                AND type.typtypmod >= 0
+                           THEN '(' || type.typtypmod::text || ')'
+                       ELSE ''
+                   END ||
+                   CASE WHEN base_type.typcategory = 'A' AND base_type.typelem <> 0
+                        THEN '[]' ELSE '' END AS base_type,
                    type.typnotnull AS not_null,
-                   COALESCE(pg_catalog.pg_get_expr(type.typdefaultbin, 0, true), type.typdefault) AS default_expression,
-                   constraint.oid::bigint AS constraint_oid, constraint.conname AS constraint_name,
-                   pg_catalog.pg_get_constraintdef(constraint.oid, true) AS constraint_definition
+                   COALESCE(pg_catalog.pg_get_expr(type.typdefaultbin, 0, false), type.typdefault) AS default_expression,
+                   type_collation_namespace.nspname AS type_collation_schema,
+                   type_collation.collname AS type_collation_name,
+                   con.oid::bigint AS constraint_oid, con.conname AS constraint_name,
+                   pg_catalog.pg_get_constraintdef(con.oid, false) AS constraint_definition
             FROM pg_catalog.pg_type type
+            CROSS JOIN deparser_context
             JOIN pg_catalog.pg_namespace n ON n.oid = type.typnamespace
-            LEFT JOIN pg_catalog.pg_constraint constraint
-                   ON constraint.contypid = type.oid AND constraint.contype = 'c'
+            JOIN pg_catalog.pg_type base_type ON base_type.oid = type.typbasetype
+            JOIN pg_catalog.pg_namespace base_namespace ON base_namespace.oid = base_type.typnamespace
+            LEFT JOIN pg_catalog.pg_type base_element_type
+                   ON base_element_type.oid = base_type.typelem AND base_type.typcategory = 'A'
+            LEFT JOIN pg_catalog.pg_namespace base_element_namespace
+                   ON base_element_namespace.oid = base_element_type.typnamespace
+            LEFT JOIN pg_catalog.pg_collation type_collation
+                   ON type_collation.oid = type.typcollation AND type.typcollation <> 0
+            LEFT JOIN pg_catalog.pg_namespace type_collation_namespace
+                   ON type_collation_namespace.oid = type_collation.collnamespace
+            LEFT JOIN pg_catalog.pg_constraint con
+                   ON con.contypid = type.oid AND con.contype = 'c'
             WHERE n.nspname = ? AND type.typtype = 'd'
-            ORDER BY type.typname, constraint.conname, constraint.oid
+            ORDER BY type.typname, con.conname, con.oid
             """;
 
     private static final String DEPENDENCIES_SQL = """
@@ -239,13 +365,18 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                 JOIN pg_catalog.pg_class c ON c.oid = trigger.tgrelid
                 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                 UNION ALL
-                SELECT 'pg_constraint', constraint.oid::bigint,
+                SELECT 'pg_attrdef', attribute_default.oid::bigint, n.nspname
+                FROM pg_catalog.pg_attrdef attribute_default
+                JOIN pg_catalog.pg_class c ON c.oid = attribute_default.adrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                UNION ALL
+                SELECT 'pg_constraint', con.oid::bigint,
                        COALESCE(relation_namespace.nspname, type_namespace.nspname)
-                FROM pg_catalog.pg_constraint constraint
-                LEFT JOIN pg_catalog.pg_class relation ON relation.oid = constraint.conrelid
+                FROM pg_catalog.pg_constraint con
+                LEFT JOIN pg_catalog.pg_class relation ON relation.oid = con.conrelid
                 LEFT JOIN pg_catalog.pg_namespace relation_namespace
                           ON relation_namespace.oid = relation.relnamespace
-                LEFT JOIN pg_catalog.pg_type type ON type.oid = constraint.contypid
+                LEFT JOIN pg_catalog.pg_type type ON type.oid = con.contypid
                 LEFT JOIN pg_catalog.pg_namespace type_namespace
                           ON type_namespace.oid = type.typnamespace
                 WHERE COALESCE(relation_namespace.nspname, type_namespace.nspname) IS NOT NULL
@@ -255,6 +386,7 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                            WHEN 'pg_catalog.pg_proc'::pg_catalog.regclass THEN 'pg_proc'
                            WHEN 'pg_catalog.pg_type'::pg_catalog.regclass THEN 'pg_type'
                            WHEN 'pg_catalog.pg_trigger'::pg_catalog.regclass THEN 'pg_trigger'
+                           WHEN 'pg_catalog.pg_attrdef'::pg_catalog.regclass THEN 'pg_attrdef'
                            WHEN 'pg_catalog.pg_constraint'::pg_catalog.regclass THEN 'pg_constraint'
                        END AS source_catalog,
                        dependency.objid::bigint AS source_oid,
@@ -263,6 +395,7 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                            WHEN 'pg_catalog.pg_proc'::pg_catalog.regclass THEN 'pg_proc'
                            WHEN 'pg_catalog.pg_type'::pg_catalog.regclass THEN 'pg_type'
                            WHEN 'pg_catalog.pg_trigger'::pg_catalog.regclass THEN 'pg_trigger'
+                           WHEN 'pg_catalog.pg_attrdef'::pg_catalog.regclass THEN 'pg_attrdef'
                            WHEN 'pg_catalog.pg_constraint'::pg_catalog.regclass THEN 'pg_constraint'
                        END AS target_catalog,
                        dependency.refobjid::bigint AS target_oid
@@ -321,31 +454,33 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
         QualifiedName snapshotSchema = PgSchemaIdentifierNormalizer.schema(catalogSchema);
         ReadState state = new ReadState(catalogSchema);
 
-        attempt(state, options, Set.of(ObjectType.TABLE),
-                () -> query(TABLES_SQL, catalogSchema, options, rows -> readTables(rows, state)));
-        attempt(state, options, Set.of(ObjectType.TABLE),
-                () -> query(COLUMNS_SQL, catalogSchema, options, rows -> readColumns(rows, state)));
-        attempt(state, options, Set.of(ObjectType.PRIMARY_KEY, ObjectType.UNIQUE_CONSTRAINT,
-                        ObjectType.FOREIGN_KEY, ObjectType.CHECK_CONSTRAINT),
-                () -> query(CONSTRAINTS_SQL, catalogSchema, options, rows -> readConstraints(rows, state)));
-        attempt(state, options, Set.of(ObjectType.INDEX),
-                () -> query(INDEXES_SQL, catalogSchema, options, rows -> readIndexes(rows, state)));
-        attempt(state, options, Set.of(ObjectType.SEQUENCE),
-                () -> query(SEQUENCES_SQL, catalogSchema, options, rows -> readSequences(rows, state)));
-        attempt(state, options, Set.of(ObjectType.VIEW, ObjectType.MATERIALIZED_VIEW),
-                () -> query(VIEWS_SQL, catalogSchema, options, rows -> readViews(rows, state)));
-        attempt(state, options, Set.of(ObjectType.FUNCTION, ObjectType.PROCEDURE),
-                () -> query(ROUTINES_SQL, catalogSchema, options, rows -> readRoutines(rows, state)));
-        attempt(state, options, Set.of(ObjectType.TRIGGER),
-                () -> query(TRIGGERS_SQL, catalogSchema, options, rows -> readTriggers(rows, state)));
-        attempt(state, options, Set.of(ObjectType.TYPE),
-                () -> query(ENUMS_SQL, catalogSchema, options, rows -> readEnums(rows, state)));
-        attempt(state, options, Set.of(ObjectType.TYPE),
-                () -> query(COMPOSITES_SQL, catalogSchema, options, rows -> readComposites(rows, state)));
-        attempt(state, options, Set.of(ObjectType.TYPE),
-                () -> query(DOMAINS_SQL, catalogSchema, options, rows -> readDomains(rows, state)));
-        attempt(state, options, state.knownTypes(),
-                () -> query(DEPENDENCIES_SQL, catalogSchema, options, rows -> readDependencies(rows, state)));
+        state = attempt(state, options, Set.of(ObjectType.TABLE), candidate ->
+                query(TABLES_SQL, catalogSchema, options, rows -> readTables(rows, candidate)));
+        state = attempt(state, options, Set.of(ObjectType.TABLE), candidate ->
+                query(COLUMNS_SQL, catalogSchema, options, rows -> readColumns(rows, candidate)));
+        state = attempt(state, options, Set.of(ObjectType.TABLE, ObjectType.PRIMARY_KEY,
+                        ObjectType.UNIQUE_CONSTRAINT, ObjectType.FOREIGN_KEY, ObjectType.CHECK_CONSTRAINT),
+                candidate -> query(CONSTRAINTS_SQL, catalogSchema, options,
+                        rows -> readConstraints(rows, candidate)));
+        state = attempt(state, options, Set.of(ObjectType.TABLE, ObjectType.INDEX), candidate ->
+                query(INDEXES_SQL, catalogSchema, options, rows -> readIndexes(rows, candidate)));
+        state = attempt(state, options, Set.of(ObjectType.SEQUENCE), candidate ->
+                query(SEQUENCES_SQL, catalogSchema, options, rows -> readSequences(rows, candidate)));
+        state = attempt(state, options, Set.of(ObjectType.VIEW, ObjectType.MATERIALIZED_VIEW), candidate ->
+                query(VIEWS_SQL, catalogSchema, options, rows -> readViews(rows, candidate)));
+        state = attempt(state, options, Set.of(ObjectType.FUNCTION, ObjectType.PROCEDURE), candidate ->
+                query(ROUTINES_SQL, catalogSchema, options, rows -> readRoutines(rows, candidate)));
+        state = attempt(state, options, Set.of(ObjectType.TRIGGER), candidate ->
+                query(TRIGGERS_SQL, catalogSchema, options, rows -> readTriggers(rows, candidate)));
+        state = attempt(state, options, Set.of(ObjectType.TYPE), candidate ->
+                query(ENUMS_SQL, catalogSchema, options, rows -> readEnums(rows, candidate)));
+        state = attempt(state, options, Set.of(ObjectType.TYPE), candidate ->
+                query(COMPOSITES_SQL, catalogSchema, options, rows -> readComposites(rows, candidate)));
+        state = attempt(state, options, Set.of(ObjectType.TYPE), candidate ->
+                query(DOMAINS_SQL, catalogSchema, options, rows -> readDomains(rows, candidate)));
+        Set<ObjectType> dependencyScopes = state.knownTypes();
+        state = attempt(state, options, dependencyScopes, candidate ->
+                query(DEPENDENCIES_SQL, catalogSchema, options, rows -> readDependencies(rows, candidate)));
         if (options.control().cancellationRequested()) {
             throw new SQLException("Snapshot metadata cancelled", "57014");
         }
@@ -359,10 +494,12 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                 completeness, objects, fingerprint);
     }
 
-    private static void attempt(ReadState state, SqlExecutionOptions options,
-                                Set<ObjectType> scopes, SqlAttempt attempt) throws SQLException {
+    private static ReadState attempt(ReadState state, SqlExecutionOptions options,
+                                     Set<ObjectType> scopes, SqlAttempt attempt) throws SQLException {
+        ReadState candidate = state.copy();
         try {
-            attempt.run();
+            attempt.run(candidate);
+            return candidate;
         } catch (SQLException failure) {
             if (failure instanceof SQLTimeoutException) {
                 throw new SQLTimeoutException("Snapshot metadata timed out",
@@ -371,10 +508,14 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             if ("57014".equals(failure.getSQLState()) || options.control().cancellationRequested()) {
                 throw new SQLException("Snapshot metadata cancelled", "57014", failure.getErrorCode());
             }
-            String diagnostic = "42501".equals(failure.getSQLState())
-                    ? SnapshotCompleteness.PERMISSION_DENIED
-                    : SnapshotCompleteness.METADATA_UNAVAILABLE;
+            String diagnostic = switch (failure.getSQLState() == null ? "" : failure.getSQLState()) {
+                case "42501" -> SnapshotCompleteness.PERMISSION_DENIED;
+                case "0A000" -> SnapshotCompleteness.NOT_SUPPORTED;
+                default -> throw new SQLException("Snapshot metadata failed",
+                        failure.getSQLState(), failure.getErrorCode());
+            };
             scopes.forEach(scope -> state.diagnostic(scope, diagnostic));
+            return state;
         }
     }
 
@@ -402,6 +543,7 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             ObjectKey key = state.key(ObjectType.TABLE, name, "");
             state.tables.put(oid, new TableBuilder(key));
             state.mapOid("pg_class", oid, key);
+            mapTypeAliases(rows, state, key);
         }
     }
 
@@ -412,6 +554,10 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             SortedMap<String, String> extensions = new TreeMap<>();
             putIfPresent(extensions, "formattedType", rows.getString("formatted_type"));
             putIfPresent(extensions, "typeSchema", rows.getString("type_schema"));
+            String identity = identitySemantics(rows.getString("identity_kind"));
+            String generated = generatedSemantics(rows.getString("generated_kind"));
+            putIfPresent(extensions, "pg.identity", identity);
+            putIfPresent(extensions, "pg.generated", generated);
             CanonicalDataType type = new CanonicalDataType(
                     rows.getString("base_type"),
                     nullableLong(rows, "character_length"),
@@ -423,9 +569,37 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             table.columns.add(new ColumnDefinition(
                     PgSchemaIdentifierNormalizer.child(rows.getString("column_name")), type,
                     rows.getBoolean("nullable"),
-                    PgSchemaDefinitionNormalizer.normalize(rows.getString("default_expression")),
+                    columnDefault(rows.getString("default_expression"), identity, generated),
                     rows.getInt("ordinal_position"), rows.getString("comment")));
+            Long attrdefOid = nullableLong(rows, "attrdef_oid");
+            if (attrdefOid != null) state.mapOid("pg_attrdef", attrdefOid, table.key);
         }
+    }
+
+    private static String identitySemantics(String kind) {
+        return switch (kind == null ? "" : kind) {
+            case "a" -> "ALWAYS";
+            case "d" -> "BY DEFAULT";
+            default -> null;
+        };
+    }
+
+    private static String generatedSemantics(String kind) {
+        return switch (kind == null ? "" : kind) {
+            case "s" -> "STORED";
+            case "v" -> "VIRTUAL";
+            default -> null;
+        };
+    }
+
+    private static String columnDefault(String expression, String identity, String generated) {
+        String normalized = PgSchemaDefinitionNormalizer.normalize(expression);
+        if (generated != null) {
+            return "GENERATED ALWAYS AS (" + (normalized == null ? "" : normalized)
+                    + ") " + generated;
+        }
+        if (identity != null) return "GENERATED " + identity + " AS IDENTITY";
+        return normalized;
     }
 
     private static void readConstraints(ResultSet rows, ReadState state) throws SQLException {
@@ -522,6 +696,7 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                     + key.name().original() + " AS\n" + body;
             state.addDefinition(key, original, DefinitionConfidence.HIGH);
             state.mapOid("pg_class", oid, key);
+            mapTypeAliases(rows, state, key);
         }
     }
 
@@ -543,7 +718,10 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             long oid = rows.getLong("object_oid");
             long tableOid = rows.getLong("table_oid");
             ObjectKey parent = state.oidKey("pg_class", tableOid);
-            String signature = parent == null ? "" : parent.name().comparisonKey();
+            String relationName = rows.getString("relation_name");
+            String signature = relationName == null
+                    ? (parent == null ? "" : parent.name().comparisonKey())
+                    : PgSchemaIdentifierNormalizer.object(state.schema, relationName).comparisonKey();
             ObjectKey key = state.key(ObjectType.TRIGGER, rows.getString("object_name"), signature);
             state.addDefinition(key, rows.getString("definition"), DefinitionConfidence.HIGH);
             state.mapOid("pg_trigger", oid, key);
@@ -561,11 +739,14 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                         rows.getLong("array_oid"));
                 types.put(oid, type);
             }
-            type.labels.add(rows.getString("enum_label"));
+            String label = rows.getString("enum_label");
+            if (label != null) type.labels.add(label);
         }
         for (Map.Entry<Long, EnumBuilder> entry : types.entrySet()) {
             EnumBuilder type = entry.getValue();
-            String definition = "CREATE TYPE " + type.key.name().original() + " AS ENUM (\n    "
+            String definition = type.labels.isEmpty()
+                    ? "CREATE TYPE " + type.key.name().original() + " AS ENUM ();"
+                    : "CREATE TYPE " + type.key.name().original() + " AS ENUM (\n    "
                     + String.join(",\n    ", type.labels.stream().map(PgSchemaSnapshotReader::sqlString).toList())
                     + "\n);";
             state.addDefinition(type.key, definition, DefinitionConfidence.HIGH);
@@ -585,16 +766,24 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                         rows.getLong("array_oid"));
                 types.put(oid, type);
             }
-            type.attributes.add(new CompositeAttribute(rows.getInt("position"),
-                    rows.getString("attribute_name"), rows.getString("attribute_type")));
+            String attributeName = rows.getString("attribute_name");
+            if (attributeName != null) {
+                type.attributes.add(new CompositeAttribute(rows.getInt("position"), attributeName,
+                        rows.getString("attribute_type"),
+                        rows.getString("attribute_collation_schema"),
+                        rows.getString("attribute_collation_name")));
+            }
         }
         for (Map.Entry<Long, CompositeBuilder> entry : types.entrySet()) {
             CompositeBuilder type = entry.getValue();
             type.attributes.sort(Comparator.comparingInt(CompositeAttribute::position));
-            String definition = "CREATE TYPE " + type.key.name().original() + " AS (\n    "
+            String definition = type.attributes.isEmpty()
+                    ? "CREATE TYPE " + type.key.name().original() + " AS ();"
+                    : "CREATE TYPE " + type.key.name().original() + " AS (\n    "
                     + String.join(",\n    ", type.attributes.stream()
                     .map(attribute -> PgSchemaIdentifierNormalizer.quote(attribute.name())
-                            + " " + attribute.type()).toList()) + "\n);";
+                            + " " + attribute.type() + collationClause(
+                            attribute.collationSchema(), attribute.collationName())).toList()) + "\n);";
             state.addDefinition(type.key, definition, DefinitionConfidence.HIGH);
             state.mapOid("pg_type", entry.getKey(), type.key);
             state.mapOid("pg_class", type.relationOid, type.key);
@@ -611,7 +800,9 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                 type = new DomainBuilder(state.key(ObjectType.TYPE,
                         rows.getString("type_name"), "domain"),
                         rows.getString("base_type"), rows.getBoolean("not_null"),
-                        rows.getString("default_expression"), rows.getLong("array_oid"));
+                        rows.getString("default_expression"), rows.getLong("array_oid"),
+                        rows.getString("type_collation_schema"),
+                        rows.getString("type_collation_name"));
                 types.put(oid, type);
             }
             String constraintName = rows.getString("constraint_name");
@@ -625,7 +816,8 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             DomainBuilder type = entry.getValue();
             type.constraints.sort(Comparator.comparing(DomainConstraint::name));
             StringBuilder definition = new StringBuilder("CREATE DOMAIN ")
-                    .append(type.key.name().original()).append(" AS ").append(type.baseType);
+                    .append(type.key.name().original()).append(" AS ").append(type.baseType)
+                    .append(collationClause(type.collationSchema, type.collationName));
             if (type.defaultExpression != null) definition.append(" DEFAULT ").append(type.defaultExpression);
             if (type.notNull) definition.append(" NOT NULL");
             for (DomainConstraint constraint : type.constraints) {
@@ -660,6 +852,20 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
 
     private static String sqlString(String value) {
         return "'" + value.replace("'", "''") + "'";
+    }
+
+    private static String collationClause(String schema, String name) {
+        if (schema == null || name == null) return "";
+        return " COLLATE " + PgSchemaIdentifierNormalizer.quote(schema) + "."
+                + PgSchemaIdentifierNormalizer.quote(name);
+    }
+
+    private static void mapTypeAliases(ResultSet rows, ReadState state, ObjectKey key)
+            throws SQLException {
+        Long rowTypeOid = nullableLong(rows, "row_type_oid");
+        Long arrayTypeOid = nullableLong(rows, "array_type_oid");
+        if (rowTypeOid != null && rowTypeOid != 0) state.mapOid("pg_type", rowTypeOid, key);
+        if (arrayTypeOid != null && arrayTypeOid != 0) state.mapOid("pg_type", arrayTypeOid, key);
     }
 
     private static ConstraintKind constraintKind(String pgType) throws SQLException {
@@ -715,7 +921,7 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
 
     @FunctionalInterface
     private interface SqlAttempt {
-        void run() throws SQLException;
+        void run(ReadState state) throws SQLException;
     }
 
     private static final class ReadState {
@@ -729,6 +935,18 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
 
         private ReadState(String schema) {
             this.schema = schema;
+        }
+
+        private ReadState copy() {
+            ReadState copy = new ReadState(schema);
+            tables.forEach((oid, table) -> copy.tables.put(oid, table.copy()));
+            copy.oidKeys.putAll(oidKeys);
+            copy.sequences.putAll(sequences);
+            copy.definitions.putAll(definitions);
+            discoveredDependencies.forEach((key, dependencies) ->
+                    copy.discoveredDependencies.put(key, new TreeSet<>(dependencies)));
+            copy.diagnostics.putAll(diagnostics);
+            return copy;
         }
 
         private ObjectKey key(ObjectType type, String name, String signature) {
@@ -797,6 +1015,8 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                         .sorted(Comparator.comparing(IndexDefinition::key)).toList();
                 Set<ObjectKey> tableDependencies = new TreeSet<>(builder.dependencies);
                 tableDependencies.addAll(dependencies(builder.key));
+                constraints.forEach(constraint -> tableDependencies.addAll(constraint.dependencies()));
+                indexes.forEach(index -> tableDependencies.addAll(index.dependencies()));
                 TableDefinition table = new TableDefinition(builder.key, builder.columns, constraints,
                         indexes, tableDependencies);
                 objects.put(table.key(), table);
@@ -824,6 +1044,15 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
 
         private TableBuilder(ObjectKey key) {
             this.key = key;
+        }
+
+        private TableBuilder copy() {
+            TableBuilder copy = new TableBuilder(key);
+            copy.columns.addAll(columns);
+            constraints.forEach(constraint -> copy.constraints.add(constraint.copy()));
+            indexes.forEach(index -> copy.indexes.add(index.copy()));
+            copy.dependencies.addAll(dependencies);
+            return copy;
         }
     }
 
@@ -856,6 +1085,16 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                     names(referencedColumns), expression, updateAction, deleteAction,
                     providerGenerated, allDependencies);
         }
+
+        private ConstraintBuilder copy() {
+            ConstraintBuilder copy = new ConstraintBuilder(key, kind, expression,
+                    updateAction, deleteAction, providerGenerated);
+            copy.columns.addAll(columns);
+            copy.referencedColumns.addAll(referencedColumns);
+            copy.dependencies.addAll(dependencies);
+            copy.referencedTable = referencedTable;
+            return copy;
+        }
     }
 
     private static final class IndexBuilder {
@@ -880,6 +1119,13 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             return new IndexDefinition(key, unique,
                     expressions.stream().map(PositionedText::text).toList(),
                     predicate, providerGenerated, allDependencies);
+        }
+
+        private IndexBuilder copy() {
+            IndexBuilder copy = new IndexBuilder(key, unique, predicate, providerGenerated);
+            copy.expressions.addAll(expressions);
+            copy.dependencies.addAll(dependencies);
+            return copy;
         }
     }
 
@@ -918,22 +1164,28 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
         private final boolean notNull;
         private final String defaultExpression;
         private final long arrayOid;
+        private final String collationSchema;
+        private final String collationName;
         private final List<DomainConstraint> constraints = new ArrayList<>();
 
         private DomainBuilder(ObjectKey key, String baseType, boolean notNull,
-                              String defaultExpression, long arrayOid) {
+                              String defaultExpression, long arrayOid,
+                              String collationSchema, String collationName) {
             this.key = key;
             this.baseType = baseType;
             this.notNull = notNull;
             this.defaultExpression = defaultExpression;
             this.arrayOid = arrayOid;
+            this.collationSchema = collationSchema;
+            this.collationName = collationName;
         }
     }
 
     private record CatalogOid(String catalog, long oid) {
     }
 
-    private record CompositeAttribute(int position, String name, String type) {
+    private record CompositeAttribute(int position, String name, String type,
+                                      String collationSchema, String collationName) {
     }
 
     private record DomainConstraint(long oid, String name, String definition) {
