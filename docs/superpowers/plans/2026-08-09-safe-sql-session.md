@@ -1561,7 +1561,7 @@ Application exit with pending manual transaction: data is rolled back
 
 For PostgreSQL, use a disposable local Docker database when Docker is available; otherwise use an already configured non-production connection. Oracle smoke testing requires an explicitly supplied non-production Oracle endpoint. If no Oracle endpoint is available, do not invent credentials or target an unknown database: retain the Oracle provider proxy tests as automated evidence and report the missing live Oracle smoke check as residual risk in the handoff. Do not use the user-provided Redis endpoint for relational smoke tests. Redis validation remains the existing automated integration test.
 
-- [ ] **Step 4: Mark plan tasks complete, commit, and push**
+- [x] **Step 4: Mark plan tasks complete, commit, and push**
 
 After every checkbox has evidence, mark it complete in this plan and run:
 
@@ -1573,7 +1573,7 @@ git push origin main
 
 Expected: main is synchronized with origin/main and .testagent/ is absent from every commit.
 
-- [ ] **Step 5: Observe GitHub Verify**
+- [x] **Step 5: Observe GitHub Verify**
 
 Run:
 
