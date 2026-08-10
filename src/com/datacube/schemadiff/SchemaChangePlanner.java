@@ -45,14 +45,22 @@ public final class SchemaChangePlanner {
         Objects.requireNonNull(result, "result");
         List<SchemaChange> changes = new ArrayList<>();
         Map<String, Set<ObjectKey>> objectDependencies = new HashMap<>();
+        Map<String, Set<String>> canonicalPropertyPaths = new HashMap<>();
         for (SchemaDifference difference : result.differences()) {
+            Set<String> differencePaths = validateCanonicalPropertyPaths(difference);
+            boolean atomicDefinition = isAtomicDefinitionModification(difference);
             for (SchemaChange change : changesFor(difference)) {
                 changes.add(change);
                 objectDependencies.put(change.id(), difference.dependencies());
+                canonicalPropertyPaths.put(change.id(), atomicDefinition
+                        ? differencePaths
+                        : Set.of(change.property() == null
+                                ? OBJECT_PATH : canonicalPath(change.property().path())));
             }
         }
         rejectDuplicateChangeIds(changes);
-        DependencyWiring wiring = wireDependencies(changes, objectDependencies, result);
+        DependencyWiring wiring = wireDependencies(
+                changes, objectDependencies, canonicalPropertyPaths, result);
         changes = rewriteAsManual(wiring.changes(), wiring.manualDropIds(),
                 "A target dependency cannot be released automatically");
         rejectDuplicateChangeIds(changes);
@@ -122,8 +130,7 @@ public final class SchemaChangePlanner {
                     ChangeKind.MANUAL, RiskLevel.HIGH, AutomationLevel.MANUAL_ONLY,
                     "The modification cannot be isolated safely"));
         }
-        if (difference.source() instanceof DefinitionObject
-                && difference.target() instanceof DefinitionObject) {
+        if (isAtomicDefinitionModification(difference)) {
             return List.of(modifiedDefinitionChange(difference));
         }
         List<SchemaChange> changes = new ArrayList<>(difference.properties().size());
@@ -146,6 +153,22 @@ public final class SchemaChangePlanner {
             }
         }
         return changes;
+    }
+
+    private static boolean isAtomicDefinitionModification(SchemaDifference difference) {
+        return difference.kind() == DifferenceKind.MODIFIED
+                && difference.source() instanceof DefinitionObject
+                && difference.target() instanceof DefinitionObject;
+    }
+
+    private static Set<String> validateCanonicalPropertyPaths(SchemaDifference difference) {
+        Set<String> paths = new TreeSet<>();
+        for (PropertyDifference property : difference.properties()) {
+            if (!paths.add(canonicalPath(property.path()))) {
+                throw new IllegalArgumentException(DUPLICATE_CHANGE_ID_MESSAGE);
+            }
+        }
+        return Set.copyOf(paths);
     }
 
     private static SchemaChange modifiedDefinitionChange(SchemaDifference difference) {
@@ -328,7 +351,7 @@ public final class SchemaChangePlanner {
 
     private static DependencyWiring wireDependencies(
             List<SchemaChange> changes, Map<String, Set<ObjectKey>> objectDependencies,
-            SchemaDiffResult result) {
+            Map<String, Set<String>> canonicalPropertyPaths, SchemaDiffResult result) {
         Map<ObjectKey, List<SchemaChange>> byObject = new HashMap<>();
         Map<String, Set<String>> dependencyIds = new HashMap<>();
         for (SchemaChange change : changes) {
@@ -364,8 +387,8 @@ public final class SchemaChangePlanner {
             if (dependentIsDropped) continue;
 
             List<SchemaChange> canonicalDependencyChanges = dependentChanges.stream()
-                    .filter(change -> change.property() != null
-                            && change.property().path().equals("dependencies"))
+                    .filter(change -> canonicalPropertyPaths
+                            .getOrDefault(change.id(), Set.of()).contains("dependencies"))
                     .toList();
             List<SchemaChange> releaseChanges = canonicalDependencyChanges.stream()
                     .filter(SchemaChangePlanner::isExecutableNonDrop)

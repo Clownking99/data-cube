@@ -191,7 +191,7 @@ class SchemaDependencyPlannerTest {
     }
 
     @Test
-    void dropWaitsForTheCanonicalExecutableDependencyChange() {
+    void atomicDefinitionReplacementRetainsItsCanonicalDependencyPathForDropWiring() {
         ObjectKey dependencyKey = key(ObjectType.TYPE, "legacy_type");
         ObjectKey viewKey = key(ObjectType.VIEW, "dependent_view");
         DefinitionObject sourceView = definition(viewKey, Set.of());
@@ -199,14 +199,20 @@ class SchemaDependencyPlannerTest {
         DefinitionObject targetDependency = definition(dependencyKey, Set.of());
         SchemaDifference replace = new SchemaDifference(DifferenceKind.MODIFIED, viewKey,
                 sourceView, targetView,
-                List.of(new PropertyDifference(
-                        "dependencies", Set.of(), Set.of(dependencyKey), "safe")),
+                List.of(
+                        new PropertyDifference(
+                                "dependencies", Set.of(), Set.of(dependencyKey), "safe"),
+                        new PropertyDifference(
+                                "normalizedDefinition", "sha256:new", "sha256:old", "safe")),
                 RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of(dependencyKey), "safe");
         SchemaChangePlan plan = planner.plan(result(List.of(
                 extra(targetDependency), replace)));
 
         SchemaChange drop = changeFor(plan, dependencyKey);
-        SchemaChange replaceChange = changeForProperty(plan, viewKey, "dependencies");
+        SchemaChange replaceChange = changeForProperty(plan, viewKey, "normalizedDefinition");
+        assertEquals(1, plan.changes().stream()
+                .filter(change -> change.object().equals(viewKey)).count());
+        assertEquals(ChangeKind.REPLACE, replaceChange.kind());
         assertEquals(ChangeKind.DROP, drop.kind());
         assertEquals(Set.of(replaceChange.id()), drop.dependencyChangeIds());
         assertTrue(plan.changes().indexOf(replaceChange) < plan.changes().indexOf(drop));

@@ -448,7 +448,7 @@ class SchemaChangePlannerTest {
         TableDefinition table = table(tableKey, List.of(column("id", true, null)));
         SchemaDifference duplicatePaths = difference(DifferenceKind.MODIFIED, tableKey, table, table,
                 List.of(
-                        new PropertyDifference("columns[id].comment", "first", "second", "safe"),
+                        new PropertyDifference(" columns[id].comment ", "first", "second", "safe"),
                         new PropertyDifference("columns[id].comment", "third", "fourth", "safe")),
                 RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of());
 
@@ -458,6 +458,35 @@ class SchemaChangePlannerTest {
         assertEquals(DUPLICATE_CHANGE_ID_MESSAGE, failure.getMessage());
         assertFalse(failure.getMessage().contains("duplicate-path-secret"));
         assertFalse(failure.getMessage().contains("columns[id]"));
+    }
+
+    @Test
+    void duplicateCanonicalDefinitionPathsAreRejectedBeforeAtomicMergeWithFixedSafeMessage() {
+        ObjectKey definitionKey = key(ObjectType.VIEW, "duplicate-definition-secret");
+        DefinitionObject source = new DefinitionObject(definitionKey, "select new", "source-secret",
+                Set.of(), DefinitionConfidence.HIGH);
+        DefinitionObject target = new DefinitionObject(definitionKey, "select old", "target-secret",
+                Set.of(), DefinitionConfidence.HIGH);
+        List<List<PropertyDifference>> duplicateProperties = List.of(
+                List.of(
+                        new PropertyDifference("normalizedDefinition", "first-secret", "old-secret", "safe"),
+                        new PropertyDifference("normalizedDefinition", "second-secret", "older-secret", "safe")),
+                List.of(
+                        new PropertyDifference("", "blank-source-secret", "blank-target-secret", "safe"),
+                        new PropertyDifference("   ", "space-source-secret", "space-target-secret", "safe")));
+
+        for (List<PropertyDifference> properties : duplicateProperties) {
+            SchemaDifference duplicate = difference(DifferenceKind.MODIFIED, definitionKey,
+                    source, target, properties, RiskLevel.HIGH,
+                    AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of());
+
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> planner.plan(result(List.of(duplicate))));
+
+            assertEquals(DUPLICATE_CHANGE_ID_MESSAGE, failure.getMessage());
+            assertFalse(failure.getMessage().contains("secret"));
+            assertFalse(failure.getMessage().contains("normalizedDefinition"));
+        }
     }
 
     @Test
