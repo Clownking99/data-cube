@@ -38,7 +38,11 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-/** Reads one PostgreSQL schema into the provider-neutral schema-diff model. */
+/**
+ * Reads one PostgreSQL schema into the provider-neutral schema-diff model.
+ * The reader requires a dedicated auto-commit connection so each statement-local
+ * {@code search_path} change is restored when that statement transaction ends.
+ */
 public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
     private static final String TABLES_SQL = """
             /* snapshot:tables */
@@ -236,50 +240,22 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
 
     private static final String COMPOSITES_SQL = """
             /* snapshot:composites */
+            WITH deparser_context AS (
+                SELECT pg_catalog.set_config('search_path', 'pg_catalog', true) AS search_path
+            )
             SELECT type.oid::bigint AS type_oid, type.typarray::bigint AS array_oid,
                    relation.oid::bigint AS relation_oid, type.typname AS type_name,
                    attribute.attnum AS position, attribute.attname AS attribute_name,
-                   CASE WHEN attribute_type.typcategory = 'A' AND attribute_type.typelem <> 0
-                        THEN pg_catalog.quote_ident(attribute_element_namespace.nspname) || '.' ||
-                             pg_catalog.quote_ident(attribute_element_type.typname)
-                        ELSE pg_catalog.quote_ident(attribute_type_namespace.nspname) || '.' ||
-                             pg_catalog.quote_ident(attribute_type.typname)
-                   END ||
-                   CASE
-                       WHEN COALESCE(attribute_element_type.typname, attribute_type.typname)
-                                IN ('varchar', 'bpchar') AND attribute.atttypmod > 4
-                           THEN '(' || (attribute.atttypmod - 4)::text || ')'
-                       WHEN COALESCE(attribute_element_type.typname, attribute_type.typname) = 'numeric'
-                                AND attribute.atttypmod >= 4
-                           THEN '(' || (((attribute.atttypmod - 4) >> 16) & 65535)::text || ',' ||
-                                (CASE WHEN ((attribute.atttypmod - 4) & 65535) >= 32768
-                                      THEN ((attribute.atttypmod - 4) & 65535) - 65536
-                                      ELSE ((attribute.atttypmod - 4) & 65535) END)::text || ')'
-                       WHEN COALESCE(attribute_element_type.typname, attribute_type.typname)
-                                IN ('time', 'timetz', 'timestamp', 'timestamptz')
-                                AND attribute.atttypmod >= 0
-                           THEN '(' || attribute.atttypmod::text || ')'
-                       ELSE ''
-                   END ||
-                   CASE WHEN attribute_type.typcategory = 'A' AND attribute_type.typelem <> 0
-                        THEN pg_catalog.repeat('[]', GREATEST(attribute.attndims, 1)) ELSE '' END
-                   AS attribute_type,
+                   pg_catalog.format_type(attribute.atttypid, attribute.atttypmod) AS attribute_type,
                    attribute_collation_namespace.nspname AS attribute_collation_schema,
                    attribute_collation.collname AS attribute_collation_name
             FROM pg_catalog.pg_type type
+            CROSS JOIN deparser_context
             JOIN pg_catalog.pg_namespace n ON n.oid = type.typnamespace
             JOIN pg_catalog.pg_class relation ON relation.oid = type.typrelid
             LEFT JOIN pg_catalog.pg_attribute attribute
                    ON attribute.attrelid = relation.oid
                   AND attribute.attnum > 0 AND NOT attribute.attisdropped
-            LEFT JOIN pg_catalog.pg_type attribute_type ON attribute_type.oid = attribute.atttypid
-            LEFT JOIN pg_catalog.pg_namespace attribute_type_namespace
-                   ON attribute_type_namespace.oid = attribute_type.typnamespace
-            LEFT JOIN pg_catalog.pg_type attribute_element_type
-                   ON attribute_element_type.oid = attribute_type.typelem
-                  AND attribute_type.typcategory = 'A'
-            LEFT JOIN pg_catalog.pg_namespace attribute_element_namespace
-                   ON attribute_element_namespace.oid = attribute_element_type.typnamespace
             LEFT JOIN pg_catalog.pg_collation attribute_collation
                    ON attribute_collation.oid = attribute.attcollation AND attribute.attcollation <> 0
             LEFT JOIN pg_catalog.pg_namespace attribute_collation_namespace
@@ -295,30 +271,9 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             )
             SELECT type.oid::bigint AS type_oid, type.typarray::bigint AS array_oid,
                    type.typname AS type_name,
-                   CASE WHEN base_type.typcategory = 'A' AND base_type.typelem <> 0
-                        THEN pg_catalog.quote_ident(base_element_namespace.nspname) || '.' ||
-                             pg_catalog.quote_ident(base_element_type.typname)
-                        ELSE pg_catalog.quote_ident(base_namespace.nspname) || '.' ||
-                             pg_catalog.quote_ident(base_type.typname)
-                   END ||
-                   CASE
-                       WHEN COALESCE(base_element_type.typname, base_type.typname)
-                                IN ('varchar', 'bpchar') AND type.typtypmod > 4
-                           THEN '(' || (type.typtypmod - 4)::text || ')'
-                       WHEN COALESCE(base_element_type.typname, base_type.typname) = 'numeric'
-                                AND type.typtypmod >= 4
-                           THEN '(' || (((type.typtypmod - 4) >> 16) & 65535)::text || ',' ||
-                                (CASE WHEN ((type.typtypmod - 4) & 65535) >= 32768
-                                      THEN ((type.typtypmod - 4) & 65535) - 65536
-                                      ELSE ((type.typtypmod - 4) & 65535) END)::text || ')'
-                       WHEN COALESCE(base_element_type.typname, base_type.typname)
-                                IN ('time', 'timetz', 'timestamp', 'timestamptz')
-                                AND type.typtypmod >= 0
-                           THEN '(' || type.typtypmod::text || ')'
-                       ELSE ''
-                   END ||
-                   CASE WHEN base_type.typcategory = 'A' AND base_type.typelem <> 0
-                        THEN '[]' ELSE '' END AS base_type,
+                   pg_catalog.format_type(type.typbasetype, type.typtypmod) AS base_type,
+                   base_type.typcategory = 'A' AS base_is_array,
+                   type.typndims AS domain_dimensions,
                    type.typnotnull AS not_null,
                    COALESCE(pg_catalog.pg_get_expr(type.typdefaultbin, 0, false), type.typdefault) AS default_expression,
                    type_collation_namespace.nspname AS type_collation_schema,
@@ -329,11 +284,6 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             CROSS JOIN deparser_context
             JOIN pg_catalog.pg_namespace n ON n.oid = type.typnamespace
             JOIN pg_catalog.pg_type base_type ON base_type.oid = type.typbasetype
-            JOIN pg_catalog.pg_namespace base_namespace ON base_namespace.oid = base_type.typnamespace
-            LEFT JOIN pg_catalog.pg_type base_element_type
-                   ON base_element_type.oid = base_type.typelem AND base_type.typcategory = 'A'
-            LEFT JOIN pg_catalog.pg_namespace base_element_namespace
-                   ON base_element_namespace.oid = base_element_type.typnamespace
             LEFT JOIN pg_catalog.pg_collation type_collation
                    ON type_collation.oid = type.typcollation AND type.typcollation <> 0
             LEFT JOIN pg_catalog.pg_namespace type_collation_namespace
@@ -442,7 +392,21 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
     public SchemaSnapshot read(String connectionId, QualifiedName schema,
                                SqlExecutionOptions options) throws SQLException {
         synchronized (connection) {
+            requireAutoCommit();
             return readSerially(connectionId, schema, options);
+        }
+    }
+
+    private void requireAutoCommit() throws SQLException {
+        final boolean autoCommit;
+        try {
+            autoCommit = connection.getAutoCommit();
+        } catch (SQLException failure) {
+            throw new SQLException("Snapshot connection state unavailable",
+                    failure.getSQLState(), failure.getErrorCode());
+        }
+        if (!autoCommit) {
+            throw new SQLException("Snapshot requires an auto-commit connection", "25001");
         }
     }
 
@@ -799,7 +763,9 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             if (type == null) {
                 type = new DomainBuilder(state.key(ObjectType.TYPE,
                         rows.getString("type_name"), "domain"),
-                        rows.getString("base_type"), rows.getBoolean("not_null"),
+                        domainBaseType(rows.getString("base_type"),
+                                rows.getBoolean("base_is_array"),
+                                rows.getInt("domain_dimensions")), rows.getBoolean("not_null"),
                         rows.getString("default_expression"), rows.getLong("array_oid"),
                         rows.getString("type_collation_schema"),
                         rows.getString("type_collation_name"));
@@ -832,6 +798,14 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             type.constraints.forEach(constraint -> state.mapOid(
                     "pg_constraint", constraint.oid(), type.key));
         }
+    }
+
+    private static String domainBaseType(String formattedType, boolean baseIsArray,
+                                         int domainDimensions) {
+        if (formattedType == null) return null;
+        int dimensionsAlreadyFormatted = baseIsArray ? 1 : 0;
+        int remainingDimensions = Math.max(domainDimensions - dimensionsAlreadyFormatted, 0);
+        return formattedType + "[]".repeat(remainingDimensions);
     }
 
     private static void readDependencies(ResultSet rows, ReadState state) throws SQLException {

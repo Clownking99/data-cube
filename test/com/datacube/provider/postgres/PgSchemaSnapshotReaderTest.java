@@ -276,6 +276,7 @@ class PgSchemaSnapshotReaderTest {
         assertEquals(DefinitionConfidence.LOW,
                 definition(snapshot, ObjectType.VIEW, "app", "missing_view", "").confidence());
         assertFalse(control.hasActiveStatement());
+        assertEquals(12, jdbc.statements().size(), "partial categories must continue in auto-commit mode");
     }
 
     @Test
@@ -665,6 +666,138 @@ class PgSchemaSnapshotReaderTest {
                 "\"app\".\"orders\"[]")));
     }
 
+    @Test
+    void catalogFormatTypePreservesPayloadBitsIntervalAndDomainArrayDimensions() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("app")
+                .rows("composites",
+                        compositeAttribute(81L, "payload", 1, "bits", "bit(13)"),
+                        compositeAttribute(81L, "payload", 2, "mask", "bit varying(21)"),
+                        compositeAttribute(81L, "payload", 3, "window",
+                                "interval day to second(4)"),
+                        compositeAttribute(81L, "payload", 4, "amount", "numeric(12,3)"),
+                        compositeAttribute(81L, "payload", 5, "label", "character varying(40)"),
+                        compositeAttribute(81L, "payload", 6, "at_time", "time(2) without time zone"))
+                .rows("domains",
+                        domain(82L, "matrix", "integer[]", true, 2),
+                        domain(83L, "bits", "bit(7)", false, 0),
+                        domain(84L, "bit_matrix", "bit(7)", false, 2));
+
+        SchemaSnapshot snapshot = new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+
+        DefinitionObject payload = definition(snapshot, ObjectType.TYPE, "app", "payload", "composite");
+        for (String type : List.of("bit(13)", "bit varying(21)",
+                "interval day to second(4)", "numeric(12,3)",
+                "character varying(40)", "time(2) without time zone")) {
+            assertTrue(payload.originalDefinition().contains(type), type);
+            assertTrue(payload.normalizedDefinition().contains(type), type);
+        }
+        DefinitionObject matrix = definition(snapshot, ObjectType.TYPE, "app", "matrix", "domain");
+        assertTrue(matrix.originalDefinition().contains(" AS integer[][]"));
+        assertTrue(matrix.normalizedDefinition().contains(" AS integer[][]"));
+        DefinitionObject bits = definition(snapshot, ObjectType.TYPE, "app", "bits", "domain");
+        assertTrue(bits.originalDefinition().contains(" AS bit(7)"));
+        assertTrue(bits.normalizedDefinition().contains(" AS bit(7)"));
+        assertTrue(definition(snapshot, ObjectType.TYPE, "app", "bit_matrix", "domain")
+                .normalizedDefinition().contains(" AS bit(7)[][]"),
+                "non-array format_type output must receive every catalog dimension");
+
+        String compositesSql = jdbc.statement("composites").sql;
+        assertTrue(compositesSql.contains(
+                "pg_catalog.format_type(attribute.atttypid, attribute.atttypmod) AS attribute_type"));
+        assertTrue(compositesSql.contains(
+                "pg_catalog.set_config('search_path', 'pg_catalog', true)"));
+        String domainsSql = jdbc.statement("domains").sql;
+        assertTrue(domainsSql.contains(
+                "pg_catalog.format_type(type.typbasetype, type.typtypmod) AS base_type"));
+        assertTrue(domainsSql.contains("type.typndims AS domain_dimensions"));
+
+        SchemaSnapshot oneDimension = domainDimensionSnapshot(1);
+        SchemaSnapshot twoDimensions = domainDimensionSnapshot(2);
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                definition(oneDimension, ObjectType.TYPE, "app", "matrix", "domain")
+                        .normalizedDefinition(),
+                definition(twoDimensions, ObjectType.TYPE, "app", "matrix", "domain")
+                        .normalizedDefinition());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                oneDimension.fingerprint(), twoDimensions.fingerprint());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                payloadTypeSnapshot("bit(13)").fingerprint(),
+                payloadTypeSnapshot("bit(14)").fingerprint());
+        org.junit.jupiter.api.Assertions.assertNotEquals(
+                payloadTypeSnapshot("interval day to second(3)").fingerprint(),
+                payloadTypeSnapshot("interval year to month").fingerprint());
+    }
+
+    @Test
+    void rejectsNonAutoCommitAndSanitizesAutoCommitInspectionFailureBeforeAnySql() {
+        SqlExecutionControl manualControl = new SqlExecutionControl();
+        SnapshotJdbc manual = new SnapshotJdbc("secret_schema").autoCommit(false);
+
+        SQLException rejected = assertThrows(SQLException.class,
+                () -> new PgSchemaSnapshotReader(manual.connection()).read(
+                        "secret-connection", PgSchemaIdentifierNormalizer.schema("secret_schema"),
+                        new SqlExecutionOptions(0, 3, manualControl)));
+
+        assertEquals("25001", rejected.getSQLState());
+        assertEquals("Snapshot requires an auto-commit connection", rejected.getMessage());
+        assertNull(rejected.getCause());
+        assertTrue(manual.statements().isEmpty());
+        assertFalse(manualControl.hasActiveStatement());
+
+        SqlExecutionControl inspectionControl = new SqlExecutionControl();
+        SnapshotJdbc inspection = new SnapshotJdbc("secret_schema").autoCommitFailure(
+                new SQLException("jdbc:postgresql://host/db password=secret schema=secret_schema",
+                        "08006", 91));
+
+        SQLException unavailable = assertThrows(SQLException.class,
+                () -> new PgSchemaSnapshotReader(inspection.connection()).read(
+                        "secret-connection", PgSchemaIdentifierNormalizer.schema("secret_schema"),
+                        new SqlExecutionOptions(0, 3, inspectionControl)));
+
+        assertEquals("08006", unavailable.getSQLState());
+        assertEquals(91, unavailable.getErrorCode());
+        assertEquals("Snapshot connection state unavailable", unavailable.getMessage());
+        assertNull(unavailable.getCause());
+        assertTrue(inspection.statements().isEmpty());
+        assertFalse(inspectionControl.hasActiveStatement());
+    }
+
+    private static SchemaSnapshot domainDimensionSnapshot(int dimensions) throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("app").rows("domains",
+                domain(82L, "matrix", "integer[]", true, dimensions));
+        return new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+    }
+
+    private static SchemaSnapshot payloadTypeSnapshot(String formattedType) throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("app").rows("composites",
+                compositeAttribute(81L, "payload", 1, "value", formattedType));
+        return new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "connection", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+    }
+
+    private static Map<String, Object> compositeAttribute(long oid, String typeName, int position,
+                                                           String name, String formattedType) {
+        return row("type_oid", oid, "array_oid", oid + 100L, "relation_oid", oid + 200L,
+                "type_name", typeName, "position", position, "attribute_name", name,
+                "attribute_type", formattedType, "attribute_collation_schema", null,
+                "attribute_collation_name", null);
+    }
+
+    private static Map<String, Object> domain(long oid, String typeName, String formattedType,
+                                               boolean baseArray, int dimensions) {
+        return row("type_oid", oid, "array_oid", oid + 100L, "type_name", typeName,
+                "base_type", formattedType, "base_is_array", baseArray,
+                "domain_dimensions", dimensions, "not_null", false,
+                "default_expression", null, "type_collation_schema", null,
+                "type_collation_name", null, "constraint_oid", null,
+                "constraint_name", null, "constraint_definition", null);
+    }
+
     private static SchemaSnapshot collationSnapshot(String compositeCollation,
                                                      String domainCollation) throws Exception {
         SnapshotJdbc jdbc = new SnapshotJdbc("app")
@@ -727,6 +860,8 @@ class PgSchemaSnapshotReaderTest {
         private final Map<String, MidstreamFailure> midstreamFailures = new LinkedHashMap<>();
         private final Map<String, SessionRows> sessionRows = new LinkedHashMap<>();
         private final List<StatementTrace> statements = new ArrayList<>();
+        private boolean autoCommit = true;
+        private SQLException autoCommitFailure;
 
         SnapshotJdbc(String expectedSchema) {
             this.expectedSchema = expectedSchema;
@@ -754,10 +889,24 @@ class PgSchemaSnapshotReaderTest {
             return this;
         }
 
+        SnapshotJdbc autoCommit(boolean enabled) {
+            autoCommit = enabled;
+            return this;
+        }
+
+        SnapshotJdbc autoCommitFailure(SQLException failure) {
+            autoCommitFailure = failure;
+            return this;
+        }
+
         Connection connection() {
             return (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
                     new Class<?>[]{Connection.class}, (proxy, method, args) -> switch (method.getName()) {
                         case "prepareStatement" -> preparedStatement((String) args[0]);
+                        case "getAutoCommit" -> {
+                            if (autoCommitFailure != null) throw autoCommitFailure;
+                            yield autoCommit;
+                        }
                         case "isClosed" -> false;
                         case "toString" -> "snapshot-jdbc-proxy";
                         default -> defaultValue(method.getReturnType());

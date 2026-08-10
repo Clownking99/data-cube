@@ -244,6 +244,7 @@ class PgSchemaSnapshotCancellationTest {
         return (Connection) Proxy.newProxyInstance(PgSchemaSnapshotCancellationTest.class.getClassLoader(),
                 new Class<?>[]{Connection.class}, (proxy, method, args) -> switch (method.getName()) {
                     case "prepareStatement" -> factory.create((String) args[0]);
+                    case "getAutoCommit" -> true;
                     case "isClosed" -> false;
                     default -> defaultValue(method.getReturnType());
                 });
