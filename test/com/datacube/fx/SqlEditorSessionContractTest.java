@@ -25,7 +25,7 @@ class SqlEditorSessionContractTest {
     @Test
     void recordsBlockingSessionOwnershipImmediatelyAfterOpeningIt() throws Exception {
         String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
-        String open = "connections.openEditorSession(editorConnection.id())";
+        String open = "connections.openEditorSession(editorConnection)";
         String own = "construction.ownBlocking(jdbcSession::close)";
 
         int openIndex = source.indexOf(open);
@@ -34,6 +34,8 @@ class SqlEditorSessionContractTest {
         assertTrue(ownIndex > openIndex, "opened JDBC session must immediately gain blocking ownership");
         assertEquals(";", source.substring(openIndex + open.length(), ownIndex).trim(),
                 "only the opening statement terminator may precede ownBlocking");
+        assertFalse(source.contains("openEditorSession(editorConnection.id())"),
+                "the session must consume the immutable pinned config rather than reread by id");
     }
 
     @Test
@@ -95,7 +97,30 @@ class SqlEditorSessionContractTest {
         assertTrue(source.contains("history.recordStrict"));
         assertTrue(source.contains("editorSession.closeStrict()"));
         assertTrue(source.contains("running = sessionOperations.snapshot().pending()"));
-        assertTrue(source.contains("submitSessionOperation(true"));
+        assertTrue(source.contains(
+                "submitSessionOperation(SerialSessionOperationQueue.OperationKind.EXECUTE"));
         assertTrue(source.contains("tasks.submit(editorSession::cancel"));
+    }
+
+    @Test
+    void closeWaitsForNonCancellableCurrentOperationBeforeFreshFxDecision() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("operationSnapshot.running()"
+                + " && !operationSnapshot.currentCancellable()"));
+        assertTrue(source.contains("continueCloseDecisionOnFx"));
+        assertTrue(source.contains("sessionOperations.suppressCallbacks()"));
+        assertTrue(source.contains("operationSnapshot.currentCancellable()"));
+        assertTrue(source.contains("!operationSnapshot.accepting()"),
+                "terminal callbacks must not re-enable controls while close admission is active");
+    }
+
+    @Test
+    void normalAndMandatoryCloseShareObservableStrictCleanupSettlement() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("StrictCleanupRetryChannel sessionCleanup"));
+        assertTrue(source.contains("awaitStrictSessionCleanup"));
+        assertTrue(source.contains("sessionCleanup.start()"));
     }
 }

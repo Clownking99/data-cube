@@ -124,6 +124,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private final FxTaskScope tasks;
     private final FxSerialTaskQueue metadataTasks;
     private final SerialSessionOperationQueue sessionOperations;
+    private final StrictCleanupRetryChannel sessionCleanup;
     private final ChangeListener<CommentMode> commentModeListener;
     private final ChangeListener<ConnConfig> activeConnectionListener;
 
@@ -187,8 +188,10 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(metadataTasks::close);
             this.sessionOperations = new SerialSessionOperationQueue(runner);
             construction.own(sessionOperations::close);
+            this.sessionCleanup = new StrictCleanupRetryChannel(
+                    this::closeCurrentSessionStrict, SqlEditorPane::reportStrictCleanupFailure);
             if (editorConnection != null) {
-                JdbcEditorSession jdbcSession = connections.openEditorSession(editorConnection.id());
+                JdbcEditorSession jdbcSession = connections.openEditorSession(editorConnection);
                 construction.ownBlocking(jdbcSession::close);
                 this.jdbcSession = jdbcSession;
             }
@@ -296,13 +299,14 @@ public final class SqlEditorPane implements AutoCloseable {
         if (resourcesClosed.get()) return;
         admission.beginClosing();
         sessionOperations.stopAcceptingAndCancelQueued();
+        sessionOperations.suppressCallbacks();
         BestEffortCloseSequence.run(
-                () -> cancelCurrentSession(),
+                this::cancelCancellableCurrentSession,
                 this::awaitSessionOperationsIdle,
                 metadataTasks::close,
                 sessionOperations::close,
                 tasks::close,
-                this::closeCurrentSessionStrict);
+                this::awaitStrictSessionCleanup);
         resourcesClosed.set(true);
     }
 
@@ -319,15 +323,16 @@ public final class SqlEditorPane implements AutoCloseable {
         JdbcEditorSession editorSession = currentEditorSession();
         JdbcEditorSession.Snapshot sessionSnapshot =
                 editorSession == null ? null : editorSession.snapshot();
-        CloseDecision decision;
-        if (operationSnapshot.pending()
-                || sessionSnapshot != null && (sessionSnapshot.running() || sessionSnapshot.cancelling())) {
-            decision = requestCancelRollbackClose();
-        } else if (sessionSnapshot != null && sessionSnapshot.hasPendingTransaction()) {
-            decision = requestTransactionClose();
-        } else {
-            decision = CloseDecision.CLOSE;
-        }
+        boolean pendingTransaction = sessionSnapshot != null
+                && sessionSnapshot.hasPendingTransaction();
+        CloseDecision decision = switch (SqlEditorClosePolicy.decide(
+                operationSnapshot, pendingTransaction)) {
+            case CANCEL_RUNNING_SQL -> requestCancelRollbackClose();
+            case RESOLVE_TRANSACTION -> requestTransactionClose();
+            case CLOSE -> CloseDecision.CLOSE;
+            case WAIT_FOR_NON_CANCELLABLE ->
+                    throw new IllegalStateException("不可取消的会话操作尚未结束");
+        };
         return new ClosePlan(
                 connection == null ? null : connection.name(),
                 schemaField == null ? null : schemaField.getText().trim(),
@@ -336,21 +341,49 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private CompletionStage<CloseGuardOutcome> startCloseAttempt() {
+        CompletableFuture<CloseGuardOutcome> result = new CompletableFuture<>();
         admission.beginClosing();
         SerialSessionOperationQueue.Snapshot operationSnapshot = sessionOperations.snapshot();
-        sessionOperations.stopAcceptingAndCancelQueued();
+        CompletionStage<Void> idle = sessionOperations.stopAcceptingAndCancelQueued();
+        if (operationSnapshot.running() && !operationSnapshot.currentCancellable()) {
+            idle.whenComplete((ignored, failure) -> {
+                if (failure != null) {
+                    reopenAdmissionWithoutUi();
+                    result.completeExceptionally(failure);
+                    return;
+                }
+                try {
+                    Platform.runLater(() -> continueCloseDecisionOnFx(result));
+                } catch (Throwable dispatchFailure) {
+                    reopenAdmissionWithoutUi();
+                    result.completeExceptionally(dispatchFailure);
+                }
+            });
+        } else {
+            continueCloseDecisionOnFx(result);
+        }
+        return result;
+    }
+
+    private void continueCloseDecisionOnFx(CompletableFuture<CloseGuardOutcome> result) {
+        if (result.isDone()) return;
         ClosePlan plan;
         try {
-            plan = captureClosePlan(operationSnapshot);
+            if (!Platform.isFxApplicationThread()) {
+                throw new IllegalStateException("close decision must run on the FX Application Thread");
+            }
+            plan = captureClosePlan(sessionOperations.snapshot());
         } catch (Throwable preCleanupFailure) {
             reopenAfterRejectedClose();
-            throw preCleanupFailure;
+            result.completeExceptionally(preCleanupFailure);
+            return;
         }
         if (plan.decision() == CloseDecision.CANCEL_CLOSE) {
             reopenAfterRejectedClose();
-            return CompletableFuture.completedFuture(CloseGuardOutcome.REJECTED);
+            result.complete(CloseGuardOutcome.REJECTED);
+            return;
         }
-        CompletableFuture<CloseGuardOutcome> result = new CompletableFuture<>();
+        sessionOperations.suppressCallbacks();
         try {
             Thread.startVirtualThread(() -> {
                 try {
@@ -365,7 +398,6 @@ public final class SqlEditorPane implements AutoCloseable {
             reopenAfterRejectedClose();
             result.completeExceptionally(startupFailure);
         }
-        return result;
     }
 
     private CloseDecision requestCancelRollbackClose() {
@@ -414,6 +446,11 @@ public final class SqlEditorPane implements AutoCloseable {
         refreshOperationControls();
     }
 
+    private void reopenAdmissionWithoutUi() {
+        admission.reopen();
+        sessionOperations.reopen();
+    }
+
     private JdbcEditorSession currentEditorSession() {
         synchronized (admission) {
             return jdbcSession;
@@ -423,6 +460,10 @@ public final class SqlEditorPane implements AutoCloseable {
     private void cancelCurrentSession() {
         JdbcEditorSession editorSession = currentEditorSession();
         if (editorSession != null) editorSession.cancel();
+    }
+
+    private void cancelCancellableCurrentSession() {
+        if (sessionOperations.snapshot().currentCancellable()) cancelCurrentSession();
     }
 
     private void awaitSessionOperationsIdle() {
@@ -439,6 +480,14 @@ public final class SqlEditorPane implements AutoCloseable {
         }
     }
 
+    private void awaitStrictSessionCleanup() {
+        sessionCleanup.start().toCompletableFuture().join();
+    }
+
+    private static void reportStrictCleanupFailure(Throwable failure) {
+        System.err.println("[DataCube] SQL editor strict cleanup retry: " + failure);
+    }
+
     /** Virtual-thread-only close chain; every required step is attempted. */
     private void closeInBackground(ClosePlan snapshot) {
         if (resourcesClosed.get()) {
@@ -446,14 +495,14 @@ public final class SqlEditorPane implements AutoCloseable {
             return;
         }
         BestEffortCloseSequence.run(
-                this::cancelCurrentSession,
+                this::cancelCancellableCurrentSession,
                 this::awaitSessionOperationsIdle,
                 () -> resolveCloseTransaction(currentEditorSession(), snapshot.decision()),
                 () -> persistCloseSnapshot(snapshot),
                 metadataTasks::close,
                 sessionOperations::close,
                 tasks::close,
-                this::closeCurrentSessionStrict);
+                this::awaitStrictSessionCleanup);
         resourcesClosed.set(true);
     }
 
@@ -611,15 +660,16 @@ public final class SqlEditorPane implements AutoCloseable {
         updatingTransactionMode = true;
         transactionModeBox.setValue(snapshot.transactionMode());
         updatingTransactionMode = false;
-        boolean busy = snapshot.running() || snapshot.cancelling()
-                || sessionOperations.snapshot().pending();
+        SerialSessionOperationQueue.Snapshot operationSnapshot = sessionOperations.snapshot();
+        boolean busy = !operationSnapshot.accepting()
+                || snapshot.running() || snapshot.cancelling() || operationSnapshot.pending();
         transactionModeBox.setDisable(busy || snapshot.connectionState()
                 == JdbcEditorSession.ConnectionState.CLOSED);
         boolean pendingManual = snapshot.transactionMode() == JdbcEditorSession.TransactionMode.MANUAL
                 && snapshot.hasPendingTransaction();
         commitBtn.setDisable(busy || !pendingManual);
         rollbackBtn.setDisable(busy || !pendingManual);
-        cancelBtn.setDisable(!snapshot.running() || snapshot.cancelling());
+        cancelBtn.setDisable(!operationSnapshot.currentCancellable() || snapshot.cancelling());
         String timeout = snapshot.safety().queryTimeoutSeconds() == 0
                 ? "无超时限制" : snapshot.safety().queryTimeoutSeconds() + " 秒超时";
         if (!snapshot.timeoutSupported()) timeout += "（驱动不支持）";
@@ -790,7 +840,7 @@ public final class SqlEditorPane implements AutoCloseable {
         statusLabel.setText("执行中...");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
-        submitSessionOperation(true, () -> {
+        submitSessionOperation(SerialSessionOperationQueue.OperationKind.EXECUTE, () -> {
             recordHistory(historySnapshot);
             JdbcEditorSession editorSession = ensureEditorSession();
             return editorSession.executeScript(
@@ -827,7 +877,7 @@ public final class SqlEditorPane implements AutoCloseable {
             editorConnection = connection;
             ConstructionOwner construction = new ConstructionOwner();
             try {
-                JdbcEditorSession jdbcSession = connections.openEditorSession(editorConnection.id());
+                JdbcEditorSession jdbcSession = connections.openEditorSession(editorConnection);
                 construction.ownBlocking(jdbcSession::close);
                 this.jdbcSession = jdbcSession;
                 construction.commit();
@@ -839,15 +889,15 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private <T> void submitSessionOperation(
-            boolean cancellable,
+            SerialSessionOperationQueue.OperationKind kind,
             Callable<T> operation,
             Consumer<? super T> success,
             Consumer<? super Throwable> failure) {
         setButtonsRunning(true);
         setTransactionControlsDisabled(true);
-        cancelBtn.setDisable(!cancellable);
+        cancelBtn.setDisable(!kind.cancellable());
         try {
-            sessionOperations.submit(operation, value -> {
+            sessionOperations.submit(kind, operation, value -> {
                 success.accept(value);
                 refreshOperationControls();
             }, error -> {
@@ -864,9 +914,11 @@ public final class SqlEditorPane implements AutoCloseable {
         JdbcEditorSession editorSession = currentEditorSession();
         if (editorSession != null) renderSessionSnapshot(editorSession.snapshot());
         else {
-            boolean pending = sessionOperations.snapshot().pending();
+            SerialSessionOperationQueue.Snapshot snapshot = sessionOperations.snapshot();
+            boolean pending = !snapshot.accepting() || snapshot.pending();
             setButtonsRunning(pending);
             setTransactionControlsDisabled(pending);
+            cancelBtn.setDisable(!snapshot.currentCancellable());
         }
     }
 
@@ -979,7 +1031,7 @@ public final class SqlEditorPane implements AutoCloseable {
         }
         TransactionModeDecision decision = pendingDecision;
         transactionModeBox.setDisable(true);
-        submitSessionOperation(false, () -> {
+        submitSessionOperation(SerialSessionOperationQueue.OperationKind.SET_MODE, () -> {
             JdbcEditorSession session = ensureEditorSession();
             if (decision == TransactionModeDecision.COMMIT) session.commit();
             else if (decision == TransactionModeDecision.ROLLBACK) session.rollback();
@@ -1010,7 +1062,9 @@ public final class SqlEditorPane implements AutoCloseable {
         JdbcEditorSession editorSession = currentEditorSession();
         if (editorSession == null) return;
         setTransactionControlsDisabled(true);
-        submitSessionOperation(false, () -> {
+        submitSessionOperation(commit
+                ? SerialSessionOperationQueue.OperationKind.COMMIT
+                : SerialSessionOperationQueue.OperationKind.ROLLBACK, () -> {
             JdbcEditorSession current = ensureEditorSession();
             if (commit) current.commit();
             else current.rollback();
@@ -1168,7 +1222,7 @@ public final class SqlEditorPane implements AutoCloseable {
         statusLabel.setText(analyze ? "执行计划(ANALYZE)中..." : "生成执行计划中...");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
-        submitSessionOperation(true, () -> {
+        submitSessionOperation(SerialSessionOperationQueue.OperationKind.EXPLAIN, () -> {
             recordHistory(historySnapshot);
             JdbcEditorSession editorSession = ensureEditorSession();
             return editorSession.explain(sql, schema.isEmpty() ? null : schema, analyze);

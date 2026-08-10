@@ -14,6 +14,24 @@ import java.util.function.Consumer;
 
 /** Per-editor FIFO for blocking JDBC session operations. Cancellation intentionally bypasses it. */
 public final class SerialSessionOperationQueue implements AutoCloseable {
+    public enum OperationKind {
+        EXECUTE(true),
+        EXPLAIN(true),
+        SET_MODE(false),
+        COMMIT(false),
+        ROLLBACK(false);
+
+        private final boolean cancellable;
+
+        OperationKind(boolean cancellable) {
+            this.cancellable = cancellable;
+        }
+
+        public boolean cancellable() {
+            return cancellable;
+        }
+    }
+
     private final FxTaskRunner runner;
     private final Consumer<Runnable> uiDispatcher;
     private final Deque<QueuedOperation<?>> queued = new ArrayDeque<>();
@@ -33,22 +51,24 @@ public final class SerialSessionOperationQueue implements AutoCloseable {
     }
 
     public synchronized <T> Future<T> submit(
+            OperationKind kind,
             Callable<T> operation,
             Consumer<? super T> success,
             Consumer<? super Throwable> failure) {
+        Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(operation, "operation");
         Objects.requireNonNull(success, "success");
         Objects.requireNonNull(failure, "failure");
         if (!accepting) throw new RejectedExecutionException("session operation queue is closing");
         if (current == null && queued.isEmpty()) idle = new CompletableFuture<>();
-        QueuedOperation<T> submitted = new QueuedOperation<>(operation, success, failure);
+        QueuedOperation<T> submitted = new QueuedOperation<>(kind, operation, success, failure);
         queued.addLast(submitted);
         scheduleNext();
         return submitted.completion;
     }
 
     public synchronized Snapshot snapshot() {
-        return new Snapshot(accepting, current != null, queued.size());
+        return new Snapshot(accepting, current == null ? null : current.kind, queued.size());
     }
 
     public synchronized CompletionStage<Void> idle() {
@@ -57,7 +77,6 @@ public final class SerialSessionOperationQueue implements AutoCloseable {
 
     public synchronized CompletionStage<Void> stopAcceptingAndCancelQueued() {
         accepting = false;
-        callbacksEnabled = false;
         while (!queued.isEmpty()) queued.removeFirst().completion.cancel(false);
         if (current == null) idle.complete(null);
         return idle;
@@ -69,9 +88,15 @@ public final class SerialSessionOperationQueue implements AutoCloseable {
         scheduleNext();
     }
 
+    /** Suppresses terminal callbacks only after destructive cleanup has been accepted. */
+    public synchronized void suppressCallbacks() {
+        callbacksEnabled = false;
+    }
+
     @Override
     public void close() {
         stopAcceptingAndCancelQueued();
+        suppressCallbacks();
     }
 
     private void scheduleNext() {
@@ -113,22 +138,33 @@ public final class SerialSessionOperationQueue implements AutoCloseable {
         });
     }
 
-    public record Snapshot(boolean accepting, boolean running, int queued) {
+    public record Snapshot(boolean accepting, OperationKind currentKind, int queued) {
+        public boolean running() {
+            return currentKind != null;
+        }
+
+        public boolean currentCancellable() {
+            return currentKind != null && currentKind.cancellable();
+        }
+
         public boolean pending() {
-            return running || queued > 0;
+            return running() || queued > 0;
         }
     }
 
     private final class QueuedOperation<T> {
+        private final OperationKind kind;
         private final Callable<T> operation;
         private final Consumer<? super T> success;
         private final Consumer<? super Throwable> failure;
         private final CompletableFuture<T> completion = new CompletableFuture<>();
 
         private QueuedOperation(
+                OperationKind kind,
                 Callable<T> operation,
                 Consumer<? super T> success,
                 Consumer<? super Throwable> failure) {
+            this.kind = kind;
             this.operation = operation;
             this.success = success;
             this.failure = failure;

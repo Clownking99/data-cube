@@ -122,13 +122,21 @@ public final class ConnectionManager {
 
     /** 为 SQL 编辑器创建一个拥有独立 JDBC 连接生命周期的新会话。 */
     public synchronized JdbcEditorSession openEditorSession(String connId) {
-        ConnConfig cfg = requireConfig(connId);
+        return openEditorSession(requireConfig(connId));
+    }
+
+    /**
+     * Creates an editor session from one immutable config snapshot without consulting the registry.
+     * Provider, credentials, safety policy and SQL runner are all derived from that same snapshot.
+     */
+    public synchronized JdbcEditorSession openEditorSession(ConnConfig configSnapshot) {
+        ConnConfig cfg = Objects.requireNonNull(configSnapshot, "configSnapshot");
         if (cfg.type() == DbType.REDIS) {
             throw new IllegalStateException("Redis 不使用 JDBC DatabaseProvider");
         }
         DatabaseProvider provider = providerResolver.apply(cfg.type());
         ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(cfg);
-        return new JdbcEditorSession(connId, safety,
+        return new JdbcEditorSession(cfg.id(), safety,
                 () -> openDedicated(cfg, provider), provider.sqlRunner());
     }
 

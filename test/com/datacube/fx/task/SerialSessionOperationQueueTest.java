@@ -8,6 +8,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,7 +27,7 @@ class SerialSessionOperationQueueTest {
             List<String> order = new CopyOnWriteArrayList<>();
             AtomicBoolean virtual = new AtomicBoolean(true);
 
-            var manual = queue.submit(() -> {
+            var manual = queue.submit(SerialSessionOperationQueue.OperationKind.SET_MODE, () -> {
                 virtual.compareAndSet(true, Thread.currentThread().isVirtual());
                 order.add("manual");
                 manualStarted.countDown();
@@ -34,13 +35,16 @@ class SerialSessionOperationQueueTest {
                 return "manual";
             }, ignored -> {}, fail());
             assertTrue(manualStarted.await(2, TimeUnit.SECONDS));
-            var execute = queue.submit(() -> {
+            var execute = queue.submit(SerialSessionOperationQueue.OperationKind.EXECUTE, () -> {
                 virtual.compareAndSet(true, Thread.currentThread().isVirtual());
                 order.add("execute");
                 return "execute";
             }, ignored -> {}, fail());
 
             assertTrue(queue.snapshot().running());
+            assertEquals(SerialSessionOperationQueue.OperationKind.SET_MODE,
+                    queue.snapshot().currentKind());
+            assertFalse(queue.snapshot().currentCancellable());
             assertEquals(1, queue.snapshot().queued());
             releaseManual.countDown();
 
@@ -63,14 +67,14 @@ class SerialSessionOperationQueueTest {
             AtomicBoolean commitRan = new AtomicBoolean();
             List<String> order = new CopyOnWriteArrayList<>();
 
-            var execute = queue.submit(() -> {
+            var execute = queue.submit(SerialSessionOperationQueue.OperationKind.EXECUTE, () -> {
                 executeStarted.countDown();
                 releaseExecute.await();
                 order.add("execute");
                 return "execute";
             }, ignored -> {}, fail());
             assertTrue(executeStarted.await(2, TimeUnit.SECONDS));
-            var commit = queue.submit(() -> {
+            var commit = queue.submit(SerialSessionOperationQueue.OperationKind.COMMIT, () -> {
                 commitRan.set(true);
                 return "commit";
             }, ignored -> {}, fail());
@@ -81,7 +85,8 @@ class SerialSessionOperationQueueTest {
             assertFalse(commitRan.get());
             assertFalse(idle.toCompletableFuture().isDone());
             assertThrows(RejectedExecutionException.class,
-                    () -> queue.submit(() -> "late", ignored -> {}, fail()));
+                    () -> queue.submit(SerialSessionOperationQueue.OperationKind.ROLLBACK,
+                            () -> "late", ignored -> {}, fail()));
             releaseExecute.countDown();
             assertEquals("execute", execute.get(2, TimeUnit.SECONDS));
             idle.toCompletableFuture().get(2, TimeUnit.SECONDS);
@@ -99,8 +104,61 @@ class SerialSessionOperationQueueTest {
             queue.stopAcceptingAndCancelQueued().toCompletableFuture().join();
             queue.reopen();
 
-            assertEquals("retry", queue.submit(() -> "retry", ignored -> {}, fail())
+            assertEquals("retry", queue.submit(SerialSessionOperationQueue.OperationKind.EXECUTE,
+                            () -> "retry", ignored -> {}, fail())
                     .get(2, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void currentCommitIsExplicitlyNonCancellable() throws Exception {
+        try (FxTaskRunner runner = new FxTaskRunner();
+             SerialSessionOperationQueue queue =
+                     new SerialSessionOperationQueue(runner, Runnable::run)) {
+            CountDownLatch started = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            var commit = queue.submit(SerialSessionOperationQueue.OperationKind.COMMIT, () -> {
+                started.countDown();
+                release.await();
+                return null;
+            }, ignored -> {}, fail());
+            assertTrue(started.await(2, TimeUnit.SECONDS));
+
+            SerialSessionOperationQueue.Snapshot snapshot = queue.snapshot();
+            assertEquals(SerialSessionOperationQueue.OperationKind.COMMIT, snapshot.currentKind());
+            assertFalse(snapshot.currentCancellable());
+
+            release.countDown();
+            commit.get(2, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void stopAcceptingPreservesCurrentTerminalCallbackForRejectedClose() throws Exception {
+        try (FxTaskRunner runner = new FxTaskRunner();
+             SerialSessionOperationQueue queue =
+                     new SerialSessionOperationQueue(runner, Runnable::run)) {
+            CountDownLatch started = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            CountDownLatch callback = new CountDownLatch(1);
+            AtomicReference<String> visibleResult = new AtomicReference<>();
+            var execute = queue.submit(SerialSessionOperationQueue.OperationKind.EXECUTE, () -> {
+                started.countDown();
+                release.await();
+                return "visible-result";
+            }, result -> {
+                visibleResult.set(result);
+                callback.countDown();
+            }, fail());
+            assertTrue(started.await(2, TimeUnit.SECONDS));
+
+            queue.stopAcceptingAndCancelQueued();
+            release.countDown();
+
+            assertEquals("visible-result", execute.get(2, TimeUnit.SECONDS));
+            assertTrue(callback.await(2, TimeUnit.SECONDS));
+            queue.reopen();
+            assertEquals("visible-result", visibleResult.get());
         }
     }
 

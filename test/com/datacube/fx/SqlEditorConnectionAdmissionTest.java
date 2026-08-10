@@ -61,7 +61,7 @@ class SqlEditorConnectionAdmissionTest {
 
         try (FxTaskRunner runner = new FxTaskRunner();
              SerialSessionOperationQueue queue = new SerialSessionOperationQueue(runner)) {
-            var execute = queue.submit(() -> {
+            var execute = queue.submit(SerialSessionOperationQueue.OperationKind.EXECUTE, () -> {
                 operationStarted.countDown();
                 releasePublication.await();
                 admission.requireOpenPinned();

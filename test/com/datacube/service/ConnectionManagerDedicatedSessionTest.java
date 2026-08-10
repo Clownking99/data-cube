@@ -7,6 +7,7 @@ import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.SqlRunner;
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.ConnectionEnvironment;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.model.QueryResult;
 import com.datacube.spi.model.ScriptOutcome;
@@ -139,6 +140,47 @@ class ConnectionManagerDedicatedSessionTest {
                         && config.props().get("__plainPassword").equals("original-secret")));
         assertTrue(session.snapshot().safety().readOnly());
         assertEquals(19, session.snapshot().safety().queryTimeoutSeconds());
+        session.close();
+    }
+
+    @Test
+    void editorSessionOpenedFromPinnedSnapshotNeverRereadsSameIdReplacement() throws Exception {
+        CredentialCipher cipher = new CredentialCipher();
+        RecordingConnectionFactory originalFactory = new RecordingConnectionFactory();
+        RecordingConnectionFactory replacementFactory = new RecordingConnectionFactory();
+        RecordingRunner originalRunner = new RecordingRunner();
+        RecordingRunner replacementRunner = new RecordingRunner();
+        DatabaseProvider originalProvider = provider(
+                DbType.POSTGRESQL, originalFactory, originalRunner);
+        DatabaseProvider replacementProvider = provider(
+                DbType.ORACLE, replacementFactory, replacementRunner);
+        List<DbType> resolutions = new ArrayList<>();
+        ConnectionManager manager = new ConnectionManager(cipher, type -> {
+            resolutions.add(type);
+            return type == DbType.POSTGRESQL ? originalProvider : replacementProvider;
+        });
+        ConnConfig pinned = new ConnConfig("conn", "pinned-a", DbType.POSTGRESQL,
+                "a-host", 5432, "a-db", "a-user", cipher.encrypt("a-secret"), Map.of(
+                "environment", "TEST", "readOnly", "true", "queryTimeoutSeconds", "17"));
+        manager.register(pinned);
+        manager.register(new ConnConfig("conn", "replacement-b", DbType.ORACLE,
+                "b-host", 1521, "b-db", "b-user", cipher.encrypt("b-secret"), Map.of(
+                "environment", "PRODUCTION", "readOnly", "false", "queryTimeoutSeconds", "89")));
+
+        JdbcEditorSession session = manager.openEditorSession(pinned);
+        session.executeScript("select 1", null, 10, null, false);
+
+        assertEquals(List.of(DbType.POSTGRESQL), resolutions);
+        assertEquals(1, originalFactory.opens.size());
+        assertEquals(0, replacementFactory.opens.size());
+        assertEquals(1, originalRunner.connections.size());
+        assertEquals(0, replacementRunner.connections.size());
+        ConnConfig actual = originalFactory.openConfigs.getFirst();
+        assertEquals("a-host", actual.host());
+        assertEquals("a-secret", actual.props().get("__plainPassword"));
+        assertEquals(ConnectionEnvironment.TEST, session.snapshot().safety().environment());
+        assertTrue(session.snapshot().safety().readOnly());
+        assertEquals(17, session.snapshot().safety().queryTimeoutSeconds());
         session.close();
     }
 
