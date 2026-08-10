@@ -51,6 +51,7 @@ DataCube 当前的 SQL 编辑器通过 `ConnectionManager.acquire(connId)` 获�
 - 正在执行的 SQL 支持取消。
 - 每个关系型连接可配置查询超时。
 - 取消和超时仅影响所属 SQL 标签，不影响其他标签或连接树。
+- 主查询后的列注释等辅助 JDBC 查询也是受控执行阶段：必须使用同一超时配置，并以独立的 `SqlExecutionControl` activation 注册和释放；取消不得继续投递给已经完成的主 Statement。
 - 驱动不支持或不响应 `Statement.cancel()` 时，关闭该标签的专用连接作为兜底，并将会话标记为需要重连。
 
 ### 3.4 防误操作
@@ -138,10 +139,11 @@ SqlRunner implementations
 
 - 新会话默认自动提交、事务 `IDLE`。
 - 切换到手动模式时调用 `Connection.setAutoCommit(false)`，事务保持 `IDLE`。
-- 手动模式执行任何非事务控制语句后进入 `ACTIVE`；即使返回错误，也保守地保留待处理事务。
+- 手动模式实际执行至少一条非事务控制语句后进入 `ACTIVE`；纯注释、纯空白或未产生任何 statement outcome 的脚本保持原事务状态。
 - 手动模式执行失败后进入 `ERROR_PENDING`，允许回滚；提交仍交给数据库决定，UI 显示“建议回滚”。
 - 提交或回滚成功后回到手动模式的 `IDLE`。
-- 用户直接执行 `COMMIT` 或 `ROLLBACK` 时同步更新为 `IDLE`。
+- 用户直接执行唯一、标准的 `COMMIT` 或 `ROLLBACK` 时同步更新为 `IDLE`。
+- `COMMIT WORK`、`ROLLBACK WORK`、`COMMIT AND CHAIN` 等未被会话状态机完整接管的扩展事务语法统一标记 `SESSION_STATE_CONFLICT` 并在 JDBC 执行前阻止；本阶段不按数据库方言逐一支持这些扩展。
 - 从手动切回自动提交：
   - `IDLE` 可直接切换；
   - `ACTIVE` 或 `ERROR_PENDING` 必须先选择提交、回滚或取消切换。
@@ -267,7 +269,13 @@ Redis 暂不显示这些字段，也不改变 Redis 配置序列化结果。
 - 操作成功后由守卫回到 FX 线程移除标签；失败则保留标签并展示错误。
 - 关闭批准、用户重复点击关闭和应用清理之间保证 disposer 最多执行一次。
 
-`SqlEditorPane.close()` 是无交互的最终资源清理：取消活动语句、回滚未提交事务、关闭专用连接、关闭任务作用域并移除监听器。应用退出调用 `disposeAll()` 时走该保守回滚路径，绝不隐式提交。
+事务决策是破坏性关闭前的门禁，而不是 best-effort 清理步骤之一：
+
+- “提交并关闭”或“回滚并关闭”成功后，才允许持久化历史、关闭任务作用域和严格关闭 JDBC 会话。
+- 提交或回滚失败时立即停止本次关闭，保留同一标签、同一专用 JDBC 会话和可重试的事务状态；不得继续调用会自动回滚的 `closeStrict()`。
+- 只有事务门禁已经成功，后续相互独立的资源清理才使用 best-effort 聚合并按既有规则结算 `COMPLETED` 或 `FAILED_PARTIAL`。
+
+应用退出使用独立的 mandatory close 模式，不复用普通标签的交互式 `requestClose()`：停止接收新操作、取消可取消语句、等待不可取消操作稳定、无交互回滚待处理事务，再严格关闭专用连接和任务作用域。退出过程中绝不提供提交选项或隐式提交。若回滚或严格清理失败，失败仍由受管 registry 持有并结算为 `FAILED_PARTIAL`，窗口保持隔离状态而不是假报退出成功。
 
 ## 13. 错误处理与恢复
 
@@ -311,6 +319,11 @@ Redis 暂不显示这些字段，也不改变 Redis 配置序列化结果。
 ### 14.3 Provider 合约测试
 
 对 Oracle/PostgreSQL runner 使用 JDBC stub 验证每个执行路径都注册 Statement、应用查询超时并在异常后解除注册。
+
+- 对列注释等辅助 PreparedStatement 验证独立 activation、超时、取消和释放顺序。
+- 对 `COMMIT WORK`、`ROLLBACK WORK`、`COMMIT AND CHAIN` 验证在 JDBC 前返回 `SESSION_STATE_CONFLICT`。
+- 对纯注释和纯空白脚本验证不会制造虚假的 `ACTIVE` 事务。
+- 对“提交并关闭/回滚并关闭”失败验证标签与原会话保持可重试，且不会进入 strict cleanup；对应用退出验证无对话、只回滚。
 
 ### 14.4 验收
 
