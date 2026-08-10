@@ -1,8 +1,10 @@
 package com.datacube.spi;
 
 import com.datacube.spi.model.DbType;
+import com.datacube.spi.schemadiff.SchemaDiffCapability;
 
 import java.sql.Connection;
+import java.util.Optional;
 
 /**
  * 数据库能力提供者：SPI 顶层入口。
@@ -48,4 +50,9 @@ public interface DatabaseProvider {
 
     /** 绑定连接的数据编辑器（行级 INSERT/UPDATE/DELETE）。 */
     DataEditor dataEditor(Connection c);
+
+    /** 可选 Schema Diff 能力；旧 provider 默认保持兼容。 */
+    default Optional<SchemaDiffCapability> schemaDiffCapability() {
+        return Optional.empty();
+    }
 }
