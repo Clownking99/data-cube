@@ -271,7 +271,7 @@ Assert:
 @FunctionalInterface
 public interface SchemaSnapshotReader {
     SchemaSnapshot read(String connectionId, QualifiedName schema,
-                        SqlExecutionControl control) throws SQLException;
+                        SqlExecutionOptions options) throws SQLException;
 }
 
 public interface SchemaChangeRenderer {
@@ -284,6 +284,37 @@ public interface SchemaDiffCapability {
     Set<ObjectType> supportedObjectTypes();
 }
 ```
+
+Use these immutable change contracts:
+
+```java
+public enum ChangeKind { CREATE, ALTER, REPLACE, DROP, MANUAL }
+
+public record SchemaChange(
+        String id, ChangeKind kind, ObjectKey object,
+        SchemaObject source, SchemaObject target,
+        PropertyDifference property,
+        RiskLevel risk, AutomationLevel automation,
+        boolean selectedByDefault,
+        Set<String> dependencyChangeIds,
+        String explanation) {}
+
+public record SchemaChangePlan(
+        SchemaDiffResult diff, List<SchemaChange> changes,
+        Set<String> selectedChangeIds, Set<String> blockedChangeIds,
+        String digest) {}
+
+public record RenderedStatement(
+        String changeId, String sql, boolean destructive,
+        Set<String> dependencyIds, String warning) {}
+
+public record RenderContext(
+        DbType databaseType, QualifiedName sourceSchema,
+        QualifiedName targetSchema, boolean destructiveApproved) {}
+```
+
+Every record must defensively copy collections and implement a safe summary
+`toString()` that does not recurse into snapshots, definitions, SQL or property values.
 
 Add to `DatabaseProvider`:
 
@@ -302,6 +333,14 @@ public SchemaChangePlan select(SchemaChangePlan plan,
 ```
 
 Change IDs must derive from change kind + object key + canonical property path, never list position or current time.
+
+For `MISSING_IN_TARGET` and `EXTRA_IN_TARGET`, create one object-level change with a null
+property and canonical path `$object`. For `MODIFIED`, create one change for each
+`PropertyDifference`; changes that cannot be isolated safely become one `MANUAL` change.
+`select(...)` rejects unknown IDs with a fixed safe message, never selects `MANUAL_ONLY`,
+and removes a selected change from `selectedChangeIds` when any required change is not
+selected, recording it in `blockedChangeIds`. The digest is lowercase SHA-256 over source
+fingerprint, target fingerprint and the stable ordered selected IDs.
 
 **Step 3: Verify and commit**
 
