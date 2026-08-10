@@ -1,6 +1,7 @@
 package com.datacube.fx;
 
 import javafx.scene.Node;
+import javafx.scene.Group;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -8,11 +9,13 @@ import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ContentTabPaneContractTest {
@@ -59,12 +62,30 @@ class ContentTabPaneContractTest {
     }
 
     @Test
-    void managedFactoryRequiresIndependentMandatoryAbortCleanup() throws Exception {
+    void managedFactoryRequiresIndependentMandatoryGuardAndAbortCleanup() throws Exception {
         var components = ContentTabPane.ManagedTabSpec.class.getRecordComponents();
 
-        assertEquals(4, components.length);
-        assertEquals("mandatoryAbortCleanup", components[3].getName());
+        assertEquals(5, components.length);
+        assertEquals("guard", components[1].getName());
+        assertEquals(AsyncTabCloseGuard.class, components[1].getType());
+        assertEquals("mandatoryGuard", components[2].getName());
+        assertEquals(AsyncTabCloseGuard.class, components[2].getType());
+        assertEquals("uiFinalizer", components[3].getName());
         assertEquals(Runnable.class, components[3].getType());
+        assertEquals("mandatoryAbortCleanup", components[4].getName());
+        assertEquals(Runnable.class, components[4].getType());
+    }
+
+    @Test
+    void fourArgumentManagedSpecMapsBothModesToTheSameGuard() {
+        AsyncTabCloseGuard guard = () ->
+                CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED);
+
+        ContentTabPane.ManagedTabSpec spec = new ContentTabPane.ManagedTabSpec(
+                new Group(), guard, () -> {}, () -> {});
+
+        assertSame(guard, spec.guard());
+        assertSame(guard, spec.mandatoryGuard());
     }
 
     @Test

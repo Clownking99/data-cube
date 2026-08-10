@@ -19,6 +19,32 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AsyncManagedTabRegistryTest {
 
     @Test
+    void mandatoryCloseAllUsesOnlyMandatoryGuards() {
+        AsyncManagedTabRegistry<Object> registry = new AsyncManagedTabRegistry<>();
+        AtomicInteger interactive = new AtomicInteger();
+        AtomicInteger mandatory = new AtomicInteger();
+        for (int index = 0; index < 2; index++) {
+            AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
+                    () -> {
+                        interactive.incrementAndGet();
+                        return CompletableFuture.completedFuture(CloseGuardOutcome.REJECTED);
+                    },
+                    () -> {
+                        mandatory.incrementAndGet();
+                        return CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED);
+                    },
+                    Duration.ofSeconds(5), new ManualTimeoutScheduler(), Runnable::run,
+                    () -> {}, () -> {}, () -> {}, () -> {}, () -> {}, ignored -> {});
+            assertTrue(registry.register(new Object(), coordinator));
+        }
+
+        assertEquals(TabCloseOutcome.COMPLETED,
+                registry.closeAll(ManagedCloseMode.MANDATORY).toCompletableFuture().join());
+        assertEquals(0, interactive.get());
+        assertEquals(2, mandatory.get());
+    }
+
+    @Test
     void closeAllAggregatesWorstExplicitOutcomeAndReopensOnlyWhenRetryable() {
         AsyncManagedTabRegistry<Object> cancelled = new AsyncManagedTabRegistry<>();
         assertTrue(cancelled.register(new Object(), immediateCoordinator(CloseGuardOutcome.APPROVED)));

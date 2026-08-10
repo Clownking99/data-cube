@@ -22,6 +22,55 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AsyncTabCloseCoordinatorTest {
 
     @Test
+    void mandatoryCloseUsesMandatoryGuardWithoutCallingInteractiveGuard() {
+        AtomicInteger interactive = new AtomicInteger();
+        AtomicInteger mandatory = new AtomicInteger();
+        AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
+                () -> {
+                    interactive.incrementAndGet();
+                    return CompletableFuture.completedFuture(CloseGuardOutcome.REJECTED);
+                },
+                () -> {
+                    mandatory.incrementAndGet();
+                    return CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED);
+                },
+                Duration.ofSeconds(5), new ManualTimeoutScheduler(), Runnable::run,
+                () -> {}, () -> {}, () -> {}, () -> {}, () -> {}, ignored -> {});
+
+        assertEquals(TabCloseOutcome.COMPLETED,
+                coordinator.requestMandatoryClose().settlement().toCompletableFuture().join());
+        assertEquals(0, interactive.get());
+        assertEquals(1, mandatory.get());
+    }
+
+    @Test
+    void interactiveAndMandatoryRequestsShareTheCurrentAttempt() {
+        CompletableFuture<CloseGuardOutcome> interactiveCleanup = new CompletableFuture<>();
+        AtomicInteger interactive = new AtomicInteger();
+        AtomicInteger mandatory = new AtomicInteger();
+        AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
+                () -> {
+                    interactive.incrementAndGet();
+                    return interactiveCleanup;
+                },
+                () -> {
+                    mandatory.incrementAndGet();
+                    return CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED);
+                },
+                Duration.ofSeconds(5), new ManualTimeoutScheduler(), Runnable::run,
+                () -> {}, () -> {}, () -> {}, () -> {}, () -> {}, ignored -> {});
+
+        CloseAttempt interactiveAttempt = coordinator.requestClose();
+        assertSame(interactiveAttempt, coordinator.requestMandatoryClose());
+        interactiveCleanup.complete(CloseGuardOutcome.APPROVED);
+
+        assertEquals(TabCloseOutcome.COMPLETED,
+                interactiveAttempt.settlement().toCompletableFuture().join());
+        assertEquals(1, interactive.get());
+        assertEquals(0, mandatory.get());
+    }
+
+    @Test
     void duplicateRequestsShareOneAttemptAndOneEventualSettlement() {
         CompletableFuture<CloseGuardOutcome> cleanup = new CompletableFuture<>();
         Harness harness = new Harness(() -> cleanup);

@@ -13,6 +13,7 @@ final class AsyncManagedTabRegistry<K> {
     private final Map<K, AsyncTabCloseCoordinator> entries = new IdentityHashMap<>();
     private State state = State.OPEN;
     private CompletableFuture<TabCloseOutcome> closing;
+    private ManagedCloseMode closeMode;
     private int reservations;
     private boolean closeStarted;
 
@@ -67,6 +68,11 @@ final class AsyncManagedTabRegistry<K> {
     }
 
     CompletionStage<TabCloseOutcome> closeAll() {
+        return closeAll(ManagedCloseMode.INTERACTIVE);
+    }
+
+    CompletionStage<TabCloseOutcome> closeAll(ManagedCloseMode mode) {
+        Objects.requireNonNull(mode, "mode");
         CompletableFuture<TabCloseOutcome> result;
         List<AsyncTabCloseCoordinator> snapshot = null;
         synchronized (this) {
@@ -76,6 +82,7 @@ final class AsyncManagedTabRegistry<K> {
             if (state == State.CLOSING || state == State.FAILED_PARTIAL) return closing;
             state = State.CLOSING;
             closeStarted = false;
+            closeMode = mode;
             result = new CompletableFuture<>();
             closing = result;
             if (reservations == 0) {
@@ -83,13 +90,14 @@ final class AsyncManagedTabRegistry<K> {
                 snapshot = List.copyOf(entries.values());
             }
         }
-        if (snapshot != null) startCloseAll(snapshot, result);
+        if (snapshot != null) startCloseAll(snapshot, result, mode);
         return result;
     }
 
     private void reservationReleased() {
         List<AsyncTabCloseCoordinator> snapshot = null;
         CompletableFuture<TabCloseOutcome> result = null;
+        ManagedCloseMode mode = null;
         synchronized (this) {
             reservations--;
             if (reservations < 0) throw new IllegalStateException("reservation underflow");
@@ -97,18 +105,22 @@ final class AsyncManagedTabRegistry<K> {
                 closeStarted = true;
                 snapshot = List.copyOf(entries.values());
                 result = closing;
+                mode = closeMode;
             }
         }
-        if (snapshot != null) startCloseAll(snapshot, result);
+        if (snapshot != null) startCloseAll(snapshot, result, mode);
     }
 
     private void startCloseAll(
             List<AsyncTabCloseCoordinator> snapshot,
-            CompletableFuture<TabCloseOutcome> result) {
+            CompletableFuture<TabCloseOutcome> result,
+            ManagedCloseMode mode) {
         List<CompletableFuture<TabCloseOutcome>> closes = new ArrayList<>(snapshot.size());
         for (AsyncTabCloseCoordinator coordinator : snapshot) {
             try {
-                closes.add(coordinator.requestClose().settlement().handle(
+                CloseAttempt attempt = mode == ManagedCloseMode.MANDATORY
+                        ? coordinator.requestMandatoryClose() : coordinator.requestClose();
+                closes.add(attempt.settlement().handle(
                         (outcome, failure) -> failure == null && outcome != null
                                 ? outcome : TabCloseOutcome.FAILED_PARTIAL).toCompletableFuture());
             } catch (Throwable failure) {
@@ -141,6 +153,7 @@ final class AsyncManagedTabRegistry<K> {
             if (state == State.OPEN) {
                 closing = null;
                 closeStarted = false;
+                closeMode = null;
             }
         }
         expected.complete(outcome);

@@ -130,4 +130,42 @@ class SqlEditorSessionContractTest {
         assertTrue(source.contains("awaitStrictSessionCleanup"));
         assertTrue(source.contains("sessionCleanup.start()"));
     }
+
+    @Test
+    void transactionResolutionGatesHistoryScopesAndStrictCleanup() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("SqlEditorCloseSequence.run("));
+        int closeMethod = source.indexOf("private void closeInBackground");
+        int nextMethod = source.indexOf("\n    private ", closeMethod + 1);
+        String body = source.substring(closeMethod, nextMethod);
+        int gate = body.indexOf("resolveCloseTransaction");
+        int destructive = body.indexOf("runDestructiveClose");
+
+        int destructiveMethod = source.indexOf("private void runDestructiveClose");
+        int afterDestructive = source.indexOf("\n    private ", destructiveMethod + 1);
+        String destructiveBody = source.substring(destructiveMethod, afterDestructive);
+        int history = destructiveBody.indexOf("persistCloseSnapshot");
+        int metadata = destructiveBody.indexOf("metadataTasks::close");
+        int strict = destructiveBody.indexOf("awaitStrictSessionCleanup");
+
+        assertTrue(gate >= 0 && gate < destructive,
+                "transaction gate must precede every destructive close step");
+        assertTrue(history >= 0 && history < metadata && metadata < strict,
+                "destructive close must retain history, scope, and strict-cleanup order");
+    }
+
+    @Test
+    void mandatoryCloseIsDialogFreeAndAlwaysChoosesRollback() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("public CompletionStage<CloseGuardOutcome> requestMandatoryClose()"));
+        int start = source.indexOf("private CompletionStage<CloseGuardOutcome> startMandatoryCloseAttempt");
+        int nextMethod = source.indexOf("\n    private ", start + 1);
+        String body = source.substring(start, nextMethod);
+        assertTrue(body.contains("CloseDecision.CANCEL_ROLLBACK"));
+        assertFalse(body.contains("showAndWait"));
+        assertFalse(body.contains("requestTransactionClose"));
+        assertFalse(body.contains("requestCancelRollbackClose"));
+    }
 }

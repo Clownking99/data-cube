@@ -193,6 +193,7 @@ public final class ContentTabPane {
         tab.setClosable(true);
         AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
                 guard,
+                spec.mandatoryGuard(),
                 AsyncTabCloseCoordinator.DEFAULT_TIMEOUT,
                 AsyncTabCloseCoordinator::scheduleTimeout,
                 ContentTabPane::dispatchFx,
@@ -231,10 +232,19 @@ public final class ContentTabPane {
      * 返回的 stage 只在所有守卫最终结算后完成；超时仅标记仍在关闭，不释放所有权。
      */
     public CompletionStage<TabCloseOutcome> closeAllManagedTabs() {
+        return closeAllManagedTabs(ManagedCloseMode.INTERACTIVE);
+    }
+
+    /** Closes every managed tab through its non-interactive mandatory guard. */
+    public CompletionStage<TabCloseOutcome> closeAllManagedTabsMandatory() {
+        return closeAllManagedTabs(ManagedCloseMode.MANDATORY);
+    }
+
+    private CompletionStage<TabCloseOutcome> closeAllManagedTabs(ManagedCloseMode mode) {
         if (!Platform.isFxApplicationThread()) {
             CompletableFuture<TabCloseOutcome> dispatched = new CompletableFuture<>();
             try {
-                Platform.runLater(() -> closeAllManagedTabs().whenComplete((outcome, failure) -> {
+                Platform.runLater(() -> closeAllManagedTabs(mode).whenComplete((outcome, failure) -> {
                     if (failure == null) dispatched.complete(outcome);
                     else dispatched.completeExceptionally(failure);
                 }));
@@ -247,7 +257,7 @@ public final class ContentTabPane {
         CompletionStage<TabCloseOutcome> closing;
         synchronized (ownershipLock) {
             tracker = mandatoryAborts;
-            closing = ManagedCloseBarrier.close(guardedTabs::closeAll, tracker);
+            closing = ManagedCloseBarrier.close(() -> guardedTabs.closeAll(mode), tracker);
         }
         return closing.thenApply(outcome -> {
             if (outcome == TabCloseOutcome.CANCELLED) {
@@ -293,10 +303,19 @@ public final class ContentTabPane {
     public record ManagedTabSpec(
             Node content,
             AsyncTabCloseGuard guard,
+            AsyncTabCloseGuard mandatoryGuard,
             Runnable uiFinalizer,
             Runnable mandatoryAbortCleanup) {
+        public ManagedTabSpec(
+                Node content,
+                AsyncTabCloseGuard guard,
+                Runnable uiFinalizer,
+                Runnable mandatoryAbortCleanup) {
+            this(content, guard, guard, uiFinalizer, mandatoryAbortCleanup);
+        }
+
         public ManagedTabSpec {
-            if (content == null || guard == null || uiFinalizer == null
+            if (content == null || guard == null || mandatoryGuard == null || uiFinalizer == null
                     || mandatoryAbortCleanup == null) {
                 throw new NullPointerException("managed tab spec fields");
             }

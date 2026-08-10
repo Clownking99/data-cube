@@ -162,6 +162,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private final AtomicBoolean resourcesClosed = new AtomicBoolean();
     private final AtomicBoolean uiFinalized = new AtomicBoolean();
     private final AsyncTabCloseGuard closeGuard;
+    private final AsyncTabCloseGuard mandatoryCloseGuard;
     /** 最近一次单条查询结果（用于注释显示模式切换后即时重渲染表头）；非查询视图时为 null。 */
     private QueryResult lastQueryResult;
     /** 最近一次单条查询的原 SQL（用于「复制 INSERT」解析目标表）；与 lastQueryResult 同生命周期。 */
@@ -196,6 +197,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 this.jdbcSession = jdbcSession;
             }
             this.closeGuard = AsyncTabCloseGuards.retryable(this::startCloseAttempt);
+            this.mandatoryCloseGuard = AsyncTabCloseGuards.retryable(this::startMandatoryCloseAttempt);
             this.commentModeListener = (obs, oldMode, newMode) -> {
                 if (lastQueryResult != null) showQueryResult(lastQueryResult);
             };
@@ -294,6 +296,16 @@ public final class SqlEditorPane implements AutoCloseable {
         return closeGuard.requestClose();
     }
 
+    /** Starts the non-interactive application-exit guard; pending work is rolled back, never committed. */
+    public CompletionStage<CloseGuardOutcome> requestMandatoryClose() {
+        if (!Platform.isFxApplicationThread()) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                            "SqlEditorPane.requestMandatoryClose must start on the FX Application Thread"));
+        }
+        return mandatoryCloseGuard.requestClose();
+    }
+
     /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
     void closeResources() {
         if (resourcesClosed.get()) return;
@@ -365,6 +377,26 @@ public final class SqlEditorPane implements AutoCloseable {
         return result;
     }
 
+    private CompletionStage<CloseGuardOutcome> startMandatoryCloseAttempt() {
+        CompletableFuture<CloseGuardOutcome> result = new CompletableFuture<>();
+        ClosePlan plan;
+        try {
+            ConnConfig connection = currentConn();
+            plan = new ClosePlan(
+                    connection == null ? null : connection.name(),
+                    schemaField == null ? null : schemaField.getText().trim(),
+                    editorArea == null ? null : editorArea.getText(),
+                    CloseDecision.CANCEL_ROLLBACK);
+            admission.beginClosing();
+            sessionOperations.stopAcceptingAndCancelQueued();
+            Thread.startVirtualThread(() -> result.complete(closeMandatoryInBackground(plan)));
+        } catch (Throwable failure) {
+            reportMandatoryCloseFailure(failure);
+            result.complete(CloseGuardOutcome.FAILED_PARTIAL);
+        }
+        return result;
+    }
+
     private void continueCloseDecisionOnFx(CompletableFuture<CloseGuardOutcome> result) {
         if (result.isDone()) return;
         ClosePlan plan;
@@ -383,12 +415,13 @@ public final class SqlEditorPane implements AutoCloseable {
             result.complete(CloseGuardOutcome.REJECTED);
             return;
         }
-        sessionOperations.suppressCallbacks();
         try {
             Thread.startVirtualThread(() -> {
                 try {
                     closeInBackground(plan);
                     result.complete(CloseGuardOutcome.APPROVED);
+                } catch (RetryableTransactionCloseFailure gateFailure) {
+                    finishRetryableCloseFailure(result, gateFailure.getCause());
                 } catch (Throwable partialFailure) {
                     partialFailure.printStackTrace(System.err);
                     result.complete(CloseGuardOutcome.FAILED_PARTIAL);
@@ -397,6 +430,20 @@ public final class SqlEditorPane implements AutoCloseable {
         } catch (Throwable startupFailure) {
             reopenAfterRejectedClose();
             result.completeExceptionally(startupFailure);
+        }
+    }
+
+    private void finishRetryableCloseFailure(
+            CompletableFuture<CloseGuardOutcome> result, Throwable failure) {
+        try {
+            Platform.runLater(() -> {
+                reopenAfterRejectedClose();
+                result.completeExceptionally(failure);
+            });
+        } catch (Throwable dispatchFailure) {
+            reopenAdmissionWithoutUi();
+            failure.addSuppressed(dispatchFailure);
+            result.completeExceptionally(failure);
         }
     }
 
@@ -484,16 +531,45 @@ public final class SqlEditorPane implements AutoCloseable {
         System.err.println("[DataCube] SQL editor strict cleanup retry: " + failure);
     }
 
+    private static void reportMandatoryCloseFailure(Throwable failure) {
+        System.err.println("[DataCube] SQL editor mandatory close failure: " + failure);
+    }
+
     /** Virtual-thread-only close chain; every required step is attempted. */
     private void closeInBackground(ClosePlan snapshot) {
-        if (resourcesClosed.get()) {
-            persistCloseSnapshot(snapshot);
-            return;
+        if (resourcesClosed.get()) return;
+        cancelCancellableCurrentSession();
+        awaitSessionOperationsIdle();
+        SqlEditorCloseSequence.run(
+                () -> {
+                    try {
+                        resolveCloseTransaction(currentEditorSession(), snapshot.decision());
+                    } catch (Throwable failure) {
+                        throw new RetryableTransactionCloseFailure(failure);
+                    }
+                },
+                () -> runDestructiveClose(snapshot));
+    }
+
+    private CloseGuardOutcome closeMandatoryInBackground(ClosePlan snapshot) {
+        if (resourcesClosed.get()) return CloseGuardOutcome.APPROVED;
+        try {
+            cancelCancellableCurrentSession();
+            awaitSessionOperationsIdle();
+        } catch (Throwable failure) {
+            reportMandatoryCloseFailure(failure);
+            return CloseGuardOutcome.FAILED_PARTIAL;
         }
+        return SqlEditorCloseSequence.runMandatory(
+                () -> resolveCloseTransaction(
+                        currentEditorSession(), CloseDecision.CANCEL_ROLLBACK),
+                () -> runDestructiveClose(snapshot),
+                SqlEditorPane::reportMandatoryCloseFailure);
+    }
+
+    private void runDestructiveClose(ClosePlan snapshot) {
+        sessionOperations.suppressCallbacks();
         BestEffortCloseSequence.run(
-                this::cancelCancellableCurrentSession,
-                this::awaitSessionOperationsIdle,
-                () -> resolveCloseTransaction(currentEditorSession(), snapshot.decision()),
                 () -> persistCloseSnapshot(snapshot),
                 metadataTasks::close,
                 sessionOperations::close,
@@ -517,6 +593,12 @@ public final class SqlEditorPane implements AutoCloseable {
             }
         } catch (Exception failure) {
             throw new RuntimeException(failure);
+        }
+    }
+
+    private static final class RetryableTransactionCloseFailure extends RuntimeException {
+        private RetryableTransactionCloseFailure(Throwable cause) {
+            super(cause);
         }
     }
 

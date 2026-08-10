@@ -15,7 +15,8 @@ final class AsyncTabCloseCoordinator {
     static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
     private static final ScheduledThreadPoolExecutor TIMEOUTS = createTimeoutExecutor();
 
-    private final AsyncTabCloseGuard guard;
+    private final AsyncTabCloseGuard interactiveGuard;
+    private final AsyncTabCloseGuard mandatoryGuard;
     private final Duration timeout;
     private final TimeoutScheduler timeoutScheduler;
     private final Consumer<Runnable> fxDispatcher;
@@ -38,7 +39,7 @@ final class AsyncTabCloseCoordinator {
             Runnable removeTabIfPresent,
             Runnable uiFinalizer,
             Consumer<? super Throwable> failureReporter) {
-        this(guard, timeout, timeoutScheduler, fxDispatcher, markClosing, markRetryable,
+        this(guard, guard, timeout, timeoutScheduler, fxDispatcher, markClosing, markRetryable,
                 removeTabIfPresent, () -> {}, uiFinalizer, failureReporter);
     }
 
@@ -53,7 +54,40 @@ final class AsyncTabCloseCoordinator {
             Runnable releaseOwnership,
             Runnable uiFinalizer,
             Consumer<? super Throwable> failureReporter) {
-        this.guard = Objects.requireNonNull(guard, "guard");
+        this(guard, guard, timeout, timeoutScheduler, fxDispatcher, markClosing, markRetryable,
+                removeTabIfPresent, releaseOwnership, uiFinalizer, failureReporter);
+    }
+
+    AsyncTabCloseCoordinator(
+            AsyncTabCloseGuard interactiveGuard,
+            AsyncTabCloseGuard mandatoryGuard,
+            Duration timeout,
+            TimeoutScheduler timeoutScheduler,
+            Consumer<Runnable> fxDispatcher,
+            Runnable markClosing,
+            Runnable markRetryable,
+            Runnable removeTabIfPresent,
+            Runnable uiFinalizer,
+            Consumer<? super Throwable> failureReporter) {
+        this(interactiveGuard, mandatoryGuard, timeout, timeoutScheduler, fxDispatcher,
+                markClosing, markRetryable, removeTabIfPresent, () -> {}, uiFinalizer,
+                failureReporter);
+    }
+
+    AsyncTabCloseCoordinator(
+            AsyncTabCloseGuard interactiveGuard,
+            AsyncTabCloseGuard mandatoryGuard,
+            Duration timeout,
+            TimeoutScheduler timeoutScheduler,
+            Consumer<Runnable> fxDispatcher,
+            Runnable markClosing,
+            Runnable markRetryable,
+            Runnable removeTabIfPresent,
+            Runnable releaseOwnership,
+            Runnable uiFinalizer,
+            Consumer<? super Throwable> failureReporter) {
+        this.interactiveGuard = Objects.requireNonNull(interactiveGuard, "interactiveGuard");
+        this.mandatoryGuard = Objects.requireNonNull(mandatoryGuard, "mandatoryGuard");
         this.timeout = Objects.requireNonNull(timeout, "timeout");
         this.timeoutScheduler = Objects.requireNonNull(timeoutScheduler, "timeoutScheduler");
         this.fxDispatcher = Objects.requireNonNull(fxDispatcher, "fxDispatcher");
@@ -66,10 +100,18 @@ final class AsyncTabCloseCoordinator {
     }
 
     CloseAttempt requestClose() {
-        return requestClose(null);
+        return requestClose(ManagedCloseMode.INTERACTIVE, null);
+    }
+
+    CloseAttempt requestMandatoryClose() {
+        return requestClose(ManagedCloseMode.MANDATORY, null);
     }
 
     CloseAttempt requestClose(Runnable restoreBeforeClosing) {
+        return requestClose(ManagedCloseMode.INTERACTIVE, restoreBeforeClosing);
+    }
+
+    private CloseAttempt requestClose(ManagedCloseMode mode, Runnable restoreBeforeClosing) {
         Attempt attempt;
         synchronized (this) {
             if (current != null) {
@@ -85,7 +127,7 @@ final class AsyncTabCloseCoordinator {
             }
             AsyncCloseGate.Request request = gate.beginRequest();
             if (request == null) throw new IllegalStateException("closed coordinator has no result");
-            attempt = new Attempt(request);
+            attempt = new Attempt(request, guardFor(mode));
             current = attempt;
         }
         Runnable prepare = () -> {
@@ -100,6 +142,10 @@ final class AsyncTabCloseCoordinator {
         return attempt.exposed;
     }
 
+    private AsyncTabCloseGuard guardFor(ManagedCloseMode mode) {
+        return mode == ManagedCloseMode.MANDATORY ? mandatoryGuard : interactiveGuard;
+    }
+
     synchronized boolean isRemovalAuthorized() {
         return current != null && current.removalAuthorized;
     }
@@ -112,7 +158,7 @@ final class AsyncTabCloseCoordinator {
             if (current == null) {
                 AsyncCloseGate.Request request = gate.beginRequest();
                 if (request == null) throw new IllegalStateException("closed coordinator has no result");
-                current = new Attempt(request);
+                current = new Attempt(request, interactiveGuard);
             }
             attempt = current;
             attempt.installationFatal = true;
@@ -133,7 +179,7 @@ final class AsyncTabCloseCoordinator {
     private void start(Attempt attempt) {
         CompletionStage<CloseGuardOutcome> cleanup;
         try {
-            cleanup = guard.requestClose();
+            cleanup = attempt.guard.requestClose();
         } catch (Throwable failure) {
             finishRetryable(attempt, failure);
             return;
@@ -355,6 +401,7 @@ final class AsyncTabCloseCoordinator {
 
     private static final class Attempt {
         private final AsyncCloseGate.Request request;
+        private final AsyncTabCloseGuard guard;
         private final CloseAttempt exposed;
         private TimeoutHandle timeoutHandle = () -> {};
         private boolean cleanupTerminal;
@@ -362,8 +409,9 @@ final class AsyncTabCloseCoordinator {
         private boolean removalAuthorized;
         private boolean finalizerInvoked;
 
-        private Attempt(AsyncCloseGate.Request request) {
+        private Attempt(AsyncCloseGate.Request request, AsyncTabCloseGuard guard) {
             this.request = request;
+            this.guard = guard;
             this.exposed = new CloseAttempt(request.generation());
         }
     }

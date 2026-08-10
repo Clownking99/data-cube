@@ -67,7 +67,7 @@ public final class AppShell {
 
     private final ContentTabPane contentTabs = new ContentTabPane();
     private final AsyncShutdownCoordinator shutdown = new AsyncShutdownCoordinator(
-            contentTabs::closeAllManagedTabs,
+            contentTabs::closeAllManagedTabsMandatory,
             task -> Thread.startVirtualThread(task),
             this::shutdownRemaining,
             AppShell::reportShutdownFailure);
@@ -259,6 +259,7 @@ public final class AppShell {
                 initialize,
                 pane -> new ContentTabPane.ManagedTabSpec(
                         pane.getNode(), pane::requestClose,
+                        pane::requestMandatoryClose,
                         pane::finalizeCloseOnFx, pane::closeResources)));
     }
 
