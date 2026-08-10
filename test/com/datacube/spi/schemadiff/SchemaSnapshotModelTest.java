@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -77,6 +78,13 @@ class SchemaSnapshotModelTest {
     }
 
     @Test
+    void definitionConfidenceExposesOnlyHighAndLowSafetyLevels() {
+        assertEquals(List.of(DefinitionConfidence.HIGH, DefinitionConfidence.LOW),
+                Arrays.asList(DefinitionConfidence.values()));
+        assertEquals(DefinitionConfidence.LOW, DefinitionConfidence.valueOf("LOW"));
+    }
+
+    @Test
     void nestedDefinitionCollectionsAreDefensivelyCopiedAndUnmodifiable() {
         ObjectKey tableKey = key(ObjectType.TABLE, "orders", "");
         List<QualifiedName> columns = new ArrayList<>(List.of(name("customer_id")));
@@ -107,16 +115,120 @@ class SchemaSnapshotModelTest {
     }
 
     @Test
+    void everyCollectionComponentCopiesItsInputAndRejectsAccessorMutation() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "orders", "");
+        ObjectKey sequenceKey = key(ObjectType.SEQUENCE, "orders_seq", "");
+        List<ColumnDefinition> tableColumns = new ArrayList<>(List.of(column("id", "bigint")));
+        List<QualifiedName> constraintColumns = new ArrayList<>(List.of(name("customer_id")));
+        List<QualifiedName> referencedColumns = new ArrayList<>(List.of(name("id")));
+        Set<ObjectKey> constraintDependencies = new java.util.HashSet<>(Set.of(tableKey));
+        ConstraintDefinition constraint = new ConstraintDefinition(key(ObjectType.FOREIGN_KEY, "fk", ""),
+                ConstraintKind.FOREIGN_KEY, constraintColumns, tableKey, referencedColumns,
+                null, null, null, false, constraintDependencies);
+        List<ConstraintDefinition> tableConstraints = new ArrayList<>(List.of(constraint));
+        List<String> expressions = new ArrayList<>(List.of("customer_id"));
+        Set<ObjectKey> indexDependencies = new java.util.HashSet<>(Set.of(tableKey));
+        IndexDefinition index = new IndexDefinition(key(ObjectType.INDEX, "ix", ""), false,
+                expressions, null, false, indexDependencies);
+        List<IndexDefinition> tableIndexes = new ArrayList<>(List.of(index));
+        Set<ObjectKey> tableDependencies = new java.util.HashSet<>(Set.of(sequenceKey));
+        TableDefinition table = new TableDefinition(tableKey, tableColumns, tableConstraints, tableIndexes, tableDependencies);
+        Set<ObjectKey> sequenceDependencies = new java.util.HashSet<>(Set.of(tableKey));
+        SequenceDefinition sequence = new SequenceDefinition(sequenceKey, "1", "1", null, null, false, null,
+                sequenceDependencies);
+        Set<ObjectKey> definitionDependencies = new java.util.HashSet<>(Set.of(tableKey));
+        DefinitionObject definition = new DefinitionObject(key(ObjectType.VIEW, "order_view", ""), "select 1", "SELECT 1",
+                definitionDependencies, DefinitionConfidence.LOW);
+        SortedMap<String, String> extensions = new TreeMap<>(Map.of("provider", "native"));
+        CanonicalDataType type = new CanonicalDataType("integer", null, null, null, false, 0, extensions);
+        SortedMap<ObjectKey, SchemaObject> objects = new TreeMap<>(Map.of(tableKey, table, sequenceKey, sequence));
+        SortedMap<ObjectType, String> unavailable = new TreeMap<>(Map.of(ObjectType.VIEW, "NOT_SUPPORTED"));
+        SnapshotCompleteness completeness = new SnapshotCompleteness(false, unavailable);
+        SchemaSnapshot snapshot = new SchemaSnapshot(DbType.POSTGRESQL, "connection", name("public"), Instant.EPOCH,
+                completeness, objects, "fingerprint");
+
+        tableColumns.clear();
+        constraintColumns.clear();
+        referencedColumns.clear();
+        constraintDependencies.clear();
+        tableConstraints.clear();
+        expressions.clear();
+        indexDependencies.clear();
+        tableIndexes.clear();
+        tableDependencies.clear();
+        sequenceDependencies.clear();
+        definitionDependencies.clear();
+        extensions.clear();
+        objects.clear();
+        unavailable.clear();
+
+        assertEquals(1, table.columns().size());
+        assertEquals(1, table.constraints().size());
+        assertEquals(1, table.indexes().size());
+        assertEquals(1, table.dependencies().size());
+        assertEquals(1, constraint.columns().size());
+        assertEquals(1, constraint.referencedColumns().size());
+        assertEquals(1, constraint.dependencies().size());
+        assertEquals(1, index.normalizedExpressions().size());
+        assertEquals(1, index.dependencies().size());
+        assertEquals(1, sequence.dependencies().size());
+        assertEquals(1, definition.dependencies().size());
+        assertEquals("native", type.providerExtensions().get("provider"));
+        assertEquals(2, snapshot.objects().size());
+        assertEquals(1, completeness.unavailableScopes().size());
+        assertThrows(UnsupportedOperationException.class, () -> table.columns().clear());
+        assertThrows(UnsupportedOperationException.class, () -> table.constraints().clear());
+        assertThrows(UnsupportedOperationException.class, () -> table.indexes().clear());
+        assertThrows(UnsupportedOperationException.class, () -> table.dependencies().clear());
+        assertThrows(UnsupportedOperationException.class, () -> constraint.columns().clear());
+        assertThrows(UnsupportedOperationException.class, () -> constraint.referencedColumns().clear());
+        assertThrows(UnsupportedOperationException.class, () -> constraint.dependencies().clear());
+        assertThrows(UnsupportedOperationException.class, () -> index.normalizedExpressions().clear());
+        assertThrows(UnsupportedOperationException.class, () -> index.dependencies().clear());
+        assertThrows(UnsupportedOperationException.class, () -> sequence.dependencies().clear());
+        assertThrows(UnsupportedOperationException.class, () -> definition.dependencies().clear());
+        assertThrows(UnsupportedOperationException.class, () -> type.providerExtensions().clear());
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.objects().clear());
+        assertThrows(UnsupportedOperationException.class, () -> completeness.unavailableScopes().clear());
+    }
+
+    @Test
     void partialCompletenessRetainsOnlyExactUnavailableObjectTypesAndNoExceptionMessage() {
-        String secret = "jdbc:postgresql://user:top-secret@example.test/db";
+        List<String> diagnosticCodes = List.of(
+                SnapshotCompleteness.NOT_SUPPORTED,
+                SnapshotCompleteness.PERMISSION_DENIED,
+                SnapshotCompleteness.METADATA_UNAVAILABLE,
+                SnapshotCompleteness.DEFINITION_UNAVAILABLE,
+                SnapshotCompleteness.DEPENDENCY_UNRESOLVED);
         SortedMap<ObjectType, String> unavailable = new TreeMap<>();
-        unavailable.put(ObjectType.VIEW, "views");
-        unavailable.put(ObjectType.FUNCTION, "routines");
+        for (int index = 0; index < diagnosticCodes.size(); index++) {
+            unavailable.put(ObjectType.values()[index], diagnosticCodes.get(index));
+        }
+
         SnapshotCompleteness completeness = new SnapshotCompleteness(false, unavailable);
 
         assertFalse(completeness.complete());
-        assertEquals(Set.of(ObjectType.VIEW, ObjectType.FUNCTION), completeness.unavailableScopes().keySet());
-        assertFalse(completeness.unavailableScopes().toString().contains(secret));
+        assertEquals(Set.copyOf(unavailable.keySet()), completeness.unavailableScopes().keySet());
+        assertEquals(Set.copyOf(diagnosticCodes), Set.copyOf(completeness.unavailableScopes().values()));
+        assertFalse(completeness.toString().contains("jdbc:"));
+    }
+
+    @Test
+    void partialCompletenessRejectsSecretsUrlsAndUnknownDiagnosticText() {
+        String secret = "top-secret-password";
+        String jdbcUrl = "jdbc:postgresql://alice:top-secret-password@example.test:5432/app";
+
+        assertRejectedDiagnostic(secret);
+        assertRejectedDiagnostic(jdbcUrl);
+        assertRejectedDiagnostic(new IllegalStateException(jdbcUrl).getMessage());
+        assertRejectedDiagnostic("metadata query failed for object 42");
+        assertRejectedDiagnostic(null);
+    }
+
+    private static void assertRejectedDiagnostic(String value) {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> new SnapshotCompleteness(false, sortedMap(ObjectType.VIEW, value)));
+        assertFalse(exception.getMessage().contains(String.valueOf(value)));
     }
 
     private static QualifiedName name(String value) {
@@ -130,5 +242,11 @@ class SchemaSnapshotModelTest {
     private static ColumnDefinition column(String value, String baseType) {
         return new ColumnDefinition(name(value), new CanonicalDataType(baseType, null, null, null,
                 false, 0, new TreeMap<>()), true, null, 1, null);
+    }
+
+    private static <K extends Comparable<? super K>, V> SortedMap<K, V> sortedMap(K key, V value) {
+        SortedMap<K, V> values = new TreeMap<>();
+        values.put(key, value);
+        return values;
     }
 }
