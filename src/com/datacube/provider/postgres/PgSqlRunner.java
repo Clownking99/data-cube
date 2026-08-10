@@ -42,15 +42,17 @@ public final class PgSqlRunner implements SqlRunner {
                         try (var rs = stmt.getResultSet()) {
                             java.sql.ResultSetMetaData md = rs.getMetaData();
                             QueryResult r = QueryResult.fromResultSet(rs, elapsed, options.maxRows());
+                            options.control().release(activation);
+                            activation = null;
                             // best-effort 解析列注释；失败或无表列时返回 null，不影响结果展示
-                            List<String> comments = PgColumnComments.resolve(conn, md);
+                            List<String> comments = PgColumnComments.resolve(conn, md, options);
                             return comments == null ? r : r.withColumnComments(comments);
                         }
                     } else {
                         return QueryResult.update(elapsed, stmt.getUpdateCount());
                     }
                 } finally {
-                    options.control().release(activation);
+                    if (activation != null) options.control().release(activation);
                 }
             }
         } catch (SQLTimeoutException e) {

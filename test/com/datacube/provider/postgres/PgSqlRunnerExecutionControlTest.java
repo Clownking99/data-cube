@@ -8,12 +8,19 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.SQLTimeoutException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -126,6 +133,47 @@ class PgSqlRunnerExecutionControlTest {
         assertEquals(List.of("UPDATE first_table SET value = 1"), jdbc.executedSql);
     }
 
+    @Test
+    void cancelDuringColumnCommentsTargetsTheCommentStatement() throws Exception {
+        BlockingCommentJdbc jdbc = BlockingCommentJdbc.blocking();
+        SqlExecutionControl control = new SqlExecutionControl();
+        SqlExecutionOptions options = new SqlExecutionOptions(100, 7, control);
+        AtomicReference<QueryResult> result = new AtomicReference<>();
+
+        Thread worker = Thread.startVirtualThread(
+                () -> result.set(runner.execute(jdbc.connection(), "select id from t", null, options)));
+        assertTrue(jdbc.commentQueryStarted.await(2, TimeUnit.SECONDS));
+        assertTrue(control.hasActiveStatement(), "comment statement must own the active activation");
+        assertTrue(control.cancel());
+        worker.join(2_000);
+        boolean finishedAfterCancel = !worker.isAlive();
+        jdbc.forceRelease.countDown();
+        worker.join(2_000);
+
+        assertFalse(worker.isAlive(), "test cleanup must not leave the virtual thread running");
+        assertTrue(finishedAfterCancel, "cancelling the comment statement must unblock the runner");
+        assertEquals(0, jdbc.mainStatementCancels.get());
+        assertEquals(1, jdbc.commentStatementCancels.get());
+        assertEquals(7, jdbc.commentQueryTimeout.get());
+        assertEquals(QueryResult.Kind.QUERY, result.get().kind);
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void commentTimeoutIsBestEffortAndReleasesItsActivation() {
+        BlockingCommentJdbc jdbc = BlockingCommentJdbc.timingOut();
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = runner.execute(jdbc.connection(), "select id from t", null,
+                new SqlExecutionOptions(100, 9, control));
+
+        assertEquals(QueryResult.Kind.QUERY, result.kind);
+        assertEquals(List.of("id"), result.columns);
+        assertTrue(result.columnComments.isEmpty());
+        assertEquals(9, jdbc.commentQueryTimeout.get());
+        assertFalse(control.hasActiveStatement());
+    }
+
     private static void cancel(SqlExecutionControl control) {
         try {
             assertTrue(control.cancel());
@@ -183,6 +231,109 @@ class PgSqlRunnerExecutionControlTest {
                             default -> defaultValue(method.getReturnType());
                         };
                     });
+        }
+    }
+
+    private static final class BlockingCommentJdbc {
+        private final CountDownLatch commentQueryStarted = new CountDownLatch(1);
+        private final CountDownLatch commentStatementCancelled = new CountDownLatch(1);
+        private final CountDownLatch forceRelease = new CountDownLatch(1);
+        private final AtomicInteger mainStatementCancels = new AtomicInteger();
+        private final AtomicInteger commentStatementCancels = new AtomicInteger();
+        private final AtomicInteger commentQueryTimeout = new AtomicInteger(-1);
+        private final boolean timeout;
+
+        private BlockingCommentJdbc(boolean timeout) {
+            this.timeout = timeout;
+        }
+
+        private static BlockingCommentJdbc blocking() {
+            return new BlockingCommentJdbc(false);
+        }
+
+        private static BlockingCommentJdbc timingOut() {
+            return new BlockingCommentJdbc(true);
+        }
+
+        private Connection connection() {
+            return (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{Connection.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "createStatement" -> mainStatement();
+                        case "prepareStatement" -> commentStatement();
+                        case "isClosed" -> false;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private Statement mainStatement() {
+            return (Statement) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{Statement.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "execute" -> true;
+                        case "getResultSet" -> mainResultSet();
+                        case "cancel" -> {
+                            mainStatementCancels.incrementAndGet();
+                            yield null;
+                        }
+                        case "isClosed" -> false;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private PreparedStatement commentStatement() {
+            return (PreparedStatement) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{PreparedStatement.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "setQueryTimeout" -> {
+                            commentQueryTimeout.set((Integer) args[0]);
+                            yield null;
+                        }
+                        case "executeQuery" -> executeCommentQuery();
+                        case "cancel" -> {
+                            commentStatementCancels.incrementAndGet();
+                            commentStatementCancelled.countDown();
+                            yield null;
+                        }
+                        case "isClosed" -> false;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private ResultSet executeCommentQuery() throws Exception {
+            commentQueryStarted.countDown();
+            if (timeout) throw new SQLTimeoutException("comment lookup timed out");
+            while (!commentStatementCancelled.await(25, TimeUnit.MILLISECONDS)) {
+                if (forceRelease.getCount() == 0) return emptyResultSet();
+            }
+            throw new SQLException("comment lookup cancelled");
+        }
+
+        private ResultSet mainResultSet() {
+            AtomicInteger next = new AtomicInteger();
+            ResultSetMetaData metadata = metadata("public", "t");
+            return (ResultSet) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "getMetaData" -> metadata;
+                        case "next" -> next.getAndIncrement() == 0;
+                        case "getObject" -> 1;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private ResultSetMetaData metadata(String schema, String table) {
+            return (ResultSetMetaData) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{ResultSetMetaData.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "getColumnCount" -> 1;
+                        case "getColumnLabel", "getColumnName" -> "id";
+                        case "getColumnType" -> Types.INTEGER;
+                        case "getSchemaName" -> schema;
+                        case "getTableName" -> table;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private ResultSet emptyResultSet() {
+            return (ResultSet) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{ResultSet.class}, (proxy, method, args) ->
+                            method.getName().equals("next") ? false : defaultValue(method.getReturnType()));
         }
     }
 

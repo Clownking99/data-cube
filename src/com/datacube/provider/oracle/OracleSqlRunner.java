@@ -48,15 +48,18 @@ public final class OracleSqlRunner implements SqlRunner {
                         try (ResultSet rs = stmt.getResultSet()) {
                             ResultSetMetaData md = rs.getMetaData();
                             QueryResult r = QueryResult.fromResultSet(rs, elapsed, options.maxRows());
+                            options.control().release(activation);
+                            activation = null;
                             // best-effort 解析列注释；失败或无表列时返回 null，不影响结果展示
-                            List<String> comments = OracleColumnComments.resolve(conn, md, sql, schema);
+                            List<String> comments = OracleColumnComments.resolve(
+                                    conn, md, sql, schema, options);
                             return comments == null ? r : r.withColumnComments(comments);
                         }
                     } else {
                         return QueryResult.update(elapsed, stmt.getUpdateCount());
                     }
                 } finally {
-                    options.control().release(activation);
+                    if (activation != null) options.control().release(activation);
                 }
             }
         } catch (SQLTimeoutException e) {

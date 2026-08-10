@@ -1,5 +1,7 @@
 package com.datacube.provider.oracle;
 
+import com.datacube.spi.SqlExecutionOptions;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -31,7 +33,12 @@ final class OracleColumnComments {
      * 故标准元数据路径在 Oracle 上取不到；此时回退到 {@link #resolveBySingleTable}，
      * 解析单表 {@code FROM} 并按列名回填。
      */
-    static List<String> resolve(Connection conn, ResultSetMetaData md, String sql, String defaultSchema) {
+    static List<String> resolve(
+            Connection conn,
+            ResultSetMetaData md,
+            String sql,
+            String defaultSchema,
+            SqlExecutionOptions options) {
         try {
             int colCount = md.getColumnCount();
             String[] schemas = new String[colCount];
@@ -51,9 +58,9 @@ final class OracleColumnComments {
                     any = true;
                 }
             }
-            if (!any) return resolveBySingleTable(conn, md, sql, defaultSchema);
+            if (!any) return resolveBySingleTable(conn, md, sql, defaultSchema, options);
 
-            Map<String, String> commentByKey = queryComments(conn, pairs);
+            Map<String, String> commentByKey = queryComments(conn, pairs, options);
             if (commentByKey.isEmpty()) return null;
 
             List<String> out = new ArrayList<>(colCount);
@@ -71,7 +78,8 @@ final class OracleColumnComments {
     }
 
     /** 对给定 (owner,table) 集合查询全部列注释，键为 owner\u0000table\u0000column。 */
-    private static Map<String, String> queryComments(Connection conn, Set<String> pairs) throws Exception {
+    private static Map<String, String> queryComments(
+            Connection conn, Set<String> pairs, SqlExecutionOptions options) throws Exception {
         Map<String, String> map = new HashMap<>();
         StringBuilder sql = new StringBuilder(
                 "SELECT OWNER, TABLE_NAME, COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS "
@@ -88,13 +96,19 @@ final class OracleColumnComments {
                 ps.setString(idx++, pair.substring(0, nul));      // owner
                 ps.setString(idx++, pair.substring(nul + 1));     // table
             }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String descr = rs.getString("COMMENTS");
-                    if (descr == null || descr.isEmpty()) continue;
-                    map.put(rs.getString("OWNER") + '\u0000' + rs.getString("TABLE_NAME")
-                            + '\u0000' + rs.getString("COLUMN_NAME"), descr);
+            var activation = options.control().activate(ps, options.queryTimeoutSeconds());
+            try {
+                options.control().ensureNotCancelled(activation);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String descr = rs.getString("COMMENTS");
+                        if (descr == null || descr.isEmpty()) continue;
+                        map.put(rs.getString("OWNER") + '\u0000' + rs.getString("TABLE_NAME")
+                                + '\u0000' + rs.getString("COLUMN_NAME"), descr);
+                    }
                 }
+            } finally {
+                options.control().release(activation);
             }
         }
         return map;
@@ -106,7 +120,8 @@ final class OracleColumnComments {
      * 仅处理单表 SELECT；含 JOIN/多表/子查询时放弃，避免错配。
      */
     private static List<String> resolveBySingleTable(Connection conn, ResultSetMetaData md,
-                                                     String sql, String defaultSchema) throws Exception {
+                                                     String sql, String defaultSchema,
+                                                     SqlExecutionOptions options) throws Exception {
         String[] ot = parseSingleTable(sql);
         if (ot == null) return null;
         String owner = ot[0] != null ? unquote(ot[0]) : trimToNull(defaultSchema);
@@ -123,11 +138,17 @@ final class OracleColumnComments {
         try (PreparedStatement ps = conn.prepareStatement(q)) {
             ps.setString(1, ownerKey);
             ps.setString(2, tableKey);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String d = rs.getString("COMMENTS");
-                    if (d != null && !d.isEmpty()) byCol.put(rs.getString("COLUMN_NAME"), d);
+            var activation = options.control().activate(ps, options.queryTimeoutSeconds());
+            try {
+                options.control().ensureNotCancelled(activation);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String d = rs.getString("COMMENTS");
+                        if (d != null && !d.isEmpty()) byCol.put(rs.getString("COLUMN_NAME"), d);
+                    }
                 }
+            } finally {
+                options.control().release(activation);
             }
         }
         if (byCol.isEmpty()) return null;

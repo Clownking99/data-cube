@@ -8,12 +8,19 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.SQLTimeoutException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -166,6 +173,55 @@ class OracleSqlRunnerExecutionControlTest {
                 jdbc.executedSql);
     }
 
+    @Test
+    void cancelDuringBothColumnCommentPathsTargetsTheCommentStatement() throws Exception {
+        for (boolean metadataPath : List.of(true, false)) {
+            BlockingCommentJdbc jdbc = BlockingCommentJdbc.blocking(metadataPath);
+            SqlExecutionControl control = new SqlExecutionControl();
+            SqlExecutionOptions options = new SqlExecutionOptions(100, 7, control);
+            AtomicReference<QueryResult> result = new AtomicReference<>();
+
+            Thread worker = Thread.startVirtualThread(() -> result.set(
+                    runner.execute(jdbc.connection(), "select id from t", "App", options)));
+            assertTrue(jdbc.commentQueryStarted.await(2, TimeUnit.SECONDS), path(metadataPath));
+            assertTrue(control.hasActiveStatement(), "comment statement must own " + path(metadataPath));
+            assertTrue(control.cancel(), path(metadataPath));
+            worker.join(2_000);
+            boolean finishedAfterCancel = !worker.isAlive();
+            jdbc.forceRelease.countDown();
+            worker.join(2_000);
+
+            assertFalse(worker.isAlive(), "test cleanup must not leave " + path(metadataPath) + " running");
+            assertTrue(finishedAfterCancel, "cancel must unblock " + path(metadataPath));
+            assertEquals(0, jdbc.mainStatementCancels.get(), path(metadataPath));
+            assertEquals(1, jdbc.commentStatementCancels.get(), path(metadataPath));
+            assertEquals(7, jdbc.commentQueryTimeout.get(), path(metadataPath));
+            assertEquals(QueryResult.Kind.QUERY, result.get().kind, path(metadataPath));
+            assertFalse(control.hasActiveStatement(), path(metadataPath));
+        }
+    }
+
+    @Test
+    void timeoutOnBothColumnCommentPathsIsBestEffortAndReleasesActivation() {
+        for (boolean metadataPath : List.of(true, false)) {
+            BlockingCommentJdbc jdbc = BlockingCommentJdbc.timingOut(metadataPath);
+            SqlExecutionControl control = new SqlExecutionControl();
+
+            QueryResult result = runner.execute(jdbc.connection(), "select id from t", "App",
+                    new SqlExecutionOptions(100, 13, control));
+
+            assertEquals(QueryResult.Kind.QUERY, result.kind, path(metadataPath));
+            assertEquals(List.of("id"), result.columns, path(metadataPath));
+            assertTrue(result.columnComments.isEmpty(), path(metadataPath));
+            assertEquals(13, jdbc.commentQueryTimeout.get(), path(metadataPath));
+            assertFalse(control.hasActiveStatement(), path(metadataPath));
+        }
+    }
+
+    private static String path(boolean metadataPath) {
+        return metadataPath ? "metadata comment path" : "single-table fallback comment path";
+    }
+
     private static void cancel(SqlExecutionControl control) {
         try {
             assertTrue(control.cancel());
@@ -223,6 +279,114 @@ class OracleSqlRunnerExecutionControlTest {
                             default -> defaultValue(method.getReturnType());
                         };
                     });
+        }
+    }
+
+    private static final class BlockingCommentJdbc {
+        private final CountDownLatch commentQueryStarted = new CountDownLatch(1);
+        private final CountDownLatch commentStatementCancelled = new CountDownLatch(1);
+        private final CountDownLatch forceRelease = new CountDownLatch(1);
+        private final AtomicInteger mainStatementCancels = new AtomicInteger();
+        private final AtomicInteger commentStatementCancels = new AtomicInteger();
+        private final AtomicInteger commentQueryTimeout = new AtomicInteger(-1);
+        private final boolean metadataPath;
+        private final boolean timeout;
+
+        private BlockingCommentJdbc(boolean metadataPath, boolean timeout) {
+            this.metadataPath = metadataPath;
+            this.timeout = timeout;
+        }
+
+        private static BlockingCommentJdbc blocking(boolean metadataPath) {
+            return new BlockingCommentJdbc(metadataPath, false);
+        }
+
+        private static BlockingCommentJdbc timingOut(boolean metadataPath) {
+            return new BlockingCommentJdbc(metadataPath, true);
+        }
+
+        private Connection connection() {
+            return (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{Connection.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "createStatement" -> mainStatement();
+                        case "prepareStatement" -> commentStatement();
+                        case "getSchema" -> "APP";
+                        case "isClosed" -> false;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private Statement mainStatement() {
+            return (Statement) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{Statement.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "execute" -> true;
+                        case "getResultSet" -> mainResultSet();
+                        case "cancel" -> {
+                            mainStatementCancels.incrementAndGet();
+                            yield null;
+                        }
+                        case "isClosed" -> false;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private PreparedStatement commentStatement() {
+            return (PreparedStatement) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{PreparedStatement.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "setQueryTimeout" -> {
+                            commentQueryTimeout.set((Integer) args[0]);
+                            yield null;
+                        }
+                        case "executeQuery" -> executeCommentQuery();
+                        case "cancel" -> {
+                            commentStatementCancels.incrementAndGet();
+                            commentStatementCancelled.countDown();
+                            yield null;
+                        }
+                        case "isClosed" -> false;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private ResultSet executeCommentQuery() throws Exception {
+            commentQueryStarted.countDown();
+            if (timeout) throw new SQLTimeoutException("comment lookup timed out");
+            while (!commentStatementCancelled.await(25, TimeUnit.MILLISECONDS)) {
+                if (forceRelease.getCount() == 0) return emptyResultSet();
+            }
+            throw new SQLException("comment lookup cancelled");
+        }
+
+        private ResultSet mainResultSet() {
+            AtomicInteger next = new AtomicInteger();
+            ResultSetMetaData metadata = metadataPath
+                    ? metadata("APP", "T")
+                    : metadata("", "");
+            return (ResultSet) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "getMetaData" -> metadata;
+                        case "next" -> next.getAndIncrement() == 0;
+                        case "getObject" -> 1;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private ResultSetMetaData metadata(String schema, String table) {
+            return (ResultSetMetaData) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{ResultSetMetaData.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "getColumnCount" -> 1;
+                        case "getColumnLabel", "getColumnName" -> "id";
+                        case "getColumnType" -> Types.INTEGER;
+                        case "getSchemaName" -> schema;
+                        case "getTableName" -> table;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private ResultSet emptyResultSet() {
+            return (ResultSet) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{ResultSet.class}, (proxy, method, args) ->
+                            method.getName().equals("next") ? false : defaultValue(method.getReturnType()));
         }
     }
 

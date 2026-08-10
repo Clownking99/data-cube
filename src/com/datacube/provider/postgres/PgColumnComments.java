@@ -1,5 +1,7 @@
 package com.datacube.provider.postgres;
 
+import com.datacube.spi.SqlExecutionOptions;
+
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -26,7 +28,7 @@ final class PgColumnComments {
     /**
      * 返回与列平行的注释列表（元素可为 null）。若无任何表列或发生异常，返回 {@code null}。
      */
-    static List<String> resolve(Connection conn, ResultSetMetaData md) {
+    static List<String> resolve(Connection conn, ResultSetMetaData md, SqlExecutionOptions options) {
         try {
             int colCount = md.getColumnCount();
             // 每列底层三元组（schema/table/column），非表列为 null
@@ -49,7 +51,7 @@ final class PgColumnComments {
             }
             if (!any) return null;
 
-            Map<String, String> commentByKey = queryComments(conn, pairs);
+            Map<String, String> commentByKey = queryComments(conn, pairs, options);
             if (commentByKey.isEmpty()) return null;
 
             List<String> out = new ArrayList<>(colCount);
@@ -67,7 +69,8 @@ final class PgColumnComments {
     }
 
     /** 对给定 (schema,table) 集合查询全部列注释，键为 schema\u0000table\u0000column。 */
-    private static Map<String, String> queryComments(Connection conn, Set<String> pairs) throws Exception {
+    private static Map<String, String> queryComments(
+            Connection conn, Set<String> pairs, SqlExecutionOptions options) throws Exception {
         Map<String, String> map = new HashMap<>();
         StringBuilder sql = new StringBuilder(
                 "SELECT n.nspname AS s, c.relname AS t, a.attname AS col, d.description AS descr "
@@ -88,12 +91,19 @@ final class PgColumnComments {
                 ps.setString(idx++, pair.substring(0, nul));      // schema
                 ps.setString(idx++, pair.substring(nul + 1));     // table
             }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String descr = rs.getString("descr");
-                    if (descr == null || descr.isEmpty()) continue;
-                    map.put(rs.getString("s") + '\u0000' + rs.getString("t") + '\u0000' + rs.getString("col"), descr);
+            var activation = options.control().activate(ps, options.queryTimeoutSeconds());
+            try {
+                options.control().ensureNotCancelled(activation);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String descr = rs.getString("descr");
+                        if (descr == null || descr.isEmpty()) continue;
+                        map.put(rs.getString("s") + '\u0000' + rs.getString("t")
+                                + '\u0000' + rs.getString("col"), descr);
+                    }
                 }
+            } finally {
+                options.control().release(activation);
             }
         }
         return map;
