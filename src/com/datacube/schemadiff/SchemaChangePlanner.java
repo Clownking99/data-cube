@@ -157,9 +157,10 @@ public final class SchemaChangePlanner {
     }
 
     private static boolean isSafeNullableColumnAddition(PropertyDifference property) {
-        if (!isWholeColumnPath(property.path())
-                || !(property.sourceValue() instanceof ColumnDefinition column)
-                || property.targetValue() != null || !column.nullable()) {
+        if (!(property.sourceValue() instanceof ColumnDefinition column)
+                || property.targetValue() != null
+                || !property.path().equals(columnPath(column))
+                || !column.nullable()) {
             return false;
         }
         return column.normalizedDefault() == null || column.normalizedDefault().isBlank();
@@ -175,12 +176,7 @@ public final class SchemaChangePlanner {
                     && objectKeySets(property);
         }
         String path = property.path();
-        if (isWholeColumnPath(path)) {
-            return property.sourceValue() == null
-                    && property.targetValue() instanceof ColumnDefinition
-                    || property.sourceValue() instanceof ColumnDefinition
-                    && property.targetValue() == null;
-        }
+        if (isExactWholeColumnDifference(property)) return true;
         if (path.matches("columns\\[[^]\\r\\n]+]\\.dataType")) {
             return valuesAre(property, CanonicalDataType.class, false);
         }
@@ -239,8 +235,20 @@ public final class SchemaChangePlanner {
                 && target.stream().allMatch(ObjectKey.class::isInstance);
     }
 
-    private static boolean isWholeColumnPath(String path) {
-        return path.startsWith("columns[") && path.endsWith("]");
+    private static boolean isExactWholeColumnDifference(PropertyDifference property) {
+        if (property.sourceValue() instanceof ColumnDefinition sourceColumn
+                && property.targetValue() == null) {
+            return property.path().equals(columnPath(sourceColumn));
+        }
+        if (property.sourceValue() == null
+                && property.targetValue() instanceof ColumnDefinition targetColumn) {
+            return property.path().equals(columnPath(targetColumn));
+        }
+        return false;
+    }
+
+    private static String columnPath(ColumnDefinition column) {
+        return "columns[" + column.name().comparisonKey() + "]";
     }
 
     private static String canonicalPath(String path) {
@@ -334,16 +342,11 @@ public final class SchemaChangePlanner {
                     .anyMatch(change -> change.kind() == ChangeKind.DROP);
             if (dependentIsDropped) continue;
 
-            List<SchemaChange> executableChanges = dependentChanges.stream()
-                    .filter(SchemaChangePlanner::isExecutableNonDrop)
-                    .toList();
             List<SchemaChange> canonicalDependencyChanges = dependentChanges.stream()
                     .filter(change -> change.property() != null
-                            && canonicalPath(change.property().path()).equals("dependencies"))
+                            && change.property().path().equals("dependencies"))
                     .toList();
-            List<SchemaChange> releaseChanges = canonicalDependencyChanges.isEmpty()
-                    ? executableChanges
-                    : canonicalDependencyChanges.stream()
+            List<SchemaChange> releaseChanges = canonicalDependencyChanges.stream()
                     .filter(SchemaChangePlanner::isExecutableNonDrop)
                     .toList();
             var sourceDependent = result.source().objects().get(dependentObject);

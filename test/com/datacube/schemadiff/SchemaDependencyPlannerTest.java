@@ -191,14 +191,11 @@ class SchemaDependencyPlannerTest {
     }
 
     @Test
-    void dropWaitsForCrossTypeReplaceAndAlterChangesThatReleaseTargetDependencies() {
+    void dropWaitsForTheCanonicalExecutableDependencyChange() {
         ObjectKey dependencyKey = key(ObjectType.TYPE, "legacy_type");
         ObjectKey viewKey = key(ObjectType.VIEW, "dependent_view");
-        ObjectKey sequenceKey = key(ObjectType.SEQUENCE, "dependent_sequence");
         DefinitionObject sourceView = definition(viewKey, Set.of());
         DefinitionObject targetView = definition(viewKey, Set.of(dependencyKey));
-        SequenceDefinition sourceSequence = sequence(sequenceKey, "2", Set.of());
-        SequenceDefinition targetSequence = sequence(sequenceKey, "1", Set.of(dependencyKey));
         DefinitionObject targetDependency = definition(dependencyKey, Set.of());
         SchemaDifference replace = new SchemaDifference(DifferenceKind.MODIFIED, viewKey,
                 sourceView, targetView,
@@ -206,31 +203,45 @@ class SchemaDependencyPlannerTest {
                         new PropertyDifference("dependencies", Set.of(), Set.of(dependencyKey), "safe"),
                         new PropertyDifference("normalizedDefinition", "sha256:new", "sha256:old", "safe")),
                 RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of(dependencyKey), "safe");
-        SchemaDifference alter = new SchemaDifference(DifferenceKind.MODIFIED, sequenceKey,
-                sourceSequence, targetSequence,
-                List.of(new PropertyDifference("startValue", "2", "1", "safe")),
-                RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of(dependencyKey), "safe");
-
         SchemaChangePlan plan = planner.plan(result(List.of(
-                extra(targetDependency), alter, replace)));
+                extra(targetDependency), replace)));
 
         SchemaChange drop = changeFor(plan, dependencyKey);
         SchemaChange replaceChange = changeForProperty(plan, viewKey, "dependencies");
         SchemaChange definitionChange = changeForProperty(plan, viewKey, "normalizedDefinition");
-        SchemaChange alterChange = changeFor(plan, sequenceKey);
         assertEquals(ChangeKind.DROP, drop.kind());
-        assertEquals(Set.of(replaceChange.id(), alterChange.id()), drop.dependencyChangeIds());
+        assertEquals(Set.of(replaceChange.id()), drop.dependencyChangeIds());
         assertTrue(plan.changes().indexOf(replaceChange) < plan.changes().indexOf(drop));
-        assertTrue(plan.changes().indexOf(alterChange) < plan.changes().indexOf(drop));
         assertFalse(drop.dependencyChangeIds().contains(definitionChange.id()));
 
         SchemaChangePlan dropOnly = planner.select(plan, Set.of(drop.id()));
         assertTrue(dropOnly.selectedChangeIds().isEmpty());
         assertEquals(Set.of(drop.id()), dropOnly.blockedChangeIds());
         SchemaChangePlan allSelected = planner.select(
-                plan, Set.of(drop.id(), replaceChange.id(), alterChange.id()));
-        assertEquals(Set.of(drop.id(), replaceChange.id(), alterChange.id()),
+                plan, Set.of(drop.id(), replaceChange.id()));
+        assertEquals(Set.of(drop.id(), replaceChange.id()),
                 allSelected.selectedChangeIds());
+    }
+
+    @Test
+    void sequenceStartValueAlterCannotReleaseARemovedTargetDependency() {
+        ObjectKey dependencyKey = key(ObjectType.TYPE, "start_value_type");
+        ObjectKey sequenceKey = key(ObjectType.SEQUENCE, "start_value_sequence");
+        DefinitionObject dependency = definition(dependencyKey, Set.of());
+        SequenceDefinition sourceSequence = sequence(sequenceKey, "2", Set.of());
+        SequenceDefinition targetSequence = sequence(sequenceKey, "1", Set.of(dependencyKey));
+        SchemaDifference startValueOnly = new SchemaDifference(DifferenceKind.MODIFIED, sequenceKey,
+                sourceSequence, targetSequence,
+                List.of(new PropertyDifference("startValue", "2", "1", "safe")),
+                RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of(dependencyKey), "safe");
+
+        SchemaChangePlan plan = planner.plan(result(List.of(extra(dependency), startValueOnly)));
+
+        SchemaChange guardedDrop = changeFor(plan, dependencyKey);
+        assertEquals(ChangeKind.MANUAL, guardedDrop.kind());
+        assertEquals(AutomationLevel.MANUAL_ONLY, guardedDrop.automation());
+        assertTrue(guardedDrop.dependencyChangeIds().isEmpty());
+        assertEquals(ChangeKind.ALTER, changeFor(plan, sequenceKey).kind());
     }
 
     @Test

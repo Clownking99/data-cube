@@ -242,6 +242,31 @@ class SchemaChangePlannerTest {
     }
 
     @Test
+    void safeColumnAdditionRequiresTheExactSourceColumnComparisonKeyPath() {
+        List<PropertyDifference> mismatches = List.of(
+                new PropertyDifference("columns[note].nullable]",
+                        column("note", true, null), null, "safe"),
+                new PropertyDifference("columns[other]",
+                        column("note", true, null), null, "safe"));
+        List<SchemaDifference> differences = new ArrayList<>();
+        for (int index = 0; index < mismatches.size(); index++) {
+            ObjectKey tableKey = key(ObjectType.TABLE, "mismatched_column_path_" + index);
+            TableDefinition table = table(tableKey, List.of());
+            differences.add(difference(DifferenceKind.MODIFIED, tableKey, table, table,
+                    List.of(mismatches.get(index)), RiskLevel.HIGH,
+                    AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of()));
+        }
+
+        SchemaChangePlan plan = planner.plan(result(differences));
+
+        assertEquals(2, plan.changes().size());
+        assertTrue(plan.changes().stream().allMatch(change -> change.kind() == ChangeKind.MANUAL));
+        assertTrue(plan.changes().stream()
+                .allMatch(change -> change.automation() == AutomationLevel.MANUAL_ONLY));
+        assertTrue(plan.selectedChangeIds().isEmpty());
+    }
+
+    @Test
     void changeIdsAreStableFullHashesIndependentOfValuesTimesAndInputOrder() {
         ObjectKey tableKey = new ObjectKey(ObjectType.TABLE,
                 new QualifiedName("Orders", "orders", false), "sig(integer)");
