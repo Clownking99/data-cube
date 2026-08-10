@@ -335,8 +335,12 @@ public SchemaChangePlan select(SchemaChangePlan plan,
 Change IDs must derive from change kind + object key + canonical property path, never list position or current time.
 
 For `MISSING_IN_TARGET` and `EXTRA_IN_TARGET`, create one object-level change with a null
-property and canonical path `$object`. For `MODIFIED`, create one change for each
-`PropertyDifference`; changes that cannot be isolated safely become one `MANUAL` change.
+property and canonical path `$object`. For structural `MODIFIED`, create one change for each
+`PropertyDifference`. A `DefinitionObject` is replaced atomically, so all of its changed
+properties must coalesce into exactly one `REPLACE` change, using `normalizedDefinition`
+as the representative property when present; low-confidence or non-isolatable definition
+changes become exactly one `MANUAL` change. Other changes that cannot be isolated safely
+become one `MANUAL` change.
 `select(...)` rejects unknown IDs with a fixed safe message, never selects `MANUAL_ONLY`,
 and removes a selected change from `selectedChangeIds` when any required change is not
 selected, recording it in `blockedChangeIds`. The digest is lowercase SHA-256 over source
