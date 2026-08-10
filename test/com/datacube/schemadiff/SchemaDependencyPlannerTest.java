@@ -12,6 +12,7 @@ import com.datacube.spi.schemadiff.RiskLevel;
 import com.datacube.spi.schemadiff.SchemaChange;
 import com.datacube.spi.schemadiff.SchemaObject;
 import com.datacube.spi.schemadiff.SchemaSnapshot;
+import com.datacube.spi.schemadiff.SequenceDefinition;
 import com.datacube.spi.schemadiff.SnapshotCompleteness;
 import org.junit.jupiter.api.Test;
 
@@ -189,8 +190,119 @@ class SchemaDependencyPlannerTest {
         assertEquals(Set.of(plan.changes().getFirst().id()), plan.selectedChangeIds());
     }
 
+    @Test
+    void dropWaitsForCrossTypeReplaceAndAlterChangesThatReleaseTargetDependencies() {
+        ObjectKey dependencyKey = key(ObjectType.TYPE, "legacy_type");
+        ObjectKey viewKey = key(ObjectType.VIEW, "dependent_view");
+        ObjectKey sequenceKey = key(ObjectType.SEQUENCE, "dependent_sequence");
+        DefinitionObject sourceView = definition(viewKey, Set.of());
+        DefinitionObject targetView = definition(viewKey, Set.of(dependencyKey));
+        SequenceDefinition sourceSequence = sequence(sequenceKey, "2", Set.of());
+        SequenceDefinition targetSequence = sequence(sequenceKey, "1", Set.of(dependencyKey));
+        DefinitionObject targetDependency = definition(dependencyKey, Set.of());
+        SchemaDifference replace = new SchemaDifference(DifferenceKind.MODIFIED, viewKey,
+                sourceView, targetView,
+                List.of(
+                        new PropertyDifference("dependencies", Set.of(), Set.of(dependencyKey), "safe"),
+                        new PropertyDifference("normalizedDefinition", "sha256:new", "sha256:old", "safe")),
+                RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of(dependencyKey), "safe");
+        SchemaDifference alter = new SchemaDifference(DifferenceKind.MODIFIED, sequenceKey,
+                sourceSequence, targetSequence,
+                List.of(new PropertyDifference("startValue", "2", "1", "safe")),
+                RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of(dependencyKey), "safe");
+
+        SchemaChangePlan plan = planner.plan(result(List.of(
+                extra(targetDependency), alter, replace)));
+
+        SchemaChange drop = changeFor(plan, dependencyKey);
+        SchemaChange replaceChange = changeForProperty(plan, viewKey, "dependencies");
+        SchemaChange definitionChange = changeForProperty(plan, viewKey, "normalizedDefinition");
+        SchemaChange alterChange = changeFor(plan, sequenceKey);
+        assertEquals(ChangeKind.DROP, drop.kind());
+        assertEquals(Set.of(replaceChange.id(), alterChange.id()), drop.dependencyChangeIds());
+        assertTrue(plan.changes().indexOf(replaceChange) < plan.changes().indexOf(drop));
+        assertTrue(plan.changes().indexOf(alterChange) < plan.changes().indexOf(drop));
+        assertFalse(drop.dependencyChangeIds().contains(definitionChange.id()));
+
+        SchemaChangePlan dropOnly = planner.select(plan, Set.of(drop.id()));
+        assertTrue(dropOnly.selectedChangeIds().isEmpty());
+        assertEquals(Set.of(drop.id()), dropOnly.blockedChangeIds());
+        SchemaChangePlan allSelected = planner.select(
+                plan, Set.of(drop.id(), replaceChange.id(), alterChange.id()));
+        assertEquals(Set.of(drop.id(), replaceChange.id(), alterChange.id()),
+                allSelected.selectedChangeIds());
+    }
+
+    @Test
+    void manualCanonicalDependencyChangeCannotBeReplacedByAnUnrelatedExecutableAlter() {
+        ObjectKey dependencyKey = key(ObjectType.TYPE, "manual_release_type");
+        ObjectKey sequenceKey = key(ObjectType.SEQUENCE, "manual_release_sequence");
+        DefinitionObject dependency = definition(dependencyKey, Set.of());
+        SequenceDefinition sourceSequence = sequence(sequenceKey, "2", Set.of());
+        SequenceDefinition targetSequence = sequence(sequenceKey, "1", Set.of(dependencyKey));
+        SchemaDifference mixed = new SchemaDifference(DifferenceKind.MODIFIED, sequenceKey,
+                sourceSequence, targetSequence,
+                List.of(
+                        new PropertyDifference("dependencies", Set.of(), Set.of(dependencyKey), "safe"),
+                        new PropertyDifference("startValue", "2", "1", "safe")),
+                RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of(dependencyKey), "safe");
+
+        SchemaChangePlan plan = planner.plan(result(List.of(extra(dependency), mixed)));
+
+        assertEquals(ChangeKind.MANUAL, changeFor(plan, dependencyKey).kind());
+        assertEquals(ChangeKind.MANUAL,
+                changeForProperty(plan, sequenceKey, "dependencies").kind());
+        assertEquals(ChangeKind.ALTER,
+                changeForProperty(plan, sequenceKey, "startValue").kind());
+    }
+
+    @Test
+    void unrelatedExecutableChangeCannotReleaseADependencyStillPresentInSource() {
+        ObjectKey dependencyKey = key(ObjectType.TYPE, "retained_type");
+        ObjectKey sequenceKey = key(ObjectType.SEQUENCE, "retained_dependency_sequence");
+        DefinitionObject dependency = definition(dependencyKey, Set.of());
+        SequenceDefinition sourceSequence = sequence(sequenceKey, "2", Set.of(dependencyKey));
+        SequenceDefinition targetSequence = sequence(sequenceKey, "1", Set.of(dependencyKey));
+        SchemaDifference unrelatedAlter = new SchemaDifference(DifferenceKind.MODIFIED, sequenceKey,
+                sourceSequence, targetSequence,
+                List.of(new PropertyDifference("startValue", "2", "1", "safe")),
+                RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of(dependencyKey), "safe");
+
+        SchemaChangePlan plan = planner.plan(result(List.of(extra(dependency), unrelatedAlter)));
+
+        assertEquals(ChangeKind.MANUAL, changeFor(plan, dependencyKey).kind());
+        assertEquals(ChangeKind.ALTER, changeFor(plan, sequenceKey).kind());
+    }
+
+    @Test
+    void dropBecomesManualWhenAContinuingTargetDependentHasNoExecutableReleaseChange() {
+        ObjectKey dependencyKey = key(ObjectType.TYPE, "still_required_type");
+        ObjectKey viewKey = key(ObjectType.VIEW, "unchanged_dependent_view");
+        DefinitionObject dependency = definition(dependencyKey, Set.of());
+        DefinitionObject dependent = definition(viewKey, Set.of(dependencyKey));
+
+        SchemaChangePlan plan = planner.plan(result(List.of(
+                extra(dependency), equivalent(dependent))));
+
+        SchemaChange guardedDrop = changeFor(plan, dependencyKey);
+        assertEquals(ChangeKind.MANUAL, guardedDrop.kind());
+        assertEquals(AutomationLevel.MANUAL_ONLY, guardedDrop.automation());
+        assertFalse(guardedDrop.selectedByDefault());
+        assertTrue(plan.selectedChangeIds().isEmpty());
+        assertTrue(planner.select(plan, Set.of(guardedDrop.id())).selectedChangeIds().isEmpty());
+    }
+
     private static SchemaChange changeFor(SchemaChangePlan plan, ObjectKey key) {
         return plan.changes().stream().filter(change -> change.object().equals(key))
+                .findFirst().orElseThrow();
+    }
+
+    private static SchemaChange changeForProperty(
+            SchemaChangePlan plan, ObjectKey key, String propertyPath) {
+        return plan.changes().stream()
+                .filter(change -> change.object().equals(key)
+                        && change.property() != null
+                        && change.property().path().equals(propertyPath))
                 .findFirst().orElseThrow();
     }
 
@@ -241,6 +353,12 @@ class SchemaDependencyPlannerTest {
     private static DefinitionObject definition(ObjectKey key, Set<ObjectKey> dependencies) {
         return new DefinitionObject(key, "normalized-" + key.name().comparisonKey(),
                 "original-secret", dependencies, DefinitionConfidence.HIGH);
+    }
+
+    private static SequenceDefinition sequence(
+            ObjectKey key, String startValue, Set<ObjectKey> dependencies) {
+        return new SequenceDefinition(key, startValue, "1", null, null,
+                false, null, dependencies);
     }
 
     private static QualifiedName name(String value) {

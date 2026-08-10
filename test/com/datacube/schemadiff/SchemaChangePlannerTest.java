@@ -20,7 +20,15 @@ import com.datacube.spi.schemadiff.SnapshotCompleteness;
 import com.datacube.spi.schemadiff.TableDefinition;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
 import java.util.SortedMap;
@@ -34,6 +42,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SchemaChangePlannerTest {
     private static final String UNKNOWN_SELECTION_MESSAGE = "Selected change IDs are invalid";
+    private static final String DUPLICATE_CHANGE_ID_MESSAGE = "Schema change IDs are not unique";
+    private static final String PLAN_DIGEST_DOMAIN = "datacube.schema-change-plan-digest.v2";
 
     private final SchemaChangePlanner planner = new SchemaChangePlanner();
 
@@ -41,14 +51,14 @@ class SchemaChangePlannerTest {
     void safeMissingAndNullableColumnAdditionAreSelectedByDefault() {
         DefinitionObject missing = definition(ObjectType.VIEW, "new_view", DefinitionConfidence.HIGH, Set.of());
         ObjectKey tableKey = key(ObjectType.TABLE, "orders");
-        TableDefinition sourceTable = table(tableKey, List.of(column("id", false, null)));
+        TableDefinition targetTable = table(tableKey, List.of(column("id", false, null)));
         ColumnDefinition added = column("note", true, "   ");
-        TableDefinition targetTable = table(tableKey, List.of(column("id", false, null), added));
+        TableDefinition sourceTable = table(tableKey, List.of(column("id", false, null), added));
         SchemaDifference missingDifference = difference(DifferenceKind.MISSING_IN_TARGET,
                 missing.key(), missing, null, List.of(), RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, Set.of());
         SchemaDifference addedColumn = difference(DifferenceKind.MODIFIED,
                 tableKey, sourceTable, targetTable,
-                List.of(new PropertyDifference("columns[note]", null, added, "secret-value")),
+                List.of(new PropertyDifference("columns[note]", added, null, "secret-value")),
                 RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, Set.of());
 
         SchemaChangePlan plan = planner.plan(result(List.of(missingDifference, addedColumn)));
@@ -173,6 +183,65 @@ class SchemaChangePlannerTest {
     }
 
     @Test
+    void engineToPlannerTreatsComplexQuotedNullableSourceColumnAsSafeAddition() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "orders");
+        QualifiedName complexName = new QualifiedName(
+                "\"line].雪\"", "line].\n雪", true);
+        ColumnDefinition added = new ColumnDefinition(complexName, type("varchar", 100L),
+                true, "   ", 2, null);
+        TableDefinition sourceTable = table(tableKey,
+                List.of(column("id", false, null), added));
+        TableDefinition targetTable = table(tableKey, List.of(column("id", false, null)));
+        SortedMap<ObjectKey, SchemaObject> sourceObjects = new TreeMap<>();
+        sourceObjects.put(tableKey, sourceTable);
+        SortedMap<ObjectKey, SchemaObject> targetObjects = new TreeMap<>();
+        targetObjects.put(tableKey, targetTable);
+
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                snapshot("source", "s".repeat(64), Instant.EPOCH, sourceObjects),
+                snapshot("target", "t".repeat(64), Instant.EPOCH, targetObjects));
+        SchemaChangePlan plan = planner.plan(diff);
+
+        assertEquals(1, diff.differences().size());
+        assertEquals(1, diff.differences().getFirst().properties().size());
+        PropertyDifference property = diff.differences().getFirst().properties().getFirst();
+        assertEquals("columns[line].\n雪]", property.path());
+        assertEquals(added, property.sourceValue());
+        assertEquals(null, property.targetValue());
+        SchemaChange change = plan.changes().getFirst();
+        assertEquals(ChangeKind.ALTER, change.kind());
+        assertEquals(RiskLevel.LOW, change.risk());
+        assertEquals(AutomationLevel.SAFE_AUTOMATIC, change.automation());
+        assertTrue(change.selectedByDefault());
+        assertEquals(Set.of(change.id()), plan.selectedChangeIds());
+    }
+
+    @Test
+    void pseudoPathsNonNullableAndNonBlankDefaultsNeverBecomeSafeColumnAdditions() {
+        List<PropertyDifference> unsafe = List.of(
+                new PropertyDifference("prefix-columns[note]", column("note", true, null), null, "safe"),
+                new PropertyDifference("columns[note]-suffix", column("note", true, null), null, "safe"),
+                new PropertyDifference("columns[required]", column("required", false, null), null, "safe"),
+                new PropertyDifference("columns[defaulted]", column("defaulted", true, "0"), null, "safe"));
+        List<SchemaDifference> differences = new ArrayList<>();
+        for (int index = 0; index < unsafe.size(); index++) {
+            ObjectKey tableKey = key(ObjectType.TABLE, "unsafe_column_" + index);
+            TableDefinition table = table(tableKey, List.of());
+            differences.add(difference(DifferenceKind.MODIFIED, tableKey, table, table,
+                    List.of(unsafe.get(index)), RiskLevel.HIGH,
+                    AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of()));
+        }
+
+        SchemaChangePlan plan = planner.plan(result(differences));
+
+        assertEquals(4, plan.changes().size());
+        assertTrue(plan.changes().stream()
+                .noneMatch(change -> change.automation() == AutomationLevel.SAFE_AUTOMATIC));
+        assertTrue(plan.changes().stream().noneMatch(SchemaChange::selectedByDefault));
+        assertTrue(plan.selectedChangeIds().isEmpty());
+    }
+
+    @Test
     void changeIdsAreStableFullHashesIndependentOfValuesTimesAndInputOrder() {
         ObjectKey tableKey = new ObjectKey(ObjectType.TABLE,
                 new QualifiedName("Orders", "orders", false), "sig(integer)");
@@ -204,6 +273,64 @@ class SchemaChangePlannerTest {
     }
 
     @Test
+    void changeIdsIncludeOriginalNameAndQuotedIdentityBeyondComparisonKey() {
+        ObjectKey unquotedKey = new ObjectKey(ObjectType.VIEW,
+                new QualifiedName("orders", "orders", false), "");
+        ObjectKey quotedKey = new ObjectKey(ObjectType.VIEW,
+                new QualifiedName("ORDERS", "orders", true), "");
+        DefinitionObject unquoted = new DefinitionObject(unquotedKey, "select 1", "secret",
+                Set.of(), DefinitionConfidence.HIGH);
+        DefinitionObject quoted = new DefinitionObject(quotedKey, "select 2", "secret",
+                Set.of(), DefinitionConfidence.HIGH);
+
+        SchemaChangePlan plan = planner.plan(result(List.of(
+                difference(DifferenceKind.MISSING_IN_TARGET, unquotedKey, unquoted, null,
+                        List.of(), RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, Set.of()),
+                difference(DifferenceKind.MISSING_IN_TARGET, quotedKey, quoted, null,
+                        List.of(), RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, Set.of()))));
+
+        assertEquals(2, plan.changes().size());
+        assertEquals(2, plan.changes().stream().map(SchemaChange::id).distinct().count());
+        assertTrue(plan.changes().stream().allMatch(change -> change.id().matches("chg:[0-9a-f]{64}")));
+    }
+
+    @Test
+    void duplicatePropertyPathsAreRejectedWithFixedSafeMessage() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "duplicate-path-secret");
+        TableDefinition table = table(tableKey, List.of(column("id", true, null)));
+        SchemaDifference duplicatePaths = difference(DifferenceKind.MODIFIED, tableKey, table, table,
+                List.of(
+                        new PropertyDifference("columns[id].comment", "first", "second", "safe"),
+                        new PropertyDifference("columns[id].comment", "third", "fourth", "safe")),
+                RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of());
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> planner.plan(result(List.of(duplicatePaths))));
+
+        assertEquals(DUPLICATE_CHANGE_ID_MESSAGE, failure.getMessage());
+        assertFalse(failure.getMessage().contains("duplicate-path-secret"));
+        assertFalse(failure.getMessage().contains("columns[id]"));
+    }
+
+    @Test
+    void duplicateDifferencesAreRejectedBeforeInternalIdMapsCanOverwriteThem() {
+        DefinitionObject duplicate = definition(
+                ObjectType.VIEW, "duplicate-difference-secret", DefinitionConfidence.HIGH, Set.of());
+        SchemaDifference first = difference(DifferenceKind.MISSING_IN_TARGET,
+                duplicate.key(), duplicate, null, List.of(), RiskLevel.LOW,
+                AutomationLevel.SAFE_AUTOMATIC, Set.of());
+        SchemaDifference second = difference(DifferenceKind.MISSING_IN_TARGET,
+                duplicate.key(), duplicate, null, List.of(), RiskLevel.LOW,
+                AutomationLevel.SAFE_AUTOMATIC, Set.of());
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> planner.plan(result(List.of(first, second))));
+
+        assertEquals(DUPLICATE_CHANGE_ID_MESSAGE, failure.getMessage());
+        assertFalse(failure.getMessage().contains("duplicate-difference-secret"));
+    }
+
+    @Test
     void selectAllowsDestructiveIgnoresManualRejectsUnknownAndChangesDigest() {
         DefinitionObject extra = definition(ObjectType.VIEW, "obsolete", DefinitionConfidence.HIGH, Set.of());
         DefinitionObject manualObject = definition(ObjectType.VIEW, "unknown", DefinitionConfidence.HIGH, Set.of());
@@ -229,8 +356,67 @@ class SchemaChangePlannerTest {
         assertFalse(failure.getMessage().contains("jdbc:"));
     }
 
+    @Test
+    void digestLengthPrefixesFingerprintFieldsAndPreservesTheirOrder() {
+        SchemaChangePlan leftBoundary = planner.plan(result(
+                List.of(), "a", "b\0c", Instant.EPOCH));
+        SchemaChangePlan rightBoundary = planner.plan(result(
+                List.of(), "a\0b", "c", Instant.EPOCH));
+        SchemaChangePlan swapped = planner.plan(result(
+                List.of(), "b\0c", "a", Instant.EPOCH));
+        SchemaChangePlan unicodeBoundary = planner.plan(result(
+                List.of(), "\0源:雪", "目\0标", Instant.EPOCH));
+
+        assertNotEquals(leftBoundary.digest(), rightBoundary.digest());
+        assertNotEquals(leftBoundary.digest(), swapped.digest());
+        assertEquals(expectedDigest("a", "b\0c", Set.of()), leftBoundary.digest());
+        assertEquals(expectedDigest("a\0b", "c", Set.of()), rightBoundary.digest());
+        assertEquals(expectedDigest("\0源:雪", "目\0标", Set.of()), unicodeBoundary.digest());
+    }
+
+    @Test
+    void digestLengthPrefixesSelectedCountAndEveryStableSelectedId() {
+        DefinitionObject missing = definition(
+                ObjectType.VIEW, "digest_view", DefinitionConfidence.HIGH, Set.of());
+        SchemaChangePlan selected = planner.plan(result(List.of(
+                difference(DifferenceKind.MISSING_IN_TARGET, missing.key(), missing, null,
+                        List.of(), RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, Set.of())),
+                "source\0fingerprint", "target:雪", Instant.EPOCH));
+        SchemaChangePlan empty = planner.select(selected, Set.of());
+
+        assertEquals(expectedDigest("source\0fingerprint", "target:雪",
+                selected.selectedChangeIds()), selected.digest());
+        assertEquals(expectedDigest("source\0fingerprint", "target:雪", Set.of()), empty.digest());
+        assertNotEquals(selected.digest(), empty.digest());
+    }
+
     private static SchemaChange only(SchemaChangePlan plan, ChangeKind kind) {
         return plan.changes().stream().filter(change -> change.kind() == kind).findFirst().orElseThrow();
+    }
+
+    private static String expectedDigest(
+            String sourceFingerprint, String targetFingerprint, Set<String> selectedIds) {
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            DataOutputStream output = new DataOutputStream(bytes);
+            writeField(output, PLAN_DIGEST_DOMAIN);
+            writeField(output, sourceFingerprint);
+            writeField(output, targetFingerprint);
+            List<String> stableIds = selectedIds.stream().sorted().toList();
+            writeField(output, Integer.toString(stableIds.size()));
+            for (String id : stableIds) writeField(output, id);
+            output.flush();
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
+        } catch (IOException | NoSuchAlgorithmException exception) {
+            throw new AssertionError(exception);
+        }
+    }
+
+    private static void writeField(DataOutputStream output, String value) throws IOException {
+        byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
+        output.writeInt(encoded.length);
+        output.write(encoded);
     }
 
     private static SchemaDiffResult result(List<SchemaDifference> differences) {

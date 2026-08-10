@@ -13,6 +13,9 @@ import com.datacube.spi.schemadiff.ObjectType;
 import com.datacube.spi.schemadiff.RiskLevel;
 import com.datacube.spi.schemadiff.SchemaChange;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -33,6 +36,9 @@ import java.util.TreeSet;
 /** Builds deterministic, provider-neutral changes from semantic schema differences. */
 public final class SchemaChangePlanner {
     private static final String UNKNOWN_SELECTION_MESSAGE = "Selected change IDs are invalid";
+    private static final String DUPLICATE_CHANGE_ID_MESSAGE = "Schema change IDs are not unique";
+    private static final String CHANGE_ID_DOMAIN = "datacube.schema-change-id.v2";
+    private static final String PLAN_DIGEST_DOMAIN = "datacube.schema-change-plan-digest.v2";
     private static final String OBJECT_PATH = "$object";
 
     public SchemaChangePlan plan(SchemaDiffResult result) {
@@ -45,8 +51,13 @@ public final class SchemaChangePlanner {
                 objectDependencies.put(change.id(), difference.dependencies());
             }
         }
-        changes = wireDependencies(changes, objectDependencies);
+        rejectDuplicateChangeIds(changes);
+        DependencyWiring wiring = wireDependencies(changes, objectDependencies, result);
+        changes = rewriteAsManual(wiring.changes(), wiring.manualDropIds(),
+                "A target dependency cannot be released automatically");
+        rejectDuplicateChangeIds(changes);
         CycleRewrite cycleRewrite = rewriteCyclesAsManual(changes);
+        rejectDuplicateChangeIds(cycleRewrite.changes());
         changes = topologicalOrder(cycleRewrite.changes(), cycleRewrite.cycleIds());
 
         Set<String> selected = new TreeSet<>();
@@ -146,8 +157,9 @@ public final class SchemaChangePlanner {
     }
 
     private static boolean isSafeNullableColumnAddition(PropertyDifference property) {
-        if (!isWholeColumnPath(property.path()) || property.sourceValue() != null
-                || !(property.targetValue() instanceof ColumnDefinition column) || !column.nullable()) {
+        if (!isWholeColumnPath(property.path())
+                || !(property.sourceValue() instanceof ColumnDefinition column)
+                || property.targetValue() != null || !column.nullable()) {
             return false;
         }
         return column.normalizedDefault() == null || column.normalizedDefault().isBlank();
@@ -228,7 +240,7 @@ public final class SchemaChangePlanner {
     }
 
     private static boolean isWholeColumnPath(String path) {
-        return path.matches("columns\\[[^]\\r\\n]+]");
+        return path.startsWith("columns[") && path.endsWith("]");
     }
 
     private static String canonicalPath(String path) {
@@ -245,12 +257,24 @@ public final class SchemaChangePlanner {
     }
 
     private static String changeId(ChangeKind kind, ObjectKey object, String canonicalPath) {
-        String identity = kind.name() + '\0'
-                + object.type().name() + '\0'
-                + object.name().comparisonKey() + '\0'
-                + object.signature() + '\0'
-                + canonicalPath;
-        return "chg:" + sha256(identity);
+        return "chg:" + sha256(lengthPrefixed(
+                CHANGE_ID_DOMAIN,
+                kind.name(),
+                object.type().name(),
+                object.name().original(),
+                object.name().comparisonKey(),
+                Boolean.toString(object.name().quoted()),
+                object.signature(),
+                canonicalPath));
+    }
+
+    private static void rejectDuplicateChangeIds(List<SchemaChange> changes) {
+        Set<String> ids = new HashSet<>();
+        for (SchemaChange change : changes) {
+            if (!ids.add(change.id())) {
+                throw new IllegalArgumentException(DUPLICATE_CHANGE_ID_MESSAGE);
+            }
+        }
     }
 
     private static Selection dependencyClosure(List<SchemaChange> changes, Set<String> requested) {
@@ -273,8 +297,9 @@ public final class SchemaChangePlanner {
         return new Selection(selected, blocked);
     }
 
-    private static List<SchemaChange> wireDependencies(
-            List<SchemaChange> changes, Map<String, Set<ObjectKey>> objectDependencies) {
+    private static DependencyWiring wireDependencies(
+            List<SchemaChange> changes, Map<String, Set<ObjectKey>> objectDependencies,
+            SchemaDiffResult result) {
         Map<ObjectKey, List<SchemaChange>> byObject = new HashMap<>();
         Map<String, Set<String>> dependencyIds = new HashMap<>();
         for (SchemaChange change : changes) {
@@ -301,12 +326,86 @@ public final class SchemaChangePlanner {
             }
         }
 
+        Set<String> manualDropIds = new HashSet<>();
+        for (var targetEntry : result.target().objects().entrySet()) {
+            ObjectKey dependentObject = targetEntry.getKey();
+            List<SchemaChange> dependentChanges = byObject.getOrDefault(dependentObject, List.of());
+            boolean dependentIsDropped = dependentChanges.stream()
+                    .anyMatch(change -> change.kind() == ChangeKind.DROP);
+            if (dependentIsDropped) continue;
+
+            List<SchemaChange> executableChanges = dependentChanges.stream()
+                    .filter(SchemaChangePlanner::isExecutableNonDrop)
+                    .toList();
+            List<SchemaChange> canonicalDependencyChanges = dependentChanges.stream()
+                    .filter(change -> change.property() != null
+                            && canonicalPath(change.property().path()).equals("dependencies"))
+                    .toList();
+            List<SchemaChange> releaseChanges = canonicalDependencyChanges.isEmpty()
+                    ? executableChanges
+                    : canonicalDependencyChanges.stream()
+                    .filter(SchemaChangePlanner::isExecutableNonDrop)
+                    .toList();
+            var sourceDependent = result.source().objects().get(dependentObject);
+
+            for (ObjectKey dependencyObject : targetEntry.getValue().dependencies()) {
+                List<SchemaChange> dependencyDrops = byObject.getOrDefault(dependencyObject, List.of())
+                        .stream().filter(change -> change.kind() == ChangeKind.DROP).toList();
+                if (dependencyDrops.isEmpty()) continue;
+                boolean dependencyRemovedInSource = sourceDependent != null
+                        && !sourceDependent.dependencies().contains(dependencyObject);
+                if (!dependencyRemovedInSource || releaseChanges.isEmpty()) {
+                    dependencyDrops.forEach(change -> manualDropIds.add(change.id()));
+                } else {
+                    for (SchemaChange dependencyDrop : dependencyDrops) {
+                        for (SchemaChange releaseChange : releaseChanges) {
+                            dependencyIds.get(dependencyDrop.id()).add(releaseChange.id());
+                        }
+                    }
+                }
+            }
+        }
+
         List<SchemaChange> wired = new ArrayList<>(changes.size());
         for (SchemaChange change : changes) {
             wired.add(copy(change, change.id(), change.kind(), change.risk(), change.automation(),
                     change.selectedByDefault(), dependencyIds.get(change.id()), change.explanation()));
         }
-        return wired;
+        return new DependencyWiring(wired, manualDropIds);
+    }
+
+    private static boolean isExecutableNonDrop(SchemaChange change) {
+        return change.kind() != ChangeKind.DROP
+                && change.kind() != ChangeKind.MANUAL
+                && change.automation() != AutomationLevel.MANUAL_ONLY;
+    }
+
+    private static List<SchemaChange> rewriteAsManual(
+            List<SchemaChange> changes, Set<String> rewrittenChangeIds, String explanation) {
+        if (rewrittenChangeIds.isEmpty()) return changes;
+        Map<String, String> rewrittenIds = new HashMap<>();
+        for (SchemaChange change : changes) {
+            rewrittenIds.put(change.id(), rewrittenChangeIds.contains(change.id())
+                    ? changeId(ChangeKind.MANUAL, change.object(), propertyPath(change))
+                    : change.id());
+        }
+        List<SchemaChange> rewritten = new ArrayList<>(changes.size());
+        for (SchemaChange change : changes) {
+            Set<String> dependencies = new TreeSet<>();
+            for (String dependency : change.dependencyChangeIds()) {
+                dependencies.add(rewrittenIds.getOrDefault(dependency, dependency));
+            }
+            if (rewrittenChangeIds.contains(change.id())) {
+                RiskLevel risk = change.risk().ordinal() < RiskLevel.HIGH.ordinal()
+                        ? RiskLevel.HIGH : change.risk();
+                rewritten.add(copy(change, rewrittenIds.get(change.id()), ChangeKind.MANUAL,
+                        risk, AutomationLevel.MANUAL_ONLY, false, dependencies, explanation));
+            } else {
+                rewritten.add(copy(change, rewrittenIds.get(change.id()), change.kind(), change.risk(),
+                        change.automation(), change.selectedByDefault(), dependencies, change.explanation()));
+            }
+        }
+        return rewritten;
     }
 
     private static CycleRewrite rewriteCyclesAsManual(List<SchemaChange> changes) {
@@ -436,16 +535,18 @@ public final class SchemaChangePlanner {
     }
 
     private static String digest(SchemaDiffResult result, Set<String> selectedIds) {
-        String value = result.source().fingerprint() + '\0'
-                + result.target().fingerprint() + '\0'
-                + String.join("\0", new TreeSet<>(selectedIds));
-        return sha256(value);
+        List<String> fields = new ArrayList<>();
+        fields.add(result.source().fingerprint());
+        fields.add(result.target().fingerprint());
+        TreeSet<String> stableIds = new TreeSet<>(selectedIds);
+        fields.add(Integer.toString(stableIds.size()));
+        fields.addAll(stableIds);
+        return sha256(lengthPrefixed(PLAN_DIGEST_DOMAIN, fields.toArray(String[]::new)));
     }
 
-    private static String sha256(String value) {
+    private static String sha256(byte[] value) {
         try {
-            byte[] hash = MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(value);
             StringBuilder hex = new StringBuilder(hash.length * 2);
             for (byte element : hash) hex.append(String.format("%02x", element));
             return hex.toString();
@@ -454,10 +555,32 @@ public final class SchemaChangePlanner {
         }
     }
 
+    private static byte[] lengthPrefixed(String domain, String... fields) {
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            DataOutputStream output = new DataOutputStream(bytes);
+            writeField(output, domain);
+            for (String field : fields) writeField(output, field);
+            output.flush();
+            return bytes.toByteArray();
+        } catch (IOException exception) {
+            throw new IllegalStateException("Canonical hash input is unavailable", exception);
+        }
+    }
+
+    private static void writeField(DataOutputStream output, String value) throws IOException {
+        byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
+        output.writeInt(encoded.length);
+        output.write(encoded);
+    }
+
     private record Selection(Set<String> selected, Set<String> blocked) {
     }
 
     private record CycleRewrite(List<SchemaChange> changes, Set<String> cycleIds) {
+    }
+
+    private record DependencyWiring(List<SchemaChange> changes, Set<String> manualDropIds) {
     }
 
     private static final class Tarjan {
