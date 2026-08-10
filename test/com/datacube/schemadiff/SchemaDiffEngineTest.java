@@ -24,16 +24,62 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedMap;
 import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class SchemaDiffEngineTest {
 
+    private static final String INVALID_OBJECTS_MESSAGE = "Schema snapshot objects are invalid";
+    private static final String INVALID_PROPERTY_VALUE_MESSAGE = "Property value type is not allowed";
+
     private final SchemaDiffEngine engine = new SchemaDiffEngine();
+
+    @Test
+    void rejectsAliasMapKeyBeforeDiffOrRenameMatching() {
+        ObjectKey aliasKey = key(ObjectType.SEQUENCE, "alias-jdbc:secret");
+        SequenceDefinition value = new SequenceDefinition(key(ObjectType.SEQUENCE, "real-jdbc:secret"),
+                "1", "1", null, null, false, null, Set.of());
+        SortedMap<ObjectKey, SchemaObject> aliased = new TreeMap<>();
+        aliased.put(aliasKey, value);
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> engine.compare(snapshot(DbType.POSTGRESQL, complete(), aliased),
+                        snapshot(DbType.POSTGRESQL, complete())));
+
+        assertEquals(INVALID_OBJECTS_MESSAGE, failure.getMessage());
+    }
+
+    @Test
+    void rejectsNullObjectValueWithFixedSafeDiagnostic() {
+        SortedMap<ObjectKey, SchemaObject> objects = new TreeMap<>();
+        objects.put(key(ObjectType.SEQUENCE, "jdbc:secret"), null);
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> engine.compare(snapshot(DbType.POSTGRESQL, complete(), objects),
+                        snapshot(DbType.POSTGRESQL, complete())));
+
+        assertEquals(INVALID_OBJECTS_MESSAGE, failure.getMessage());
+    }
+
+    @Test
+    void rejectsNullObjectMapKeyWithFixedSafeDiagnostic() {
+        SortedMap<ObjectKey, SchemaObject> objects = new TreeMap<>(java.util.Comparator.nullsFirst(ObjectKey::compareTo));
+        objects.put(null, new SequenceDefinition(key(ObjectType.SEQUENCE, "jdbc:secret"),
+                "1", "1", null, null, false, null, Set.of()));
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> engine.compare(snapshot(DbType.POSTGRESQL, complete(), objects),
+                        snapshot(DbType.POSTGRESQL, complete())));
+
+        assertEquals(INVALID_OBJECTS_MESSAGE, failure.getMessage());
+    }
 
     @Test
     void rejectsDifferentDatabaseTypesWithoutLeakingSnapshotContents() {
@@ -285,14 +331,178 @@ class SchemaDiffEngineTest {
         assertThrows(UnsupportedOperationException.class, () -> result.renameSuggestions().clear());
     }
 
+    @Test
+    void propertyDifferenceRecursivelyCopiesNestedCollections() {
+        List<Object> nestedList = new ArrayList<>(List.of("first", "second"));
+        LinkedHashSet<Object> nestedSet = new LinkedHashSet<>(List.of("z", "a"));
+        LinkedHashMap<String, Object> source = new LinkedHashMap<>();
+        source.put("list", nestedList);
+        source.put("set", nestedSet);
+        PropertyDifference difference = new PropertyDifference("nested", source, null, "Property differs");
+
+        nestedList.clear();
+        nestedSet.clear();
+        source.clear();
+
+        Map<?, ?> copiedMap = (Map<?, ?>) difference.sourceValue();
+        List<?> copiedList = (List<?>) copiedMap.get("list");
+        Set<?> copiedSet = (Set<?>) copiedMap.get("set");
+        assertEquals(List.of("list", "set"), new ArrayList<>(copiedMap.keySet()));
+        assertEquals(List.of("first", "second"), copiedList);
+        assertEquals(List.of("z", "a"), new ArrayList<>(copiedSet));
+        assertThrows(UnsupportedOperationException.class, copiedMap::clear);
+        assertThrows(UnsupportedOperationException.class, copiedList::clear);
+        assertThrows(UnsupportedOperationException.class, copiedSet::clear);
+    }
+
+    @Test
+    void propertyDifferenceCopiesTopLevelListSetAndMapInIterationOrder() {
+        List<Object> sourceList = new ArrayList<>(List.of("b", "a"));
+        LinkedHashSet<Object> targetSet = new LinkedHashSet<>(List.of("second", "first"));
+        LinkedHashMap<String, Object> targetMap = new LinkedHashMap<>();
+        targetMap.put("z", 1);
+        targetMap.put("a", 2);
+
+        PropertyDifference listDifference = new PropertyDifference(
+                "list", sourceList, targetSet, "Property differs");
+        PropertyDifference mapDifference = new PropertyDifference(
+                "map", null, targetMap, "Property differs");
+        sourceList.clear();
+        targetSet.clear();
+        targetMap.clear();
+
+        assertEquals(List.of("b", "a"), listDifference.sourceValue());
+        assertEquals(List.of("second", "first"),
+                new ArrayList<>((Set<?>) listDifference.targetValue()));
+        assertEquals(List.of("z", "a"),
+                new ArrayList<>(((Map<?, ?>) mapDifference.targetValue()).keySet()));
+        assertThrows(UnsupportedOperationException.class,
+                () -> ((List<?>) listDifference.sourceValue()).clear());
+        assertThrows(UnsupportedOperationException.class,
+                () -> ((Set<?>) listDifference.targetValue()).clear());
+        assertThrows(UnsupportedOperationException.class,
+                () -> ((Map<?, ?>) mapDifference.targetValue()).clear());
+    }
+
+    @Test
+    void propertyDifferenceAllowsVerifiedImmutableProjectRecords() {
+        ObjectKey immutableKey = key(ObjectType.TABLE, "orders");
+
+        PropertyDifference difference = new PropertyDifference(
+                "object", immutableKey, type("bigint"), "Property differs");
+
+        assertSame(immutableKey, difference.sourceValue());
+        assertEquals(type("bigint"), difference.targetValue());
+    }
+
+    @Test
+    void propertyDifferenceRejectsArraysAndUnknownMutableReferencesWithFixedMessage() {
+        List<Object> rejected = List.of(
+                new String[]{"secret-array"},
+                new java.util.Date(),
+                new StringBuilder("secret-builder"),
+                new Object());
+
+        for (Object value : rejected) {
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> new PropertyDifference("value", value, null, "Property differs"));
+            assertEquals(INVALID_PROPERTY_VALUE_MESSAGE, failure.getMessage());
+            assertFalse(failure.getMessage().contains("secret"));
+        }
+    }
+
+    @Test
+    void changedDefinitionPropertyStoresOnlySha256Digests() {
+        String sourceSql = "select source_secret from credentials";
+        String targetSql = "select target_secret from credentials";
+        ObjectKey viewKey = key(ObjectType.VIEW, "secure_view");
+        DefinitionObject source = definition(viewKey, sourceSql, "original-source-secret", DefinitionConfidence.HIGH);
+        DefinitionObject target = definition(viewKey, targetSql, "original-target-secret", DefinitionConfidence.HIGH);
+
+        PropertyDifference property = only(engine.compare(
+                snapshot(DbType.POSTGRESQL, complete(), source),
+                snapshot(DbType.POSTGRESQL, complete(), target)).differences()).properties().getFirst();
+
+        assertEquals("normalizedDefinition", property.path());
+        assertTrue(((String) property.sourceValue()).matches("sha256:[0-9a-f]{64}"));
+        assertTrue(((String) property.targetValue()).matches("sha256:[0-9a-f]{64}"));
+        assertFalse(((String) property.sourceValue()).contains(sourceSql));
+        assertFalse(((String) property.targetValue()).contains(targetSql));
+    }
+
+    @Test
+    void publicDiffRecordSummariesNeverRenderSnapshotsObjectsPropertyValuesOrSecrets() {
+        String sourceConnection = "jdbc:postgresql://alice:source-password@example.test/source";
+        String targetConnection = "jdbc:postgresql://bob:target-password@example.test/target";
+        String sourceDefault = "source-default-secret";
+        String targetDefault = "target-default-secret";
+        String sourceNormalized = "select source-normalized-secret";
+        String targetNormalized = "select target-normalized-secret";
+        String sourceOriginal = "select source-original-secret";
+        String targetOriginal = "select target-original-secret";
+        ObjectKey tableKey = key(ObjectType.TABLE, "secret-table-name");
+        ObjectKey viewKey = key(ObjectType.VIEW, "secret-view-name");
+        TableDefinition sourceTable = table(tableKey,
+                List.of(column("token", type("varchar"), true, sourceDefault, 1)), List.of(), List.of(), Set.of());
+        TableDefinition targetTable = table(tableKey,
+                List.of(column("token", type("varchar"), true, targetDefault, 1)), List.of(), List.of(), Set.of());
+        DefinitionObject sourceView = definition(
+                viewKey, sourceNormalized, sourceOriginal, DefinitionConfidence.HIGH);
+        DefinitionObject targetView = definition(
+                viewKey, targetNormalized, targetOriginal, DefinitionConfidence.HIGH);
+        SchemaSnapshot source = snapshot(DbType.POSTGRESQL, sourceConnection, complete(), sourceTable, sourceView);
+        SchemaSnapshot target = snapshot(DbType.POSTGRESQL, targetConnection, complete(), targetTable, targetView);
+
+        SchemaDiffResult result = engine.compare(source, target);
+        RenameSuggestion rename = new RenameSuggestion(
+                key(ObjectType.VIEW, sourceConnection), key(ObjectType.VIEW, targetConnection), 1.0,
+                sourceOriginal);
+        StringBuilder summaries = new StringBuilder(result.toString()).append('\n').append(rename);
+        result.differences().forEach(difference -> {
+            summaries.append('\n').append(difference);
+            difference.properties().forEach(property -> summaries.append('\n').append(property));
+        });
+        String rendered = summaries.toString();
+
+        assertSame(source, result.source());
+        assertSame(target, result.target());
+        for (String secret : List.of(sourceConnection, targetConnection, sourceDefault, targetDefault,
+                sourceNormalized, targetNormalized, sourceOriginal, targetOriginal,
+                "secret-table-name", "secret-view-name")) {
+            assertFalse(rendered.contains(secret), () -> "summary leaked: " + secret);
+        }
+        IllegalArgumentException mismatch = assertThrows(IllegalArgumentException.class,
+                () -> engine.compare(source,
+                        snapshot(DbType.ORACLE, targetConnection, complete(), targetTable, targetView)));
+        assertFalse(mismatch.getMessage().contains(sourceConnection));
+        assertFalse(mismatch.getMessage().contains(targetConnection));
+        assertFalse(mismatch.getMessage().contains(sourceNormalized));
+        assertFalse(mismatch.getMessage().contains(targetOriginal));
+    }
+
     private static SnapshotCompleteness complete() {
         return new SnapshotCompleteness(true, new TreeMap<>());
     }
 
     private static SchemaSnapshot snapshot(DbType type, SnapshotCompleteness completeness, SchemaObject... objects) {
+        return snapshot(type, "connection", completeness, objects);
+    }
+
+    private static SchemaSnapshot snapshot(DbType type, String connectionId,
+                                           SnapshotCompleteness completeness, SchemaObject... objects) {
         TreeMap<ObjectKey, SchemaObject> values = new TreeMap<>();
         for (SchemaObject object : objects) values.put(object.key(), object);
-        return new SchemaSnapshot(type, "connection", name("public"), Instant.EPOCH, completeness, values, "fp");
+        return snapshot(type, connectionId, completeness, values);
+    }
+
+    private static SchemaSnapshot snapshot(DbType type, SnapshotCompleteness completeness,
+                                           SortedMap<ObjectKey, SchemaObject> objects) {
+        return snapshot(type, "connection", completeness, objects);
+    }
+
+    private static SchemaSnapshot snapshot(DbType type, String connectionId, SnapshotCompleteness completeness,
+                                           SortedMap<ObjectKey, SchemaObject> objects) {
+        return new SchemaSnapshot(type, connectionId, name("public"), Instant.EPOCH, completeness, objects, "fp");
     }
 
     private static TableDefinition table(ObjectKey key, List<ColumnDefinition> columns,

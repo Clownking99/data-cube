@@ -26,4 +26,16 @@ public record SchemaDifference(
                 new TreeSet<>(Objects.requireNonNull(dependencies, "dependencies")));
         explanation = Objects.requireNonNull(explanation, "explanation");
     }
+
+    @Override
+    public String toString() {
+        return "SchemaDifference[kind=" + kind
+                + ", objectType=" + object.type()
+                + ", sourcePresent=" + (source != null)
+                + ", targetPresent=" + (target != null)
+                + ", propertyCount=" + properties.size()
+                + ", risk=" + risk
+                + ", automation=" + automation
+                + ", dependencyCount=" + dependencies.size() + "]";
+    }
 }

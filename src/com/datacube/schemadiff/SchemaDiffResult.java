@@ -15,4 +15,10 @@ public record SchemaDiffResult(
         differences = List.copyOf(Objects.requireNonNull(differences, "differences"));
         renameSuggestions = List.copyOf(Objects.requireNonNull(renameSuggestions, "renameSuggestions"));
     }
+
+    @Override
+    public String toString() {
+        return "SchemaDiffResult[differenceCount=" + differences.size()
+                + ", renameSuggestionCount=" + renameSuggestions.size() + "]";
+    }
 }

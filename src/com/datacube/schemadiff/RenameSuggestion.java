@@ -15,4 +15,11 @@ public record RenameSuggestion(
         }
         explanation = Objects.requireNonNull(explanation, "explanation");
     }
+
+    @Override
+    public String toString() {
+        return "RenameSuggestion[sourceType=" + sourceObject.type()
+                + ", targetType=" + targetObject.type()
+                + ", similarity=" + similarity + "]";
+    }
 }

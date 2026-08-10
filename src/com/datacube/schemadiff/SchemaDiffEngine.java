@@ -15,6 +15,9 @@ import com.datacube.spi.schemadiff.SchemaSnapshot;
 import com.datacube.spi.schemadiff.SequenceDefinition;
 import com.datacube.spi.schemadiff.TableDefinition;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -28,9 +31,13 @@ import java.util.TreeSet;
 /** Compares immutable canonical snapshots without database or SQL-dialect access. */
 public final class SchemaDiffEngine {
 
+    private static final String INVALID_OBJECTS_MESSAGE = "Schema snapshot objects are invalid";
+
     public SchemaDiffResult compare(SchemaSnapshot source, SchemaSnapshot target) {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(target, "target");
+        validateObjects(source);
+        validateObjects(target);
         if (source.databaseType() != target.databaseType()) {
             throw new IllegalArgumentException("Schema snapshots use different database types");
         }
@@ -58,6 +65,16 @@ public final class SchemaDiffEngine {
         }
 
         return new SchemaDiffResult(source, target, differences, renameSuggestions(missing, extra));
+    }
+
+    private static void validateObjects(SchemaSnapshot snapshot) {
+        for (Map.Entry<ObjectKey, SchemaObject> entry : snapshot.objects().entrySet()) {
+            ObjectKey mapKey = entry.getKey();
+            SchemaObject value = entry.getValue();
+            if (mapKey == null || value == null || value.key() == null || !mapKey.equals(value.key())) {
+                throw new IllegalArgumentException(INVALID_OBJECTS_MESSAGE);
+            }
+        }
     }
 
     private static boolean isUnavailable(SchemaSnapshot snapshot, ObjectKey key) {
@@ -226,10 +243,26 @@ public final class SchemaDiffEngine {
 
     private static Comparison compareDefinitions(DefinitionObject source, DefinitionObject target) {
         List<PropertyDifference> properties = new ArrayList<>();
-        addIfDifferent(properties, "normalizedDefinition",
-                source.normalizedDefinition(), target.normalizedDefinition());
+        if (!Objects.equals(source.normalizedDefinition(), target.normalizedDefinition())) {
+            properties.add(property("normalizedDefinition",
+                    definitionDigest(source.normalizedDefinition()),
+                    definitionDigest(target.normalizedDefinition())));
+        }
         addIfDifferent(properties, "dependencies", source.dependencies(), target.dependencies());
         return new Comparison(properties, true);
+    }
+
+    private static String definitionDigest(String definition) {
+        if (definition == null) return null;
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256")
+                    .digest(definition.getBytes(StandardCharsets.UTF_8));
+            StringBuilder value = new StringBuilder("sha256:");
+            for (byte element : hash) value.append(String.format("%02x", element));
+            return value.toString();
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("Definition digest is unavailable", exception);
+        }
     }
 
     private static void addIfDifferent(
@@ -305,7 +338,13 @@ public final class SchemaDiffEngine {
                     .equals(withoutSelf(targetSequence.dependencies(), targetSequence.key()));
         }
         if (source instanceof DefinitionObject sourceDefinition && target instanceof DefinitionObject targetDefinition) {
-            return Objects.equals(sourceDefinition.normalizedDefinition(), targetDefinition.normalizedDefinition())
+            String sourceText = sourceDefinition.normalizedDefinition();
+            String targetText = targetDefinition.normalizedDefinition();
+            return sourceDefinition.confidence() == DefinitionConfidence.HIGH
+                    && targetDefinition.confidence() == DefinitionConfidence.HIGH
+                    && sourceText != null && !sourceText.isBlank()
+                    && targetText != null && !targetText.isBlank()
+                    && sourceText.equals(targetText)
                     && withoutSelf(sourceDefinition.dependencies(), sourceDefinition.key())
                     .equals(withoutSelf(targetDefinition.dependencies(), targetDefinition.key()));
         }

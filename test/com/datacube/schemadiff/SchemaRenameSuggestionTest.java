@@ -78,9 +78,56 @@ class SchemaRenameSuggestionTest {
         assertTrue(result.renameSuggestions().isEmpty());
     }
 
+    @Test
+    void highConfidenceDefinitionsWithNonBlankNormalizedTextCanSuggestRename() {
+        DefinitionObject source = definition("old_view", "select id from orders", DefinitionConfidence.HIGH);
+        DefinitionObject target = definition("new_view", "select id from orders", DefinitionConfidence.HIGH);
+
+        SchemaDiffResult result = engine.compare(snapshot(source), snapshot(target));
+
+        assertEquals(1, result.renameSuggestions().size());
+        assertEquals(List.of(DifferenceKind.EXTRA_IN_TARGET, DifferenceKind.MISSING_IN_TARGET),
+                result.differences().stream().map(SchemaDifference::kind).toList());
+    }
+
+    @Test
+    void lowConfidenceOnEitherDefinitionSuppressesRenameSuggestion() {
+        SchemaDiffResult bothLow = engine.compare(
+                snapshot(definition("old_low", "select id from orders", DefinitionConfidence.LOW)),
+                snapshot(definition("new_low", "select id from orders", DefinitionConfidence.LOW)));
+        SchemaDiffResult mixed = engine.compare(
+                snapshot(definition("old_mixed", "select id from orders", DefinitionConfidence.LOW)),
+                snapshot(definition("new_mixed", "select id from orders", DefinitionConfidence.HIGH)));
+
+        assertTrue(bothLow.renameSuggestions().isEmpty());
+        assertTrue(mixed.renameSuggestions().isEmpty());
+        assertEquals(2, bothLow.differences().size());
+        assertEquals(2, mixed.differences().size());
+    }
+
+    @Test
+    void nullOrBlankNormalizedDefinitionSuppressesRenameSuggestion() {
+        SchemaDiffResult nullDefinitions = engine.compare(
+                snapshot(definition("old_null", null, DefinitionConfidence.HIGH)),
+                snapshot(definition("new_null", null, DefinitionConfidence.HIGH)));
+        SchemaDiffResult blankDefinitions = engine.compare(
+                snapshot(definition("old_blank", "  ", DefinitionConfidence.HIGH)),
+                snapshot(definition("new_blank", "  ", DefinitionConfidence.HIGH)));
+
+        assertTrue(nullDefinitions.renameSuggestions().isEmpty());
+        assertTrue(blankDefinitions.renameSuggestions().isEmpty());
+        assertEquals(2, nullDefinitions.differences().size());
+        assertEquals(2, blankDefinitions.differences().size());
+    }
+
     private static SequenceDefinition sequence(String value, String increment) {
         return new SequenceDefinition(key(ObjectType.SEQUENCE, value), "1", increment, null, null, false, null,
                 Set.of());
+    }
+
+    private static DefinitionObject definition(
+            String value, String normalizedDefinition, DefinitionConfidence confidence) {
+        return new DefinitionObject(key(ObjectType.VIEW, value), normalizedDefinition, "original", Set.of(), confidence);
     }
 
     private static SchemaSnapshot snapshot(SchemaObject... objects) {
