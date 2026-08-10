@@ -26,6 +26,25 @@ public final class JdbcEditorSession implements AutoCloseable {
     public enum TransactionMode { AUTO_COMMIT, MANUAL }
     public enum TransactionState { IDLE, ACTIVE, ERROR_PENDING }
     public enum CancelOutcome { CANCELLED, CONNECTION_CLOSED, NOTHING_RUNNING }
+    public enum StrictCleanupFailureKind { RETRYABLE_CONNECTION_CLOSE, TERMINAL_PARTIAL }
+
+    /** A strict-cleanup failure whose retry safety is explicit to the lifecycle owner. */
+    public static final class StrictCleanupFailure extends SQLException {
+        private final StrictCleanupFailureKind kind;
+
+        public StrictCleanupFailure(StrictCleanupFailureKind kind, SQLException cause) {
+            super(Objects.requireNonNull(cause, "cause").getMessage(), cause);
+            this.kind = Objects.requireNonNull(kind, "kind");
+        }
+
+        public StrictCleanupFailureKind kind() {
+            return kind;
+        }
+
+        public boolean retryable() {
+            return kind == StrictCleanupFailureKind.RETRYABLE_CONNECTION_CLOSE;
+        }
+    }
 
     public record ExecutionBatch(List<ScriptOutcome> outcomes, long elapsedMillis) {
         public ExecutionBatch {
@@ -70,6 +89,7 @@ public final class JdbcEditorSession implements AutoCloseable {
     private volatile TransactionState transactionState = TransactionState.IDLE;
     private volatile Connection transactionConnection;
     private volatile Connection cleanupConnection;
+    private StrictCleanupFailure terminalCleanupFailure;
     private volatile boolean timeoutSupported = true;
 
     JdbcEditorSession(
@@ -263,38 +283,46 @@ public final class JdbcEditorSession implements AutoCloseable {
         }
     }
 
-    /** Closes the owned JDBC resource and preserves a failed cleanup reference for retry. */
+    /**
+     * Closes the owned JDBC resource. Only a failed close that demonstrably retains the physical
+     * connection is retryable; any transaction-cleanup failure remains a terminal partial outcome.
+     */
     public void closeStrict() throws SQLException {
         closeRequested.set(true);
         cancel();
         singleFlight.lock();
         try {
             Connection current = connection.getAndSet(null);
-            SQLException rollbackFailure = null;
             if (current != null
                     && transactionMode == TransactionMode.MANUAL
                     && transactionState != TransactionState.IDLE) {
                 try {
                     current.rollback();
                 } catch (SQLException failure) {
-                    rollbackFailure = failure;
+                    rememberTerminalCleanupFailure(failure);
                 }
             }
-            SQLException closeFailure = null;
             try {
                 closeOrRetainStrict(current);
-            } catch (SQLException failure) {
-                closeFailure = failure;
+            } catch (StrictCleanupFailure failure) {
+                if (failure.retryable()) {
+                    StrictCleanupFailure terminal = terminalCleanupFailure();
+                    if (terminal != null) {
+                        failure.addSuppressed(terminal);
+                    }
+                    throw failure;
+                }
+                rememberTerminalCleanupFailure(failure);
             }
             transactionState = TransactionState.IDLE;
             transactionConnection = null;
             connectionState = ConnectionState.CLOSED;
-            if (closeFailure != null) {
-                if (rollbackFailure != null) closeFailure.addSuppressed(rollbackFailure);
-                throw closeFailure;
-            }
-            if (rollbackFailure != null) throw rollbackFailure;
+            StrictCleanupFailure terminal = terminalCleanupFailure();
+            if (terminal != null) throw terminal;
         } finally {
+            transactionState = TransactionState.IDLE;
+            transactionConnection = null;
+            connectionState = ConnectionState.CLOSED;
             singleFlight.unlock();
         }
     }
@@ -454,23 +482,66 @@ public final class JdbcEditorSession implements AutoCloseable {
             try {
                 cleanup.close();
                 cleanupConnection = null;
-            } catch (SQLException ignored) {
+            } catch (SQLException failure) {
+                boolean released = false;
                 try {
-                    if (cleanup.isClosed()) cleanupConnection = null;
-                } catch (SQLException unconfirmed) {
+                    if (cleanup.isClosed()) {
+                        cleanupConnection = null;
+                        released = true;
+                    }
+                } catch (SQLException statusFailure) {
+                    failure.addSuppressed(statusFailure);
                     // Keep the reference so a later close() can retry.
                 }
+                if (released) rememberTerminalCleanupFailure(failure);
             }
         }
     }
 
-    private void closeOrRetainStrict(Connection connection) throws SQLException {
+    private void closeOrRetainStrict(Connection connection) throws StrictCleanupFailure {
         synchronized (cleanupMonitor) {
             if (connection != null && cleanupConnection == null) cleanupConnection = connection;
             Connection cleanup = cleanupConnection;
             if (cleanup == null) return;
-            cleanup.close();
-            cleanupConnection = null;
+            try {
+                cleanup.close();
+                cleanupConnection = null;
+            } catch (SQLException failure) {
+                boolean retained = true;
+                try {
+                    if (cleanup.isClosed()) {
+                        cleanupConnection = null;
+                        retained = false;
+                    }
+                } catch (SQLException statusFailure) {
+                    failure.addSuppressed(statusFailure);
+                }
+                throw new StrictCleanupFailure(
+                        retained
+                                ? StrictCleanupFailureKind.RETRYABLE_CONNECTION_CLOSE
+                                : StrictCleanupFailureKind.TERMINAL_PARTIAL,
+                        failure);
+            }
+        }
+    }
+
+    private void rememberTerminalCleanupFailure(SQLException failure) {
+        synchronized (cleanupMonitor) {
+            StrictCleanupFailure terminal = failure instanceof StrictCleanupFailure strict
+                    && !strict.retryable()
+                    ? strict
+                    : new StrictCleanupFailure(StrictCleanupFailureKind.TERMINAL_PARTIAL, failure);
+            if (terminalCleanupFailure == null) {
+                terminalCleanupFailure = terminal;
+            } else if (terminalCleanupFailure != terminal) {
+                terminalCleanupFailure.addSuppressed(terminal);
+            }
+        }
+    }
+
+    private StrictCleanupFailure terminalCleanupFailure() {
+        synchronized (cleanupMonitor) {
+            return terminalCleanupFailure;
         }
     }
 

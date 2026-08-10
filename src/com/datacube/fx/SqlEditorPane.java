@@ -192,7 +192,7 @@ public final class SqlEditorPane implements AutoCloseable {
                     this::closeCurrentSessionStrict, SqlEditorPane::reportStrictCleanupFailure);
             if (editorConnection != null) {
                 JdbcEditorSession jdbcSession = connections.openEditorSession(editorConnection);
-                construction.ownBlocking(jdbcSession::close);
+                construction.ownBlocking(this::awaitStrictSessionCleanup);
                 this.jdbcSession = jdbcSession;
             }
             this.closeGuard = AsyncTabCloseGuards.retryable(this::startCloseAttempt);
@@ -470,14 +470,10 @@ public final class SqlEditorPane implements AutoCloseable {
         sessionOperations.idle().toCompletableFuture().join();
     }
 
-    private void closeCurrentSessionStrict() {
+    private void closeCurrentSessionStrict() throws java.sql.SQLException {
         JdbcEditorSession editorSession = currentEditorSession();
         if (editorSession == null) return;
-        try {
-            editorSession.closeStrict();
-        } catch (java.sql.SQLException failure) {
-            throw new RuntimeException(failure);
-        }
+        editorSession.closeStrict();
     }
 
     private void awaitStrictSessionCleanup() {
@@ -878,7 +874,7 @@ public final class SqlEditorPane implements AutoCloseable {
             ConstructionOwner construction = new ConstructionOwner();
             try {
                 JdbcEditorSession jdbcSession = connections.openEditorSession(editorConnection);
-                construction.ownBlocking(jdbcSession::close);
+                construction.ownBlocking(this::awaitStrictSessionCleanup);
                 this.jdbcSession = jdbcSession;
                 construction.commit();
                 return jdbcSession;

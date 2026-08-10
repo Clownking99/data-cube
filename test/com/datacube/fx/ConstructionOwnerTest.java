@@ -1,9 +1,14 @@
 package com.datacube.fx;
 
+import com.datacube.service.JdbcEditorSession;
 import org.junit.jupiter.api.Test;
 
+import java.sql.SQLException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -87,5 +92,30 @@ class ConstructionOwnerTest {
         assertTrue(safe.requiresMandatoryAbort());
         safe.mandatoryAbortCleanup().run();
         assertEquals(List.of("scope", "socket"), calls);
+    }
+
+    @Test
+    void strictBlockingOwnerFailureIsObservableAndMandatoryAbortCannotApprove() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        StrictCleanupRetryChannel cleanup = new StrictCleanupRetryChannel(() -> {
+            attempts.incrementAndGet();
+            throw new JdbcEditorSession.StrictCleanupFailure(
+                    JdbcEditorSession.StrictCleanupFailureKind.TERMINAL_PARTIAL,
+                    new SQLException("rollback failed"));
+        }, ignored -> {}, Duration.ofMillis(1));
+        ConstructionOwner owner = new ConstructionOwner(ignored -> {});
+        owner.ownBlocking(() -> cleanup.start().toCompletableFuture().join());
+
+        ConstructionOwner.Rollback rollback = owner.close(new IllegalStateException("build"));
+        SafeConstructionFailure safe = assertInstanceOf(
+                SafeConstructionFailure.class, rollback.failure());
+        AsyncTabCloseGuard abort = AsyncTabCloseGuards.mandatoryAbort(
+                safe.mandatoryAbortCleanup());
+
+        assertEquals(CloseGuardOutcome.FAILED_PARTIAL,
+                abort.requestClose().toCompletableFuture().get(2, TimeUnit.SECONDS));
+        assertEquals(1, attempts.get());
+        assertTrue(cleanup.start().toCompletableFuture().isCompletedExceptionally());
+        assertSame(cleanup.start(), cleanup.start());
     }
 }

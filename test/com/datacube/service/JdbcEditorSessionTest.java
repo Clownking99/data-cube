@@ -400,9 +400,13 @@ class JdbcEditorSessionTest {
         jdbc.closeFailure = new SQLException("strict close failed");
         jdbc.closeFailureLeavesOpen = true;
 
-        SQLException failure = assertThrows(SQLException.class, session::closeStrict);
+        JdbcEditorSession.StrictCleanupFailure failure = assertThrows(
+                JdbcEditorSession.StrictCleanupFailure.class, session::closeStrict);
 
         assertEquals("strict close failed", failure.getMessage());
+        assertEquals(JdbcEditorSession.StrictCleanupFailureKind.RETRYABLE_CONNECTION_CLOSE,
+                failure.kind());
+        assertTrue(failure.retryable());
         assertEquals(1, jdbc.closes.get());
         assertFalse(jdbc.handles.getFirst().closed);
 
@@ -410,6 +414,61 @@ class JdbcEditorSessionTest {
         assertDoesNotThrow(session::closeStrict);
         assertEquals(2, jdbc.closes.get());
         assertTrue(jdbc.handles.getFirst().closed);
+    }
+
+    @Test
+    void rollbackFailureWithSuccessfulCloseRemainsTerminalOnEveryStrictCleanupCall() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
+                jdbc::open, new StubRunner(QueryResult.update(1, 1)));
+        session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
+        session.executeScript("update t set x=1", null, 100, null, false);
+        jdbc.rollbackFailure = new SQLException("rollback failed");
+
+        JdbcEditorSession.StrictCleanupFailure first = assertThrows(
+                JdbcEditorSession.StrictCleanupFailure.class, session::closeStrict);
+        JdbcEditorSession.StrictCleanupFailure second = assertThrows(
+                JdbcEditorSession.StrictCleanupFailure.class, session::closeStrict);
+
+        assertEquals(JdbcEditorSession.StrictCleanupFailureKind.TERMINAL_PARTIAL, first.kind());
+        assertEquals(JdbcEditorSession.StrictCleanupFailureKind.TERMINAL_PARTIAL, second.kind());
+        assertFalse(first.retryable());
+        assertEquals("rollback failed", first.getMessage());
+        assertEquals(1, jdbc.rollbacks.get());
+        assertEquals(1, jdbc.closes.get());
+        assertTrue(jdbc.handles.getFirst().closed);
+    }
+
+    @Test
+    void rollbackFailureSurvivesRetryableCloseFailureAndBecomesTerminalAfterCloseSucceeds()
+            throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
+                jdbc::open, new StubRunner(QueryResult.update(1, 1)));
+        session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
+        session.executeScript("update t set x=1", null, 100, null, false);
+        jdbc.rollbackFailure = new SQLException("rollback failed");
+        jdbc.closeFailure = new SQLException("close left open");
+        jdbc.closeFailureLeavesOpen = true;
+
+        JdbcEditorSession.StrictCleanupFailure retryable = assertThrows(
+                JdbcEditorSession.StrictCleanupFailure.class, session::closeStrict);
+        assertEquals(JdbcEditorSession.StrictCleanupFailureKind.RETRYABLE_CONNECTION_CLOSE,
+                retryable.kind());
+        assertFalse(jdbc.handles.getFirst().closed);
+
+        jdbc.closeFailure = null;
+        JdbcEditorSession.StrictCleanupFailure terminal = assertThrows(
+                JdbcEditorSession.StrictCleanupFailure.class, session::closeStrict);
+
+        assertEquals(JdbcEditorSession.StrictCleanupFailureKind.TERMINAL_PARTIAL, terminal.kind());
+        assertEquals("rollback failed", terminal.getMessage());
+        assertEquals(1, jdbc.rollbacks.get());
+        assertEquals(2, jdbc.closes.get());
+        assertTrue(jdbc.handles.getFirst().closed);
+        assertThrows(JdbcEditorSession.StrictCleanupFailure.class, session::closeStrict);
     }
 
     @Test
@@ -440,6 +499,42 @@ class JdbcEditorSessionTest {
         assertFalse(session.snapshot().running());
         assertFalse(session.snapshot().cancelling());
         session.close();
+    }
+
+    @Test
+    void strictClosePreservesReleasedConnectionFailureFromCancelFallback() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        BlockingRunner runner = new BlockingRunner();
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
+                jdbc::open, runner);
+        Thread execution = Thread.ofVirtual().start(
+                () -> session.executeScript("select slow", null, 100, null, false));
+        await(runner.entered);
+        jdbc.closeFailure = new SQLException("cancel close failed after release");
+        AtomicReference<Throwable> closeFailure = new AtomicReference<>();
+
+        Thread closer = Thread.ofVirtual().start(() -> {
+            try {
+                session.closeStrict();
+            } catch (Throwable failure) {
+                closeFailure.set(failure);
+            }
+        });
+        awaitWaiting(closer);
+        assertEquals(1, jdbc.closes.get());
+        assertTrue(jdbc.handles.getFirst().closed);
+        runner.release.countDown();
+        join(execution);
+        join(closer);
+
+        JdbcEditorSession.StrictCleanupFailure terminal = assertInstanceOf(
+                JdbcEditorSession.StrictCleanupFailure.class, closeFailure.get());
+        assertEquals(JdbcEditorSession.StrictCleanupFailureKind.TERMINAL_PARTIAL,
+                terminal.kind());
+        assertEquals("cancel close failed after release", terminal.getMessage());
+        assertThrows(JdbcEditorSession.StrictCleanupFailure.class, session::closeStrict);
+        assertEquals(1, jdbc.closes.get());
     }
 
     @Test

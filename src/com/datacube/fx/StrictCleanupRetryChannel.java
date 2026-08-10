@@ -1,5 +1,7 @@
 package com.datacube.fx;
 
+import com.datacube.service.JdbcEditorSession;
+
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -10,17 +12,22 @@ import java.util.function.Consumer;
 final class StrictCleanupRetryChannel {
     private static final Duration DEFAULT_RETRY_DELAY = Duration.ofMillis(100);
 
-    private final Runnable cleanup;
+    @FunctionalInterface
+    interface CleanupAction {
+        void run() throws Exception;
+    }
+
+    private final CleanupAction cleanup;
     private final Consumer<? super Throwable> failureReporter;
     private final Duration retryDelay;
     private CompletableFuture<Void> settlement;
 
-    StrictCleanupRetryChannel(Runnable cleanup, Consumer<? super Throwable> failureReporter) {
+    StrictCleanupRetryChannel(CleanupAction cleanup, Consumer<? super Throwable> failureReporter) {
         this(cleanup, failureReporter, DEFAULT_RETRY_DELAY);
     }
 
     StrictCleanupRetryChannel(
-            Runnable cleanup,
+            CleanupAction cleanup,
             Consumer<? super Throwable> failureReporter,
             Duration retryDelay) {
         this.cleanup = Objects.requireNonNull(cleanup, "cleanup");
@@ -37,7 +44,7 @@ final class StrictCleanupRetryChannel {
             Thread.startVirtualThread(() -> retryUntilSettled(created));
         } catch (Throwable startupFailure) {
             report(startupFailure);
-            retryUntilSettled(created);
+            created.completeExceptionally(startupFailure);
         }
         return created;
     }
@@ -49,7 +56,12 @@ final class StrictCleanupRetryChannel {
                 target.complete(null);
             } catch (Throwable failure) {
                 report(failure);
-                waitBeforeRetry();
+                if (failure instanceof JdbcEditorSession.StrictCleanupFailure strict
+                        && strict.retryable()) {
+                    waitBeforeRetry();
+                } else {
+                    target.completeExceptionally(failure);
+                }
             }
         }
     }

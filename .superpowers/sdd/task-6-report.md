@@ -5,7 +5,7 @@
 - `SqlEditorPane` 为每个关系型编辑标签持有一个 `JdbcEditorSession`；已有绑定连接在构造期
   创建会话，未绑定标签在第一次关系型执行/事务操作时 pin，之后不再跟随树选择。
 - `openEditorSession(editorConnection)` 直接消费不可变 pinned `ConnConfig` 快照，且调用后立即登记
-  `construction.ownBlocking(jdbcSession::close)`；构造失败的阻塞补偿由 Task 5 的 tracked
+  `construction.ownBlocking(this::awaitStrictSessionCleanup)`；构造失败的阻塞补偿由 Task 5 的 tracked
   mandatory-abort 虚拟线程承接，正常关闭由 Pane 后台关闭序列承接。
 - 执行与 Explain 在 FX 线程完成 `SqlSafetyAnalyzer`/`SqlSafetyPolicy` 分析和确认后，才把
   历史文件写入与 JDBC 工作提交给虚拟线程。生产环境确认按钮为“确认在生产环境执行”。
@@ -32,7 +32,8 @@
 - 关闭 admission 在 FX 线程先停止接收，取消未开始的事务命令，将 current/queued 纳入
   关闭对话，后台等待 queue idle，最终从当前真实 session 做事务决策和清理。
 - `SqlHistoryStore.recordStrict` 对写入失败可观测并回滚内存快照；
-  `JdbcEditorSession.closeStrict` 会上报 JDBC close 失败且保留 cleanup reference 供重试。
+  `JdbcEditorSession.closeStrict` 将仍持有物理连接的 close 失败分类为可重试，将 rollback 或
+  已释放物理连接后的失败持久分类为 terminal partial，后续 no-op close 不会洗白该结算。
   正常关闭与 mandatory abort 共享一个单飞 `StrictCleanupRetryChannel` settlement；
   close 失败会在虚拟线程中继续重试，CloseAttempt 在成功前保持 closing/
   `STILL_CLOSING`，不会假 `APPROVED`。
@@ -77,16 +78,29 @@ typed queue snapshot 与 strict retry channel。核心纯 Java 层 GREEN 后，P
 settlement。迁移后两项 GREEN。关闭等待期 terminal callback 重启控件的内部审计合同先
 1 failure，将 `!accepting` 纳入 busy 后 GREEN。
 
+第三轮复审 RED：
+
+```powershell
+.\gradlew.bat test --tests com.datacube.service.JdbcEditorSessionTest --tests com.datacube.fx.StrictCleanupRetryChannelTest --tests com.datacube.fx.ConstructionOwnerTest --tests com.datacube.fx.SqlEditorSessionContractTest --rerun-tasks --no-daemon --console=plain
+```
+
+结果：测试编译按预期产生 24 个缺失符号错误，锁定 strict cleanup failure kind、transaction
+terminal settlement、仅物理 close 可重试以及两处 ConstructionOwner strict ownership。实现后
+同一命令 GREEN；确定性用例覆盖 rollback 失败 + close 成功、rollback 失败 + close 先失败后
+成功、纯 close 先失败后成功、永久 close 未结算，以及 mandatory abort 不得误报 APPROVED。
+提交前只读审查发现 strict close 的 cancel fallback 仍可能吞掉“close 抛错但连接已释放”；新增
+单测先得到 1 test / 1 failure，随后把该失败记入同一 terminal settlement 后 GREEN。
+
 ## GREEN
 
 最终聚焦强制重跑：
 
 ```powershell
-.\gradlew.bat test --tests com.datacube.service.ConnectionManagerDedicatedSessionTest --tests com.datacube.fx.task.SerialSessionOperationQueueTest --tests com.datacube.fx.StrictCleanupRetryChannelTest --tests com.datacube.fx.SqlEditorClosePolicyTest --tests com.datacube.fx.SqlEditorSessionContractTest --tests com.datacube.fx.SqlEditorPaneLifecycleTest --tests com.datacube.fx.Task6ConstructionPlanContractTest --tests com.datacube.fx.AsyncCloseGateTest --tests com.datacube.fx.AsyncTabCloseCoordinatorTest --tests com.datacube.fx.AsyncManagedTabRegistryTest --tests com.datacube.service.JdbcEditorSessionTest --tests com.datacube.config.SqlHistoryStoreStrictTest --tests com.datacube.service.SqlSafetyPolicyTest --rerun-tasks --no-daemon --console=plain
+.\gradlew.bat test --tests com.datacube.service.ConnectionManagerDedicatedSessionTest --tests com.datacube.fx.task.SerialSessionOperationQueueTest --tests com.datacube.fx.StrictCleanupRetryChannelTest --tests com.datacube.fx.ConstructionOwnerTest --tests com.datacube.fx.SqlEditorClosePolicyTest --tests com.datacube.fx.SqlEditorSessionContractTest --tests com.datacube.fx.SqlEditorPaneLifecycleTest --tests com.datacube.fx.Task6ConstructionPlanContractTest --tests com.datacube.fx.AsyncCloseGateTest --tests com.datacube.fx.AsyncTabCloseCoordinatorTest --tests com.datacube.fx.AsyncManagedTabRegistryTest --tests com.datacube.fx.AsyncTabCloseGuardsTest --tests com.datacube.service.JdbcEditorSessionTest --tests com.datacube.config.SqlHistoryStoreStrictTest --tests com.datacube.sqleditor.SqlSafetyPolicyTest --rerun-tasks --no-daemon --console=plain
 ```
 
-结果：`BUILD SUCCESSFUL`，8/8 Gradle tasks 实际执行；XML 汇总 90 tests、0 failures、
-0 errors、0 skipped。聚焦包名为实际的 `com.datacube.service.SqlSafetyPolicyTest`。
+结果：`BUILD SUCCESSFUL`，8/8 Gradle tasks 实际执行；XML 汇总 114 tests、0 failures、
+0 errors、0 skipped。聚焦包名为实际的 `com.datacube.sqleditor.SqlSafetyPolicyTest`。
 
 最终全量强制重跑：
 
@@ -94,7 +108,7 @@ settlement。迁移后两项 GREEN。关闭等待期 terminal callback 重启控
 .\gradlew.bat test --rerun-tasks --no-daemon --console=plain
 ```
 
-结果：`BUILD SUCCESSFUL`，8/8 Gradle tasks 实际执行；测试 XML 汇总 391 tests、0 failures、
+结果：`BUILD SUCCESSFUL`，8/8 Gradle tasks 实际执行；测试 XML 汇总 396 tests、0 failures、
 0 errors、1 skipped。
 
 静态检查：
@@ -113,7 +127,8 @@ git status --short
 - 基线：`1485ca9545af8136c3596551b701a888cb8b3eaa`
 - Task 6 初始集成：`0d428f8f7157d0715c46419106c5fdb532f7d127`
 - Task 6 第一轮审查修复：`968d43d25b113a3d818c2512fd8ef8ebd3241826`
-- Task 6 第二轮审查修复：本报告所在的 `fix: 固化 SQL 会话配置与关闭结算` 提交；完整 SHA 由
+- Task 6 第二轮审查修复：`4eef3b73fe863d939b5d940b9de4c5a3699a28fd`
+- Task 6 第三轮审查修复：本报告所在的 `fix: 保留 SQL 严格清理失败` 提交；完整 SHA 由
   提交后的 `git rev-parse HEAD` 记录在交付简报中。
 - 未 push。
 
@@ -121,8 +136,9 @@ git status --short
 
 - 驱动若永久忽略 cancel，关闭 attempt 会保持 `STILL_CLOSING`，不会误批准或提前移除标签；
   需要等待底层 JDBC 终止或应用退出清理完成。
-- strict 历史写入失败仍使当次关闭为 `FAILED_PARTIAL`；JDBC close 失败则保留 cleanup
-  reference 并由单飞 channel 重试。驱动若永久失败，settlement 保持未完成且标签继续
+- strict 历史写入失败或 rollback/commit 等不可逆事务清理失败仍使当次关闭为
+  `FAILED_PARTIAL`；只有仍持有物理连接的 JDBC close 失败才保留 cleanup reference 并由单飞
+  channel 重试。驱动若永久失败，settlement 保持未完成且标签继续
   closing/由注册表追踪；不会误报 `APPROVED`，但需外部修复驱动/网络状态才能结算。
 - closing 只取消未开始的会话命令；当前 JDBC 操作需先响应 cancel 并进入 idle，才能执行
   关闭事务决策。这是保持 commit/rollback 与执行严格顺序所必需的等待点。

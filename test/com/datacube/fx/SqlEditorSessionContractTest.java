@@ -26,14 +26,21 @@ class SqlEditorSessionContractTest {
     void recordsBlockingSessionOwnershipImmediatelyAfterOpeningIt() throws Exception {
         String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
         String open = "connections.openEditorSession(editorConnection)";
-        String own = "construction.ownBlocking(jdbcSession::close)";
+        String own = "construction.ownBlocking(this::awaitStrictSessionCleanup)";
 
-        int openIndex = source.indexOf(open);
-        int ownIndex = source.indexOf(own, openIndex);
-        assertTrue(openIndex >= 0, "editor session must be opened by the pane");
-        assertTrue(ownIndex > openIndex, "opened JDBC session must immediately gain blocking ownership");
-        assertEquals(";", source.substring(openIndex + open.length(), ownIndex).trim(),
-                "only the opening statement terminator may precede ownBlocking");
+        int openings = 0;
+        for (int openIndex = source.indexOf(open); openIndex >= 0;
+                openIndex = source.indexOf(open, openIndex + open.length())) {
+            int ownIndex = source.indexOf(own, openIndex);
+            assertTrue(ownIndex > openIndex,
+                    "every opened JDBC session must immediately gain strict blocking ownership");
+            assertEquals(";", source.substring(openIndex + open.length(), ownIndex).trim(),
+                    "only the opening statement terminator may precede ownBlocking");
+            openings++;
+        }
+        assertEquals(2, openings, "constructor and lazy admission must both own the session");
+        assertFalse(source.contains("construction.ownBlocking(jdbcSession::close)"),
+                "construction cleanup must not use the compatibility API that swallows failures");
         assertFalse(source.contains("openEditorSession(editorConnection.id())"),
                 "the session must consume the immutable pinned config rather than reread by id");
     }
