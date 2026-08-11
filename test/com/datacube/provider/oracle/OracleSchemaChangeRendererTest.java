@@ -544,7 +544,7 @@ class OracleSchemaChangeRendererTest {
                         + "INCREMENT BY 5;",
                 renderApproved(alterSequence).getFirst().sql());
 
-        SchemaChange drop = change(ChangeKind.DROP, sourceTableKey,
+        SchemaChange drop = change(ChangeKind.DROP, targetTableKey,
                 null, currentTable, null, AutomationLevel.DESTRUCTIVE_OPT_IN);
         assertEquals("DROP TABLE \"Target\"\"Owner\".\"ORDERS\";",
                 renderApproved(drop).getFirst().sql());
@@ -597,6 +597,139 @@ class OracleSchemaChangeRendererTest {
                 assertThrows(IllegalArgumentException.class,
                         () -> RENDERER.render(unrelatedSourceOwner,
                                 context(DbType.ORACLE, true))).getMessage());
+    }
+
+    @Test
+    void crossSchemaRoutineReplaceRetargetsOnlyExactSourceOwnedUdtIdentity() {
+        ObjectKey sourceKey = key(ObjectType.FUNCTION, "Source", "FORMAT_ADDRESS",
+                oracleSignature("IN", "Source.ADDRESS_T"));
+        ObjectKey targetKey = key(ObjectType.FUNCTION, "Target\"Owner", "FORMAT_ADDRESS",
+                oracleSignature("IN", "Target\"Owner.ADDRESS_T"));
+        DefinitionObject desired = definition(sourceKey,
+                "CREATE OR REPLACE FUNCTION \"Source\".\"FORMAT_ADDRESS\" "
+                        + "(P_ADDRESS IN \"Source\".\"ADDRESS_T\") RETURN VARCHAR2 IS "
+                        + "BEGIN RETURN 'ok'; END;");
+        DefinitionObject current = definition(targetKey,
+                "CREATE OR REPLACE FUNCTION \"Target\"\"Owner\".\"FORMAT_ADDRESS\" "
+                        + "(P_ADDRESS IN \"Target\"\"Owner\".\"ADDRESS_T\") "
+                        + "RETURN VARCHAR2 IS BEGIN RETURN 'old'; END;");
+        SchemaChange replace = change(ChangeKind.REPLACE, sourceKey, desired, current,
+                new PropertyDifference("normalizedDefinition", "desired", "current", "safe"),
+                AutomationLevel.DESTRUCTIVE_OPT_IN);
+
+        String sql = renderApproved(replace).getFirst().sql();
+        assertTrue(sql.startsWith("CREATE OR REPLACE FUNCTION "
+                + "\"Target\"\"Owner\".\"FORMAT_ADDRESS\""));
+        assertTrue(sql.contains("P_ADDRESS IN \"Target\"\"Owner\".\"ADDRESS_T\""));
+
+        for (String wrongType : List.of("Other.ADDRESS_T", "source.ADDRESS_T")) {
+            ObjectKey wrongTargetKey = key(ObjectType.FUNCTION,
+                    "Target\"Owner", "FORMAT_ADDRESS",
+                    oracleSignature("IN", wrongType));
+            DefinitionObject wrongTarget = definition(wrongTargetKey,
+                    "CREATE OR REPLACE FUNCTION \"Target\"\"Owner\".\"FORMAT_ADDRESS\" "
+                            + "(P_ADDRESS IN \"Other\".\"ADDRESS_T\") RETURN VARCHAR2 IS "
+                            + "BEGIN RETURN 'old'; END;");
+            SchemaChange wrongOwner = change(ChangeKind.REPLACE, sourceKey,
+                    desired, wrongTarget,
+                    new PropertyDifference(
+                            "normalizedDefinition", "desired", "current", "safe"),
+                    AutomationLevel.DESTRUCTIVE_OPT_IN);
+            assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                    assertThrows(IllegalArgumentException.class,
+                            () -> RENDERER.render(wrongOwner,
+                                    context(DbType.ORACLE, true))).getMessage());
+        }
+
+        ObjectKey malformedTargetKey = key(ObjectType.FUNCTION,
+                "Target\"Owner", "FORMAT_ADDRESS",
+                "oracle-routine-signature-v1\0" + "2:IN99:secret");
+        SchemaChange malformed = change(ChangeKind.REPLACE, sourceKey, desired,
+                definition(malformedTargetKey, current.originalDefinition()),
+                new PropertyDifference("normalizedDefinition", "desired", "current", "safe"),
+                AutomationLevel.DESTRUCTIVE_OPT_IN);
+        assertSafeDefinitionFailure(malformed);
+    }
+
+    @Test
+    void changeObjectOwnerMustFollowKindShapeAndRenderContext() {
+        ObjectKey sourceTableKey = key(ObjectType.TABLE, "Source", "OWNER_MATRIX", "");
+        ObjectKey targetTableKey = key(
+                ObjectType.TABLE, "Target\"Owner", "OWNER_MATRIX", "");
+        ObjectKey otherTableKey = key(ObjectType.TABLE, "Other", "OWNER_MATRIX", "");
+        ColumnDefinition desiredColumn = column("VALUE",
+                type("VARCHAR2", extensions("formattedType", "VARCHAR2(20)")),
+                false, null, 1, null);
+        ColumnDefinition currentColumn = column("VALUE",
+                type("VARCHAR2", extensions("formattedType", "VARCHAR2(10)")),
+                false, null, 1, null);
+        TableDefinition desiredTable = table(sourceTableKey, List.of(desiredColumn));
+        TableDefinition currentTable = table(targetTableKey, List.of(currentColumn));
+
+        SchemaChange create = change(ChangeKind.CREATE, sourceTableKey,
+                desiredTable, null, null, AutomationLevel.SAFE_AUTOMATIC);
+        assertTrue(RENDERER.render(create, context(DbType.ORACLE, false)).getFirst().sql()
+                .startsWith("CREATE TABLE \"Target\"\"Owner\".\"OWNER_MATRIX\""));
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, otherTableKey,
+                                        desiredTable, null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        SchemaChange drop = change(ChangeKind.DROP, targetTableKey,
+                null, currentTable, null, AutomationLevel.DESTRUCTIVE_OPT_IN);
+        assertEquals("DROP TABLE \"Target\"\"Owner\".\"OWNER_MATRIX\";",
+                renderApproved(drop).getFirst().sql());
+        for (ObjectKey wrong : List.of(sourceTableKey, otherTableKey)) {
+            assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                    assertThrows(IllegalArgumentException.class,
+                            () -> RENDERER.render(change(ChangeKind.DROP, wrong,
+                                            null, currentTable, null,
+                                            AutomationLevel.DESTRUCTIVE_OPT_IN),
+                                    context(DbType.ORACLE, true))).getMessage());
+        }
+
+        String path = "columns[" + desiredColumn.name().comparisonKey() + "].dataType";
+        SchemaChange alter = tablePropertyChange(sourceTableKey, desiredTable, currentTable,
+                path, desiredColumn.dataType(), currentColumn.dataType());
+        assertTrue(renderApproved(alter).getFirst().sql()
+                .startsWith("ALTER TABLE \"Target\"\"Owner\".\"OWNER_MATRIX\""));
+        for (ObjectKey wrong : List.of(targetTableKey, otherTableKey)) {
+            SchemaChange wrongOwner = tablePropertyChange(wrong, desiredTable, currentTable,
+                    path, desiredColumn.dataType(), currentColumn.dataType());
+            assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                    assertThrows(IllegalArgumentException.class,
+                            () -> RENDERER.render(wrongOwner,
+                                    context(DbType.ORACLE, true))).getMessage());
+        }
+
+        ObjectKey sourceViewKey = key(ObjectType.VIEW, "Source", "OWNER_MATRIX_V", "");
+        ObjectKey targetViewKey = key(
+                ObjectType.VIEW, "Target\"Owner", "OWNER_MATRIX_V", "");
+        ObjectKey otherViewKey = key(ObjectType.VIEW, "Other", "OWNER_MATRIX_V", "");
+        DefinitionObject desiredView = definition(sourceViewKey,
+                "CREATE OR REPLACE VIEW \"Source\".\"OWNER_MATRIX_V\" "
+                        + "AS SELECT 1 X FROM DUAL;");
+        DefinitionObject currentView = definition(targetViewKey,
+                "CREATE OR REPLACE VIEW \"Target\"\"Owner\".\"OWNER_MATRIX_V\" "
+                        + "AS SELECT 2 X FROM DUAL;");
+        PropertyDifference definitionDifference = new PropertyDifference(
+                "normalizedDefinition", "desired", "current", "safe");
+        SchemaChange replace = change(ChangeKind.REPLACE, sourceViewKey,
+                desiredView, currentView, definitionDifference,
+                AutomationLevel.DESTRUCTIVE_OPT_IN);
+        assertTrue(renderApproved(replace).getFirst().sql().startsWith(
+                "CREATE OR REPLACE VIEW \"Target\"\"Owner\".\"OWNER_MATRIX_V\""));
+        for (ObjectKey wrong : List.of(targetViewKey, otherViewKey)) {
+            SchemaChange wrongOwner = change(ChangeKind.REPLACE, wrong,
+                    desiredView, currentView, definitionDifference,
+                    AutomationLevel.DESTRUCTIVE_OPT_IN);
+            assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                    assertThrows(IllegalArgumentException.class,
+                            () -> RENDERER.render(wrongOwner,
+                                    context(DbType.ORACLE, true))).getMessage());
+        }
     }
 
     @Test

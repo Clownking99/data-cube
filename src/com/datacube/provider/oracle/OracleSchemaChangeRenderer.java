@@ -61,7 +61,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
                 || change.automation() == AutomationLevel.MANUAL_ONLY) {
             throw new IllegalArgumentException(MANUAL_CHANGE);
         }
-        validateShape(change);
+        validateShape(change, context);
         validateContextOwners(change, context);
         boolean destructive = change.automation() == AutomationLevel.DESTRUCTIVE_OPT_IN
                 || hasDestructiveSemantics(change);
@@ -104,15 +104,17 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         return change.source() instanceof SequenceDefinition;
     }
 
-    private static void validateShape(SchemaChange change) {
+    private static void validateShape(SchemaChange change, RenderContext context) {
         switch (change.kind()) {
             case CREATE -> requireShape(change.source(), change.target(), change.object());
             case DROP -> requireComparisonShape(
-                    change.target(), change.source(), change.object());
+                    change.target(), change.source(), change.object(), context);
             case ALTER, REPLACE -> {
                 if (change.source() == null || change.target() == null
-                        || !sameComparisonIdentity(change.object(), change.source().key())
-                        || !sameComparisonIdentity(change.object(), change.target().key())) {
+                        || !sameComparisonIdentity(
+                                change.object(), change.source().key(), context)
+                        || !sameComparisonIdentity(
+                                change.object(), change.target().key(), context)) {
                     throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
                 }
             }
@@ -131,17 +133,49 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static void requireComparisonShape(
-            SchemaObject present, SchemaObject absent, ObjectKey key) {
+            SchemaObject present, SchemaObject absent, ObjectKey key,
+            RenderContext context) {
         if (present == null || absent != null
-                || !sameComparisonIdentity(key, present.key())) {
+                || !sameComparisonIdentity(key, present.key(), context)) {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }
     }
 
-    private static boolean sameComparisonIdentity(ObjectKey left, ObjectKey right) {
+    private static boolean sameComparisonIdentity(
+            ObjectKey left, ObjectKey right, RenderContext context) {
         return left.type() == right.type()
-                && left.signature().equals(right.signature())
+                && comparisonSignature(left, context)
+                        .equals(comparisonSignature(right, context))
                 && objectPart(left).equals(objectPart(right));
+    }
+
+    private static String comparisonSignature(ObjectKey key, RenderContext context) {
+        if (key.type() != ObjectType.FUNCTION && key.type() != ObjectType.PROCEDURE) {
+            return key.signature();
+        }
+        String sourceOwner = schemaPart(context.sourceSchema());
+        String targetOwner = schemaPart(context.targetSchema());
+        StringBuilder comparison = new StringBuilder(ROUTINE_SIGNATURE_DOMAIN);
+        for (RoutineArgument argument : decodeRoutineSignature(key.signature())) {
+            appendSignatureField(comparison, argument.mode());
+            appendSignatureField(comparison, retargetRoutineIdentityType(
+                    argument.type(), sourceOwner, targetOwner));
+        }
+        return comparison.toString();
+    }
+
+    private static void appendSignatureField(StringBuilder signature, String value) {
+        signature.append(value.length()).append(':').append(value);
+    }
+
+    private static String retargetRoutineIdentityType(
+            String type, String sourceOwner, String targetOwner) {
+        String sourcePrefix = sourceOwner + '.';
+        if (!type.startsWith(sourcePrefix)) return type;
+        if (type.length() == sourcePrefix.length()) {
+            throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        }
+        return targetOwner + type.substring(sourceOwner.length());
     }
 
     private static void validateContextOwners(SchemaChange change, RenderContext context) {
@@ -156,6 +190,14 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
             if (!owner.equals(sourceOwner) && !owner.equals(targetOwner)) {
                 throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
             }
+        }
+        String shapeOwner = switch (change.kind()) {
+            case CREATE, ALTER, REPLACE -> objectOwner(change.source().key());
+            case DROP -> objectOwner(change.target().key());
+            case MANUAL -> throw new IllegalArgumentException(MANUAL_CHANGE);
+        };
+        if (!objectOwner(change.object()).equals(shapeOwner)) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }
     }
 
