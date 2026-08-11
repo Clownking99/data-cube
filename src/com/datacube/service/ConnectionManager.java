@@ -79,7 +79,12 @@ public final class ConnectionManager {
 
     /** 该 connId 对应的 provider。 */
     public synchronized DatabaseProvider provider(String connId) {
-        ConnConfig cfg = requireConfig(connId);
+        return provider(requireConfig(connId));
+    }
+
+    /** Resolves a provider from one immutable config snapshot without consulting the registry. */
+    DatabaseProvider provider(ConnConfig configSnapshot) {
+        ConnConfig cfg = Objects.requireNonNull(configSnapshot, "configSnapshot");
         if (cfg.type() == DbType.REDIS) {
             throw new IllegalStateException("Redis 不使用 JDBC DatabaseProvider");
         }
@@ -109,14 +114,22 @@ public final class ConnectionManager {
     /** 创建不进入共享缓存、由调用方独占并负责关闭的 JDBC 连接。 */
     public Connection openDedicated(String connId) throws SQLException {
         ConnConfig cfg;
-        DatabaseProvider provider;
         synchronized (this) {
             cfg = requireConfig(connId);
-            if (cfg.type() == DbType.REDIS) {
-                throw new IllegalStateException("Redis 连接不能创建 JDBC 编辑器会话");
-            }
-            provider = providerResolver.apply(cfg.type());
         }
+        return openDedicated(cfg);
+    }
+
+    /**
+     * Opens a caller-owned connection from one immutable config snapshot without consulting the
+     * mutable connection registry.
+     */
+    public Connection openDedicated(ConnConfig configSnapshot) throws SQLException {
+        ConnConfig cfg = Objects.requireNonNull(configSnapshot, "configSnapshot");
+        if (cfg.type() == DbType.REDIS) {
+            throw new IllegalStateException("Redis 连接不能创建 JDBC 编辑器会话");
+        }
+        DatabaseProvider provider = provider(cfg);
         return openDedicated(cfg, provider);
     }
 
@@ -134,7 +147,13 @@ public final class ConnectionManager {
         if (cfg.type() == DbType.REDIS) {
             throw new IllegalStateException("Redis 不使用 JDBC DatabaseProvider");
         }
-        DatabaseProvider provider = providerResolver.apply(cfg.type());
+        DatabaseProvider provider = provider(cfg);
+        return openEditorSession(cfg, provider);
+    }
+
+    JdbcEditorSession openEditorSession(ConnConfig cfg, DatabaseProvider provider) {
+        Objects.requireNonNull(cfg, "configSnapshot");
+        Objects.requireNonNull(provider, "providerSnapshot");
         ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(cfg);
         return new JdbcEditorSession(cfg.id(), safety,
                 () -> openDedicated(cfg, provider), provider.sqlRunner());
@@ -201,7 +220,7 @@ public final class ConnectionManager {
                 cfg.database(), cfg.username(), cfg.encryptedPassword(), props);
     }
 
-    private Connection openDedicated(ConnConfig cfg, DatabaseProvider provider) throws SQLException {
+    Connection openDedicated(ConnConfig cfg, DatabaseProvider provider) throws SQLException {
         return provider.connectionFactory().open(withPlainPassword(cfg));
     }
 

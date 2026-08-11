@@ -16,6 +16,7 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BooleanSupplier;
 
 /** Caller-owned JDBC session for one SQL editor tab. */
 public final class JdbcEditorSession implements AutoCloseable {
@@ -120,13 +121,28 @@ public final class JdbcEditorSession implements AutoCloseable {
             int maxRows,
             ScriptErrorPolicy policy,
             boolean oracleMode) {
+        return executeScript(script, schema, maxRows, policy, oracleMode, () -> false);
+    }
+
+    ExecutionBatch executeScript(
+            String script,
+            String schema,
+            int maxRows,
+            ScriptErrorPolicy policy,
+            boolean oracleMode,
+            BooleanSupplier parentCancellationRequested) {
         Objects.requireNonNull(script, "script");
+        Objects.requireNonNull(parentCancellationRequested, "parentCancellationRequested");
         singleFlight.lock();
         SqlExecutionControl control = null;
         long startedAt = System.currentTimeMillis();
         try {
             ensureOpen();
             control = beginOperation();
+            if (parentCancellationRequested.getAsBoolean()) {
+                control.cancel();
+                throw new SQLException("SQL execution cancelled");
+            }
             ensureOpen();
             if (transactionMode == TransactionMode.MANUAL) {
                 TransactionCommand command = transactionCommand(script, oracleMode);
