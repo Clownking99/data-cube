@@ -9,7 +9,7 @@ Task 9 已完成：新增 JavaFX Schema Diff 可视化工作流、稳定的分�
 - `SchemaDiffSelectionModel`：按 planner 顺序稳定分组和筛选；安全自动项默认选中，破坏性项默认关闭，手工项不可选择；依赖缺失保持阻塞；选择变化使确认失效；重命名建议仅展示。
 - `SchemaDiffViewModel`：覆盖 `IDLE / LOADING / READY / DEPLOYING / CANCELLING / COMPLETED / FAILED / DRIFTED`；比较、部署、取消和导出文件均提交到 pane 自有 JDK 25 虚拟线程 scope；晚到回调由 generation、closed 和 UI revision 隔离。
 - `SchemaDiffPane`：提供源/目标连接和 Schema、差异树、对象/风险/自动化/选择筛选、结构化详情、源/目标定义、所选 SQL 预览、诊断、导出、部署与取消；错误和状态使用固定脱敏文案。
-- `SchemaDiffDialogs`：确认信息包含目标身份、Schema、变更数、生产环境和 Oracle 提示；生产或破坏性计划使用精确 digest；破坏性计划还要求再次输入目标 Schema comparison key。
+- `SchemaDiffDialogs`：确认信息包含目标身份、Schema、变更数、生产环境和 Oracle 提示；生产或破坏性计划使用精确 digest；破坏性计划还要求再次输入 snapshot 的精确、安全可显示 Schema token，绝不展示 provider-domain comparison key。
 - `ConnectionTreePane`：关系型 CONNECTION/SCHEMA 节点增加 `Schema 对比...`，Redis 节点不出现该入口。
 - `AppShell`：通过一次 `openManagedTab` reservation factory 打开受管标签；ConstructionOwner 在构造过程中立即接管阻塞资源；交互关闭和强制关闭复用同一 fatal-once guard；先后台清理，后 FX-only finalizer。
 
@@ -53,19 +53,26 @@ Task 9 已完成：新增 JavaFX Schema Diff 可视化工作流、稳定的分�
 - Provider 真实闭环：新增 PostgreSQL 与 Oracle 的真实 normalizer → snapshot → renderer → captured deployment request 集成测试，证明 RenderContext、确认键、expected target 与部署 request 全部使用 provider-domain canonical identity。
 - Target admission：目标列表只包含同 provider 的关系型连接，Redis 不进入；对象筛选仅显示 capability `supportedObjectTypes()`。
 - Async isolation：文件导出使用独立 generation/result token；新 compare、新 deploy、新 export 或 close 后的晚回调均不能覆盖当前 UI 状态。
-- Deployment terminal state：逐项呈现 deployment steps（含 `UNKNOWN_AFTER_CANCEL`）；`CANCELLED`、unknown/failed 结果与 exceptional cancellation 进入 FAILED，`BLOCKED_DRIFT` 进入 DRIFTED，且全部清除旧 request/diff/selection/rendered plan，必须重新 compare。
+- Deployment terminal state：逐项呈现 deployment steps（含 `UNKNOWN_AFTER_CANCEL`）；`CANCELLED`、unknown/failed 结果与 exceptional cancellation 进入 FAILED，`BLOCKED_DRIFT` 进入 DRIFTED；终态撤销 execution authority 与确认 token，必须重新 compare 后才能部署。
 - Destructive/manual UX：manual 与 blocked 行使用普通 TreeItem、没有 checkbox；破坏性差异首次 opt-in 必须逐项固定风险确认，拒绝保持未选，再次选择无需重复确认；部署 destructive 语义来自 selected differences，并兼容 renderer destructive flag。
 - Reservation-before-IO：AppShell 不再在 `openManagedTab` reservation 前调用 `store.loadAll()`；新的 `SchemaDiffManagedTabFactory` 只在 reservation callback 内读取连接树的不可变内存快照并构造真实 managed spec，构造失败仍保持 mandatory-abort cleanup ownership。
 - Stale details：重命名建议切换会同时清空 source/target definition、SQL preview 与 diagnostics，避免沿用上一个差异的详情。
 - 真实 JavaFX/managed seam：新增实际 `TreeItem`/`CheckBoxTreeItem` 行为测试，以及实际 `AbortBinding`、`ManagedTabSpec`、JavaFX `Node` 的 reservation/cleanup 测试；不再只依赖源码字符串断言。
 - 本 follow-up 未改 provider SQL、服务部署安全/状态语义或 live DB 行为；未新增 normalization SPI seam。
 
+## Re-review follow-up（2 Important）
+
+- Typed confirmation：PostgreSQL/Oracle 真实 normalizer 生成的 comparison key 含 provider domain 与 NUL，仅作为 `Confirmation` 内部 canonical identity；用户输入 token 精确采用 snapshot `QualifiedName.original()`，支持 quoted、mixed-case 与 embedded quote。固定 summary/prompt 只显示该 token，不显示 NUL/internal prefix；wrong case/name 拒绝。Approval 同时通过完整 `Confirmation` equality 绑定 canonical comparison key、selection version 与 plan digest，display token 不替代内部身份。
+- Failed review context：DRIFTED/CANCELLED/FAILED/UNKNOWN 与 exceptional cancellation 仅撤销 execution authority 并清除 selection confirmation token；request、diff tree、选择快照、source/target details、rendered SQL preview、diagnostics、steps/log 全部保留为只读审查上下文。终态树行不再有 checkbox，旧 approval 与直接 `setSelected` 均不能恢复部署；fresh compare 才清空/替换并重新授予 authority。
+- Deployment steps：changeId 只用于内部关联，UI 映射为 `ObjectType · object name` 可读摘要；未知 changeId 使用固定文案，不拼接 SQL、provider error 或内部 digest。树刷新会恢复先前选中的差异/rename row，因此终态详情与诊断不会因 root replacement 丢失。
+- TDD：canonical-NUL destructive e2e 先因缺少安全 token/prompt API 编译 RED，再 GREEN；终态 presentation-retention/只读 TreeItem/可读 steps 先因缺少 projection API 编译 RED，再 GREEN；真实 TreeView 测试随后暴露 Toolkit 未初始化，复用显式 JavaFX startup seam 后验证选择恢复行为 GREEN。
+
 ## 新鲜验证
 
-- Review focused：8 suites，49 tests，0 failures，0 errors，0 skipped。
-- Task 1–9 matrix：30 suites，265 tests，0 failures，0 errors，0 skipped。
-- Full：108 suites，692 tests，0 failures，0 errors，1 skipped。
-- `codegraph sync`：Already up to date；`codegraph status`：index is up to date（361 files / 9,708 nodes / 30,153 edges）。
+- Required focused：8 suites，52 tests，0 failures，0 errors，0 skipped。
+- Task 1–9 matrix：30 suites，268 tests，0 failures，0 errors，0 skipped。
+- Full：108 suites，695 tests，0 failures，0 errors，1 skipped。
+- `codegraph sync`：Already up to date；`codegraph status`：index is up to date（361 files / 9,732 nodes / 30,311 edges）；工作树 diff check 通过。
 - 未连接 live DB。
 - 未读取、修改、暂存或提交 `.testagent/`。
 
@@ -73,4 +80,6 @@ Task 9 已完成：新增 JavaFX Schema Diff 可视化工作流、稳定的分�
 
 初始独立提交：`54f9f40c9cdf5331614260be7ed69cf637daeaa1 feat: 添加 Schema Diff 可视化工作流`。
 
-Review follow-up 独立提交消息：`fix: 对齐 Schema Diff UI 规范化与生命周期`。最终 SHA 由完成回报提供；提交对象包含本报告，报告自身不能内嵌其最终对象 SHA。
+第一次 review follow-up：`2ea0a93de66072b8063513cac57b7e547ecd72d7 fix: 对齐 Schema Diff UI 规范化与生命周期`。
+
+Re-review follow-up 独立提交消息：`fix: 保留 Schema Diff 失败审查上下文`。最终 SHA 由完成回报提供；提交对象包含本报告，报告自身不能内嵌其最终对象 SHA。

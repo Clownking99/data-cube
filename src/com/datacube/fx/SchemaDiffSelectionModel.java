@@ -129,6 +129,10 @@ public final class SchemaDiffSelectionModel {
         return Optional.ofNullable(confirmationToken);
     }
 
+    synchronized void invalidateConfirmation() {
+        confirmationToken = null;
+    }
+
     public List<RenameSuggestion> renameSuggestions() {
         return basePlan.diff().renameSuggestions();
     }

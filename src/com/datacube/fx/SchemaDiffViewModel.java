@@ -12,6 +12,7 @@ import com.datacube.spi.model.ConnectionEnvironment;
 import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.schemadiff.AutomationLevel;
+import com.datacube.spi.schemadiff.QualifiedName;
 import com.datacube.spi.schemadiff.RenderContext;
 import com.datacube.spi.schemadiff.RenderedStatement;
 import com.datacube.spi.schemadiff.SchemaChangeRenderer;
@@ -64,6 +65,7 @@ public final class SchemaDiffViewModel {
     private boolean closed;
     private boolean providerMismatch;
     private boolean renderUnsupported;
+    private boolean executionAuthorityRevoked;
     private ActiveOperation activeOperation;
     private SchemaDiffRequest request;
     private SchemaDiffResult diff;
@@ -118,6 +120,7 @@ public final class SchemaDiffViewModel {
         renderedPlanDigest = "";
         deploymentResult = null;
         renderUnsupported = false;
+        executionAuthorityRevoked = false;
         selectionVersion++;
         state = State.LOADING;
         message = LOADING_MESSAGE;
@@ -142,7 +145,8 @@ public final class SchemaDiffViewModel {
 
     public synchronized boolean setSelected(
             String changeId, boolean selectedValue, boolean destructiveRiskAccepted) {
-        if (closed || activeOperation != null || selection == null) return false;
+        if (closed || activeOperation != null || selection == null
+                || state != State.READY || executionAuthorityRevoked) return false;
         boolean changed = selection.setSelected(
                 changeId, selectedValue, destructiveRiskAccepted);
         if (!changed) return false;
@@ -158,6 +162,7 @@ public final class SchemaDiffViewModel {
     public synchronized boolean requiresDestructiveConfirmation(
             String changeId, boolean selectedValue) {
         return !closed && activeOperation == null && selection != null
+                && state == State.READY && !executionAuthorityRevoked
                 && selection.requiresDestructiveConfirmation(changeId, selectedValue);
     }
 
@@ -170,10 +175,12 @@ public final class SchemaDiffViewModel {
                 == ConnectionEnvironment.PRODUCTION;
         boolean destructive = selection.hasDestructiveSelection()
                 || renderedStatements.stream().anyMatch(RenderedStatement::destructive);
+        String targetSchemaToken = schemaConfirmationToken(request.targetSchema());
+        if (targetSchemaToken == null) return Optional.empty();
         return Optional.of(new Confirmation(
                 selectionVersion,
                 request.targetConfig().name() + " [" + request.targetConfig().id() + "]",
-                request.targetSchema().original(),
+                targetSchemaToken,
                 request.targetSchema().comparisonKey(),
                 selection.selectedChangeIds().size(),
                 production,
@@ -188,7 +195,8 @@ public final class SchemaDiffViewModel {
         Confirmation current = confirmationRequest().orElse(null);
         if (current == null || !current.equals(approval.confirmation())) return false;
         if (current.destructive()
-                && !current.targetSchemaComparisonKey().equals(approval.typedSchemaComparisonKey())) {
+                && !current.targetSchemaConfirmationToken().equals(
+                        approval.typedSchemaConfirmationToken())) {
             return false;
         }
         exportGeneration++;
@@ -213,6 +221,7 @@ public final class SchemaDiffViewModel {
             if (!closed) {
                 state = State.FAILED;
                 message = DEPLOY_FAILED_MESSAGE;
+                revokeExecutionAuthorityLocked();
                 publishLocked();
             }
             return false;
@@ -238,7 +247,9 @@ public final class SchemaDiffViewModel {
         DeployBlockReason reason = deployBlockReasonLocked();
         int selectedCount = selection == null ? 0 : selection.selectedChangeIds().size();
         return new Snapshot(state, message, reason == DeployBlockReason.NONE, reason,
-                selectedCount, renderedStatements.size(), activeOperation != null, closed);
+                selectedCount, renderedStatements.size(), activeOperation != null, closed,
+                selection != null && (closed || state != State.READY
+                        || executionAuthorityRevoked));
     }
 
     public synchronized Optional<SchemaDiffSelectionModel> selectionModel() {
@@ -261,7 +272,8 @@ public final class SchemaDiffViewModel {
         if (deploymentResult == null) return List.of();
         return deploymentResult.steps().stream()
                 .map(step -> new DeploymentStepView(
-                        step.index(), step.changeId(), step.state()))
+                        step.index(), step.changeId(), deploymentStepSummary(step.changeId()),
+                        step.state()))
                 .toList();
     }
 
@@ -422,6 +434,17 @@ public final class SchemaDiffViewModel {
                 admittedRequest.targetConfig(), result.target().schema());
     }
 
+    private static String schemaConfirmationToken(QualifiedName schema) {
+        String token = Objects.requireNonNull(schema, "schema").original();
+        if (token.isBlank()) return null;
+        for (int offset = 0; offset < token.length();) {
+            int codePoint = token.codePointAt(offset);
+            if (Character.isISOControl(codePoint)) return null;
+            offset += Character.charCount(codePoint);
+        }
+        return token;
+    }
+
     private void runDeploy(
             SchemaDiffRequest admittedRequest,
             SchemaDiffResult admittedDiff,
@@ -446,13 +469,14 @@ public final class SchemaDiffViewModel {
                 boolean cancelled = control.cancellationRequested() || state == State.CANCELLING;
                 state = State.FAILED;
                 message = cancelled ? CANCELLED_MESSAGE : DEPLOY_FAILED_MESSAGE;
-                invalidatePlanLocked();
+                revokeExecutionAuthorityLocked();
                 publishLocked();
             }
         }
     }
 
     private void applyDeploymentResultLocked(SchemaDeploymentResult result) {
+        revokeExecutionAuthorityLocked();
         switch (result.state()) {
             case SUCCEEDED -> {
                 state = State.COMPLETED;
@@ -461,29 +485,45 @@ public final class SchemaDiffViewModel {
             case BLOCKED_DRIFT -> {
                 state = State.DRIFTED;
                 message = DRIFTED_MESSAGE;
-                invalidatePlanLocked();
             }
             case CANCELLED -> {
                 state = State.FAILED;
                 message = CANCELLED_MESSAGE;
-                invalidatePlanLocked();
             }
             default -> {
                 state = State.FAILED;
                 message = DEPLOY_FAILED_MESSAGE;
-                invalidatePlanLocked();
             }
         }
     }
 
-    private void invalidatePlanLocked() {
-        request = null;
-        diff = null;
-        selection = null;
-        renderedStatements = List.of();
-        renderedPlanDigest = "";
-        renderUnsupported = false;
-        selectionVersion++;
+    private void revokeExecutionAuthorityLocked() {
+        executionAuthorityRevoked = true;
+        if (selection != null) selection.invalidateConfirmation();
+    }
+
+    private String deploymentStepSummary(String changeId) {
+        if (selection == null) return "变更步骤";
+        try {
+            SchemaDiffSelectionModel.Entry entry = selection.entry(changeId);
+            return entry.change().object().type().name() + " · "
+                    + safeReviewLabel(entry.change().object().name().original());
+        } catch (IllegalArgumentException unknownChange) {
+            return "变更步骤";
+        }
+    }
+
+    private static String safeReviewLabel(String value) {
+        StringBuilder safe = new StringBuilder();
+        int count = 0;
+        for (int offset = 0; offset < value.length() && count < 120;) {
+            int codePoint = value.codePointAt(offset);
+            safe.appendCodePoint(Character.isISOControl(codePoint) ? 0xfffd : codePoint);
+            offset += Character.charCount(codePoint);
+            count++;
+        }
+        if (count == 120 && safe.length() < value.length()) safe.append('…');
+        return safe.toString();
     }
 
     private void renderSelectionLocked() {
@@ -628,7 +668,8 @@ public final class SchemaDiffViewModel {
             int selectedChangeCount,
             int statementCount,
             boolean activeWork,
-            boolean closed) {
+            boolean closed,
+            boolean selectionReadOnly) {
         public Snapshot {
             state = Objects.requireNonNull(state, "state");
             message = Objects.requireNonNull(message, "message");
@@ -640,7 +681,8 @@ public final class SchemaDiffViewModel {
             return "Snapshot[state=" + state + ", deployEnabled=" + deployEnabled
                     + ", selectedChangeCount=" + selectedChangeCount
                     + ", statementCount=" + statementCount
-                    + ", activeWork=" + activeWork + ", closed=" + closed + "]";
+                    + ", activeWork=" + activeWork + ", closed=" + closed
+                    + ", selectionReadOnly=" + selectionReadOnly + "]";
         }
     }
 
@@ -662,6 +704,11 @@ public final class SchemaDiffViewModel {
             planDigest = Objects.requireNonNull(planDigest, "planDigest");
         }
 
+        /** Exact, keyboard-safe snapshot display name used only for the human confirmation step. */
+        public String targetSchemaConfirmationToken() {
+            return targetSchema;
+        }
+
         @Override
         public String toString() {
             return "Confirmation[selectedChangeCount=" + selectedChangeCount
@@ -678,10 +725,11 @@ public final class SchemaDiffViewModel {
     }
 
     public record DeploymentStepView(
-            int index, String changeId, SchemaDeploymentState state) {
+            int index, String changeId, String changeSummary, SchemaDeploymentState state) {
         public DeploymentStepView {
             if (index < 1) throw new IllegalArgumentException("Deployment step index is invalid");
             changeId = Objects.requireNonNull(changeId, "changeId");
+            changeSummary = Objects.requireNonNull(changeSummary, "changeSummary");
             state = Objects.requireNonNull(state, "state");
         }
 
@@ -694,7 +742,7 @@ public final class SchemaDiffViewModel {
     public record Approval(
             Confirmation confirmation,
             boolean firstConfirmationAccepted,
-            String typedSchemaComparisonKey) {
+            String typedSchemaConfirmationToken) {
         public Approval {
             confirmation = Objects.requireNonNull(confirmation, "confirmation");
         }
@@ -703,7 +751,8 @@ public final class SchemaDiffViewModel {
         public String toString() {
             return "Approval[firstConfirmationAccepted=" + firstConfirmationAccepted
                     + ", typedSchemaKeyPresent="
-                    + (typedSchemaComparisonKey != null && !typedSchemaComparisonKey.isBlank()) + "]";
+                    + (typedSchemaConfirmationToken != null
+                    && !typedSchemaConfirmationToken.isBlank()) + "]";
         }
     }
 

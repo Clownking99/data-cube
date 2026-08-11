@@ -10,8 +10,11 @@ import com.datacube.spi.schemadiff.ObjectType;
 import com.datacube.spi.schemadiff.QualifiedName;
 import com.datacube.spi.schemadiff.RiskLevel;
 import com.datacube.spi.schemadiff.SchemaChange;
+import javafx.application.Platform;
 import javafx.scene.control.CheckBoxTreeItem;
 import javafx.scene.control.TreeItem;
+import javafx.scene.control.TreeView;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -20,12 +23,25 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SchemaDiffPaneContractTest {
+
+    @BeforeAll
+    static void startFxToolkit() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        try {
+            Platform.startup(started::countDown);
+        } catch (IllegalStateException alreadyStarted) {
+            started.countDown();
+        }
+        assertTrue(started.await(5, TimeUnit.SECONDS));
+    }
 
     @Test
     void targetChoicesContainOnlyTheSourceProviderAndNeverRedis() {
@@ -63,15 +79,21 @@ class SchemaDiffPaneContractTest {
 
     @Test
     void deploymentStepsAreRenderedIndividuallyInIndexOrderIncludingUnknownAfterCancel() {
+        String firstId = "chg:" + "a".repeat(64);
+        String secondId = "chg:" + "b".repeat(64);
         String text = SchemaDiffPane.deploymentStepText(List.of(
                 new SchemaDiffViewModel.DeploymentStepView(
-                        2, "chg:" + "b".repeat(64), SchemaDeploymentState.UNKNOWN_AFTER_CANCEL),
+                        2, secondId, "VIEW · mixed_name", SchemaDeploymentState.UNKNOWN_AFTER_CANCEL),
                 new SchemaDiffViewModel.DeploymentStepView(
-                        1, "chg:" + "a".repeat(64), SchemaDeploymentState.SUCCEEDED)));
+                        1, firstId, "TABLE · audit_log", SchemaDeploymentState.SUCCEEDED)));
 
         assertTrue(text.indexOf("步骤 1") < text.indexOf("步骤 2"));
+        assertTrue(text.contains("TABLE · audit_log"));
+        assertTrue(text.contains("VIEW · mixed_name"));
         assertTrue(text.contains("SUCCEEDED"));
         assertTrue(text.contains("UNKNOWN_AFTER_CANCEL"));
+        assertFalse(text.contains(firstId));
+        assertFalse(text.contains(secondId));
         assertFalse(text.contains("SELECT "));
         assertFalse(text.contains("DROP "));
     }
@@ -97,10 +119,39 @@ class SchemaDiffPaneContractTest {
         TreeItem<?> selectableItem = SchemaDiffPane.changeTreeItem(selectable);
         TreeItem<?> blockedItem = SchemaDiffPane.changeTreeItem(blocked);
         TreeItem<?> manualItem = SchemaDiffPane.changeTreeItem(manual);
+        TreeItem<?> failedReviewItem = SchemaDiffPane.changeTreeItem(selectable, true);
 
         assertTrue(selectableItem instanceof CheckBoxTreeItem<?>);
         assertFalse(blockedItem instanceof CheckBoxTreeItem<?>);
         assertFalse(manualItem instanceof CheckBoxTreeItem<?>);
+        assertFalse(failedReviewItem instanceof CheckBoxTreeItem<?>,
+                "terminal deployment review preserves the row without restoring edit authority");
+    }
+
+    @Test
+    void terminalTreeRefreshRestoresTheSelectedReviewRowForDetailsAndDiagnostics() {
+        SchemaChange change = new SchemaChange(
+                "chg:" + "f".repeat(64), ChangeKind.CREATE,
+                new ObjectKey(ObjectType.TABLE,
+                        new QualifiedName("review_table", "review_table", false), ""),
+                null, null, null, RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC,
+                true, java.util.Set.of(), "fixed diagnostic");
+        SchemaDiffSelectionModel.Entry entry =
+                new SchemaDiffSelectionModel.Entry(change, true, false, true, true);
+        SchemaDiffPane.DisplayRow selected = SchemaDiffPane.DisplayRow.change(entry);
+        TreeItem<SchemaDiffPane.DisplayRow> oldRoot =
+                new TreeItem<>(SchemaDiffPane.DisplayRow.root());
+        TreeItem<SchemaDiffPane.DisplayRow> oldItem = new TreeItem<>(selected);
+        oldRoot.getChildren().add(oldItem);
+        TreeView<SchemaDiffPane.DisplayRow> tree = new TreeView<>(oldRoot);
+        tree.getSelectionModel().select(oldItem);
+        TreeItem<SchemaDiffPane.DisplayRow> refreshedRoot =
+                new TreeItem<>(SchemaDiffPane.DisplayRow.root());
+        refreshedRoot.getChildren().add(new TreeItem<>(selected));
+
+        SchemaDiffPane.replaceTreePreservingSelection(tree, refreshedRoot);
+
+        assertEquals(selected, tree.getSelectionModel().getSelectedItem().getValue());
     }
 
     @Test

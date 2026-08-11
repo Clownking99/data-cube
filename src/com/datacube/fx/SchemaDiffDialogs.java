@@ -43,9 +43,15 @@ public final class SchemaDiffDialogs {
         TextInputDialog dialog = new TextInputDialog();
         if (owner != null) dialog.initOwner(owner);
         dialog.setTitle("确认破坏性 Schema 变更");
-        dialog.setHeaderText("请输入目标 Schema 比较键以继续");
-        dialog.setContentText("精确输入: " + confirmation.targetSchemaComparisonKey());
+        dialog.setHeaderText("请输入目标 Schema 名称以继续");
+        dialog.setContentText(destructiveConfirmationPrompt(confirmation));
         return dialog.showAndWait();
+    }
+
+    static String destructiveConfirmationPrompt(
+            SchemaDiffViewModel.Confirmation confirmation) {
+        Objects.requireNonNull(confirmation, "confirmation");
+        return "精确输入: " + confirmation.targetSchemaConfirmationToken();
     }
 
     public static boolean confirmDestructiveSelection(

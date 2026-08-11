@@ -37,6 +37,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SchemaDiffCanonicalIdentityIntegrationTest {
@@ -56,6 +57,26 @@ class SchemaDiffCanonicalIdentityIntegrationTest {
     void oracleSnapshotCanonicalIdentityFlowsThroughRealRendererIntoDeploymentRequest()
             throws Exception {
         assertCanonicalFlow(
+                DbType.ORACLE,
+                OracleSchemaIdentifierNormalizer::schema,
+                OracleSchemaIdentifierNormalizer::object,
+                new OracleSchemaChangeRenderer());
+    }
+
+    @Test
+    void postgresDestructiveConfirmationUsesExactKeyboardSafeSnapshotDisplayToken()
+            throws Exception {
+        assertDestructiveConfirmationToken(
+                DbType.POSTGRESQL,
+                PgSchemaIdentifierNormalizer::schema,
+                PgSchemaIdentifierNormalizer::object,
+                new PgSchemaChangeRenderer());
+    }
+
+    @Test
+    void oracleDestructiveConfirmationUsesExactKeyboardSafeSnapshotDisplayToken()
+            throws Exception {
+        assertDestructiveConfirmationToken(
                 DbType.ORACLE,
                 OracleSchemaIdentifierNormalizer::schema,
                 OracleSchemaIdentifierNormalizer::object,
@@ -153,6 +174,95 @@ class SchemaDiffCanonicalIdentityIntegrationTest {
             assertEquals(targetSchema, deployedExpected.get().schema());
             assertTrue(renderedSql.get().contains("TargetOwner"));
             assertTrue(renderedSql.get().contains("OrderSeq"));
+        } finally {
+            viewModel.closeResources();
+        }
+    }
+
+    private static void assertDestructiveConfirmationToken(
+            DbType type,
+            Function<String, QualifiedName> schemaNormalizer,
+            ObjectNormalizer objectNormalizer,
+            SchemaChangeRenderer renderer) throws Exception {
+        QualifiedName sourceSchema = schemaNormalizer.apply("SourceOwner");
+        QualifiedName targetSchema = schemaNormalizer.apply("Target\"Owner");
+        ObjectKey sequenceKey = new ObjectKey(
+                ObjectType.SEQUENCE, objectNormalizer.normalize("Target\"Owner", "OldSequence"), "");
+        SequenceDefinition sequence = type == DbType.ORACLE
+                ? new SequenceDefinition(sequenceKey, "1", "1", "1", "999", false, 20,
+                        Set.of(), Map.of("oracle.order", "NOORDER", "oracle.startValueKnown", "true"))
+                : new SequenceDefinition(
+                        sequenceKey, "1", "1", "1", "999", false, 20, Set.of());
+        SchemaChange destructive = new SchemaChange(
+                CHANGE_ID, ChangeKind.DROP, sequenceKey, null, sequence, null,
+                RiskLevel.CRITICAL, AutomationLevel.DESTRUCTIVE_OPT_IN,
+                false, Set.of(), "fixed destructive review");
+        SchemaDiffResult diff = new SchemaDiffResult(
+                snapshot(type, "source", sourceSchema, Map.of(), "source-fp"),
+                snapshot(type, "target", targetSchema, Map.of(sequenceKey, sequence), "target-fp"),
+                List.of(), List.of());
+        AtomicReference<SchemaDiffRequest> deployedRequest = new AtomicReference<>();
+        SchemaDiffViewModel viewModel = new SchemaDiffViewModel(
+                (request, control) -> CompletableFuture.completedFuture(diff),
+                (request, expected, statements, control) -> {
+                    deployedRequest.set(request);
+                    return CompletableFuture.completedFuture(new SchemaDeploymentResult(
+                            SchemaDeploymentState.SUCCEEDED, List.of(), "done"));
+                },
+                result -> new SchemaChangePlan(
+                        result, List.of(destructive), Set.of(), Set.of(), "plan"),
+                new SchemaChangePlanner(), renderer,
+                Executors.newThreadPerTaskExecutor(
+                        Thread.ofVirtual().name("schema-diff-confirmation-token-test-", 0).factory()),
+                Runnable::run, () -> {});
+        try {
+            assertTrue(targetSchema.comparisonKey().indexOf('\0') >= 0);
+            assertTrue(viewModel.compare(new SchemaDiffRequest(
+                    config("source", type), new QualifiedName("SourceOwner", "ui-source", false),
+                    config("target", type), new QualifiedName("TargetOwner", "ui-target", false))));
+            awaitState(viewModel, SchemaDiffViewModel.State.READY);
+            assertTrue(viewModel.setSelected(CHANGE_ID, true, true));
+
+            SchemaDiffViewModel.Confirmation confirmation =
+                    viewModel.confirmationRequest().orElseThrow();
+            String prompt = SchemaDiffDialogs.destructiveConfirmationPrompt(confirmation);
+            assertEquals(targetSchema.original(), confirmation.targetSchemaConfirmationToken());
+            assertEquals(targetSchema.comparisonKey(), confirmation.targetSchemaComparisonKey(),
+                    "canonical identity remains bound internally");
+            assertTrue(prompt.contains(targetSchema.original()));
+            assertFalse(prompt.contains(targetSchema.comparisonKey()));
+            assertFalse(prompt.contains("schema-v1"));
+            assertFalse(prompt.contains("\0"));
+            String summary = SchemaDiffDialogs.confirmationSummary(confirmation);
+            assertFalse(summary.contains(targetSchema.comparisonKey()));
+            assertFalse(summary.contains("schema-v1"));
+            assertFalse(summary.contains("\0"));
+            SchemaDiffViewModel.Confirmation wrongCanonicalIdentity =
+                    new SchemaDiffViewModel.Confirmation(
+                            confirmation.selectionVersion(), confirmation.targetIdentity(),
+                            confirmation.targetSchema(), "wrong-canonical-identity",
+                            confirmation.selectedChangeCount(), confirmation.production(),
+                            confirmation.oracleImplicitCommitWarning(), confirmation.destructive(),
+                            confirmation.planDigest());
+            assertFalse(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                    wrongCanonicalIdentity, true, targetSchema.original())));
+            SchemaDiffViewModel.Confirmation wrongSelectionDigest =
+                    new SchemaDiffViewModel.Confirmation(
+                            confirmation.selectionVersion(), confirmation.targetIdentity(),
+                            confirmation.targetSchema(), confirmation.targetSchemaComparisonKey(),
+                            confirmation.selectedChangeCount(), confirmation.production(),
+                            confirmation.oracleImplicitCommitWarning(), confirmation.destructive(),
+                            "wrong-selection-digest");
+            assertFalse(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                    wrongSelectionDigest, true, targetSchema.original())));
+            assertFalse(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                    confirmation, true, targetSchema.original().toLowerCase())));
+            assertFalse(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                    confirmation, true, "TargetOwner")));
+            assertTrue(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                    confirmation, true, targetSchema.original())));
+            awaitState(viewModel, SchemaDiffViewModel.State.COMPLETED);
+            assertEquals(targetSchema, deployedRequest.get().targetSchema());
         } finally {
             viewModel.closeResources();
         }

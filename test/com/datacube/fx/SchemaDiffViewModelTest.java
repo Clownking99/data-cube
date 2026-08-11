@@ -378,7 +378,7 @@ class SchemaDiffViewModelTest {
     }
 
     @Test
-    void cancelledUnknownFailedAndDriftedDeploymentsExposeStepsAndInvalidateTheOldPlan()
+    void cancelledUnknownFailedAndDriftedDeploymentsRetainReadOnlyReviewUntilFreshCompare()
             throws Exception {
         for (SchemaDeploymentState terminal : List.of(
                 SchemaDeploymentState.CANCELLED,
@@ -395,6 +395,8 @@ class SchemaDiffViewModelTest {
                 awaitState(viewModel, SchemaDiffViewModel.State.READY);
                 SchemaDiffViewModel.Confirmation confirmation =
                         viewModel.confirmationRequest().orElseThrow();
+                SchemaDiffResult presentedDiff = viewModel.currentDiff().orElseThrow();
+                List<RenderedStatement> presentedSql = viewModel.renderedStatements();
                 assertTrue(viewModel.deploy(new SchemaDiffViewModel.Approval(
                         confirmation, true, null)));
                 deployed.complete(new SchemaDeploymentResult(
@@ -405,12 +407,25 @@ class SchemaDiffViewModelTest {
                 awaitState(viewModel, terminal == SchemaDeploymentState.BLOCKED_DRIFT
                         ? SchemaDiffViewModel.State.DRIFTED : SchemaDiffViewModel.State.FAILED);
                 assertEquals(List.of(new SchemaDiffViewModel.DeploymentStepView(
-                                1, SAFE_ID, terminal)),
+                                1, SAFE_ID, "TABLE · table", terminal)),
                         viewModel.deploymentSteps());
-                assertTrue(viewModel.selectionModel().isEmpty(), terminal.name());
-                assertTrue(viewModel.renderedStatements().isEmpty(), terminal.name());
+                assertEquals(presentedDiff, viewModel.currentDiff().orElseThrow(), terminal.name());
+                assertEquals(presentedSql, viewModel.renderedStatements(), terminal.name());
+                assertTrue(viewModel.selectionModel().orElseThrow().entry(SAFE_ID).selected(),
+                        terminal.name());
+                assertTrue(viewModel.selectionModel().orElseThrow().confirmationToken().isEmpty(),
+                        terminal.name());
                 assertTrue(viewModel.confirmationRequest().isEmpty(), terminal.name());
                 assertFalse(viewModel.snapshot().deployEnabled(), terminal.name());
+                assertTrue(viewModel.snapshot().selectionReadOnly(), terminal.name());
+                assertFalse(viewModel.setSelected(SAFE_ID, false), terminal.name());
+                assertFalse(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                        confirmation, true, null)), terminal.name());
+
+                assertTrue(viewModel.compare(request(DbType.POSTGRESQL, false)), terminal.name());
+                awaitState(viewModel, SchemaDiffViewModel.State.READY);
+                assertFalse(viewModel.snapshot().selectionReadOnly(), terminal.name());
+                assertTrue(viewModel.snapshot().deployEnabled(), terminal.name());
             } finally {
                 viewModel.closeResources();
             }
@@ -418,7 +433,7 @@ class SchemaDiffViewModelTest {
     }
 
     @Test
-    void exceptionallyCancelledDeploymentAlsoInvalidatesTheOldPlan() throws Exception {
+    void exceptionallyCancelledDeploymentRetainsReadOnlyReviewContext() throws Exception {
         CompletableFuture<SchemaDeploymentResult> deployed = new CompletableFuture<>();
         AtomicReference<SchemaDeploymentControl> control = new AtomicReference<>();
         SchemaDiffViewModel viewModel = viewModel(
@@ -432,6 +447,8 @@ class SchemaDiffViewModelTest {
             awaitState(viewModel, SchemaDiffViewModel.State.READY);
             SchemaDiffViewModel.Confirmation confirmation =
                     viewModel.confirmationRequest().orElseThrow();
+            SchemaDiffResult presentedDiff = viewModel.currentDiff().orElseThrow();
+            List<RenderedStatement> presentedSql = viewModel.renderedStatements();
             assertTrue(viewModel.deploy(new SchemaDiffViewModel.Approval(
                     confirmation, true, null)));
             await(() -> control.get() != null);
@@ -441,9 +458,14 @@ class SchemaDiffViewModelTest {
 
             awaitState(viewModel, SchemaDiffViewModel.State.FAILED);
             assertEquals("当前任务已取消", viewModel.snapshot().message());
-            assertTrue(viewModel.selectionModel().isEmpty());
+            assertEquals(presentedDiff, viewModel.currentDiff().orElseThrow());
+            assertEquals(presentedSql, viewModel.renderedStatements());
+            assertTrue(viewModel.selectionModel().orElseThrow().entry(SAFE_ID).selected());
+            assertTrue(viewModel.selectionModel().orElseThrow().confirmationToken().isEmpty());
             assertTrue(viewModel.confirmationRequest().isEmpty());
             assertFalse(viewModel.snapshot().deployEnabled());
+            assertTrue(viewModel.snapshot().selectionReadOnly());
+            assertFalse(viewModel.setSelected(SAFE_ID, false));
         } finally {
             deployed.completeExceptionally(new CancellationException());
             viewModel.closeResources();

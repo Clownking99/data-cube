@@ -317,12 +317,16 @@ public final class SchemaDiffPane implements SchemaDiffManagedTabFactory.Managed
         deployButton.setDisable(!snapshot.deployEnabled());
         exportButton.setDisable(snapshot.activeWork() || snapshot.statementCount() == 0 || snapshot.closed());
         cancelButton.setDisable(!snapshot.activeWork() || snapshot.closed());
-        refreshTree();
+        refreshTree(snapshot.selectionReadOnly());
         sqlPreview.setText(viewModel.exportSelectedScript());
         deploymentSteps.setText(deploymentStepText(viewModel.deploymentSteps()));
     }
 
     private void refreshTree() {
+        refreshTree(viewModel.snapshot().selectionReadOnly());
+    }
+
+    private void refreshTree(boolean selectionReadOnly) {
         if (refreshingTree) return;
         refreshingTree = true;
         try {
@@ -337,7 +341,7 @@ public final class SchemaDiffPane implements SchemaDiffManagedTabFactory.Managed
                     TreeItem<DisplayRow> groupItem = new TreeItem<>(DisplayRow.group(group.objectType()));
                     groupItem.setExpanded(true);
                     for (SchemaDiffSelectionModel.Entry entry : group.entries()) {
-                        TreeItem<DisplayRow> item = changeTreeItem(entry);
+                        TreeItem<DisplayRow> item = changeTreeItem(entry, selectionReadOnly);
                         if (item instanceof CheckBoxTreeItem<?> selectableItem) {
                             @SuppressWarnings("unchecked")
                             CheckBoxTreeItem<DisplayRow> checkBox =
@@ -374,7 +378,7 @@ public final class SchemaDiffPane implements SchemaDiffManagedTabFactory.Managed
                     rootItem.getChildren().add(renameGroup);
                 }
             });
-            differenceTree.setRoot(rootItem);
+            replaceTreePreservingSelection(differenceTree, rootItem);
         } finally {
             refreshingTree = false;
         }
@@ -494,17 +498,53 @@ public final class SchemaDiffPane implements SchemaDiffManagedTabFactory.Managed
         return steps.stream()
                 .sorted(Comparator.comparingInt(SchemaDiffViewModel.DeploymentStepView::index))
                 .map(step -> "步骤 " + step.index() + " · " + step.state()
-                        + " · " + step.changeId())
+                        + " · " + step.changeSummary())
                 .reduce((left, right) -> left + "\n" + right)
                 .orElse("");
     }
 
     static TreeItem<DisplayRow> changeTreeItem(SchemaDiffSelectionModel.Entry entry) {
+        return changeTreeItem(entry, false);
+    }
+
+    static TreeItem<DisplayRow> changeTreeItem(
+            SchemaDiffSelectionModel.Entry entry, boolean selectionReadOnly) {
         DisplayRow row = DisplayRow.change(Objects.requireNonNull(entry, "entry"));
-        if (!entry.selectable()) return new TreeItem<>(row);
+        if (selectionReadOnly || !entry.selectable()) return new TreeItem<>(row);
         CheckBoxTreeItem<DisplayRow> item = new CheckBoxTreeItem<>(row);
         item.setSelected(entry.selected());
         return item;
+    }
+
+    static void replaceTreePreservingSelection(
+            TreeView<DisplayRow> tree, TreeItem<DisplayRow> replacementRoot) {
+        Objects.requireNonNull(tree, "tree");
+        Objects.requireNonNull(replacementRoot, "replacementRoot");
+        TreeItem<DisplayRow> selectedItem = tree.getSelectionModel().getSelectedItem();
+        DisplayRow selected = selectedItem == null ? null : selectedItem.getValue();
+        tree.setRoot(replacementRoot);
+        TreeItem<DisplayRow> restored = findReviewRow(replacementRoot, selected);
+        if (restored != null) tree.getSelectionModel().select(restored);
+    }
+
+    private static TreeItem<DisplayRow> findReviewRow(
+            TreeItem<DisplayRow> item, DisplayRow selected) {
+        if (selected == null) return null;
+        if (sameReviewRow(item.getValue(), selected)) return item;
+        for (TreeItem<DisplayRow> child : item.getChildren()) {
+            TreeItem<DisplayRow> found = findReviewRow(child, selected);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static boolean sameReviewRow(DisplayRow candidate, DisplayRow selected) {
+        if (candidate == null) return false;
+        if (candidate.entry() != null && selected.entry() != null) {
+            return candidate.entry().change().id().equals(selected.entry().change().id());
+        }
+        return candidate.renameSuggestion() != null
+                && candidate.renameSuggestion().equals(selected.renameSuggestion());
     }
 
     static DetailContent renameSuggestionDetails() {
