@@ -164,6 +164,9 @@ class SnapshotFingerprintTest {
                 sequence.minimumValue(), sequence.maximumValue(), sequence.cycle(), 21, sequence.dependencies()), definition)));
         assertChanged(baseline, fingerprint(replace(fixture, table, new SequenceDefinition(sequence.key(), sequence.startValue(), sequence.incrementBy(),
                 sequence.minimumValue(), sequence.maximumValue(), sequence.cycle(), sequence.cacheSize(), Set.of(key(ObjectType.TABLE, "changed_dependency", ""))), definition)));
+        assertChanged(baseline, fingerprint(replace(fixture, table, new SequenceDefinition(sequence.key(), sequence.startValue(), sequence.incrementBy(),
+                sequence.minimumValue(), sequence.maximumValue(), sequence.cycle(), sequence.cacheSize(), sequence.dependencies(),
+                Map.of("oracle.order", "ORDER", "oracle.startValueKnown", "false")), definition)));
         assertChanged(baseline, fingerprint(replace(fixture, table, sequence, new DefinitionObject(key(ObjectType.VIEW, "changed_view", ""),
                 definition.normalizedDefinition(), definition.originalDefinition(), definition.dependencies(), definition.confidence()))));
         assertChanged(baseline, fingerprint(replace(fixture, table, sequence, new DefinitionObject(definition.key(), "select 2", definition.originalDefinition(),

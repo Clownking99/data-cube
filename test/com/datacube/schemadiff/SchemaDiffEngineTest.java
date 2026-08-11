@@ -214,9 +214,9 @@ class SchemaDiffEngineTest {
         ObjectKey sequenceKey = key(ObjectType.SEQUENCE, "orders_seq");
         ObjectKey dependency = key(ObjectType.TABLE, "orders");
         SequenceDefinition source = new SequenceDefinition(sequenceKey, "1", "1", "1", "99", false, 20,
-                Set.of(dependency));
+                Set.of(dependency), Map.of("oracle.order", "ORDER"));
         SequenceDefinition target = new SequenceDefinition(sequenceKey, "10", "2", "0", "999", true, 50,
-                Set.of());
+                Set.of(), Map.of("oracle.order", "NOORDER"));
 
         SchemaDifference difference = only(engine.compare(
                 snapshot(DbType.POSTGRESQL, complete(), source),
@@ -224,7 +224,7 @@ class SchemaDiffEngineTest {
 
         assertEquals(DifferenceKind.MODIFIED, difference.kind());
         assertEquals(Set.of("startValue", "incrementBy", "minimumValue", "maximumValue", "cycle", "cacheSize",
-                        "dependencies"),
+                        "providerExtensions", "dependencies"),
                 difference.properties().stream().map(PropertyDifference::path).collect(java.util.stream.Collectors.toSet()));
         assertEquals(RiskLevel.HIGH, difference.risk());
         assertEquals(AutomationLevel.DESTRUCTIVE_OPT_IN, difference.automation());

@@ -67,6 +67,10 @@ public final class SnapshotFingerprint {
             writer.string(sequence.maximumValue());
             writer.bool(sequence.cycle());
             writer.integer(sequence.cacheSize());
+            writer.map(new TreeMap<>(sequence.providerExtensions()), (key, value) -> {
+                writer.string(key);
+                writer.string(value);
+            });
             writer.keys(sequence.dependencies());
         } else if (object instanceof DefinitionObject definition) {
             writer.string("definition");

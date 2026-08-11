@@ -237,6 +237,8 @@ public final class SchemaDiffEngine {
         addIfDifferent(properties, "maximumValue", source.maximumValue(), target.maximumValue());
         addIfDifferent(properties, "cycle", source.cycle(), target.cycle());
         addIfDifferent(properties, "cacheSize", source.cacheSize(), target.cacheSize());
+        addIfDifferent(properties, "providerExtensions",
+                source.providerExtensions(), target.providerExtensions());
         addIfDifferent(properties, "dependencies", source.dependencies(), target.dependencies());
         return new Comparison(properties, true);
     }
@@ -334,6 +336,7 @@ public final class SchemaDiffEngine {
                     && Objects.equals(sourceSequence.maximumValue(), targetSequence.maximumValue())
                     && sourceSequence.cycle() == targetSequence.cycle()
                     && Objects.equals(sourceSequence.cacheSize(), targetSequence.cacheSize())
+                    && Objects.equals(sourceSequence.providerExtensions(), targetSequence.providerExtensions())
                     && withoutSelf(sourceSequence.dependencies(), sourceSequence.key())
                     .equals(withoutSelf(targetSequence.dependencies(), targetSequence.key()));
         }

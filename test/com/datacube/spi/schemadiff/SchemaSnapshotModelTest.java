@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -50,6 +51,24 @@ class SchemaSnapshotModelTest {
         assertThrows(UnsupportedOperationException.class, () -> type.providerExtensions().put("x", "y"));
         assertThrows(UnsupportedOperationException.class, () -> snapshot.objects().clear());
         assertThrows(UnsupportedOperationException.class, () -> completeness.unavailableScopes().put(ObjectType.TABLE, "tables"));
+    }
+
+    @Test
+    void sequenceProviderExtensionsAreDefensivelyCopiedWithLegacyConstructorCompatibility() {
+        ObjectKey key = key(ObjectType.SEQUENCE, "orders_seq", "");
+        Map<String, String> extensions = new LinkedHashMap<>(Map.of(
+                "oracle.order", "ORDER", "oracle.startValueKnown", "false"));
+        SequenceDefinition sequence = new SequenceDefinition(
+                key, null, "1", "1", "999", false, 20, Set.of(), extensions);
+        SequenceDefinition legacy = new SequenceDefinition(
+                key, "1", "1", "1", "999", false, 20, Set.of());
+
+        extensions.put("oracle.order", "NOORDER");
+
+        assertEquals("ORDER", sequence.providerExtensions().get("oracle.order"));
+        assertEquals(Map.of(), legacy.providerExtensions());
+        assertThrows(UnsupportedOperationException.class,
+                () -> sequence.providerExtensions().put("x", "y"));
     }
 
     @Test

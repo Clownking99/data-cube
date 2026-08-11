@@ -1,0 +1,734 @@
+package com.datacube.provider.oracle;
+
+import com.datacube.spi.SqlExecutionControl;
+import com.datacube.spi.SqlExecutionOptions;
+import com.datacube.spi.schemadiff.CanonicalDataType;
+import com.datacube.spi.schemadiff.ColumnDefinition;
+import com.datacube.spi.schemadiff.ConstraintDefinition;
+import com.datacube.spi.schemadiff.ConstraintKind;
+import com.datacube.spi.schemadiff.DefinitionConfidence;
+import com.datacube.spi.schemadiff.DefinitionObject;
+import com.datacube.spi.schemadiff.IndexDefinition;
+import com.datacube.spi.schemadiff.ObjectKey;
+import com.datacube.spi.schemadiff.ObjectType;
+import com.datacube.spi.schemadiff.SchemaSnapshot;
+import com.datacube.spi.schemadiff.SequenceDefinition;
+import com.datacube.spi.schemadiff.SnapshotCompleteness;
+import com.datacube.spi.schemadiff.TableDefinition;
+import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Proxy;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class OracleSchemaSnapshotReaderTest {
+    @Test
+    void readsFullOracleColumnTypeDefaultIdentityVirtualAndCommentMatrix() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("Sales")
+                .rows("tables", row("table_name", "Order\"Line"))
+                .rows("columns",
+                        column("Order\"Line", "CREATED_AT", 5, "DATE", null, null, null,
+                                null, null, null, "NO", "NO", "NO", null, null),
+                        column("Order\"Line", "ID", 1, "NUMBER", 12, -2, null,
+                                null, null, null, "NO", "NO", "YES", "ALWAYS", "ISEQ$$_1.NEXTVAL"),
+                        column("Order\"Line", "CODE", 2, "VARCHAR2", null, null, 40L,
+                                "C", null, null, "NO", "YES", "NO", null, "'new'"),
+                        column("Order\"Line", "RAW_PAYLOAD", 3, "RAW", null, null, 16L,
+                                null, null, null, "NO", "NO", "NO", null, null),
+                        column("Order\"Line", "EVENT_TIME", 4, "TIMESTAMP(6) WITH TIME ZONE",
+                                null, 6, null, null, null, null, "NO", "NO", "NO", null, null),
+                        column("Order\"Line", "LOCAL_TIME", 6, "TIMESTAMP(3) WITH LOCAL TIME ZONE",
+                                null, 3, null, null, null, null, "NO", "NO", "NO", null, null),
+                        column("Order\"Line", "DURATION", 7, "INTERVAL DAY(2) TO SECOND(6)",
+                                null, 6, null, null, null, null, "NO", "NO", "NO", null, null),
+                        column("Order\"Line", "ADDRESS", 8, "ADDRESS_T", null, null, null,
+                                null, "Sales", null, "NO", "NO", "NO", null, null),
+                        column("Order\"Line", "TOTAL", 9, "NUMBER", 18, 2, null,
+                                null, null, null, "YES", "NO", "NO", null, "AMOUNT * 2"),
+                        column("Order\"Line", "AMOUNT", 10, "NUMBER", 18, 2, null,
+                                null, null, null, "NO", "YES", "NO", null, "0"),
+                        row("table_name", "Order\"Line", "column_name", "SYS_NC00001$",
+                                "column_id", 11, "data_type", "VARCHAR2", "data_length", 20L,
+                                "char_length", 20L, "char_used", "B", "data_precision", null,
+                                "data_scale", null, "data_type_owner", null, "data_type_mod", null,
+                                "nullable", "Y", "identity_column", "NO", "generation_type", null,
+                                "default_on_null", "NO", "virtual_column", "YES",
+                                "invisible_column", "NO", "hidden_column", "YES",
+                                "user_generated", "NO", "comments", "must not leak",
+                                "data_default", "secret hidden default"));
+
+        SchemaSnapshot snapshot = new OracleSchemaSnapshotReader(jdbc.connection()).read(
+                "oracle-connection", OracleSchemaIdentifierNormalizer.schema("Sales"),
+                new SqlExecutionOptions(0, 9, new SqlExecutionControl()));
+
+        TableDefinition table = assertInstanceOf(TableDefinition.class,
+                snapshot.objects().get(key(ObjectType.TABLE, "Sales", "Order\"Line", "")));
+        assertEquals(List.of("\"ID\"", "\"CODE\"", "\"RAW_PAYLOAD\"", "\"EVENT_TIME\"",
+                        "\"CREATED_AT\"", "\"LOCAL_TIME\"", "\"DURATION\"", "\"ADDRESS\"",
+                        "\"TOTAL\"", "\"AMOUNT\""),
+                table.columns().stream().map(column -> column.name().original()).toList());
+
+        ColumnDefinition id = table.columns().getFirst();
+        assertEquals("NUMBER", id.dataType().baseType());
+        assertEquals(12, id.dataType().precision());
+        assertEquals(-2, id.dataType().scale());
+        assertEquals("GENERATED ALWAYS AS IDENTITY", id.normalizedDefault());
+        assertEquals("ALWAYS", id.dataType().providerExtensions().get("oracle.identity"));
+
+        ColumnDefinition code = table.columns().get(1);
+        assertEquals(40L, code.dataType().length());
+        assertEquals("CHAR", code.dataType().providerExtensions().get("oracle.lengthSemantics"));
+        assertEquals("DEFAULT ON NULL 'new'", code.normalizedDefault());
+        assertEquals("customer-visible", code.comment());
+
+        CanonicalDataType eventTime = table.columns().get(3).dataType();
+        assertEquals("TIMESTAMP", eventTime.baseType());
+        assertTrue(eventTime.withTimeZone());
+        assertEquals(6, eventTime.scale());
+        assertEquals("WITH TIME ZONE", eventTime.providerExtensions().get("oracle.timeZone"));
+        CanonicalDataType localTime = table.columns().get(5).dataType();
+        assertTrue(localTime.withTimeZone());
+        assertEquals("WITH LOCAL TIME ZONE", localTime.providerExtensions().get("oracle.timeZone"));
+
+        CanonicalDataType interval = table.columns().get(6).dataType();
+        assertEquals("INTERVAL DAY TO SECOND", interval.baseType());
+        assertEquals("INTERVAL DAY(2) TO SECOND(6)",
+                interval.providerExtensions().get("formattedType"));
+        CanonicalDataType objectType = table.columns().get(7).dataType();
+        assertEquals("Sales.ADDRESS_T", objectType.baseType());
+        assertEquals("\"Sales\".\"ADDRESS_T\"", objectType.providerExtensions().get("formattedType"));
+
+        assertEquals("GENERATED ALWAYS AS (AMOUNT * 2) VIRTUAL",
+                table.columns().get(8).normalizedDefault());
+        assertNull(table.columns().stream()
+                .filter(column -> column.name().original().contains("SYS_NC"))
+                .findFirst().orElse(null));
+        assertTrue(snapshot.completeness().complete());
+        assertEquals("oracle-connection", snapshot.connectionId());
+        assertEquals(64, snapshot.fingerprint().length());
+        assertFalse(jdbc.connectionSetSchemaCalled());
+        assertEquals("data_default", jdbc.statement("columns").lastReadLabel());
+    }
+
+    @Test
+    void readsConstraintsIndexesAndDeclarativeSequenceSemanticsWithoutRuntimeDrift() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("Sales")
+                .rows("tables", row("table_name", "ORDERS"), row("table_name", "CUSTOMERS"))
+                .rows("constraints",
+                        row("table_name", "ORDERS", "constraint_name", "ORDERS_PK",
+                                "constraint_type", "P", "position", 1, "column_name", "ID",
+                                "referenced_owner", null, "referenced_table_name", null,
+                                "referenced_column_name", null, "delete_rule", null,
+                                "generated", "USER NAME", "search_condition", null),
+                        row("table_name", "ORDERS", "constraint_name", "ORDERS_UQ",
+                                "constraint_type", "U", "position", 2, "column_name", "REGION",
+                                "referenced_owner", null, "referenced_table_name", null,
+                                "referenced_column_name", null, "delete_rule", null,
+                                "generated", "USER NAME", "search_condition", null),
+                        row("table_name", "ORDERS", "constraint_name", "ORDERS_UQ",
+                                "constraint_type", "U", "position", 1, "column_name", "CODE",
+                                "referenced_owner", null, "referenced_table_name", null,
+                                "referenced_column_name", null, "delete_rule", null,
+                                "generated", "USER NAME", "search_condition", null),
+                        row("table_name", "ORDERS", "constraint_name", "ORDERS_CUSTOMER_FK",
+                                "constraint_type", "R", "position", 1, "column_name", "CUSTOMER_ID",
+                                "referenced_owner", "Sales", "referenced_table_name", "CUSTOMERS",
+                                "referenced_column_name", "ID", "delete_rule", "CASCADE",
+                                "generated", "USER NAME", "search_condition", null),
+                        row("table_name", "ORDERS", "constraint_name", "SYS_C009",
+                                "constraint_type", "C", "position", null, "column_name", null,
+                                "referenced_owner", null, "referenced_table_name", null,
+                                "referenced_column_name", null, "delete_rule", null,
+                                "generated", "GENERATED NAME", "search_condition", "AMOUNT > 0"))
+                .rows("indexes",
+                        row("table_name", "ORDERS", "index_name", "ORDERS_PK_IDX",
+                                "index_type", "NORMAL", "uniqueness", "UNIQUE", "column_position", 1,
+                                "column_name", "ID", "constraint_name", "ORDERS_PK",
+                                "column_expression", null),
+                        row("table_name", "ORDERS", "index_name", "ORDERS_CODE_IDX",
+                                "index_type", "NORMAL", "uniqueness", "NONUNIQUE", "column_position", 1,
+                                "column_name", "CODE", "constraint_name", null,
+                                "column_expression", null),
+                        row("table_name", "ORDERS", "index_name", "ORDERS_UPPER_IDX",
+                                "index_type", "FUNCTION-BASED NORMAL", "uniqueness", "NONUNIQUE",
+                                "column_position", 1, "column_name", "SYS_NC00002$", "constraint_name", null,
+                                "column_expression", "UPPER(\"CODE\")"))
+                .rows("sequences",
+                        row("sequence_name", "ORDERS_SEQ", "min_value", "1", "max_value", "999999",
+                                "increment_by", "5", "cycle_flag", "Y", "cache_size", 20,
+                                "order_flag", "Y", "last_number", "secret-runtime-1005"),
+                        row("sequence_name", "AUDIT_SEQ", "min_value", "1", "max_value", "9999",
+                                "increment_by", "1", "cycle_flag", "N", "cache_size", 0,
+                                "order_flag", "N", "last_number", "secret-runtime-77"));
+
+        SchemaSnapshot snapshot = new OracleSchemaSnapshotReader(jdbc.connection()).read(
+                "oracle-connection", OracleSchemaIdentifierNormalizer.schema("Sales"),
+                new SqlExecutionOptions(0, 13, new SqlExecutionControl()));
+
+        TableDefinition orders = assertInstanceOf(TableDefinition.class,
+                snapshot.objects().get(key(ObjectType.TABLE, "Sales", "ORDERS", "")));
+        assertEquals(List.of(ConstraintKind.PRIMARY_KEY, ConstraintKind.UNIQUE,
+                        ConstraintKind.FOREIGN_KEY, ConstraintKind.CHECK),
+                orders.constraints().stream().map(ConstraintDefinition::kind).sorted().toList());
+        ConstraintDefinition unique = orders.constraints().stream()
+                .filter(value -> value.kind() == ConstraintKind.UNIQUE).findFirst().orElseThrow();
+        assertEquals(List.of("\"CODE\"", "\"REGION\""),
+                unique.columns().stream().map(value -> value.original()).toList());
+        ConstraintDefinition foreignKey = orders.constraints().stream()
+                .filter(value -> value.kind() == ConstraintKind.FOREIGN_KEY).findFirst().orElseThrow();
+        ObjectKey customers = key(ObjectType.TABLE, "Sales", "CUSTOMERS", "");
+        assertEquals(customers, foreignKey.referencedTable());
+        assertEquals(List.of("\"ID\""),
+                foreignKey.referencedColumns().stream().map(value -> value.original()).toList());
+        assertNull(foreignKey.updateAction());
+        assertEquals("CASCADE", foreignKey.deleteAction());
+        assertTrue(foreignKey.dependencies().contains(customers));
+        ConstraintDefinition check = orders.constraints().stream()
+                .filter(value -> value.kind() == ConstraintKind.CHECK).findFirst().orElseThrow();
+        assertEquals("AMOUNT > 0", check.normalizedExpression());
+        assertTrue(check.providerGeneratedName());
+
+        assertEquals(3, orders.indexes().size());
+        IndexDefinition backing = orders.indexes().stream()
+                .filter(value -> value.key().name().original().contains("ORDERS_PK_IDX"))
+                .findFirst().orElseThrow();
+        assertTrue(backing.providerGeneratedName());
+        assertEquals(List.of("\"ID\""), backing.normalizedExpressions());
+        IndexDefinition function = orders.indexes().stream()
+                .filter(value -> value.key().name().original().contains("ORDERS_UPPER_IDX"))
+                .findFirst().orElseThrow();
+        assertEquals(List.of("UPPER(\"CODE\")"), function.normalizedExpressions());
+
+        SequenceDefinition orderSequence = assertInstanceOf(SequenceDefinition.class,
+                snapshot.objects().get(key(ObjectType.SEQUENCE, "Sales", "ORDERS_SEQ", "")));
+        assertNull(orderSequence.startValue());
+        assertEquals("5", orderSequence.incrementBy());
+        assertEquals("1", orderSequence.minimumValue());
+        assertEquals("999999", orderSequence.maximumValue());
+        assertTrue(orderSequence.cycle());
+        assertEquals(20, orderSequence.cacheSize());
+        assertEquals(Map.of("oracle.order", "ORDER", "oracle.startValueKnown", "false"),
+                orderSequence.providerExtensions());
+        SequenceDefinition noOrderSequence = assertInstanceOf(SequenceDefinition.class,
+                snapshot.objects().get(key(ObjectType.SEQUENCE, "Sales", "AUDIT_SEQ", "")));
+        assertEquals("NOORDER", noOrderSequence.providerExtensions().get("oracle.order"));
+        assertFalse(jdbc.statement("sequences").sql().contains("LAST_NUMBER"));
+        assertFalse(jdbc.statement("sequences").readLabels().contains("last_number"));
+        assertFalse(snapshot.completeness().complete());
+        assertEquals(SnapshotCompleteness.METADATA_UNAVAILABLE,
+                snapshot.completeness().unavailableScopes().get(ObjectType.SEQUENCE));
+    }
+
+    @Test
+    void readsDefinitionsRoutineSignaturesAndOnlyResolvedSameOwnerDependencies() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("Sales")
+                .rows("tables", row("table_name", "ORDERS"))
+                .rows("definitions",
+                        definitionRow("ORDERS_V", "VIEW", 201, 0, null),
+                        definitionRow("ORDERS_MV", "MATERIALIZED VIEW", 202, 0, null),
+                        definitionRow("CALC", "FUNCTION", 301, 1, null),
+                        definitionRow("CALC", "FUNCTION", 301, 2, null),
+                        definitionRow("REFRESH_ORDERS", "PROCEDURE", 302, 1, null),
+                        definitionRow("AUDIT_ORDERS", "TRIGGER", 401, 0, "ORDERS"),
+                        definitionRow("ORDER_API", "PACKAGE", 501, 0, null),
+                        definitionRow("ORDER_API", "PACKAGE BODY", 502, 0, null),
+                        definitionRow("ADDRESS_T", "TYPE", 601, 0, null),
+                        definitionRow("ADDRESS_T", "TYPE BODY", 602, 0, null))
+                .rows("arguments",
+                        argument("CALC", 301, 1, 0, 0, "OUT", "NUMBER", null, null, null, null,
+                                "RETURN_SECRET", "return default secret"),
+                        argument("CALC", 301, 1, 1, 0, "IN", "NUMBER", null, 10, 0, null,
+                                "P_AMOUNT", "amount default secret"),
+                        argument("CALC", 301, 1, 2, 0, "OUT", "VARCHAR2", null, null, null, 200,
+                                "P_RESULT", null),
+                        argument("CALC", 301, 1, 3, 1, "IN", "VARCHAR2", null, null, null, 99,
+                                "NESTED_SECRET", null),
+                        row("object_name", "CALC", "object_id", 301, "subprogram_id", 2,
+                                "position", 1, "sequence", 1, "data_level", 0, "in_out", "IN",
+                                "data_type", "OBJECT", "data_length", null, "data_precision", null,
+                                "data_scale", null, "type_owner", "Sales", "type_name", "ADDRESS_T",
+                                "type_subname", null, "pls_type", "ADDRESS_T", "argument_name", "P_ADDRESS",
+                                "defaulted", "N", "default_value", null),
+                        argument("REFRESH_ORDERS", 302, 1, 1, 0, "IN/OUT", "VARCHAR2", null,
+                                null, null, 20, "P_MODE", "mode default secret"))
+                .ddl("VIEW", "ORDERS_V", "CREATE VIEW \"Sales\".\"ORDERS_V\" AS SELECT * FROM \"Sales\".\"ORDERS\";")
+                .ddl("MATERIALIZED_VIEW", "ORDERS_MV", "CREATE MATERIALIZED VIEW \"Sales\".\"ORDERS_MV\" "
+                        + "SEGMENT CREATION IMMEDIATE AS SELECT * FROM \"Sales\".\"ORDERS\";")
+                .ddl("FUNCTION", "CALC", "CREATE OR REPLACE FUNCTION \"Sales\".\"CALC\" RETURN NUMBER IS\n"
+                        + "BEGIN RETURN 1; END;\n/")
+                .ddl("PROCEDURE", "REFRESH_ORDERS", "CREATE OR REPLACE PROCEDURE \"Sales\".\"REFRESH_ORDERS\" IS\n"
+                        + "BEGIN NULL; END;\n/")
+                .ddl("TRIGGER", "AUDIT_ORDERS", "CREATE OR REPLACE TRIGGER \"Sales\".\"AUDIT_ORDERS\" "
+                        + "BEFORE INSERT ON \"Sales\".\"ORDERS\" BEGIN NULL; END;\n/")
+                .ddl("PACKAGE", "ORDER_API", "CREATE OR REPLACE PACKAGE \"Sales\".\"ORDER_API\" IS END;\n/")
+                .ddl("PACKAGE_BODY", "ORDER_API", "CREATE OR REPLACE PACKAGE BODY \"Sales\".\"ORDER_API\" IS END;\n/")
+                .ddl("TYPE", "ADDRESS_T", "CREATE TYPE \"Sales\".\"ADDRESS_T\" AS OBJECT (CITY VARCHAR2(20));")
+                .ddl("TYPE_BODY", "ADDRESS_T", "CREATE TYPE BODY \"Sales\".\"ADDRESS_T\" AS END;\n/")
+                .rows("dependencies",
+                        dependency("ORDERS_V", "VIEW", "Sales", "ORDERS", "TABLE"),
+                        dependency("CALC", "FUNCTION", "Sales", "ADDRESS_T", "TYPE"),
+                        dependency("REFRESH_ORDERS", "PROCEDURE", "Sales", "MISSING_V", "VIEW"),
+                        dependency("ORDER_API", "PACKAGE BODY", "Sales", "ORDER_API", "PACKAGE"),
+                        dependency("ADDRESS_T", "TYPE BODY", "Sales", "ADDRESS_T", "TYPE"),
+                        dependency("AUDIT_ORDERS", "TRIGGER", "SYS", "DBMS_STANDARD", "PACKAGE"));
+
+        SchemaSnapshot snapshot = new OracleSchemaSnapshotReader(jdbc.connection()).read(
+                "oracle-connection", OracleSchemaIdentifierNormalizer.schema("Sales"),
+                new SqlExecutionOptions(0, 17, new SqlExecutionControl()));
+
+        DefinitionObject view = definition(snapshot, ObjectType.VIEW, "Sales", "ORDERS_V", "");
+        assertEquals(DefinitionConfidence.HIGH, view.confidence());
+        ObjectKey orders = key(ObjectType.TABLE, "Sales", "ORDERS", "");
+        assertEquals(Set.of(orders), view.dependencies());
+        DefinitionObject materialized = definition(
+                snapshot, ObjectType.MATERIALIZED_VIEW, "Sales", "ORDERS_MV", "");
+        assertEquals(DefinitionConfidence.LOW, materialized.confidence());
+        assertTrue(materialized.originalDefinition().contains("SEGMENT CREATION IMMEDIATE"));
+        assertEquals(SnapshotCompleteness.DEFINITION_UNAVAILABLE,
+                snapshot.completeness().unavailableScopes().get(ObjectType.MATERIALIZED_VIEW));
+
+        List<DefinitionObject> overloads = snapshot.objects().values().stream()
+                .filter(DefinitionObject.class::isInstance).map(DefinitionObject.class::cast)
+                .filter(value -> value.key().type() == ObjectType.FUNCTION
+                        && value.key().name().original().contains("CALC"))
+                .toList();
+        assertEquals(2, overloads.size());
+        assertEquals(2, overloads.stream().map(value -> value.key().signature()).distinct().count());
+        assertTrue(overloads.stream().map(value -> value.key().signature())
+                .noneMatch(value -> value.contains("P_AMOUNT") || value.contains("SECRET")
+                        || value.contains("P_RESULT") || value.contains("NESTED")));
+        assertTrue(overloads.stream().allMatch(value -> value.dependencies().contains(
+                key(ObjectType.TYPE, "Sales", "ADDRESS_T", "SPEC"))));
+        DefinitionObject procedure = snapshot.objects().values().stream()
+                .filter(DefinitionObject.class::isInstance).map(DefinitionObject.class::cast)
+                .filter(value -> value.key().type() == ObjectType.PROCEDURE).findFirst().orElseThrow();
+        assertTrue(procedure.key().signature().contains("INOUT"));
+        assertTrue(procedure.key().signature().contains("VARCHAR2"));
+        assertFalse(procedure.key().signature().contains("P_MODE"));
+        assertEquals(SnapshotCompleteness.DEPENDENCY_UNRESOLVED,
+                snapshot.completeness().unavailableScopes().get(ObjectType.PROCEDURE));
+
+        DefinitionObject trigger = definition(
+                snapshot, ObjectType.TRIGGER, "Sales", "AUDIT_ORDERS", "");
+        assertEquals(Set.of(orders), trigger.dependencies(), "external SYS dependency must be ignored");
+        DefinitionObject packageSpec = definition(
+                snapshot, ObjectType.PACKAGE_SPEC, "Sales", "ORDER_API", "");
+        DefinitionObject packageBody = definition(
+                snapshot, ObjectType.PACKAGE_BODY, "Sales", "ORDER_API", "");
+        assertEquals(Set.of(packageSpec.key()), packageBody.dependencies());
+        DefinitionObject typeSpec = definition(snapshot, ObjectType.TYPE, "Sales", "ADDRESS_T", "SPEC");
+        DefinitionObject typeBody = definition(snapshot, ObjectType.TYPE, "Sales", "ADDRESS_T", "BODY");
+        assertEquals(Set.of(typeSpec.key()), typeBody.dependencies());
+
+        List<SnapshotJdbc.StatementTrace> ddlStatements = jdbc.statements().stream()
+                .filter(value -> value.tag().equals("ddl")).toList();
+        assertTrue(jdbc.statement("definitions").sql().contains("ALL_PROCEDURES"));
+        assertTrue(jdbc.statement("definitions").sql().contains("PROCEDURE_NAME IS NULL"));
+        assertEquals(10, ddlStatements.size());
+        assertTrue(ddlStatements.stream().allMatch(value -> value.timeout() == 17));
+        assertTrue(ddlStatements.stream().allMatch(value -> "Sales".equals(value.bindings().get(3))));
+        assertTrue(ddlStatements.stream().allMatch(value -> value.nextCalls() == 2),
+                "GET_DDL result sets must be drained before activation release");
+        assertFalse(new OracleSchemaSnapshotReader(jdbc.connection()).toString().contains("Sales"));
+        assertFalse(snapshot.toString().contains("amount default secret"));
+    }
+
+    @Test
+    void permissionFailureAfterAColumnRowRollsBackTheWholeCategory() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("Sales")
+                .rows("tables", row("table_name", "ORDERS"))
+                .rows("columns", column("ORDERS", "ID", 1, "NUMBER", 10, 0,
+                        null, null, null, null, "NO", "NO", "NO", null, null))
+                .failAfterRows("columns", 1,
+                        new SQLException("driver secret text", "42000", 1031));
+
+        SchemaSnapshot snapshot = read(jdbc, "first");
+
+        TableDefinition table = assertInstanceOf(TableDefinition.class,
+                snapshot.objects().get(key(ObjectType.TABLE, "Sales", "ORDERS", "")));
+        assertTrue(table.columns().isEmpty(), "a partial category must not leak its first row");
+        assertEquals(SnapshotCompleteness.PERMISSION_DENIED,
+                snapshot.completeness().unavailableScopes().get(ObjectType.TABLE));
+        assertFalse(snapshot.toString().contains("driver secret text"));
+    }
+
+    @Test
+    void knownGetDdlVisibilityGapBecomesSafeDefinitionPartial() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("Sales")
+                .rows("definitions", definitionRow("ORDERS_V", "VIEW", 201, 0, null))
+                .failure("ddl", new SQLException(
+                        "ORA-31603: secret owner and object", "99999", 31603));
+
+        SchemaSnapshot snapshot = read(jdbc, "connection-secret");
+
+        assertFalse(snapshot.objects().containsKey(
+                key(ObjectType.VIEW, "Sales", "ORDERS_V", "")));
+        assertEquals(SnapshotCompleteness.DEFINITION_UNAVAILABLE,
+                snapshot.completeness().unavailableScopes().get(ObjectType.VIEW));
+        assertFalse(snapshot.completeness().toString().contains("secret"));
+    }
+
+    @Test
+    void unknownAndTimeoutFailuresRemainDistinctFixedSafeTerminalErrors() {
+        SnapshotJdbc unknown = new SnapshotJdbc("Sales").failure(
+                "constraints", new SQLException("driver text with secret DDL", "08006", 600));
+        SQLException unknownFailure = assertThrows(SQLException.class,
+                () -> read(unknown, "connection-secret"));
+        assertEquals("Snapshot metadata failed", unknownFailure.getMessage());
+        assertEquals("08006", unknownFailure.getSQLState());
+        assertEquals(600, unknownFailure.getErrorCode());
+        assertNull(unknownFailure.getCause());
+
+        SnapshotJdbc timeout = new SnapshotJdbc("Sales").failure(
+                "columns", new SQLTimeoutException("driver timeout secret", "HYT00", 51));
+        SQLTimeoutException timeoutFailure = assertThrows(SQLTimeoutException.class,
+                () -> read(timeout, "connection-secret"));
+        assertEquals("Snapshot metadata timed out", timeoutFailure.getMessage());
+        assertEquals("HYT00", timeoutFailure.getSQLState());
+        assertEquals(51, timeoutFailure.getErrorCode());
+        assertNull(timeoutFailure.getCause());
+    }
+
+    @Test
+    void fingerprintIgnoresCaptureAndConnectionIdentityButTracksStructure() throws Exception {
+        SnapshotJdbc first = tableFixture("customer-visible");
+        SnapshotJdbc second = tableFixture("customer-visible");
+        SnapshotJdbc changed = tableFixture("changed-comment");
+
+        SchemaSnapshot firstSnapshot = read(first, "connection-a");
+        Thread.sleep(2);
+        SchemaSnapshot secondSnapshot = read(second, "connection-b");
+        SchemaSnapshot changedSnapshot = read(changed, "connection-a");
+
+        assertEquals(firstSnapshot.fingerprint(), secondSnapshot.fingerprint());
+        assertNotEquals(firstSnapshot.capturedAt(), secondSnapshot.capturedAt());
+        assertNotEquals(firstSnapshot.fingerprint(), changedSnapshot.fingerprint());
+    }
+
+    private static SnapshotJdbc tableFixture(String comment) {
+        return new SnapshotJdbc("Sales")
+                .rows("tables", row("table_name", "ORDERS"))
+                .rows("columns", row("table_name", "ORDERS", "column_name", "ID",
+                        "column_id", 1, "data_type", "NUMBER", "data_length", null,
+                        "char_length", null, "char_used", null, "data_precision", 10,
+                        "data_scale", 0, "data_type_owner", null, "data_type_mod", null,
+                        "nullable", "N", "identity_column", "NO", "generation_type", null,
+                        "default_on_null", "NO", "virtual_column", "NO",
+                        "invisible_column", "NO", "hidden_column", "NO",
+                        "user_generated", "YES", "comments", comment, "data_default", "0"));
+    }
+
+    private static SchemaSnapshot read(SnapshotJdbc jdbc, String connectionId) throws SQLException {
+        return new OracleSchemaSnapshotReader(jdbc.connection()).read(connectionId,
+                OracleSchemaIdentifierNormalizer.schema("Sales"),
+                new SqlExecutionOptions(0, 7, new SqlExecutionControl()));
+    }
+
+    private static Map<String, Object> column(
+            String table, String name, int ordinal, String type,
+            Integer precision, Integer scale, Long length, String charUsed,
+            String typeOwner, String typeMod, String virtual, String defaultOnNull,
+            String identity, String generationType, String defaultExpression) {
+        return row("table_name", table, "column_name", name, "column_id", ordinal,
+                "data_type", type, "data_length", length, "char_length", length,
+                "char_used", charUsed, "data_precision", precision, "data_scale", scale,
+                "data_type_owner", typeOwner, "data_type_mod", typeMod, "nullable", "Y",
+                "identity_column", identity, "generation_type", generationType,
+                "default_on_null", defaultOnNull, "virtual_column", virtual,
+                "invisible_column", "NO", "hidden_column", "NO", "user_generated", "YES",
+                "comments", name.equals("CODE") ? "customer-visible" : null,
+                "data_default", defaultExpression);
+    }
+
+    private static Map<String, Object> definitionRow(
+            String name, String type, int objectId, int subprogramId, String baseObjectName) {
+        return row("object_name", name, "object_type", type, "object_id", objectId,
+                "subprogram_id", subprogramId, "base_object_name", baseObjectName);
+    }
+
+    private static Map<String, Object> argument(
+            String name, int objectId, int subprogramId, int position, int dataLevel,
+            String mode, String dataType, String typeOwner, Integer precision,
+            Integer scale, Integer length, String argumentName, String defaultValue) {
+        return row("object_name", name, "object_id", objectId, "subprogram_id", subprogramId,
+                "position", position, "sequence", position, "data_level", dataLevel,
+                "in_out", mode, "data_type", dataType, "data_length", length,
+                "data_precision", precision, "data_scale", scale, "type_owner", typeOwner,
+                "type_name", typeOwner == null ? null : dataType, "type_subname", null,
+                "pls_type", dataType, "argument_name", argumentName,
+                "defaulted", defaultValue == null ? "N" : "Y", "default_value", defaultValue);
+    }
+
+    private static Map<String, Object> dependency(
+            String sourceName, String sourceType, String targetOwner,
+            String targetName, String targetType) {
+        return row("source_name", sourceName, "source_type", sourceType,
+                "referenced_owner", targetOwner, "referenced_name", targetName,
+                "referenced_type", targetType);
+    }
+
+    private static DefinitionObject definition(
+            SchemaSnapshot snapshot, ObjectType type, String owner, String name, String signature) {
+        return assertInstanceOf(DefinitionObject.class,
+                snapshot.objects().get(key(type, owner, name, signature)));
+    }
+
+    private static ObjectKey key(ObjectType type, String owner, String name, String signature) {
+        return new ObjectKey(type, OracleSchemaIdentifierNormalizer.object(owner, name), signature);
+    }
+
+    private static Map<String, Object> row(Object... values) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        for (int index = 0; index < values.length; index += 2) {
+            row.put((String) values[index], values[index + 1]);
+        }
+        return row;
+    }
+
+    static final class SnapshotJdbc {
+        private final String expectedOwner;
+        private final Map<String, List<Map<String, Object>>> rows = new LinkedHashMap<>();
+        private final Map<DdlKey, String> ddls = new LinkedHashMap<>();
+        private final Map<String, SQLException> failures = new LinkedHashMap<>();
+        private final Map<String, RowFailure> rowFailures = new LinkedHashMap<>();
+        private final List<StatementTrace> statements = new ArrayList<>();
+        private boolean connectionSetSchemaCalled;
+
+        SnapshotJdbc(String expectedOwner) {
+            this.expectedOwner = expectedOwner;
+        }
+
+        @SafeVarargs
+        final SnapshotJdbc rows(String tag, Map<String, Object>... queryRows) {
+            rows.put(tag, List.of(queryRows));
+            return this;
+        }
+
+        SnapshotJdbc ddl(String objectType, String objectName, String ddl) {
+            ddls.put(new DdlKey(objectType, objectName), ddl);
+            return this;
+        }
+
+        SnapshotJdbc failure(String tag, SQLException failure) {
+            failures.put(tag, failure);
+            return this;
+        }
+
+        SnapshotJdbc failAfterRows(String tag, int count, SQLException failure) {
+            rowFailures.put(tag, new RowFailure(count, failure));
+            return this;
+        }
+
+        Connection connection() {
+            return (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{Connection.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "prepareStatement" -> preparedStatement((String) args[0]);
+                        case "setSchema" -> {
+                            connectionSetSchemaCalled = true;
+                            throw new AssertionError("snapshot reader must not mutate Connection schema");
+                        }
+                        case "getAutoCommit" -> true;
+                        case "isClosed" -> false;
+                        case "toString" -> "oracle-snapshot-jdbc-proxy";
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        boolean connectionSetSchemaCalled() {
+            return connectionSetSchemaCalled;
+        }
+
+        StatementTrace statement(String tag) {
+            return statements.stream().filter(statement -> statement.tag.equals(tag))
+                    .findFirst().orElseThrow();
+        }
+
+        List<StatementTrace> statements() {
+            return List.copyOf(statements);
+        }
+
+        private PreparedStatement preparedStatement(String sql) {
+            assertFalse(sql.contains(expectedOwner), "owner must never be concatenated into SQL");
+            StatementTrace trace = new StatementTrace(tag(sql), sql);
+            statements.add(trace);
+            return (PreparedStatement) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{PreparedStatement.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "setString" -> {
+                            trace.bindings.put((Integer) args[0], args[1]);
+                            yield null;
+                        }
+                        case "setQueryTimeout" -> {
+                            trace.timeout = (Integer) args[0];
+                            yield null;
+                        }
+                        case "executeQuery" -> {
+                            trace.executed = true;
+                            SQLException failure = failures.get(trace.tag);
+                            if (failure != null) throw failure;
+                            List<Map<String, Object>> queryRows;
+                            if (trace.tag.equals("ddl")) {
+                                String ddl = ddls.get(new DdlKey(
+                                        (String) trace.bindings.get(1), (String) trace.bindings.get(2)));
+                                queryRows = ddl == null ? List.of() : List.of(row("ddl", ddl));
+                            } else {
+                                queryRows = rows.getOrDefault(trace.tag, List.of());
+                            }
+                            yield resultSet(queryRows, trace, rowFailures.get(trace.tag));
+                        }
+                        case "cancel" -> {
+                            trace.cancelled = true;
+                            yield null;
+                        }
+                        case "close" -> {
+                            trace.closed = true;
+                            yield null;
+                        }
+                        case "isClosed" -> trace.closed;
+                        case "toString" -> "oracle-prepared-" + trace.tag;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private ResultSet resultSet(
+                List<Map<String, Object>> queryRows, StatementTrace trace, RowFailure rowFailure) {
+            int[] cursor = {-1};
+            AtomicBoolean wasNull = new AtomicBoolean();
+            return (ResultSet) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "next" -> {
+                            trace.nextCalls++;
+                            if (rowFailure != null && cursor[0] + 1 >= rowFailure.afterRows()) {
+                                throw rowFailure.failure();
+                            }
+                            yield ++cursor[0] < queryRows.size();
+                        }
+                        case "getString" -> string(value(queryRows, cursor[0], args[0], wasNull, trace));
+                        case "getLong" -> number(value(queryRows, cursor[0], args[0], wasNull, trace)).longValue();
+                        case "getInt" -> number(value(queryRows, cursor[0], args[0], wasNull, trace)).intValue();
+                        case "getBoolean" -> bool(value(queryRows, cursor[0], args[0], wasNull, trace));
+                        case "getObject" -> value(queryRows, cursor[0], args[0], wasNull, trace);
+                        case "wasNull" -> wasNull.get();
+                        case "close" -> {
+                            trace.resultSetClosed = true;
+                            yield null;
+                        }
+                        case "isClosed" -> trace.resultSetClosed;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private static Object value(List<Map<String, Object>> queryRows, int cursor,
+                                    Object label, AtomicBoolean wasNull, StatementTrace trace) {
+            Map<String, Object> row = queryRows.get(cursor);
+            Object value = label instanceof Integer position
+                    ? row.values().stream().skip(position - 1L).findFirst().orElse(null)
+                    : row.get((String) label);
+            trace.lastReadLabel = label.toString();
+            trace.readLabels.add(label.toString());
+            wasNull.set(value == null);
+            return value;
+        }
+
+        private static String tag(String sql) {
+            int start = sql.indexOf("snapshot:");
+            int end = sql.indexOf("*/", start);
+            assertTrue(start >= 0 && end > start, "snapshot SQL requires a fixed tag");
+            return sql.substring(start + "snapshot:".length(), end).trim();
+        }
+
+        private static String string(Object value) {
+            return value == null ? null : value.toString();
+        }
+
+        private static Number number(Object value) {
+            return value instanceof Number number ? number : 0;
+        }
+
+        private static boolean bool(Object value) {
+            if (value instanceof Boolean bool) return bool;
+            return value != null && Boolean.parseBoolean(value.toString());
+        }
+
+        private static Object defaultValue(Class<?> type) {
+            if (type == boolean.class) return false;
+            if (type == int.class) return 0;
+            if (type == long.class) return 0L;
+            if (type == double.class) return 0D;
+            if (type == float.class) return 0F;
+            if (type == short.class) return (short) 0;
+            if (type == byte.class) return (byte) 0;
+            if (type == char.class) return '\0';
+            return null;
+        }
+
+        static final class StatementTrace {
+            private final String tag;
+            private final String sql;
+            private final Map<Integer, Object> bindings = new LinkedHashMap<>();
+            private int timeout = -1;
+            private boolean executed;
+            private boolean cancelled;
+            private boolean closed;
+            private boolean resultSetClosed;
+            private String lastReadLabel;
+            private final List<String> readLabels = new ArrayList<>();
+            private int nextCalls;
+
+            private StatementTrace(String tag, String sql) {
+                this.tag = tag;
+                this.sql = sql;
+            }
+
+            String lastReadLabel() {
+                return lastReadLabel;
+            }
+
+            String sql() {
+                return sql;
+            }
+
+            List<String> readLabels() {
+                return List.copyOf(readLabels);
+            }
+
+            String tag() {
+                return tag;
+            }
+
+            int timeout() {
+                return timeout;
+            }
+
+            Map<Integer, Object> bindings() {
+                return Map.copyOf(bindings);
+            }
+
+            int nextCalls() {
+                return nextCalls;
+            }
+        }
+
+        private record DdlKey(String objectType, String objectName) {
+        }
+
+        private record RowFailure(int afterRows, SQLException failure) {
+        }
+    }
+}
