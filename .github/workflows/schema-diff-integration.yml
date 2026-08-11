@@ -1,0 +1,81 @@
+name: Schema Diff live integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Disposable relational provider to exercise
+        required: true
+        default: postgresql
+        type: choice
+        options:
+          - postgresql
+          - oracle
+          - both
+
+permissions:
+  contents: read
+
+jobs:
+  postgresql:
+    if: ${{ inputs.provider == 'postgresql' || inputs.provider == 'both' }}
+    runs-on: ubuntu-latest
+    environment: schema-diff-postgresql
+    timeout-minutes: 30
+    env:
+      DATACUBE_SCHEMA_DIFF_TEST_ALLOW_WRITE: 'true'
+      DATACUBE_SCHEMA_DIFF_POSTGRES_HOST: ${{ secrets.SCHEMA_DIFF_POSTGRES_HOST }}
+      DATACUBE_SCHEMA_DIFF_POSTGRES_PORT: ${{ secrets.SCHEMA_DIFF_POSTGRES_PORT }}
+      DATACUBE_SCHEMA_DIFF_POSTGRES_DATABASE: ${{ secrets.SCHEMA_DIFF_POSTGRES_DATABASE }}
+      DATACUBE_SCHEMA_DIFF_POSTGRES_USERNAME: ${{ secrets.SCHEMA_DIFF_POSTGRES_USERNAME }}
+      DATACUBE_SCHEMA_DIFF_POSTGRES_PASSWORD: ${{ secrets.SCHEMA_DIFF_POSTGRES_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Run opt-in PostgreSQL Schema Diff smoke
+        run: ./gradlew test --tests com.datacube.schemadiff.SchemaDiffLiveIntegrationTest --rerun-tasks --no-daemon --console=plain
+      - name: Upload non-sensitive test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-diff-postgresql-test-reports
+          path: |
+            build/test-results/test
+            build/reports/tests/test
+
+  oracle:
+    if: ${{ inputs.provider == 'oracle' || inputs.provider == 'both' }}
+    runs-on: ubuntu-latest
+    environment: schema-diff-oracle
+    timeout-minutes: 30
+    env:
+      DATACUBE_SCHEMA_DIFF_TEST_ALLOW_WRITE: 'true'
+      DATACUBE_SCHEMA_DIFF_ORACLE_HOST: ${{ secrets.SCHEMA_DIFF_ORACLE_HOST }}
+      DATACUBE_SCHEMA_DIFF_ORACLE_PORT: ${{ secrets.SCHEMA_DIFF_ORACLE_PORT }}
+      DATACUBE_SCHEMA_DIFF_ORACLE_DATABASE: ${{ secrets.SCHEMA_DIFF_ORACLE_DATABASE }}
+      DATACUBE_SCHEMA_DIFF_ORACLE_USERNAME: ${{ secrets.SCHEMA_DIFF_ORACLE_USERNAME }}
+      DATACUBE_SCHEMA_DIFF_ORACLE_PASSWORD: ${{ secrets.SCHEMA_DIFF_ORACLE_PASSWORD }}
+      DATACUBE_SCHEMA_DIFF_ORACLE_TABLESPACE: ${{ secrets.SCHEMA_DIFF_ORACLE_TABLESPACE }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Run opt-in Oracle Schema Diff smoke
+        run: ./gradlew test --tests com.datacube.schemadiff.SchemaDiffLiveIntegrationTest --rerun-tasks --no-daemon --console=plain
+      - name: Upload non-sensitive test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-diff-oracle-test-reports
+          path: |
+            build/test-results/test
+            build/reports/tests/test

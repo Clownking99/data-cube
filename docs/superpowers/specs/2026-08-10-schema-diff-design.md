@@ -1,6 +1,6 @@
 # DataCube Schema Diff 全对象同库对比设计
 
-- 状态：已获用户书面批准，待实施
+- 状态：已批准并实施
 - 日期：2026-08-10
 - 交付方式：直接在 `main` 分阶段提交，每个阶段独立测试、审查和回退
 
@@ -217,10 +217,8 @@ public record SchemaDifference(
 
 默认安全、自动选中的变更包括：
 
-- 创建缺失对象。
-- 添加 nullable 列且无破坏性默认值副作用。
-- 添加不改变现有数据语义的索引、约束或可编程对象。
-- 扩大兼容字段长度或精度（provider 高置信确认时）。
+- 创建高置信、provider 可安全渲染的缺失对象。
+- 添加 nullable 且无默认值的列。
 
 默认禁用、必须逐项启用的变更包括：
 
@@ -263,34 +261,33 @@ planner 根据显式元数据依赖和对象类别建立有向图。
 
 ```java
 public interface SchemaChangeRenderer {
-    DbType databaseType();
-    RenderedChange render(SchemaDifference difference, RenderContext context);
+    List<RenderedStatement> render(SchemaChange change, RenderContext context);
 }
 
-public record RenderedChange(
-        ObjectKey object,
-        List<String> statements,
-        RiskLevel risk,
-        String expectedTargetFingerprint,
-        Set<ObjectKey> dependencies) {}
+public record RenderedStatement(
+        String changeId,
+        String sql,
+        boolean destructive,
+        Set<String> dependencyIds,
+        String warning) {}
 ```
 
 - SQL 使用 provider 的标识符引用规则。
 - 不拼接密码或连接参数。
 - 每个 change 保持独立 statement 列表，便于逐项记录结果。
-- script export 包含生成时间、源/目标对象名、风险注释和目标 fingerprint，但不包含连接秘密。
+- script export 保持 planner 顺序并包含固定安全说明，但不包含连接秘密。
 - `MANUAL_ONLY` 不进入 renderer。
 
 ## 12. 目标漂移检查
 
-生成计划时记录目标 snapshot fingerprint 和每个相关对象 fingerprint。
+生成计划时保留目标 snapshot 及其 fingerprint；selection digest 绑定源/目标 fingerprint 与稳定选择集合。
 
 执行前：
 
-1. 重新读取目标 Schema 的相关对象摘要。
-2. 对比计划中的 fingerprint。
-3. 任一相关对象变化则阻止整个执行，提示重新比较。
-4. 不允许用户通过普通确认跳过漂移检查。
+1. 使用独立连接重新读取完整目标 Schema snapshot。
+2. fresh snapshot 不完整时直接阻止。
+3. fresh target fingerprint 与计划目标不一致时阻止整个执行并提示重新比较。
+4. 不允许用户通过普通确认跳过完整性或漂移检查。
 
 执行过程中每个 change 完成后记录实际结果；取消或异常后重新读取受影响对象并显示“已应用 / 未应用 / 状态未知”。
 
@@ -353,20 +350,24 @@ public record RenderedChange(
 - `SAFE_AUTOMATIC` 默认选中。
 - `DESTRUCTIVE_OPT_IN` 默认未选中，首次勾选显示逐项风险说明。
 - `MANUAL_ONLY` 无勾选框。
-- 执行前显示最终有序计划、生产环境标识、破坏性项目数量和目标漂移检查状态。
+- 选择变化会使旧 selection digest 和确认失效。
+- 执行前显示最终有序计划、生产环境标识、破坏性项目数量和目标漂移检查状态；破坏性计划还要求输入 snapshot 的精确安全 Schema 显示 token。
 - 用户可以导出完整脚本而不执行。
 
 ### 15.5 执行结果
 
-逐项状态：
+部署和逐项结果使用实际终态：
 
-- PENDING
-- RUNNING
 - SUCCEEDED
-- FAILED
-- SKIPPED_DEPENDENCY
+- BLOCKED_DRIFT
+- BLOCKED_INCOMPLETE
+- FAILED_SQL
+- TIMED_OUT
 - CANCELLED
 - UNKNOWN_AFTER_CANCEL
+- FAILED_PARTIAL
+- SKIPPED_DEPENDENCY
+- SKIPPED_FAIL_FAST
 
 失败后保留标签、差异和日志；用户可重新读取目标并生成新的计划，不复用过期计划直接重试。
 
@@ -443,9 +444,13 @@ PostgreSQL 与 Oracle 分别实现：
 
 ### 18.5 live integration
 
-- 只使用明确授权的非生产 PostgreSQL/Oracle 端点。
-- 建立一次性测试 Schema，覆盖创建、修改、删除 opt-in 与重新比较归零。
-- 没有端点时保留 provider JDBC proxy/fixture 测试，并在交付报告中记录 residual。
+- 默认必须产生真实 JUnit skip；只有完整 provider 环境变量与精确的
+  `DATACUBE_SCHEMA_DIFF_TEST_ALLOW_WRITE=true` 同时存在时才运行。
+- 只使用明确授权的一次性非生产 PostgreSQL/Oracle 端点，不读取应用保存连接，也不根据
+  localhost、私网地址或测试名称推断权限。
+- 每次运行以加密随机前缀建立唯一源/目标 Schema 和对象，只部署测试自身的安全变更，重新比较确认收敛；`finally` 仅删除内存中记录的精确名称。
+- 手动 workflow 的 PostgreSQL/Oracle job 使用独立受保护 environment，只向测试进程传入该 provider 所需 secrets；变量缺失保留真实 skipped test。
+- 没有授权端点时只编译并验证 gate/cleanup/workflow contracts，在交付报告中保留 PostgreSQL/Oracle live residual。
 
 ## 19. 分阶段交付
 
@@ -468,3 +473,12 @@ PostgreSQL 与 Oracle 分别实现：
 - 执行结果逐项可追溯，失败不会继续运行依赖项。
 - 现有 Redis、安全 SQL、迁移、对象树、数据网格、jlink 和 G1 256MB 配置无回归。
 - Windows 与 Ubuntu CI、Windows linked image、CodeGraph 和无秘密检查通过。
+
+## 21. 实施结果与当前边界
+
+- PostgreSQL capability 顶层支持 TABLE、SEQUENCE、VIEW、MATERIALIZED_VIEW、FUNCTION、PROCEDURE、TRIGGER、TYPE；约束和索引作为 TABLE 子对象。TYPE 覆盖 enum、composite、domain。
+- Oracle capability 顶层支持 TABLE、SEQUENCE、VIEW、MATERIALIZED_VIEW、FUNCTION、PROCEDURE、TRIGGER、PACKAGE_SPEC、PACKAGE_BODY、TYPE；约束和索引作为 TABLE 子对象，类型 spec/body 由 definition identity 区分。
+- 不完整 scope、低置信 definition、无法证明安全的 provider shape 与不可安全排序的循环依赖保持 `MANUAL_ONLY`；rename suggestion 只显示。
+- Oracle snapshot 无法恢复声明时的 sequence `START WITH`，因此相关 CREATE/START 自动渲染保持关闭；所有 Oracle DDL 都带隐式提交提示，不承诺批次回滚。
+- 当前排除跨 provider、数据 diff/sync、角色/权限/表空间、文件 snapshot、自动 rename 和 whole-batch rollback。
+- Task 10 本地发布门禁只验证无凭据条件下 PostgreSQL/Oracle live 用例真实 skip；真实关系库执行与 GitHub Actions 手动 job 仍是需要单独授权端点的发布 residual。

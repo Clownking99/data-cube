@@ -8,6 +8,26 @@
 
 **Tech Stack:** JDK 25、Java records/sealed interfaces、JDBC、JavaFX 25、Gradle、JUnit 5、JDK 虚拟线程、现有 `FxTaskRunner` / `JdbcEditorSession` / `ContentTabPane` 生命周期框架。
 
+## 实施状态与证据（2026-08-12）
+
+- [x] Task 1：不可变 snapshot 模型与稳定 fingerprint 已实施；最终 focused 11 tests，完整证据见 `.superpowers/sdd/schema-diff-task-1-report.md`。
+- [x] Task 2：语义 diff、完整性降级、稳定 rename suggestion 与安全摘要已实施；最终 focused 34 tests，证据见 Task 2 report。
+- [x] Task 3：风险/依赖/选择闭包、稳定 change ID 与 selection digest、定义原子替换已实施；最终 focused 35 tests，证据见 Task 3 report。
+- [x] Task 4：PostgreSQL 单 Schema 全对象 reader、取消/超时/partial 与 catalog identity 已实施；最终 focused 25 tests，证据见 Task 4 report。
+- [x] Task 5：PostgreSQL fail-closed renderer 与 provider capability 已实施；最终 focused 32 tests，证据见 Task 5 report。
+- [x] Task 6：Oracle 全对象 reader、GET_DDL/目录语义、取消/partial 与 sequence unknown 已实施；最终 focused 58 tests，证据见 Task 6 report。
+- [x] Task 7：Oracle fail-closed renderer、隐式提交警告与 provider capability 已实施；最终 focused 27 tests，证据见 Task 7 report。
+- [x] Task 8：并行 dedicated snapshot、fresh fingerprint 门禁、稳定确认 token、逐项 fail-fast 部署与取消终态已实施；最终 focused 37 tests，证据见 Task 8 report。
+- [x] Task 9：JavaFX 入口、筛选/选择/确认/导出/部署、失败审查上下文与受管关闭已实施；最终 focused 52 tests，证据见 Task 9 report。
+- [x] Task 10：README/设计状态、opt-in live gate、精确 disposable cleanup、手动 provider workflow 与本地发布门禁已实施；fresh `clean test jlink --warning-mode fail` 为 110 suites / 704 tests / 0 failures / 3 documented skips，Windows linked image 与 G1/16MB/256MB launcher 已验证。
+
+未执行且不得误报为完成的外部发布步骤：
+
+- [ ] PostgreSQL/Oracle 真实关系库 live smoke：未提供已授权的一次性端点；本地两个 provider 用例均为真实 JUnit skip，保留为 release residual。
+- [ ] GitHub Actions 手动 Schema Diff workflow：未触发。
+- [ ] 累计分支审查：由 Task 10 提交后的 controller 执行。
+- [ ] push、tag 或 release publication：未执行，等待用户授权。
+
 ## Global Constraints
 
 - 直接在 `main` 分阶段提交；每个任务只提交自身范围，不 push，最终统一 push/tag。
@@ -652,6 +672,7 @@ git commit -m "feat: 添加 Schema Diff 可视化工作流"
 - Modify: `docs/superpowers/plans/2026-08-10-schema-diff.md`
 - Create: `test/com/datacube/schemadiff/SchemaDiffLiveIntegrationTest.java`
 - Create: `.github/workflows/schema-diff-integration.yml`
+- Test support: `test/com/datacube/build/SchemaDiffIntegrationWorkflowContractTest.java`
 
 **Step 1: Add opt-in live smoke**
 

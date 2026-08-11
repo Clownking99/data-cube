@@ -15,6 +15,7 @@
 - **对象浏览**：连接树、表/视图数据网格（分页、排序）、DDL 查看、列注释展示。
 - **导出**：查询结果或整表导出为 SQL 脚本 / Excel（xlsx）/ `pg_dump`。
 - **迁移**：Oracle→PostgreSQL 的完整/增量迁移与结果校验（CLI 与 GUI 均可）。
+- **Schema Diff**：在线比较 PostgreSQL↔PostgreSQL 或 Oracle↔Oracle 的单个 Schema，按语义差异生成稳定、有序且带安全门禁的同步计划。
 - **应用内自动更新**：启动时检查 GitHub Release，支持安装版与免安装版就地更新。
 
 ## 目录结构
@@ -47,6 +48,7 @@
 ├── lib/                          # 打包用的非模块化 jar 与 JavaFX native
 ├── build.gradle / settings.gradle / gradlew      # Gradle 构建
 ├── .github/workflows/verify.yml  # PR/main：跨平台测试、Redis 集成、Windows jlink
+├── .github/workflows/schema-diff-integration.yml # 手动、显式授权的关系库 live smoke
 ├── .github/workflows/release.yml # v* tag/手动：验证通过后生成 Windows 发布产物
 └── docs/superpowers/specs/       # 设计文档
 ```
@@ -93,6 +95,39 @@ gradlew jpackage -PappVersion=3.1.0
 - 关闭未提交事务标签时可提交、回滚或取消关闭；应用退出默认回滚。
 
 关系型连接默认查询超时为 60 秒，可配置为 0 表示不限制。客户端风险分析用于减少误操作，数据库账户权限仍是最终安全边界。
+
+### Schema Diff
+
+Schema Diff 只支持在线连接之间的同库对比：PostgreSQL↔PostgreSQL、Oracle↔Oracle；一次从一个源 Schema（期望状态）同步到一个目标 Schema。连接树中的关系型连接或 Schema 节点提供“Schema 对比...”入口，Redis 不显示该入口。标签内可选择源/目标、筛选和分组差异、查看结构化属性与源/目标定义、预览或导出已选 SQL，并在同一个受管 JavaFX 工作流中部署、取消和审查结果。关闭标签或应用时会封住新工作、取消并等待自有虚拟线程、严格回收专用 JDBC 会话，再执行 FX 清理。
+
+支持对象如下；约束和索引属于表的结构化子对象，不作为独立顶层类别：
+
+| Provider | 顶层对象 | Provider 特有限制或未知项 |
+|---|---|---|
+| PostgreSQL | 表（含列、主键、唯一/外键/检查约束、普通/表达式/部分索引）、序列、视图、物化视图、函数、过程、触发器、类型（enum/composite/domain） | 目标为 PostgreSQL 11+ 目录语义；扩展定义、极端类型格式或无法高置信解析的定义会变为手工项。 |
+| Oracle | 表（含列、约束和索引）、序列、视图、物化视图、函数、过程、触发器、包 spec/body、类型 spec/body | Oracle 不公开序列原始 `START WITH`，因此从快照创建序列和修改起始值不能自动执行；需要猜测表重建、存储子句或无法证明身份/语法安全的定义会变为手工项。 |
+
+差异按规范标识和结构化语义比较，顺序、change ID 和选择摘要稳定；系统生成名称只有在完整结构相同时才视为等价。疑似重命名仅供显示，不会自动转换或执行 rename。元数据权限不足、不支持或依赖无法解析会形成明确的不完整/未知范围，而不是把对象误判为不存在。
+
+安全执行规则：
+
+- `SAFE_AUTOMATIC` 默认选择；破坏性项默认关闭并需逐项启用，`MANUAL_ONLY` 不可选择。生产目标还需要最终确认。
+- 破坏性确认要求再次输入目标 snapshot 的安全 Schema 显示 token；任何选择变化都会使旧 selection digest 和确认失效。
+- 部署前重新读取完整目标 snapshot。fingerprint 漂移或 fresh snapshot 不完整会硬阻止执行，不能通过普通确认绕过。
+- 导出和部署都保持 planner 的依赖顺序。部署逐 statement 记录结果，首个失败后停止；依赖项标记 `SKIPPED_DEPENDENCY`，其他未执行项 fail-fast 跳过。
+- 取消不会被描述成回滚。无法确认 driver/server 最终结果时显示 `UNKNOWN_AFTER_CANCEL`。
+- Oracle DDL 可能隐式提交；工具只报告逐步事实，不承诺整个批次可以回滚。PostgreSQL 同样不作 whole-batch rollback 承诺。
+
+当前明确排除：跨 provider 对比/迁移、数据 diff 或同步、用户/角色/权限/表空间、在线 Schema 与文件 snapshot/DDL 的对比、自动 rename、多 Schema 整库对比，以及 whole-batch rollback。
+
+#### Opt-in 关系库 live smoke
+
+关系库 smoke 会真实创建和删除数据库对象，默认始终跳过。仅可对明确授权的一次性非生产数据库运行；不得复用应用保存的连接，也不得因地址位于本机、私网或名称看似“测试”而推断写权限。运行必须将 `DATACUBE_SCHEMA_DIFF_TEST_ALLOW_WRITE` 精确设为 `true`，并同时提供对应 provider 的完整环境变量：
+
+- PostgreSQL：`DATACUBE_SCHEMA_DIFF_POSTGRES_HOST`、`_PORT`、`_DATABASE`、`_USERNAME`、`_PASSWORD`。
+- Oracle：`DATACUBE_SCHEMA_DIFF_ORACLE_HOST`、`_PORT`、`_DATABASE`、`_USERNAME`、`_PASSWORD`、`_TABLESPACE`。
+
+测试用加密随机前缀创建唯一的源/目标 Schema 和安全对象，只部署本次测试的安全变更，重新读取验证收敛，并在 `finally` 中仅删除内存中记录的精确名称。Oracle 账号需被明确授予创建/删除一次性用户及对象的权限；PostgreSQL 账号需能创建/删除一次性 Schema。仓库的 `Schema Diff live integration` workflow 只能手动选择 provider，并通过受保护的 provider-specific environment 注入相应 secrets；变量缺失时 JUnit 会报告真实 skip。测试报告不得包含完整 JDBC URL、凭据、原始连接属性或完整生成 SQL。
 
 ### 凭据保护
 
