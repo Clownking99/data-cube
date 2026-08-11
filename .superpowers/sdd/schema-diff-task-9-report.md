@@ -47,15 +47,30 @@ Task 9 已完成：新增 JavaFX Schema Diff 可视化工作流、稳定的分�
 - AppShell 只调用一次 `openManagedTab`；binding 在 spec 返回前安装；构造失败保持 mandatory-abort ownership。
 - 未发现阻断性自审 finding；没有已知功能残留。
 
+## Review follow-up（1 Critical / 5 Important / 4 Minor）
+
+- Canonical identity：UI admission 仅保留 raw Schema 输入，不做 PostgreSQL/Oracle 大小写或 comparison-key 推断；compare 成功后，ViewModel 校验 snapshot 的 provider、connection identity，并使用 source/target snapshot 中的 canonical `QualifiedName` 重建 render/deploy request。同 connection + 同 canonical Schema 在这一可信边界失败关闭，不能进入 READY。
+- Provider 真实闭环：新增 PostgreSQL 与 Oracle 的真实 normalizer → snapshot → renderer → captured deployment request 集成测试，证明 RenderContext、确认键、expected target 与部署 request 全部使用 provider-domain canonical identity。
+- Target admission：目标列表只包含同 provider 的关系型连接，Redis 不进入；对象筛选仅显示 capability `supportedObjectTypes()`。
+- Async isolation：文件导出使用独立 generation/result token；新 compare、新 deploy、新 export 或 close 后的晚回调均不能覆盖当前 UI 状态。
+- Deployment terminal state：逐项呈现 deployment steps（含 `UNKNOWN_AFTER_CANCEL`）；`CANCELLED`、unknown/failed 结果与 exceptional cancellation 进入 FAILED，`BLOCKED_DRIFT` 进入 DRIFTED，且全部清除旧 request/diff/selection/rendered plan，必须重新 compare。
+- Destructive/manual UX：manual 与 blocked 行使用普通 TreeItem、没有 checkbox；破坏性差异首次 opt-in 必须逐项固定风险确认，拒绝保持未选，再次选择无需重复确认；部署 destructive 语义来自 selected differences，并兼容 renderer destructive flag。
+- Reservation-before-IO：AppShell 不再在 `openManagedTab` reservation 前调用 `store.loadAll()`；新的 `SchemaDiffManagedTabFactory` 只在 reservation callback 内读取连接树的不可变内存快照并构造真实 managed spec，构造失败仍保持 mandatory-abort cleanup ownership。
+- Stale details：重命名建议切换会同时清空 source/target definition、SQL preview 与 diagnostics，避免沿用上一个差异的详情。
+- 真实 JavaFX/managed seam：新增实际 `TreeItem`/`CheckBoxTreeItem` 行为测试，以及实际 `AbortBinding`、`ManagedTabSpec`、JavaFX `Node` 的 reservation/cleanup 测试；不再只依赖源码字符串断言。
+- 本 follow-up 未改 provider SQL、服务部署安全/状态语义或 live DB 行为；未新增 normalization SPI seam。
+
 ## 新鲜验证
 
-- Task 9 focused：5 suites，20 tests，0 failures，0 errors，0 skipped。
-- Task 1–9 matrix：28 suites，251 tests，0 failures，0 errors，0 skipped。
-- Full：106 suites，675 tests，0 failures，0 errors，1 skipped。
-- `codegraph sync`：Already up to date；`codegraph status`：index is up to date（358 files / 9,536 nodes / 29,562 edges）。
+- Review focused：8 suites，49 tests，0 failures，0 errors，0 skipped。
+- Task 1–9 matrix：30 suites，265 tests，0 failures，0 errors，0 skipped。
+- Full：108 suites，692 tests，0 failures，0 errors，1 skipped。
+- `codegraph sync`：Already up to date；`codegraph status`：index is up to date（361 files / 9,708 nodes / 30,153 edges）。
 - 未连接 live DB。
 - 未读取、修改、暂存或提交 `.testagent/`。
 
 ## 提交
 
-独立提交消息：`feat: 添加 Schema Diff 可视化工作流`。最终 SHA 由完成回报提供；提交对象包含本报告，报告自身不能内嵌其最终对象 SHA。
+初始独立提交：`54f9f40c9cdf5331614260be7ed69cf637daeaa1 feat: 添加 Schema Diff 可视化工作流`。
+
+Review follow-up 独立提交消息：`fix: 对齐 Schema Diff UI 规范化与生命周期`。最终 SHA 由完成回报提供；提交对象包含本报告，报告自身不能内嵌其最终对象 SHA。

@@ -23,6 +23,7 @@ public final class SchemaDiffSelectionModel {
     private final SchemaChangePlan basePlan;
     private final SchemaChangePlanner planner;
     private final Set<String> requestedIds = new LinkedHashSet<>();
+    private final Set<String> destructiveApprovals = new LinkedHashSet<>();
     private SchemaChangePlan currentPlan;
     private String confirmationToken;
     private RenameSuggestion focusedRenameSuggestion;
@@ -59,6 +60,11 @@ public final class SchemaDiffSelectionModel {
     }
 
     public synchronized boolean setSelected(String changeId, boolean selected) {
+        return setSelected(changeId, selected, false);
+    }
+
+    public synchronized boolean setSelected(
+            String changeId, boolean selected, boolean destructiveRiskAccepted) {
         SchemaChange change = currentPlan.changes().stream()
                 .filter(candidate -> candidate.id().equals(changeId))
                 .findFirst()
@@ -67,11 +73,32 @@ public final class SchemaDiffSelectionModel {
                 || change.kind() == ChangeKind.MANUAL) {
             return false;
         }
+        if (selected && destructiveDifference(change)
+                && !destructiveApprovals.contains(changeId)) {
+            if (!destructiveRiskAccepted) return false;
+            destructiveApprovals.add(changeId);
+        }
         boolean changed = selected ? requestedIds.add(changeId) : requestedIds.remove(changeId);
         if (!changed) return false;
         currentPlan = planner.select(basePlan, requestedIds);
         confirmationToken = null;
         return true;
+    }
+
+    public synchronized boolean requiresDestructiveConfirmation(
+            String changeId, boolean selected) {
+        SchemaChange change = currentPlan.changes().stream()
+                .filter(candidate -> candidate.id().equals(changeId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unknown schema change"));
+        return selected && destructiveDifference(change)
+                && !destructiveApprovals.contains(changeId);
+    }
+
+    public synchronized boolean hasDestructiveSelection() {
+        return currentPlan.changes().stream()
+                .filter(change -> currentPlan.selectedChangeIds().contains(change.id()))
+                .anyMatch(SchemaDiffSelectionModel::destructiveDifference);
     }
 
     public synchronized List<Group> groups(Filter filter) {
@@ -121,10 +148,19 @@ public final class SchemaDiffSelectionModel {
     private Entry entryFor(SchemaChange change) {
         boolean selected = currentPlan.selectedChangeIds().contains(change.id());
         boolean blocked = currentPlan.blockedChangeIds().contains(change.id());
+        boolean selectable = !blocked
+                && change.automation() != AutomationLevel.MANUAL_ONLY
+                && change.kind() != ChangeKind.MANUAL;
         boolean executable = selected && !blocked
                 && change.automation() != AutomationLevel.MANUAL_ONLY
                 && change.kind() != ChangeKind.MANUAL;
-        return new Entry(change, selected, blocked, executable);
+        return new Entry(change, selected, blocked, selectable, executable);
+    }
+
+    private static boolean destructiveDifference(SchemaChange change) {
+        return change.automation() == AutomationLevel.DESTRUCTIVE_OPT_IN
+                || change.kind() == ChangeKind.DROP
+                || change.kind() == ChangeKind.REPLACE;
     }
 
     @Override
@@ -167,7 +203,9 @@ public final class SchemaDiffSelectionModel {
         }
     }
 
-    public record Entry(SchemaChange change, boolean selected, boolean blocked, boolean executable) {
+    public record Entry(
+            SchemaChange change, boolean selected, boolean blocked,
+            boolean selectable, boolean executable) {
         public Entry {
             change = Objects.requireNonNull(change, "change");
         }

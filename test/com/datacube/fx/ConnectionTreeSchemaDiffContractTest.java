@@ -40,7 +40,7 @@ class ConnectionTreeSchemaDiffContractTest {
     }
 
     @Test
-    void appShellUsesOneReservationFactoryAndBindsCleanupBeforeManagedSpecPublication()
+    void appShellUsesOneReservationFactoryAndNoPreReservationConnectionStoreIo()
             throws Exception {
         String source = Files.readString(Path.of("src/com/datacube/fx/AppShell.java"));
         int start = source.indexOf("public void openSchemaDiff");
@@ -48,26 +48,12 @@ class ConnectionTreeSchemaDiffContractTest {
         String body = source.substring(start, end);
 
         assertEquals(1, occurrences(body, "contentTabs.openManagedTab("));
-        int owner = body.indexOf("ConstructionOwner construction = new ConstructionOwner");
-        int pane = body.indexOf("new SchemaDiffPane", owner);
-        int owned = body.indexOf("construction.ownBlocking(pane::closeResources)", pane);
-        int binding = body.indexOf("binding.bind(pane::closeResources)", owned);
-        int spec = body.indexOf("new ContentTabPane.ManagedTabSpec", binding);
-        int commit = body.indexOf("construction.commit()", spec);
-
-        assertTrue(owner >= 0);
-        assertTrue(pane > owner);
-        assertTrue(owned > pane);
-        assertTrue(binding > owned);
-        assertTrue(spec > binding);
-        assertTrue(commit > spec);
-        assertTrue(body.contains("pane::requestClose"));
-        assertTrue(body.contains("pane::requestMandatoryClose"));
-        assertTrue(body.contains("pane::finalizeCloseOnFx"));
-        assertTrue(body.contains("catch (SafeConstructionFailure failure)"));
-        assertTrue(body.contains("throw failure;"),
-                "pane constructor deferred cleanup must survive the outer owner");
-        assertTrue(body.contains("throw construction.close(failure).failure()"));
+        assertTrue(body.contains("SchemaDiffManagedTabFactory.factory("));
+        assertTrue(body.contains("connectionTree::connectionConfigsSnapshot"));
+        assertTrue(body.contains("new SchemaDiffPane("));
+        assertFalse(body.contains("store.loadAll()"));
+        assertFalse(body.substring(0, body.indexOf("contentTabs.openManagedTab("))
+                .contains("loadAll"));
     }
 
     private static String switchBlock(String source, String startMarker, String endMarker) {

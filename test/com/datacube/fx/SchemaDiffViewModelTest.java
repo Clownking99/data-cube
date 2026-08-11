@@ -6,6 +6,7 @@ import com.datacube.schemadiff.SchemaDiffResult;
 import com.datacube.service.SchemaDeploymentControl;
 import com.datacube.service.SchemaDeploymentResult;
 import com.datacube.service.SchemaDeploymentState;
+import com.datacube.service.SchemaDeploymentStepResult;
 import com.datacube.service.SchemaDiffRequest;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.DbType;
@@ -22,13 +23,18 @@ import com.datacube.spi.schemadiff.SnapshotCompleteness;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -211,7 +217,9 @@ class SchemaDiffViewModelTest {
         try {
             viewModel.compare(request(DbType.ORACLE, true));
             awaitState(viewModel, SchemaDiffViewModel.State.READY);
-            assertTrue(viewModel.setSelected(DESTRUCTIVE_ID, true));
+            assertFalse(viewModel.setSelected(DESTRUCTIVE_ID, true));
+            assertTrue(viewModel.requiresDestructiveConfirmation(DESTRUCTIVE_ID, true));
+            assertTrue(viewModel.setSelected(DESTRUCTIVE_ID, true, true));
             SchemaDiffViewModel.Confirmation first =
                     viewModel.confirmationRequest().orElseThrow();
 
@@ -236,6 +244,29 @@ class SchemaDiffViewModelTest {
 
             assertEquals(1, deployCalls.get());
             assertEquals(current.planDigest(), confirmationToken(deliveredControl.get()));
+        } finally {
+            viewModel.closeResources();
+        }
+    }
+
+    @Test
+    void destructiveConfirmationComesFromSelectedDifferenceNotOnlyRendererMetadata()
+            throws Exception {
+        ExecutorService scope = Executors.newThreadPerTaskExecutor(
+                Thread.ofVirtual().name("schema-diff-difference-risk-test-", 0).factory());
+        SchemaChangePlan plan = destructivePlan();
+        SchemaDiffViewModel viewModel = new SchemaDiffViewModel(
+                completedCompare(DbType.ORACLE, true), neverDeploy(), ignored -> plan,
+                new SchemaChangePlanner(),
+                (change, context) -> List.of(new RenderedStatement(
+                        change.id(), "DROP VIEW old_view", false, Set.of(), null)),
+                scope, Runnable::run, () -> {});
+        try {
+            viewModel.compare(request(DbType.ORACLE, false));
+            awaitState(viewModel, SchemaDiffViewModel.State.READY);
+            assertTrue(viewModel.setSelected(DESTRUCTIVE_ID, true, true));
+
+            assertTrue(viewModel.confirmationRequest().orElseThrow().destructive());
         } finally {
             viewModel.closeResources();
         }
@@ -269,6 +300,152 @@ class SchemaDiffViewModelTest {
             awaitState(viewModel, SchemaDiffViewModel.State.COMPLETED);
             assertEquals(1, deployCalls.get());
         } finally {
+            viewModel.closeResources();
+        }
+    }
+
+    @Test
+    void lateExportCompletionIsStaleAfterANewCompareStarts() throws Exception {
+        GateExecutor scope = new GateExecutor();
+        SchemaChangePlan plan = safePlan(false);
+        SchemaDiffViewModel viewModel = new SchemaDiffViewModel(
+                completedCompare(DbType.POSTGRESQL, true), neverDeploy(), ignored -> plan,
+                new SchemaChangePlanner(), (change, context) -> List.of(new RenderedStatement(
+                        change.id(), "CREATE TABLE safe_table(id int)", false, Set.of(), null)),
+                scope, Runnable::run, () -> {});
+        Path target = Files.createTempFile("schema-diff-export-generation-", ".sql");
+        try {
+            viewModel.compare(request(DbType.POSTGRESQL, false));
+            awaitState(viewModel, SchemaDiffViewModel.State.READY);
+            scope.blockNext();
+
+            CompletionStage<SchemaDiffViewModel.ExportResult> oldExport =
+                    viewModel.exportSelectedScript(target);
+            assertTrue(viewModel.compare(request(DbType.POSTGRESQL, false)));
+            awaitState(viewModel, SchemaDiffViewModel.State.READY);
+            scope.releaseBlocked();
+
+            SchemaDiffViewModel.ExportResult completed =
+                    oldExport.toCompletableFuture().get(5, TimeUnit.SECONDS);
+            assertTrue(completed.written());
+            assertFalse(viewModel.isCurrentExport(completed));
+        } finally {
+            scope.releaseBlocked();
+            viewModel.closeResources();
+            Files.deleteIfExists(target);
+        }
+    }
+
+    @Test
+    void lateExportCompletionIsStaleAfterDeploymentStarts() throws Exception {
+        GateExecutor scope = new GateExecutor();
+        SchemaChangePlan plan = safePlan(false);
+        CompletableFuture<SchemaDeploymentResult> deployed = new CompletableFuture<>();
+        SchemaDiffViewModel viewModel = new SchemaDiffViewModel(
+                completedCompare(DbType.POSTGRESQL, true),
+                (request, expected, statements, control) -> deployed,
+                ignored -> plan, new SchemaChangePlanner(),
+                (change, context) -> List.of(new RenderedStatement(
+                        change.id(), "CREATE TABLE safe_table(id int)", false, Set.of(), null)),
+                scope, Runnable::run, () -> {});
+        Path target = Files.createTempFile("schema-diff-export-deploy-", ".sql");
+        try {
+            viewModel.compare(request(DbType.POSTGRESQL, false));
+            awaitState(viewModel, SchemaDiffViewModel.State.READY);
+            scope.blockNext();
+            CompletionStage<SchemaDiffViewModel.ExportResult> oldExport =
+                    viewModel.exportSelectedScript(target);
+
+            SchemaDiffViewModel.Confirmation confirmation =
+                    viewModel.confirmationRequest().orElseThrow();
+            assertTrue(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                    confirmation, true, null)));
+            scope.releaseBlocked();
+            SchemaDiffViewModel.ExportResult completed =
+                    oldExport.toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+            assertFalse(viewModel.isCurrentExport(completed));
+            deployed.complete(new SchemaDeploymentResult(
+                    SchemaDeploymentState.SUCCEEDED, List.of(), confirmation.planDigest()));
+            awaitState(viewModel, SchemaDiffViewModel.State.COMPLETED);
+        } finally {
+            deployed.complete(new SchemaDeploymentResult(
+                    SchemaDeploymentState.CANCELLED, List.of(), "cancelled"));
+            scope.releaseBlocked();
+            viewModel.closeResources();
+            Files.deleteIfExists(target);
+        }
+    }
+
+    @Test
+    void cancelledUnknownFailedAndDriftedDeploymentsExposeStepsAndInvalidateTheOldPlan()
+            throws Exception {
+        for (SchemaDeploymentState terminal : List.of(
+                SchemaDeploymentState.CANCELLED,
+                SchemaDeploymentState.UNKNOWN_AFTER_CANCEL,
+                SchemaDeploymentState.FAILED_SQL,
+                SchemaDeploymentState.BLOCKED_DRIFT)) {
+            CompletableFuture<SchemaDeploymentResult> deployed = new CompletableFuture<>();
+            SchemaDiffViewModel viewModel = viewModel(
+                    completedCompare(DbType.POSTGRESQL, true),
+                    (request, expected, statements, control) -> deployed,
+                    safePlan(false), false);
+            try {
+                viewModel.compare(request(DbType.POSTGRESQL, false));
+                awaitState(viewModel, SchemaDiffViewModel.State.READY);
+                SchemaDiffViewModel.Confirmation confirmation =
+                        viewModel.confirmationRequest().orElseThrow();
+                assertTrue(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                        confirmation, true, null)));
+                deployed.complete(new SchemaDeploymentResult(
+                        terminal,
+                        List.of(new SchemaDeploymentStepResult(1, SAFE_ID, terminal)),
+                        confirmation.planDigest()));
+
+                awaitState(viewModel, terminal == SchemaDeploymentState.BLOCKED_DRIFT
+                        ? SchemaDiffViewModel.State.DRIFTED : SchemaDiffViewModel.State.FAILED);
+                assertEquals(List.of(new SchemaDiffViewModel.DeploymentStepView(
+                                1, SAFE_ID, terminal)),
+                        viewModel.deploymentSteps());
+                assertTrue(viewModel.selectionModel().isEmpty(), terminal.name());
+                assertTrue(viewModel.renderedStatements().isEmpty(), terminal.name());
+                assertTrue(viewModel.confirmationRequest().isEmpty(), terminal.name());
+                assertFalse(viewModel.snapshot().deployEnabled(), terminal.name());
+            } finally {
+                viewModel.closeResources();
+            }
+        }
+    }
+
+    @Test
+    void exceptionallyCancelledDeploymentAlsoInvalidatesTheOldPlan() throws Exception {
+        CompletableFuture<SchemaDeploymentResult> deployed = new CompletableFuture<>();
+        AtomicReference<SchemaDeploymentControl> control = new AtomicReference<>();
+        SchemaDiffViewModel viewModel = viewModel(
+                completedCompare(DbType.POSTGRESQL, true),
+                (request, expected, statements, candidate) -> {
+                    control.set(candidate);
+                    return deployed;
+                }, safePlan(false), false);
+        try {
+            viewModel.compare(request(DbType.POSTGRESQL, false));
+            awaitState(viewModel, SchemaDiffViewModel.State.READY);
+            SchemaDiffViewModel.Confirmation confirmation =
+                    viewModel.confirmationRequest().orElseThrow();
+            assertTrue(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                    confirmation, true, null)));
+            await(() -> control.get() != null);
+            assertTrue(viewModel.cancel());
+            await(() -> control.get().cancellationRequested());
+            deployed.completeExceptionally(new CancellationException("provider-secret"));
+
+            awaitState(viewModel, SchemaDiffViewModel.State.FAILED);
+            assertEquals("当前任务已取消", viewModel.snapshot().message());
+            assertTrue(viewModel.selectionModel().isEmpty());
+            assertTrue(viewModel.confirmationRequest().isEmpty());
+            assertFalse(viewModel.snapshot().deployEnabled());
+        } finally {
+            deployed.completeExceptionally(new CancellationException());
             viewModel.closeResources();
         }
     }
@@ -393,5 +570,45 @@ class SchemaDiffViewModelTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (!condition.getAsBoolean() && System.nanoTime() < deadline) Thread.onSpinWait();
         assertTrue(condition.getAsBoolean(), "condition did not settle");
+    }
+
+    private static final class GateExecutor extends AbstractExecutorService {
+        private final ExecutorService delegate = Executors.newThreadPerTaskExecutor(
+                Thread.ofVirtual().name("schema-diff-export-gate-", 0).factory());
+        private final AtomicBoolean blockNext = new AtomicBoolean();
+        private final CountDownLatch release = new CountDownLatch(1);
+
+        void blockNext() {
+            blockNext.set(true);
+        }
+
+        void releaseBlocked() {
+            release.countDown();
+        }
+
+        @Override
+        public void execute(Runnable command) {
+            boolean blocked = blockNext.compareAndSet(true, false);
+            delegate.execute(() -> {
+                if (blocked) {
+                    try {
+                        release.await();
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+                command.run();
+            });
+        }
+
+        @Override public void shutdown() { delegate.shutdown(); }
+        @Override public List<Runnable> shutdownNow() { return delegate.shutdownNow(); }
+        @Override public boolean isShutdown() { return delegate.isShutdown(); }
+        @Override public boolean isTerminated() { return delegate.isTerminated(); }
+        @Override public boolean awaitTermination(long timeout, TimeUnit unit)
+                throws InterruptedException {
+            return delegate.awaitTermination(timeout, unit);
+        }
     }
 }

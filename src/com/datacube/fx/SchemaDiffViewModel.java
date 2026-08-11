@@ -25,7 +25,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
@@ -60,6 +59,7 @@ public final class SchemaDiffViewModel {
     private String message = IDLE_MESSAGE;
     private long generation;
     private long selectionVersion;
+    private long exportGeneration;
     private long uiRevision;
     private boolean closed;
     private boolean providerMismatch;
@@ -95,6 +95,7 @@ public final class SchemaDiffViewModel {
     public synchronized boolean compare(SchemaDiffRequest candidate) {
         Objects.requireNonNull(candidate, "candidate");
         if (closed || activeOperation != null) return false;
+        exportGeneration++;
         if (candidate.sourceConfig().type() == DbType.REDIS
                 || candidate.targetConfig().type() == DbType.REDIS
                 || candidate.sourceConfig().type() != candidate.targetConfig().type()) {
@@ -136,8 +137,14 @@ public final class SchemaDiffViewModel {
     }
 
     public synchronized boolean setSelected(String changeId, boolean selectedValue) {
+        return setSelected(changeId, selectedValue, false);
+    }
+
+    public synchronized boolean setSelected(
+            String changeId, boolean selectedValue, boolean destructiveRiskAccepted) {
         if (closed || activeOperation != null || selection == null) return false;
-        boolean changed = selection.setSelected(changeId, selectedValue);
+        boolean changed = selection.setSelected(
+                changeId, selectedValue, destructiveRiskAccepted);
         if (!changed) return false;
         selectionVersion++;
         renderSelectionLocked();
@@ -148,6 +155,12 @@ public final class SchemaDiffViewModel {
         return true;
     }
 
+    public synchronized boolean requiresDestructiveConfirmation(
+            String changeId, boolean selectedValue) {
+        return !closed && activeOperation == null && selection != null
+                && selection.requiresDestructiveConfirmation(changeId, selectedValue);
+    }
+
     public synchronized Optional<Confirmation> confirmationRequest() {
         if (deployBlockReasonLocked() != DeployBlockReason.NONE || request == null
                 || selection == null || diff == null) {
@@ -155,7 +168,8 @@ public final class SchemaDiffViewModel {
         }
         boolean production = ConnectionSafetyOptions.from(request.targetConfig()).environment()
                 == ConnectionEnvironment.PRODUCTION;
-        boolean destructive = renderedStatements.stream().anyMatch(RenderedStatement::destructive);
+        boolean destructive = selection.hasDestructiveSelection()
+                || renderedStatements.stream().anyMatch(RenderedStatement::destructive);
         return Optional.of(new Confirmation(
                 selectionVersion,
                 request.targetConfig().name() + " [" + request.targetConfig().id() + "]",
@@ -177,6 +191,7 @@ public final class SchemaDiffViewModel {
                 && !current.targetSchemaComparisonKey().equals(approval.typedSchemaComparisonKey())) {
             return false;
         }
+        exportGeneration++;
         String token = current.production() || current.destructive() ? current.planDigest() : null;
         selection.markConfirmed(current.planDigest());
         SchemaDeploymentControl control = new SchemaDeploymentControl(token);
@@ -242,6 +257,14 @@ public final class SchemaDiffViewModel {
         return Optional.ofNullable(deploymentResult);
     }
 
+    public synchronized List<DeploymentStepView> deploymentSteps() {
+        if (deploymentResult == null) return List.of();
+        return deploymentResult.steps().stream()
+                .map(step -> new DeploymentStepView(
+                        step.index(), step.changeId(), step.state()))
+                .toList();
+    }
+
     public synchronized List<RenderedStatement> renderedStatements() {
         return renderedStatements;
     }
@@ -254,26 +277,31 @@ public final class SchemaDiffViewModel {
     }
 
     /** Writes the already-rendered preview on the owned virtual-thread scope without changing state. */
-    public synchronized CompletionStage<Boolean> exportSelectedScript(Path target) {
+    public synchronized CompletionStage<ExportResult> exportSelectedScript(Path target) {
         Objects.requireNonNull(target, "target");
+        long exportToken = ++exportGeneration;
         if (closed || activeOperation != null || renderedStatements.isEmpty()) {
-            return CompletableFuture.completedFuture(false);
+            return CompletableFuture.completedFuture(new ExportResult(exportToken, false));
         }
         String script = exportSelectedScript();
-        CompletableFuture<Boolean> result = new CompletableFuture<>();
+        CompletableFuture<ExportResult> result = new CompletableFuture<>();
         try {
             workScope.submit(() -> {
                 try {
                     Files.writeString(target, script, StandardCharsets.UTF_8);
-                    result.complete(true);
+                    result.complete(new ExportResult(exportToken, true));
                 } catch (IOException failure) {
-                    result.complete(false);
+                    result.complete(new ExportResult(exportToken, false));
                 }
             });
         } catch (RejectedExecutionException rejected) {
-            result.complete(false);
+            result.complete(new ExportResult(exportToken, false));
         }
         return result;
+    }
+
+    public synchronized boolean isCurrentExport(ExportResult result) {
+        return result != null && !closed && result.generation() == exportGeneration;
     }
 
     public synchronized boolean requiresCloseConfirmation() {
@@ -355,8 +383,10 @@ public final class SchemaDiffViewModel {
     private void applyCompareResultLocked(
             SchemaDiffRequest admittedRequest, SchemaDiffResult result) {
         try {
-            SchemaChangePlan plan = planFactory.apply(Objects.requireNonNull(result, "result"));
-            request = admittedRequest;
+            SchemaDiffResult compared = Objects.requireNonNull(result, "result");
+            SchemaDiffRequest canonicalRequest = canonicalRequest(admittedRequest, compared);
+            SchemaChangePlan plan = planFactory.apply(compared);
+            request = canonicalRequest;
             diff = result;
             selection = new SchemaDiffSelectionModel(plan, planner);
             selectionVersion++;
@@ -371,6 +401,25 @@ public final class SchemaDiffViewModel {
             state = State.FAILED;
             message = FAILED_MESSAGE;
         }
+    }
+
+    private static SchemaDiffRequest canonicalRequest(
+            SchemaDiffRequest admittedRequest, SchemaDiffResult result) {
+        if (result.source().databaseType() != admittedRequest.sourceConfig().type()
+                || result.target().databaseType() != admittedRequest.targetConfig().type()
+                || !Objects.equals(
+                        result.source().connectionId(), admittedRequest.sourceConfig().id())
+                || !Objects.equals(
+                        result.target().connectionId(), admittedRequest.targetConfig().id())) {
+            throw new IllegalArgumentException("Schema comparison identity is invalid");
+        }
+        if (admittedRequest.sourceConfig().id().equals(admittedRequest.targetConfig().id())
+                && result.source().schema().equals(result.target().schema())) {
+            throw new IllegalArgumentException("Schema comparison endpoints are identical");
+        }
+        return new SchemaDiffRequest(
+                admittedRequest.sourceConfig(), result.source().schema(),
+                admittedRequest.targetConfig(), result.target().schema());
     }
 
     private void runDeploy(
@@ -394,9 +443,10 @@ public final class SchemaDiffViewModel {
             synchronized (this) {
                 if (!isCurrentLocked(OperationKind.DEPLOY, operationGeneration, control)) return;
                 activeOperation = null;
-                state = control.cancellationRequested() || state == State.CANCELLING
-                        ? State.READY : State.FAILED;
-                message = state == State.READY ? CANCELLED_MESSAGE : DEPLOY_FAILED_MESSAGE;
+                boolean cancelled = control.cancellationRequested() || state == State.CANCELLING;
+                state = State.FAILED;
+                message = cancelled ? CANCELLED_MESSAGE : DEPLOY_FAILED_MESSAGE;
+                invalidatePlanLocked();
                 publishLocked();
             }
         }
@@ -411,16 +461,29 @@ public final class SchemaDiffViewModel {
             case BLOCKED_DRIFT -> {
                 state = State.DRIFTED;
                 message = DRIFTED_MESSAGE;
+                invalidatePlanLocked();
             }
             case CANCELLED -> {
-                state = State.READY;
+                state = State.FAILED;
                 message = CANCELLED_MESSAGE;
+                invalidatePlanLocked();
             }
             default -> {
                 state = State.FAILED;
                 message = DEPLOY_FAILED_MESSAGE;
+                invalidatePlanLocked();
             }
         }
+    }
+
+    private void invalidatePlanLocked() {
+        request = null;
+        diff = null;
+        selection = null;
+        renderedStatements = List.of();
+        renderedPlanDigest = "";
+        renderUnsupported = false;
+        selectionVersion++;
     }
 
     private void renderSelectionLocked() {
@@ -428,9 +491,7 @@ public final class SchemaDiffViewModel {
         List<SchemaDiffSelectionModel.Entry> selectedEntries = selection.entries().stream()
                 .filter(SchemaDiffSelectionModel.Entry::selected)
                 .toList();
-        boolean destructive = selectedEntries.stream()
-                .anyMatch(entry -> entry.change().automation()
-                        == AutomationLevel.DESTRUCTIVE_OPT_IN);
+        boolean destructive = selection.hasDestructiveSelection();
         List<RenderedStatement> statements = new ArrayList<>();
         try {
             RenderContext context = new RenderContext(
@@ -606,6 +667,27 @@ public final class SchemaDiffViewModel {
             return "Confirmation[selectedChangeCount=" + selectedChangeCount
                     + ", production=" + production + ", oracle=" + oracleImplicitCommitWarning
                     + ", destructive=" + destructive + "]";
+        }
+    }
+
+    public record ExportResult(long generation, boolean written) {
+        @Override
+        public String toString() {
+            return "ExportResult[written=" + written + "]";
+        }
+    }
+
+    public record DeploymentStepView(
+            int index, String changeId, SchemaDeploymentState state) {
+        public DeploymentStepView {
+            if (index < 1) throw new IllegalArgumentException("Deployment step index is invalid");
+            changeId = Objects.requireNonNull(changeId, "changeId");
+            state = Objects.requireNonNull(state, "state");
+        }
+
+        @Override
+        public String toString() {
+            return "DeploymentStepView[index=" + index + ", state=" + state + "]";
         }
     }
 

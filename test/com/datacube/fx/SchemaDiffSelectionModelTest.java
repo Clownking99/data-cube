@@ -49,6 +49,25 @@ class SchemaDiffSelectionModelTest {
     }
 
     @Test
+    void manualAndBlockedEntriesAreNotSelectableAndDestructiveNeedsOnePerItemOptIn() {
+        SchemaDiffSelectionModel model = model();
+
+        assertFalse(model.entry("manual").selectable());
+        assertTrue(model.setSelected("dependent", true));
+        assertFalse(model.entry("dependent").selectable());
+        assertTrue(model.requiresDestructiveConfirmation("destructive", true));
+        assertFalse(model.setSelected("destructive", true, false));
+        assertFalse(model.entry("destructive").selected());
+
+        assertTrue(model.setSelected("destructive", true, true));
+        assertTrue(model.entry("destructive").selected());
+        assertFalse(model.requiresDestructiveConfirmation("destructive", true));
+        assertTrue(model.setSelected("destructive", false, false));
+        assertTrue(model.setSelected("destructive", true, false),
+                "the fixed risk prompt is required only for the first opt-in in this compare");
+    }
+
+    @Test
     void groupingAndFilteringAreStableAndFollowPlannerOrder() {
         SchemaDiffSelectionModel model = model();
 
@@ -78,7 +97,7 @@ class SchemaDiffSelectionModelTest {
         model.markConfirmed("rendered-plan-token");
 
         assertTrue(model.confirmationToken().isPresent());
-        assertTrue(model.setSelected("destructive", true));
+        assertTrue(model.setSelected("destructive", true, true));
 
         assertNotEquals(before, model.selectionDigest());
         assertTrue(model.confirmationToken().isEmpty());

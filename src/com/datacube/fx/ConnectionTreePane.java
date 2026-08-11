@@ -133,6 +133,16 @@ public final class ConnectionTreePane implements AutoCloseable {
         reload();
     }
 
+    /** Immutable in-memory connection snapshot; never reloads the backing file. */
+    List<ConnConfig> connectionConfigsSnapshot() {
+        List<ConnConfig> configs = new ArrayList<>();
+        for (TreeItem<NodeData> item : tree.getRoot().getChildren()) {
+            NodeData data = item.getValue();
+            if (data != null && data.conn != null) configs.add(data.conn);
+        }
+        return List.copyOf(configs);
+    }
+
     private void build() {
         root.setPadding(new Insets(6));
 

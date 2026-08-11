@@ -48,6 +48,21 @@ public final class SchemaDiffDialogs {
         return dialog.showAndWait();
     }
 
+    public static boolean confirmDestructiveSelection(
+            Window owner, SchemaDiffSelectionModel.Entry entry) {
+        Objects.requireNonNull(entry, "entry");
+        Alert dialog = new Alert(Alert.AlertType.CONFIRMATION,
+                "对象: " + entry.change().object().name().original()
+                        + "\n变更: " + entry.change().kind()
+                        + "\n风险: " + entry.change().risk()
+                        + "\n该项可能造成数据或对象丢失，是否明确选择？",
+                ButtonType.YES, ButtonType.NO);
+        if (owner != null) dialog.initOwner(owner);
+        dialog.setTitle("选择破坏性 Schema 变更");
+        dialog.setHeaderText("逐项风险确认");
+        return dialog.showAndWait().orElse(ButtonType.NO) == ButtonType.YES;
+    }
+
     public static boolean confirmClose(Window owner) {
         Alert dialog = new Alert(Alert.AlertType.CONFIRMATION,
                 "当前 Schema 对比仍有任务或已选择的变更。确定关闭吗？",

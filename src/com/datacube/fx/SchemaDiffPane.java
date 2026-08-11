@@ -16,6 +16,7 @@ import com.datacube.spi.schemadiff.QualifiedName;
 import com.datacube.spi.schemadiff.RenderedStatement;
 import com.datacube.spi.schemadiff.RiskLevel;
 import com.datacube.spi.schemadiff.SchemaChangeRenderer;
+import com.datacube.spi.schemadiff.SchemaDiffCapability;
 import com.datacube.spi.schemadiff.SchemaObject;
 
 import javafx.application.Platform;
@@ -43,10 +44,10 @@ import javafx.stage.Window;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -59,7 +60,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /** JavaFX Schema Diff workflow with owned virtual-thread work and managed-tab lifecycle hooks. */
-public final class SchemaDiffPane {
+public final class SchemaDiffPane implements SchemaDiffManagedTabFactory.ManagedContent {
     private final BorderPane root = new BorderPane();
     private final TextField sourceConnectionField = new TextField();
     private final TextField sourceSchemaField = new TextField();
@@ -79,12 +80,14 @@ public final class SchemaDiffPane {
     private final TextArea targetDefinition = detailsArea();
     private final TextArea sqlPreview = detailsArea();
     private final TextArea diagnostics = detailsArea();
+    private final TextArea deploymentSteps = detailsArea();
     private final Label status = new Label();
     private final Map<String, ConnConfig> connectionsById = new LinkedHashMap<>();
     private final Consumer<SchemaDiffViewModel.Snapshot> viewListener = this::renderSnapshot;
     private final SchemaDiffViewModel viewModel;
     private final CloseFlow closeFlow;
     private final ConnConfig source;
+    private final List<ObjectType> supportedObjectTypes;
     private boolean refreshingTree;
 
     public SchemaDiffPane(
@@ -92,11 +95,16 @@ public final class SchemaDiffPane {
             List<ConnConfig> availableConnections,
             ConnConfig source,
             String sourceSchema,
-            SchemaChangeRenderer renderer) {
+            SchemaDiffCapability capability) {
         Objects.requireNonNull(connections, "connections");
         Objects.requireNonNull(availableConnections, "availableConnections");
         this.source = requireRelational(Objects.requireNonNull(source, "source"));
-        Objects.requireNonNull(renderer, "renderer");
+        SchemaDiffCapability requiredCapability = Objects.requireNonNull(
+                capability, "capability");
+        SchemaChangeRenderer renderer = Objects.requireNonNull(
+                requiredCapability.changeRenderer(), "renderer");
+        supportedObjectTypes = supportedFilterTypes(
+                requiredCapability.supportedObjectTypes());
         ConstructionOwner construction = new ConstructionOwner(
                 ignored -> reportFixedCleanupFailure());
         try {
@@ -125,6 +133,12 @@ public final class SchemaDiffPane {
         return root;
     }
 
+    @Override
+    public Node content() {
+        return root;
+    }
+
+    @Override
     public CompletionStage<CloseGuardOutcome> requestClose() {
         return closeFlow.requestInteractive(
                 viewModel.requiresCloseConfirmation(),
@@ -132,16 +146,19 @@ public final class SchemaDiffPane {
     }
 
     /** Mandatory shutdown guard: never opens a dialog and cannot be rejected by the user. */
+    @Override
     public CompletionStage<CloseGuardOutcome> requestMandatoryClose() {
         return closeFlow.requestMandatory();
     }
 
     /** Blocking cleanup for ConstructionOwner and mandatory-abort ownership. */
+    @Override
     public void closeResources() {
         viewModel.closeResources();
     }
 
     /** FX-only lightweight finalizer; no JDBC, file IO, waits or service cleanup are allowed here. */
+    @Override
     public void finalizeCloseOnFx() {
         if (!Platform.isFxApplicationThread()) {
             throw new IllegalStateException("Schema Diff FX finalizer requires the FX thread");
@@ -168,11 +185,10 @@ public final class SchemaDiffPane {
         sourceConnectionField.setEditable(false);
         sourceSchemaField.setText(initialSourceSchema == null ? "" : initialSourceSchema);
 
-        List<ConnectionChoice> choices = new ArrayList<>();
+        List<ConnectionChoice> choices = targetChoices(availableConnections, source);
         for (ConnConfig config : availableConnections) {
-            if (config.type() == DbType.REDIS) continue;
+            if (config.type() != source.type() || config.type() == DbType.REDIS) continue;
             connectionsById.put(config.id(), config);
-            choices.add(new ConnectionChoice(config.id(), config.name(), config.type()));
         }
         connectionsById.putIfAbsent(source.id(), source);
         targetConnection.setItems(FXCollections.observableArrayList(choices));
@@ -201,7 +217,7 @@ public final class SchemaDiffPane {
 
     private Node buildCenter() {
         objectTypeFilter.setPromptText("对象类型");
-        objectTypeFilter.setItems(FXCollections.observableArrayList(ObjectType.values()));
+        objectTypeFilter.setItems(FXCollections.observableArrayList(supportedObjectTypes));
         riskFilter.setPromptText("风险");
         riskFilter.setItems(FXCollections.observableArrayList(RiskLevel.values()));
         automationFilter.setPromptText("自动化");
@@ -232,7 +248,8 @@ public final class SchemaDiffPane {
                 fixedTab("源定义", sourceDefinition),
                 fixedTab("目标定义", targetDefinition),
                 fixedTab("SQL 预览", sqlPreview),
-                fixedTab("诊断", diagnostics));
+                fixedTab("诊断", diagnostics),
+                fixedTab("部署结果", deploymentSteps));
         javafx.scene.control.SplitPane split = new javafx.scene.control.SplitPane(left, details);
         split.setOrientation(Orientation.VERTICAL);
         split.setDividerPositions(0.56);
@@ -257,8 +274,8 @@ public final class SchemaDiffPane {
             return;
         }
         try {
-            QualifiedName sourceName = schemaName(sourceSchemaField.getText(), source.type());
-            QualifiedName targetName = schemaName(targetSchemaField.getText(), target.type());
+            QualifiedName sourceName = rawSchemaName(sourceSchemaField.getText());
+            QualifiedName targetName = rawSchemaName(targetSchemaField.getText());
             viewModel.compare(new SchemaDiffRequest(source, sourceName, target, targetName));
         } catch (IllegalArgumentException invalid) {
             status.setText("Schema 名称无效");
@@ -285,10 +302,10 @@ public final class SchemaDiffPane {
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("SQL 文件", "*.sql"));
         File selected = chooser.showSaveDialog(owner());
         if (selected == null) return;
-        viewModel.exportSelectedScript(selected.toPath()).whenComplete((written, failure) ->
+        viewModel.exportSelectedScript(selected.toPath()).whenComplete((result, failure) ->
                 Platform.runLater(() -> {
-                    if (viewModel.snapshot().closed()) return;
-                    status.setText(Boolean.TRUE.equals(written) && failure == null
+                    if (failure != null || !viewModel.isCurrentExport(result)) return;
+                    status.setText(result.written()
                             ? "脚本已导出" : "脚本导出失败");
                 }));
     }
@@ -302,6 +319,7 @@ public final class SchemaDiffPane {
         cancelButton.setDisable(!snapshot.activeWork() || snapshot.closed());
         refreshTree();
         sqlPreview.setText(viewModel.exportSelectedScript());
+        deploymentSteps.setText(deploymentStepText(viewModel.deploymentSteps()));
     }
 
     private void refreshTree() {
@@ -319,19 +337,30 @@ public final class SchemaDiffPane {
                     TreeItem<DisplayRow> groupItem = new TreeItem<>(DisplayRow.group(group.objectType()));
                     groupItem.setExpanded(true);
                     for (SchemaDiffSelectionModel.Entry entry : group.entries()) {
-                        CheckBoxTreeItem<DisplayRow> item = new CheckBoxTreeItem<>(DisplayRow.change(entry));
-                        item.setSelected(entry.selected());
-                        item.selectedProperty().addListener((ignored, before, selected) -> {
-                            if (refreshingTree) return;
-                            if (!viewModel.setSelected(entry.change().id(), selected)) {
-                                refreshingTree = true;
-                                try {
-                                    item.setSelected(entry.selected());
-                                } finally {
-                                    refreshingTree = false;
+                        TreeItem<DisplayRow> item = changeTreeItem(entry);
+                        if (item instanceof CheckBoxTreeItem<?> selectableItem) {
+                            @SuppressWarnings("unchecked")
+                            CheckBoxTreeItem<DisplayRow> checkBox =
+                                    (CheckBoxTreeItem<DisplayRow>) selectableItem;
+                            checkBox.selectedProperty().addListener((ignored, before, selected) -> {
+                                if (refreshingTree) return;
+                                boolean riskAccepted = true;
+                                if (viewModel.requiresDestructiveConfirmation(
+                                        entry.change().id(), selected)) {
+                                    riskAccepted = SchemaDiffDialogs.confirmDestructiveSelection(
+                                            owner(), entry);
                                 }
-                            }
-                        });
+                                if (!viewModel.setSelected(
+                                        entry.change().id(), selected, riskAccepted)) {
+                                    refreshingTree = true;
+                                    try {
+                                        checkBox.setSelected(entry.selected());
+                                    } finally {
+                                        refreshingTree = false;
+                                    }
+                                }
+                            });
+                        }
                         groupItem.getChildren().add(item);
                     }
                     rootItem.getChildren().add(groupItem);
@@ -356,7 +385,9 @@ public final class SchemaDiffPane {
             if (row != null && row.renameSuggestion() != null) {
                 viewModel.selectionModel().ifPresent(model ->
                         model.focusRenameSuggestion(row.renameSuggestion()));
-                propertyComparison.setText("重命名建议仅用于展示，不会生成可执行重命名。");
+                applyDetails(renameSuggestionDetails());
+            } else {
+                applyDetails(DetailContent.empty());
             }
             return;
         }
@@ -384,6 +415,14 @@ public final class SchemaDiffPane {
         diagnostics.setText(String.join("\n", fixedDiagnostics));
     }
 
+    private void applyDetails(DetailContent content) {
+        propertyComparison.setText(content.propertyComparison());
+        sourceDefinition.setText(content.sourceDefinition());
+        targetDefinition.setText(content.targetDefinition());
+        sqlPreview.setText(content.sqlPreview());
+        diagnostics.setText(content.diagnostics());
+    }
+
     private Window owner() {
         return root.getScene() == null ? null : root.getScene().getWindow();
     }
@@ -405,7 +444,7 @@ public final class SchemaDiffPane {
         return value == null ? Set.of() : EnumSet.of(value);
     }
 
-    private static QualifiedName schemaName(String value, DbType type) {
+    static QualifiedName rawSchemaName(String value) {
         String text = value == null ? "" : value.strip();
         if (text.isEmpty() || text.indexOf('\0') >= 0 || text.indexOf('\r') >= 0
                 || text.indexOf('\n') >= 0) {
@@ -416,9 +455,7 @@ public final class SchemaDiffPane {
             if (original.isEmpty()) throw new IllegalArgumentException("Schema name is invalid");
             return new QualifiedName(original, original, true);
         }
-        String comparisonKey = type == DbType.ORACLE
-                ? text.toUpperCase(Locale.ROOT) : text.toLowerCase(Locale.ROOT);
-        return new QualifiedName(text, comparisonKey, false);
+        return new QualifiedName(text, text, false);
     }
 
     private static ConnConfig requireRelational(ConnConfig config) {
@@ -426,6 +463,53 @@ public final class SchemaDiffPane {
             throw new IllegalArgumentException("Redis does not support Schema Diff");
         }
         return config;
+    }
+
+    static List<ConnectionChoice> targetChoices(
+            List<ConnConfig> availableConnections, ConnConfig source) {
+        Objects.requireNonNull(availableConnections, "availableConnections");
+        requireRelational(Objects.requireNonNull(source, "source"));
+        Map<String, ConnectionChoice> choices = new LinkedHashMap<>();
+        for (ConnConfig config : availableConnections) {
+            if (config.type() != source.type() || config.type() == DbType.REDIS) continue;
+            choices.putIfAbsent(config.id(),
+                    new ConnectionChoice(config.id(), config.name(), config.type()));
+        }
+        choices.putIfAbsent(source.id(),
+                new ConnectionChoice(source.id(), source.name(), source.type()));
+        return List.copyOf(choices.values());
+    }
+
+    static List<ObjectType> supportedFilterTypes(Set<ObjectType> supportedTypes) {
+        Set<ObjectType> supported = Set.copyOf(
+                Objects.requireNonNull(supportedTypes, "supportedTypes"));
+        List<ObjectType> ordered = new ArrayList<>();
+        for (ObjectType type : ObjectType.values()) {
+            if (supported.contains(type)) ordered.add(type);
+        }
+        return List.copyOf(ordered);
+    }
+
+    static String deploymentStepText(List<SchemaDiffViewModel.DeploymentStepView> steps) {
+        return steps.stream()
+                .sorted(Comparator.comparingInt(SchemaDiffViewModel.DeploymentStepView::index))
+                .map(step -> "步骤 " + step.index() + " · " + step.state()
+                        + " · " + step.changeId())
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("");
+    }
+
+    static TreeItem<DisplayRow> changeTreeItem(SchemaDiffSelectionModel.Entry entry) {
+        DisplayRow row = DisplayRow.change(Objects.requireNonNull(entry, "entry"));
+        if (!entry.selectable()) return new TreeItem<>(row);
+        CheckBoxTreeItem<DisplayRow> item = new CheckBoxTreeItem<>(row);
+        item.setSelected(entry.selected());
+        return item;
+    }
+
+    static DetailContent renameSuggestionDetails() {
+        return new DetailContent(
+                "重命名建议仅用于展示，不会生成可执行重命名。", "", "", "", "");
     }
 
     private static String definition(SchemaObject object) {
@@ -458,7 +542,24 @@ public final class SchemaDiffPane {
         }
     }
 
-    private record DisplayRow(
+    record DetailContent(
+            String propertyComparison, String sourceDefinition,
+            String targetDefinition, String sqlPreview, String diagnostics) {
+        DetailContent {
+            propertyComparison = Objects.requireNonNull(
+                    propertyComparison, "propertyComparison");
+            sourceDefinition = Objects.requireNonNull(sourceDefinition, "sourceDefinition");
+            targetDefinition = Objects.requireNonNull(targetDefinition, "targetDefinition");
+            sqlPreview = Objects.requireNonNull(sqlPreview, "sqlPreview");
+            diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
+        }
+
+        static DetailContent empty() {
+            return new DetailContent("", "", "", "", "");
+        }
+    }
+
+    record DisplayRow(
             String label,
             SchemaDiffSelectionModel.Entry entry,
             RenameSuggestion renameSuggestion) {

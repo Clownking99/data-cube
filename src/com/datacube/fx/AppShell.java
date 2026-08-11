@@ -298,28 +298,13 @@ public final class AppShell {
             var capability = connMgr.provider(source.id()).schemaDiffCapability()
                     .orElseThrow(() -> new IllegalStateException(
                             "Schema comparison is unavailable for this database type"));
-            var availableConnections = store.loadAll();
-            contentTabs.openManagedTab("Schema 对比 - " + source.name(), binding -> {
-                ConstructionOwner construction = new ConstructionOwner(
-                        ignored -> reportShutdownFailure(
-                                new IllegalStateException("Schema Diff construction cleanup failed")));
-                try {
-                    SchemaDiffPane pane = new SchemaDiffPane(
-                            connMgr, availableConnections, source, sourceSchema,
-                            capability.changeRenderer());
-                    construction.ownBlocking(pane::closeResources);
-                    binding.bind(pane::closeResources);
-                    ContentTabPane.ManagedTabSpec spec = new ContentTabPane.ManagedTabSpec(
-                            pane.getNode(), pane::requestClose, pane::requestMandatoryClose,
-                            pane::finalizeCloseOnFx, pane::closeResources);
-                    construction.commit();
-                    return spec;
-                } catch (SafeConstructionFailure failure) {
-                    throw failure;
-                } catch (Throwable failure) {
-                    throw construction.close(failure).failure();
-                }
-            });
+            contentTabs.openManagedTab("Schema 对比 - " + source.name(),
+                    SchemaDiffManagedTabFactory.factory(
+                            connectionTree::connectionConfigsSnapshot,
+                            availableConnections -> new SchemaDiffPane(
+                                    connMgr, availableConnections, source, sourceSchema, capability),
+                            ignored -> reportShutdownFailure(new IllegalStateException(
+                                    "Schema Diff construction cleanup failed"))));
         }
 
         @Override
