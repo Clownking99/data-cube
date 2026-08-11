@@ -64,14 +64,23 @@ class OracleSchemaSnapshotReaderTest {
                                 null, null, null, "YES", "NO", "NO", null, "AMOUNT * 2"),
                         column("Order\"Line", "AMOUNT", 10, "NUMBER", 18, 2, null,
                                 null, null, null, "NO", "YES", "NO", null, "0"),
-                        row("table_name", "Order\"Line", "column_name", "SYS_NC00001$",
+                        row("table_name", "Order\"Line", "column_name", "PRIVATE_CODE",
                                 "column_id", 11, "data_type", "VARCHAR2", "data_length", 20L,
                                 "char_length", 20L, "char_used", "B", "data_precision", null,
                                 "data_scale", null, "data_type_owner", null, "data_type_mod", null,
                                 "nullable", "Y", "identity_column", "NO", "generation_type", null,
+                                "default_on_null", "NO", "virtual_column", "NO",
+                                "hidden_column", "YES", "user_generated", "YES",
+                                "comments", "user invisible", "identity_options", null,
+                                "data_default", null),
+                        row("table_name", "Order\"Line", "column_name", "SYS_NC00001$",
+                                "column_id", 12, "data_type", "VARCHAR2", "data_length", 20L,
+                                "char_length", 20L, "char_used", "B", "data_precision", null,
+                                "data_scale", null, "data_type_owner", null, "data_type_mod", null,
+                                "nullable", "Y", "identity_column", "NO", "generation_type", null,
                                 "default_on_null", "NO", "virtual_column", "YES",
-                                "invisible_column", "NO", "hidden_column", "YES",
-                                "user_generated", "NO", "comments", "must not leak",
+                                "hidden_column", "YES", "user_generated", "NO",
+                                "comments", "must not leak", "identity_options", null,
                                 "data_default", "secret hidden default"));
 
         SchemaSnapshot snapshot = new OracleSchemaSnapshotReader(jdbc.connection()).read(
@@ -82,7 +91,7 @@ class OracleSchemaSnapshotReaderTest {
                 snapshot.objects().get(key(ObjectType.TABLE, "Sales", "Order\"Line", "")));
         assertEquals(List.of("\"ID\"", "\"CODE\"", "\"RAW_PAYLOAD\"", "\"EVENT_TIME\"",
                         "\"CREATED_AT\"", "\"LOCAL_TIME\"", "\"DURATION\"", "\"ADDRESS\"",
-                        "\"TOTAL\"", "\"AMOUNT\""),
+                        "\"TOTAL\"", "\"AMOUNT\"", "\"PRIVATE_CODE\""),
                 table.columns().stream().map(column -> column.name().original()).toList());
 
         ColumnDefinition id = table.columns().getFirst();
@@ -117,6 +126,8 @@ class OracleSchemaSnapshotReaderTest {
 
         assertEquals("GENERATED ALWAYS AS (AMOUNT * 2) VIRTUAL",
                 table.columns().get(8).normalizedDefault());
+        assertEquals("true", table.columns().get(10).dataType()
+                .providerExtensions().get("oracle.invisible"));
         assertNull(table.columns().stream()
                 .filter(column -> column.name().original().contains("SYS_NC"))
                 .findFirst().orElse(null));
@@ -125,6 +136,7 @@ class OracleSchemaSnapshotReaderTest {
         assertEquals(64, snapshot.fingerprint().length());
         assertFalse(jdbc.connectionSetSchemaCalled());
         assertEquals("data_default", jdbc.statement("columns").lastReadLabel());
+        assertFalse(jdbc.statement("columns").sql().contains("c.INVISIBLE_COLUMN"));
     }
 
     @Test
@@ -161,15 +173,19 @@ class OracleSchemaSnapshotReaderTest {
                         row("table_name", "ORDERS", "index_name", "ORDERS_PK_IDX",
                                 "index_type", "NORMAL", "uniqueness", "UNIQUE", "column_position", 1,
                                 "column_name", "ID", "constraint_name", "ORDERS_PK",
-                                "column_expression", null),
+                                "descend", "ASC", "column_expression", null),
                         row("table_name", "ORDERS", "index_name", "ORDERS_CODE_IDX",
                                 "index_type", "NORMAL", "uniqueness", "NONUNIQUE", "column_position", 1,
                                 "column_name", "CODE", "constraint_name", null,
-                                "column_expression", null),
+                                "descend", "ASC", "column_expression", null),
+                        row("table_name", "ORDERS", "index_name", "ORDERS_CODE_IDX",
+                                "index_type", "NORMAL", "uniqueness", "NONUNIQUE", "column_position", 2,
+                                "column_name", "REGION", "constraint_name", null,
+                                "descend", "DESC", "column_expression", null),
                         row("table_name", "ORDERS", "index_name", "ORDERS_UPPER_IDX",
                                 "index_type", "FUNCTION-BASED NORMAL", "uniqueness", "NONUNIQUE",
                                 "column_position", 1, "column_name", "SYS_NC00002$", "constraint_name", null,
-                                "column_expression", "UPPER(\"CODE\")"))
+                                "descend", "DESC", "column_expression", "UPPER(\"CODE\")"))
                 .rows("sequences",
                         row("sequence_name", "ORDERS_SEQ", "min_value", "1", "max_value", "999999",
                                 "increment_by", "5", "cycle_flag", "Y", "cache_size", 20,
@@ -214,7 +230,12 @@ class OracleSchemaSnapshotReaderTest {
         IndexDefinition function = orders.indexes().stream()
                 .filter(value -> value.key().name().original().contains("ORDERS_UPPER_IDX"))
                 .findFirst().orElseThrow();
-        assertEquals(List.of("UPPER(\"CODE\")"), function.normalizedExpressions());
+        assertEquals(List.of("UPPER(\"CODE\") DESC"), function.normalizedExpressions());
+        IndexDefinition ordinary = orders.indexes().stream()
+                .filter(value -> value.key().name().original().contains("ORDERS_CODE_IDX"))
+                .findFirst().orElseThrow();
+        assertEquals(List.of("\"CODE\"", "\"REGION\" DESC"), ordinary.normalizedExpressions());
+        assertTrue(jdbc.statement("indexes").sql().contains("columns.DESCEND"));
 
         SequenceDefinition orderSequence = assertInstanceOf(SequenceDefinition.class,
                 snapshot.objects().get(key(ObjectType.SEQUENCE, "Sales", "ORDERS_SEQ", "")));
@@ -231,9 +252,64 @@ class OracleSchemaSnapshotReaderTest {
         assertEquals("NOORDER", noOrderSequence.providerExtensions().get("oracle.order"));
         assertFalse(jdbc.statement("sequences").sql().contains("LAST_NUMBER"));
         assertFalse(jdbc.statement("sequences").readLabels().contains("last_number"));
-        assertFalse(snapshot.completeness().complete());
-        assertEquals(SnapshotCompleteness.METADATA_UNAVAILABLE,
-                snapshot.completeness().unavailableScopes().get(ObjectType.SEQUENCE));
+        assertTrue(snapshot.completeness().complete());
+        assertFalse(snapshot.completeness().unavailableScopes().containsKey(ObjectType.SEQUENCE));
+    }
+
+    @Test
+    void filtersNestedSecondaryAndIotOverflowImplementationTablesInCatalogSql() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("Sales").rows("tables",
+                tableRow("ORDERS", "NO", "N", null),
+                tableRow("IOT_TOP", "NO", "N", "IOT"),
+                tableRow("NESTED_IMPL", "YES", "N", null),
+                tableRow("SECONDARY_IMPL", "NO", "Y", null),
+                tableRow("IOT_OVERFLOW_IMPL", "NO", "N", "IOT_OVERFLOW"));
+
+        SchemaSnapshot snapshot = read(jdbc, "connection");
+
+        assertEquals(Set.of("\"Sales\".\"ORDERS\"", "\"Sales\".\"IOT_TOP\""),
+                snapshot.objects().keySet().stream()
+                        .filter(key -> key.type() == ObjectType.TABLE)
+                        .map(key -> key.name().original()).collect(java.util.stream.Collectors.toSet()));
+        String sql = jdbc.statement("tables").sql();
+        assertTrue(sql.contains("t.NESTED = 'NO'"));
+        assertTrue(sql.contains("t.SECONDARY = 'N'"));
+        assertTrue(sql.contains("t.IOT_TYPE IS NULL OR t.IOT_TYPE = 'IOT'"));
+    }
+
+    @Test
+    void identityOptionsPreserveDeclarativeSequenceSemanticsInTypeExtensions() throws Exception {
+        String firstOptions = "  START WITH: 1,  INCREMENT BY: 5, MAX_VALUE: 999, "
+                + "MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: Y  ";
+        SnapshotJdbc firstJdbc = new SnapshotJdbc("Sales")
+                .rows("tables", row("table_name", "ORDERS"))
+                .rows("columns", identityColumn(firstOptions));
+
+        SchemaSnapshot first = read(firstJdbc, "first");
+
+        TableDefinition table = assertInstanceOf(TableDefinition.class,
+                first.objects().get(key(ObjectType.TABLE, "Sales", "ORDERS", "")));
+        assertEquals("START WITH: 1, INCREMENT BY: 5, MAX_VALUE: 999, MIN_VALUE: 1, "
+                        + "CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: Y",
+                table.columns().getFirst().dataType().providerExtensions()
+                        .get("oracle.identityOptions"));
+        for (String changedOptions : List.of(
+                "START WITH: 1, INCREMENT BY: 7, MAX_VALUE: 999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: Y",
+                "START WITH: 1, INCREMENT BY: 5, MAX_VALUE: 1000, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: Y",
+                "START WITH: 1, INCREMENT BY: 5, MAX_VALUE: 999, MIN_VALUE: 0, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: Y",
+                "START WITH: 1, INCREMENT BY: 5, MAX_VALUE: 999, MIN_VALUE: 1, CYCLE_FLAG: Y, CACHE_SIZE: 20, ORDER_FLAG: Y",
+                "START WITH: 1, INCREMENT BY: 5, MAX_VALUE: 999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 40, ORDER_FLAG: Y",
+                "START WITH: 1, INCREMENT BY: 5, MAX_VALUE: 999, MIN_VALUE: 1, CYCLE_FLAG: N, CACHE_SIZE: 20, ORDER_FLAG: N")) {
+            SnapshotJdbc changedJdbc = new SnapshotJdbc("Sales")
+                    .rows("tables", row("table_name", "ORDERS"))
+                    .rows("columns", identityColumn(changedOptions));
+            assertNotEquals(first.fingerprint(), read(changedJdbc, "changed").fingerprint(),
+                    changedOptions);
+        }
+        String columnsSql = firstJdbc.statement("columns").sql();
+        assertTrue(columnsSql.contains("identity.IDENTITY_OPTIONS"));
+        assertFalse(columnsSql.contains("LAST_NUMBER"));
+        assertFalse(columnsSql.contains("ISEQ$$_"));
     }
 
     @Test
@@ -244,7 +320,6 @@ class OracleSchemaSnapshotReaderTest {
                         definitionRow("ORDERS_V", "VIEW", 201, 0, null),
                         definitionRow("ORDERS_MV", "MATERIALIZED VIEW", 202, 0, null),
                         definitionRow("CALC", "FUNCTION", 301, 1, null),
-                        definitionRow("CALC", "FUNCTION", 301, 2, null),
                         definitionRow("REFRESH_ORDERS", "PROCEDURE", 302, 1, null),
                         definitionRow("AUDIT_ORDERS", "TRIGGER", 401, 0, "ORDERS"),
                         definitionRow("ORDER_API", "PACKAGE", 501, 0, null),
@@ -259,15 +334,7 @@ class OracleSchemaSnapshotReaderTest {
                         argument("CALC", 301, 1, 2, 0, "OUT", "VARCHAR2", null, null, null, 200,
                                 "P_RESULT", null),
                         argument("CALC", 301, 1, 3, 1, "IN", "VARCHAR2", null, null, null, 99,
-                                "NESTED_SECRET", null),
-                        row("object_name", "CALC", "object_id", 301, "subprogram_id", 2,
-                                "position", 1, "sequence", 1, "data_level", 0, "in_out", "IN",
-                                "data_type", "OBJECT", "data_length", null, "data_precision", null,
-                                "data_scale", null, "type_owner", "Sales", "type_name", "ADDRESS_T",
-                                "type_subname", null, "pls_type", "ADDRESS_T", "argument_name", "P_ADDRESS",
-                                "defaulted", "N", "default_value", null),
-                        argument("REFRESH_ORDERS", 302, 1, 1, 0, "IN/OUT", "VARCHAR2", null,
-                                null, null, 20, "P_MODE", "mode default secret"))
+                                "NESTED_SECRET", null))
                 .ddl("VIEW", "ORDERS_V", "CREATE VIEW \"Sales\".\"ORDERS_V\" AS SELECT * FROM \"Sales\".\"ORDERS\";")
                 .ddl("MATERIALIZED_VIEW", "ORDERS_MV", "CREATE MATERIALIZED VIEW \"Sales\".\"ORDERS_MV\" "
                         + "SEGMENT CREATION IMMEDIATE AS SELECT * FROM \"Sales\".\"ORDERS\";")
@@ -277,9 +344,9 @@ class OracleSchemaSnapshotReaderTest {
                         + "BEGIN NULL; END;\n/")
                 .ddl("TRIGGER", "AUDIT_ORDERS", "CREATE OR REPLACE TRIGGER \"Sales\".\"AUDIT_ORDERS\" "
                         + "BEFORE INSERT ON \"Sales\".\"ORDERS\" BEGIN NULL; END;\n/")
-                .ddl("PACKAGE", "ORDER_API", "CREATE OR REPLACE PACKAGE \"Sales\".\"ORDER_API\" IS END;\n/")
+                .ddl("PACKAGE_SPEC", "ORDER_API", "CREATE OR REPLACE PACKAGE \"Sales\".\"ORDER_API\" IS END;\n/")
                 .ddl("PACKAGE_BODY", "ORDER_API", "CREATE OR REPLACE PACKAGE BODY \"Sales\".\"ORDER_API\" IS END;\n/")
-                .ddl("TYPE", "ADDRESS_T", "CREATE TYPE \"Sales\".\"ADDRESS_T\" AS OBJECT (CITY VARCHAR2(20));")
+                .ddl("TYPE_SPEC", "ADDRESS_T", "CREATE TYPE \"Sales\".\"ADDRESS_T\" AS OBJECT (CITY VARCHAR2(20));")
                 .ddl("TYPE_BODY", "ADDRESS_T", "CREATE TYPE BODY \"Sales\".\"ADDRESS_T\" AS END;\n/")
                 .rows("dependencies",
                         dependency("ORDERS_V", "VIEW", "Sales", "ORDERS", "TABLE"),
@@ -304,24 +371,23 @@ class OracleSchemaSnapshotReaderTest {
         assertEquals(SnapshotCompleteness.DEFINITION_UNAVAILABLE,
                 snapshot.completeness().unavailableScopes().get(ObjectType.MATERIALIZED_VIEW));
 
-        List<DefinitionObject> overloads = snapshot.objects().values().stream()
+        DefinitionObject function = snapshot.objects().values().stream()
                 .filter(DefinitionObject.class::isInstance).map(DefinitionObject.class::cast)
                 .filter(value -> value.key().type() == ObjectType.FUNCTION
                         && value.key().name().original().contains("CALC"))
-                .toList();
-        assertEquals(2, overloads.size());
-        assertEquals(2, overloads.stream().map(value -> value.key().signature()).distinct().count());
-        assertTrue(overloads.stream().map(value -> value.key().signature())
-                .noneMatch(value -> value.contains("P_AMOUNT") || value.contains("SECRET")
-                        || value.contains("P_RESULT") || value.contains("NESTED")));
-        assertTrue(overloads.stream().allMatch(value -> value.dependencies().contains(
-                key(ObjectType.TYPE, "Sales", "ADDRESS_T", "SPEC"))));
+                .findFirst().orElseThrow();
+        assertTrue(function.key().signature().contains("IN"));
+        assertTrue(function.key().signature().contains("NUMBER(10,0)"));
+        assertFalse(function.key().signature().contains("P_AMOUNT"));
+        assertFalse(function.key().signature().contains("SECRET"));
+        assertFalse(function.key().signature().contains("P_RESULT"));
+        assertFalse(function.key().signature().contains("NESTED"));
+        assertTrue(function.dependencies().contains(
+                key(ObjectType.TYPE, "Sales", "ADDRESS_T", "SPEC")));
         DefinitionObject procedure = snapshot.objects().values().stream()
                 .filter(DefinitionObject.class::isInstance).map(DefinitionObject.class::cast)
                 .filter(value -> value.key().type() == ObjectType.PROCEDURE).findFirst().orElseThrow();
-        assertTrue(procedure.key().signature().contains("INOUT"));
-        assertTrue(procedure.key().signature().contains("VARCHAR2"));
-        assertFalse(procedure.key().signature().contains("P_MODE"));
+        assertEquals("oracle-routine-signature-v1\0", procedure.key().signature());
         assertEquals(SnapshotCompleteness.DEPENDENCY_UNRESOLVED,
                 snapshot.completeness().unavailableScopes().get(ObjectType.PROCEDURE));
 
@@ -339,15 +405,68 @@ class OracleSchemaSnapshotReaderTest {
 
         List<SnapshotJdbc.StatementTrace> ddlStatements = jdbc.statements().stream()
                 .filter(value -> value.tag().equals("ddl")).toList();
+        assertEquals(1, ddlStatements.stream()
+                .filter(value -> "CALC".equals(value.bindings().get(2))).count(),
+                "a standalone routine has one ALL_PROCEDURES identity row");
         assertTrue(jdbc.statement("definitions").sql().contains("ALL_PROCEDURES"));
         assertTrue(jdbc.statement("definitions").sql().contains("PROCEDURE_NAME IS NULL"));
-        assertEquals(10, ddlStatements.size());
+        assertEquals(9, ddlStatements.size());
+        assertEquals(List.of("FUNCTION", "MATERIALIZED_VIEW", "PACKAGE_BODY",
+                        "PACKAGE_SPEC", "PROCEDURE", "TRIGGER", "TYPE_BODY", "TYPE_SPEC", "VIEW"),
+                ddlStatements.stream().map(value -> (String) value.bindings().get(1))
+                        .sorted().toList());
         assertTrue(ddlStatements.stream().allMatch(value -> value.timeout() == 17));
         assertTrue(ddlStatements.stream().allMatch(value -> "Sales".equals(value.bindings().get(3))));
         assertTrue(ddlStatements.stream().allMatch(value -> value.nextCalls() == 2),
                 "GET_DDL result sets must be drained before activation release");
         assertFalse(new OracleSchemaSnapshotReader(jdbc.connection()).toString().contains("Sales"));
         assertFalse(snapshot.toString().contains("amount default secret"));
+    }
+
+    @Test
+    void triggerBaseDependenciesRespectCatalogOwnerAndType() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("Sales")
+                .rows("tables", row("table_name", "ORDERS"), row("table_name", "EXT_TARGET"))
+                .rows("definitions",
+                        definitionRow("ORDERS_V", "VIEW", 101, 0, null, null, null),
+                        definitionRow("TABLE_TRIGGER", "TRIGGER", 201, 0,
+                                "Sales", "TABLE", "ORDERS"),
+                        definitionRow("VIEW_TRIGGER", "TRIGGER", 202, 0,
+                                "Sales", "VIEW", "ORDERS_V"),
+                        definitionRow("EXTERNAL_TRIGGER", "TRIGGER", 203, 0,
+                                "Other", "TABLE", "EXT_TARGET"),
+                        definitionRow("SCHEMA_TRIGGER", "TRIGGER", 204, 0,
+                                "Sales", "SCHEMA", "ORDERS"),
+                        definitionRow("DATABASE_TRIGGER", "TRIGGER", 205, 0,
+                                "Sales", "DATABASE", "ORDERS"),
+                        definitionRow("MISSING_VIEW_TRIGGER", "TRIGGER", 206, 0,
+                                "Sales", "VIEW", "MISSING_V"))
+                .ddl("VIEW", "ORDERS_V", "CREATE VIEW ORDERS_V AS SELECT 1")
+                .ddl("TRIGGER", "TABLE_TRIGGER", "CREATE TRIGGER TABLE_TRIGGER BEFORE INSERT ON ORDERS BEGIN NULL; END;")
+                .ddl("TRIGGER", "VIEW_TRIGGER", "CREATE TRIGGER VIEW_TRIGGER INSTEAD OF INSERT ON ORDERS_V BEGIN NULL; END;")
+                .ddl("TRIGGER", "EXTERNAL_TRIGGER", "CREATE TRIGGER EXTERNAL_TRIGGER BEFORE INSERT ON EXT_TARGET BEGIN NULL; END;")
+                .ddl("TRIGGER", "SCHEMA_TRIGGER", "CREATE TRIGGER SCHEMA_TRIGGER AFTER LOGON ON SCHEMA BEGIN NULL; END;")
+                .ddl("TRIGGER", "DATABASE_TRIGGER", "CREATE TRIGGER DATABASE_TRIGGER AFTER STARTUP ON DATABASE BEGIN NULL; END;")
+                .ddl("TRIGGER", "MISSING_VIEW_TRIGGER", "CREATE TRIGGER MISSING_VIEW_TRIGGER INSTEAD OF INSERT ON MISSING_V BEGIN NULL; END;");
+
+        SchemaSnapshot snapshot = read(jdbc, "connection");
+
+        ObjectKey orders = key(ObjectType.TABLE, "Sales", "ORDERS", "");
+        ObjectKey view = key(ObjectType.VIEW, "Sales", "ORDERS_V", "");
+        assertEquals(Set.of(orders), definition(
+                snapshot, ObjectType.TRIGGER, "Sales", "TABLE_TRIGGER", "").dependencies());
+        assertEquals(Set.of(view), definition(
+                snapshot, ObjectType.TRIGGER, "Sales", "VIEW_TRIGGER", "").dependencies());
+        for (String name : List.of("EXTERNAL_TRIGGER", "SCHEMA_TRIGGER", "DATABASE_TRIGGER",
+                "MISSING_VIEW_TRIGGER")) {
+            assertTrue(definition(snapshot, ObjectType.TRIGGER, "Sales", name, "")
+                    .dependencies().isEmpty(), name);
+        }
+        assertEquals(SnapshotCompleteness.DEPENDENCY_UNRESOLVED,
+                snapshot.completeness().unavailableScopes().get(ObjectType.TRIGGER));
+        String sql = jdbc.statement("definitions").sql();
+        assertTrue(sql.contains("triggers.TABLE_OWNER AS BASE_OBJECT_OWNER"));
+        assertTrue(sql.contains("triggers.BASE_OBJECT_TYPE"));
     }
 
     @Test
@@ -431,8 +550,25 @@ class OracleSchemaSnapshotReaderTest {
                         "data_scale", 0, "data_type_owner", null, "data_type_mod", null,
                         "nullable", "N", "identity_column", "NO", "generation_type", null,
                         "default_on_null", "NO", "virtual_column", "NO",
-                        "invisible_column", "NO", "hidden_column", "NO",
-                        "user_generated", "YES", "comments", comment, "data_default", "0"));
+                        "hidden_column", "NO", "user_generated", "YES",
+                        "comments", comment, "identity_options", null, "data_default", "0"));
+    }
+
+    private static Map<String, Object> identityColumn(String options) {
+        return row("table_name", "ORDERS", "column_name", "ID", "column_id", 1,
+                "data_type", "NUMBER", "data_length", null, "char_length", null,
+                "char_used", null, "data_precision", 18, "data_scale", 0,
+                "data_type_owner", null, "data_type_mod", null, "nullable", "N",
+                "identity_column", "YES", "generation_type", "BY DEFAULT",
+                "default_on_null", "NO", "virtual_column", "NO",
+                "hidden_column", "NO", "user_generated", "YES", "comments", null,
+                "identity_options", options, "data_default", "ISEQ$$_42.NEXTVAL");
+    }
+
+    private static Map<String, Object> tableRow(
+            String name, String nested, String secondary, String iotType) {
+        return row("table_name", name, "nested", nested,
+                "secondary", secondary, "iot_type", iotType);
     }
 
     private static SchemaSnapshot read(SnapshotJdbc jdbc, String connectionId) throws SQLException {
@@ -452,15 +588,25 @@ class OracleSchemaSnapshotReaderTest {
                 "data_type_owner", typeOwner, "data_type_mod", typeMod, "nullable", "Y",
                 "identity_column", identity, "generation_type", generationType,
                 "default_on_null", defaultOnNull, "virtual_column", virtual,
-                "invisible_column", "NO", "hidden_column", "NO", "user_generated", "YES",
+                "hidden_column", "NO", "user_generated", "YES",
                 "comments", name.equals("CODE") ? "customer-visible" : null,
+                "identity_options", null,
                 "data_default", defaultExpression);
     }
 
     private static Map<String, Object> definitionRow(
             String name, String type, int objectId, int subprogramId, String baseObjectName) {
+        return definitionRow(name, type, objectId, subprogramId,
+                baseObjectName == null ? null : "Sales",
+                baseObjectName == null ? null : "TABLE", baseObjectName);
+    }
+
+    private static Map<String, Object> definitionRow(
+            String name, String type, int objectId, int subprogramId,
+            String baseOwner, String baseType, String baseObjectName) {
         return row("object_name", name, "object_type", type, "object_id", objectId,
-                "subprogram_id", subprogramId, "base_object_name", baseObjectName);
+                "subprogram_id", subprogramId, "base_object_owner", baseOwner,
+                "base_object_type", baseType, "base_object_name", baseObjectName);
     }
 
     private static Map<String, Object> argument(
@@ -590,6 +736,9 @@ class OracleSchemaSnapshotReaderTest {
                             } else {
                                 queryRows = rows.getOrDefault(trace.tag, List.of());
                             }
+                            if (trace.tag.equals("tables")) {
+                                queryRows = filterImplementationTables(queryRows, trace.sql);
+                            }
                             yield resultSet(queryRows, trace, rowFailures.get(trace.tag));
                         }
                         case "cancel" -> {
@@ -644,6 +793,19 @@ class OracleSchemaSnapshotReaderTest {
             trace.readLabels.add(label.toString());
             wasNull.set(value == null);
             return value;
+        }
+
+        private static List<Map<String, Object>> filterImplementationTables(
+                List<Map<String, Object>> values, String sql) {
+            return values.stream()
+                    .filter(row -> !sql.contains("t.NESTED = 'NO'")
+                            || !row.containsKey("nested") || "NO".equals(row.get("nested")))
+                    .filter(row -> !sql.contains("t.SECONDARY = 'N'")
+                            || !row.containsKey("secondary") || "N".equals(row.get("secondary")))
+                    .filter(row -> !sql.contains("t.IOT_TYPE IS NULL OR t.IOT_TYPE = 'IOT'")
+                            || !row.containsKey("iot_type") || row.get("iot_type") == null
+                            || "IOT".equals(row.get("iot_type")))
+                    .toList();
         }
 
         private static String tag(String sql) {

@@ -72,11 +72,25 @@ class OracleSchemaIdentifierNormalizerTest {
         assertEquals("CREATE OR REPLACE FUNCTION F RETURN VARCHAR2 IS\n"
                         + "BEGIN\nRETURN 'text; / keep'; -- / keep\nEND;",
                 OracleSchemaDefinitionNormalizer.normalize(plsql));
-        assertEquals("CREATE VIEW V AS SELECT '; /' VALUE FROM DUAL",
+        assertEquals("CREATE VIEW V AS SELECT '; /' VALUE FROM DUAL;",
                 OracleSchemaDefinitionNormalizer.normalize(
                         "CREATE VIEW V AS SELECT '; /' VALUE FROM DUAL;"));
-        assertEquals("SELECT 1;;", OracleSchemaDefinitionNormalizer.normalize(" SELECT 1;;; "));
+        assertEquals("SELECT 1;;;", OracleSchemaDefinitionNormalizer.normalize(" SELECT 1;;; "));
         assertEquals("SELECT 1\n/", OracleSchemaDefinitionNormalizer.normalize("SELECT 1\n/\n/"));
         assertNull(OracleSchemaDefinitionNormalizer.normalize(null));
+    }
+
+    @Test
+    void definitionNormalizerPreservesTrailingSemicolonsWithoutSlashSeparator() {
+        for (String ddl : java.util.List.of(
+                "CREATE VIEW V AS SELECT 1;",
+                "CREATE TABLE T (ID NUMBER);",
+                "CREATE FUNCTION F RETURN NUMBER IS BEGIN RETURN 1; END;",
+                "CREATE PROCEDURE P IS BEGIN NULL; END;",
+                "CREATE PACKAGE PKG IS PROCEDURE P; END;",
+                "CREATE TYPE ADDRESS_T AS OBJECT (CITY VARCHAR2(20));",
+                "CREATE TRIGGER TRG BEFORE INSERT ON T BEGIN NULL; END;")) {
+            assertEquals(ddl, OracleSchemaDefinitionNormalizer.normalize(ddl), ddl);
+        }
     }
 }

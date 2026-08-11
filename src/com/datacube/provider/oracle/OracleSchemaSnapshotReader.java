@@ -45,6 +45,9 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
             SELECT t.TABLE_NAME
             FROM ALL_TABLES t
             WHERE t.OWNER = ?
+              AND t.NESTED = 'NO'
+              AND t.SECONDARY = 'N'
+              AND (t.IOT_TYPE IS NULL OR t.IOT_TYPE = 'IOT')
             ORDER BY t.TABLE_NAME
             """;
 
@@ -54,8 +57,8 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
                    c.DATA_LENGTH, c.CHAR_LENGTH, c.CHAR_USED,
                    c.DATA_PRECISION, c.DATA_SCALE, c.DATA_TYPE_OWNER, c.DATA_TYPE_MOD,
                    c.NULLABLE, c.IDENTITY_COLUMN, identity.GENERATION_TYPE,
-                   c.DEFAULT_ON_NULL, c.VIRTUAL_COLUMN, c.INVISIBLE_COLUMN,
-                   c.HIDDEN_COLUMN, c.USER_GENERATED, comments.COMMENTS,
+                   c.DEFAULT_ON_NULL, c.VIRTUAL_COLUMN, c.HIDDEN_COLUMN,
+                   c.USER_GENERATED, identity.IDENTITY_OPTIONS, comments.COMMENTS,
                    c.DATA_DEFAULT
             FROM ALL_TAB_COLS c
             LEFT JOIN ALL_COL_COMMENTS comments
@@ -100,7 +103,7 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
             /* snapshot:indexes */
             SELECT indexes.TABLE_NAME, indexes.INDEX_NAME, indexes.INDEX_TYPE,
                    indexes.UNIQUENESS, columns.COLUMN_POSITION, columns.COLUMN_NAME,
-                   constraints.CONSTRAINT_NAME, expressions.COLUMN_EXPRESSION
+                   constraints.CONSTRAINT_NAME, columns.DESCEND, expressions.COLUMN_EXPRESSION
             FROM ALL_INDEXES indexes
             JOIN ALL_IND_COLUMNS columns
               ON columns.INDEX_OWNER = indexes.OWNER
@@ -132,7 +135,10 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
             /* snapshot:definitions */
             WITH requested_owner AS (SELECT ? AS OWNER FROM DUAL)
             SELECT objects.OBJECT_NAME, objects.OBJECT_TYPE, objects.OBJECT_ID,
-                   0 AS SUBPROGRAM_ID, triggers.TABLE_NAME AS BASE_OBJECT_NAME
+                   0 AS SUBPROGRAM_ID,
+                   triggers.TABLE_OWNER AS BASE_OBJECT_OWNER,
+                   triggers.BASE_OBJECT_TYPE,
+                   triggers.TABLE_NAME AS BASE_OBJECT_NAME
             FROM ALL_OBJECTS objects
             JOIN requested_owner requested ON requested.OWNER = objects.OWNER
             LEFT JOIN ALL_TRIGGERS triggers
@@ -144,7 +150,10 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
                   'PACKAGE', 'PACKAGE BODY', 'TYPE', 'TYPE BODY')
             UNION ALL
             SELECT procedures.OBJECT_NAME, procedures.OBJECT_TYPE, procedures.OBJECT_ID,
-                   procedures.SUBPROGRAM_ID, CAST(NULL AS VARCHAR2(128)) AS BASE_OBJECT_NAME
+                   procedures.SUBPROGRAM_ID,
+                   CAST(NULL AS VARCHAR2(128)) AS BASE_OBJECT_OWNER,
+                   CAST(NULL AS VARCHAR2(30)) AS BASE_OBJECT_TYPE,
+                   CAST(NULL AS VARCHAR2(128)) AS BASE_OBJECT_NAME
             FROM ALL_PROCEDURES procedures
             JOIN requested_owner requested ON requested.OWNER = procedures.OWNER
             WHERE procedures.OBJECT_TYPE IN ('FUNCTION', 'PROCEDURE')
@@ -329,9 +338,10 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
             String generationType = rows.getString("generation_type");
             boolean defaultOnNull = "YES".equals(rows.getString("default_on_null"));
             boolean virtual = "YES".equals(rows.getString("virtual_column"));
-            boolean invisible = "YES".equals(rows.getString("invisible_column"));
             boolean hidden = "YES".equals(rows.getString("hidden_column"));
             boolean userGenerated = "YES".equals(rows.getString("user_generated"));
+            boolean invisible = hidden && userGenerated;
+            String identityOptions = rows.getString("identity_options");
             String comment = rows.getString("comments");
             String defaultExpression = rows.getString("data_default");
 
@@ -339,7 +349,8 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
             if (table == null || hidden && !userGenerated) continue;
             CanonicalDataType canonicalType = canonicalType(dataType, dataLength,
                     characterLength, characterUsed, precision, scale, typeOwner, typeModifier,
-                    identity, generationType, defaultOnNull, virtual, invisible);
+                    identity, generationType, identityOptions,
+                    defaultOnNull, virtual, invisible);
             table.columns.add(new ColumnDefinition(
                     OracleSchemaIdentifierNormalizer.child(columnName), canonicalType, nullable,
                     columnDefault(defaultExpression, identity, generationType, defaultOnNull, virtual),
@@ -406,6 +417,7 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
             Integer position = nullableInteger(rows, "column_position");
             String columnName = rows.getString("column_name");
             boolean backingConstraint = rows.getString("constraint_name") != null;
+            String direction = rows.getString("descend");
             String expression = rows.getString("column_expression");
 
             if (!"NORMAL".equals(indexType) && !"FUNCTION-BASED NORMAL".equals(indexType)) {
@@ -429,6 +441,11 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
             if (position == null || normalizedExpression == null) {
                 throw new SQLFeatureNotSupportedException("Unsupported Oracle index metadata");
             }
+            if ("DESC".equals(direction)) {
+                normalizedExpression += " DESC";
+            } else if (!"ASC".equals(direction)) {
+                throw new SQLFeatureNotSupportedException("Unsupported Oracle index metadata");
+            }
             builder.expressions.add(new PositionedText(position, normalizedExpression));
         }
     }
@@ -446,7 +463,6 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
                     nullableInteger(rows, "cache_size"), Set.of(), extensions);
             state.sequences.put(key, sequence);
             state.register("SEQUENCE", name, key);
-            state.diagnostic(ObjectType.SEQUENCE, SnapshotCompleteness.METADATA_UNAVAILABLE);
         }
     }
 
@@ -456,12 +472,15 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
             String oracleType = requiredCatalogValue(rows.getString("object_type"));
             long objectId = rows.getLong("object_id");
             int subprogramId = rows.getInt("subprogram_id");
+            String baseObjectOwner = rows.getString("base_object_owner");
+            String baseObjectType = rows.getString("base_object_type");
             String baseObjectName = rows.getString("base_object_name");
             if (!DEFINITION_TYPES.contains(oracleType)) {
                 throw new SQLException("Snapshot metadata failed");
             }
             state.definitionEntries.add(new DefinitionEntry(
-                    name, oracleType, objectId, subprogramId, baseObjectName));
+                    name, oracleType, objectId, subprogramId,
+                    baseObjectOwner, baseObjectType, baseObjectName));
         }
         state.definitionEntries.sort(Comparator
                 .comparing(DefinitionEntry::oracleType)
@@ -515,12 +534,15 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
                 state.addDependency(key, state.key(ObjectType.PACKAGE_SPEC, entry.name(), ""));
             } else if (entry.oracleType().equals("TYPE BODY")) {
                 state.addDependency(key, state.key(ObjectType.TYPE, entry.name(), "SPEC"));
-            } else if (entry.oracleType().equals("TRIGGER") && entry.baseObjectName() != null) {
-                ObjectKey table = state.singleKey("TABLE", entry.baseObjectName());
-                if (table == null) {
+            } else if (entry.oracleType().equals("TRIGGER")
+                    && ("TABLE".equals(entry.baseObjectType())
+                    || "VIEW".equals(entry.baseObjectType()))
+                    && state.owner.equals(entry.baseObjectOwner())) {
+                ObjectKey base = state.singleKey(entry.baseObjectType(), entry.baseObjectName());
+                if (base == null) {
                     state.diagnostic(ObjectType.TRIGGER, SnapshotCompleteness.DEPENDENCY_UNRESOLVED);
                 } else {
-                    state.addDependency(key, table);
+                    state.addDependency(key, base);
                 }
             }
         }
@@ -677,7 +699,7 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
     private static CanonicalDataType canonicalType(
             String dataType, Long dataLength, Long characterLength, String characterUsed,
             Integer precision, Integer scale, String typeOwner, String typeModifier,
-            boolean identity, String generationType, boolean defaultOnNull,
+            boolean identity, String generationType, String identityOptions, boolean defaultOnNull,
             boolean virtual, boolean invisible) {
         SortedMap<String, String> extensions = new TreeMap<>();
         String upperType = dataType.toUpperCase(java.util.Locale.ROOT);
@@ -716,11 +738,20 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
         if (typeModifier != null) extensions.put("oracle.typeModifier", typeModifier);
         if (identity) {
             extensions.put("oracle.identity", generationType == null ? "UNKNOWN" : generationType);
+            String normalizedOptions = normalizeIdentityOptions(identityOptions);
+            if (normalizedOptions != null) {
+                extensions.put("oracle.identityOptions", normalizedOptions);
+            }
         }
         if (defaultOnNull) extensions.put("oracle.defaultOnNull", "true");
         if (virtual) extensions.put("oracle.virtual", "true");
         if (invisible) extensions.put("oracle.invisible", "true");
         return new CanonicalDataType(baseType, length, precision, scale, withTimeZone, 0, extensions);
+    }
+
+    private static String normalizeIdentityOptions(String options) {
+        if (options == null || options.isBlank()) return null;
+        return options.strip().replaceAll("\\s+", " ");
     }
 
     private static String columnDefault(String expression, boolean identity, String generationType,
@@ -1067,6 +1098,8 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
             String oracleType,
             long objectId,
             int subprogramId,
+            String baseObjectOwner,
+            String baseObjectType,
             String baseObjectName) {
         private String ddlType() {
             return switch (oracleType) {
@@ -1075,9 +1108,9 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
                 case "FUNCTION" -> "FUNCTION";
                 case "PROCEDURE" -> "PROCEDURE";
                 case "TRIGGER" -> "TRIGGER";
-                case "PACKAGE" -> "PACKAGE";
+                case "PACKAGE" -> "PACKAGE_SPEC";
                 case "PACKAGE BODY" -> "PACKAGE_BODY";
-                case "TYPE" -> "TYPE";
+                case "TYPE" -> "TYPE_SPEC";
                 case "TYPE BODY" -> "TYPE_BODY";
                 default -> throw new IllegalArgumentException("Unsupported Oracle definition category");
             };

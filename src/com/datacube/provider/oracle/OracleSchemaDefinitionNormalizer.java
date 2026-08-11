@@ -10,9 +10,6 @@ public final class OracleSchemaDefinitionNormalizer {
         String normalized = definition.replace("\r\n", "\n").replace('\r', '\n').strip();
         int slash = trailingSlashSeparator(normalized);
         if (slash >= 0) return normalized.substring(0, slash).stripTrailing();
-        if (endsWithTopLevelSemicolon(normalized)) {
-            return normalized.substring(0, normalized.length() - 1).stripTrailing();
-        }
         return normalized;
     }
 
@@ -39,11 +36,6 @@ public final class OracleSchemaDefinitionNormalizer {
         int lineStart = text.lastIndexOf('\n') + 1;
         if (lineStart == 0 || !text.substring(lineStart).equals("/")) return -1;
         return stateAt(text, lineStart) == State.NORMAL ? lineStart : -1;
-    }
-
-    private static boolean endsWithTopLevelSemicolon(String text) {
-        return !text.isEmpty() && text.charAt(text.length() - 1) == ';'
-                && stateAt(text, text.length() - 1) == State.NORMAL;
     }
 
     private static State stateAt(String text, int target) {
