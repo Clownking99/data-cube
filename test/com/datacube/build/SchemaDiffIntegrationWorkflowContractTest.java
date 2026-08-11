@@ -68,24 +68,63 @@ class SchemaDiffIntegrationWorkflowContractTest {
                 oracleEnvironment);
         assertWorkflowSensitiveScope(lines);
 
-        List<String> workflowScopedSecret = new ArrayList<>(lines);
-        int permissions = workflowScopedSecret.indexOf("permissions:");
-        assertTrue(permissions >= 0, "missing top-level permissions block");
-        workflowScopedSecret.addAll(permissions, List.of(
-                "env:",
-                "  DATACUBE_SCHEMA_DIFF_ESCAPED: ${{ secrets['SCHEMA_DIFF_ESCAPED'] }}"));
+        String bracketSecret = "LEAK: ${{ secrets['SCHEMA_DIFF_ESCAPED'] }}";
+        String schemaDiffVariable = "DATACUBE_SCHEMA_DIFF_ESCAPED: redacted";
+        assertAll(
+                () -> assertFalse(isSchemaDiffVariableLine(bracketSecret)),
+                () -> assertTrue(isSecretsExpressionLine(bracketSecret)),
+                () -> assertTrue(isSchemaDiffVariableLine(schemaDiffVariable)),
+                () -> assertFalse(isSecretsExpressionLine(schemaDiffVariable)));
 
-        // The old job-slice assertions remain green and demonstrate the inherited-scope gap.
-        assertRunStepEnvironment(
-                job(workflowScopedSecret, "postgresql"),
-                "Run opt-in PostgreSQL Schema Diff smoke",
-                postgresqlEnvironment);
-        assertRunStepEnvironment(
-                job(workflowScopedSecret, "oracle"),
-                "Run opt-in Oracle Schema Diff smoke",
-                oracleEnvironment);
-        assertThrows(AssertionError.class,
-                () -> assertWorkflowSensitiveScope(workflowScopedSecret));
+        List<String> workflowSecret = insertBefore(lines, "permissions:", List.of(
+                "env:",
+                "  " + bracketSecret));
+        List<String> jobSecret = insertBefore(lines, "  postgresql:", List.of(
+                "  leaked-secrets:",
+                "    runs-on: ubuntu-latest",
+                "    env:",
+                "      " + bracketSecret,
+                "    steps:",
+                "      - run: echo redacted"));
+        List<String> nonSmokeRunSecret = insertBefore(
+                lines, "      - name: Run opt-in PostgreSQL Schema Diff smoke", List.of(
+                        "      - name: Non-smoke diagnostics",
+                        "        env:",
+                        "          " + bracketSecret,
+                        "        run: echo redacted"));
+        List<String> setupSecret = insertAfter(
+                lines, "      - uses: actions/setup-java@v5", List.of(
+                        "        env:",
+                        "          " + bracketSecret));
+        List<String> uploadSecret = insertAfter(
+                lines, "      - name: Upload non-sensitive test reports", List.of(
+                        "        env:",
+                        "          " + bracketSecret));
+        List<String> workflowSchemaDiffVariable = insertBefore(lines, "permissions:", List.of(
+                "env:",
+                "  " + schemaDiffVariable));
+
+        // Every legacy job-slice assertion still accepts these mutations. The whole-workflow
+        // validator must independently reject both secret expressions and Schema Diff variables.
+        assertAll(
+                () -> assertSensitiveMutationRejected(
+                        "workflow secret", workflowSecret,
+                        postgresqlEnvironment, oracleEnvironment),
+                () -> assertSensitiveMutationRejected(
+                        "job secret", jobSecret,
+                        postgresqlEnvironment, oracleEnvironment),
+                () -> assertSensitiveMutationRejected(
+                        "non-smoke run secret", nonSmokeRunSecret,
+                        postgresqlEnvironment, oracleEnvironment),
+                () -> assertSensitiveMutationRejected(
+                        "setup secret", setupSecret,
+                        postgresqlEnvironment, oracleEnvironment),
+                () -> assertSensitiveMutationRejected(
+                        "upload secret", uploadSecret,
+                        postgresqlEnvironment, oracleEnvironment),
+                () -> assertSensitiveMutationRejected(
+                        "workflow Schema Diff variable", workflowSchemaDiffVariable,
+                        postgresqlEnvironment, oracleEnvironment));
     }
 
     @Test
@@ -105,6 +144,45 @@ class SchemaDiffIntegrationWorkflowContractTest {
                 "schema-diff-integration.yml");
         assertTrue(Files.exists(path), "missing workflow: " + path);
         return Files.readString(path);
+    }
+
+    private static List<String> insertBefore(
+            List<String> source, String marker, List<String> insertedLines) {
+        List<String> mutation = new ArrayList<>(source);
+        int markerIndex = mutation.indexOf(marker);
+        assertTrue(markerIndex >= 0, "missing mutation marker: " + marker);
+        mutation.addAll(markerIndex, insertedLines);
+        return List.copyOf(mutation);
+    }
+
+    private static List<String> insertAfter(
+            List<String> source, String marker, List<String> insertedLines) {
+        List<String> mutation = new ArrayList<>(source);
+        int markerIndex = mutation.indexOf(marker);
+        assertTrue(markerIndex >= 0, "missing mutation marker: " + marker);
+        mutation.addAll(markerIndex + 1, insertedLines);
+        return List.copyOf(mutation);
+    }
+
+    private static void assertSensitiveMutationRejected(
+            String label,
+            List<String> mutation,
+            Map<String, String> postgresqlEnvironment,
+            Map<String, String> oracleEnvironment) {
+        assertRunStepEnvironment(
+                job(mutation, "postgresql"),
+                "Run opt-in PostgreSQL Schema Diff smoke",
+                postgresqlEnvironment);
+        assertRunStepEnvironment(
+                job(mutation, "oracle"),
+                "Run opt-in Oracle Schema Diff smoke",
+                oracleEnvironment);
+        AssertionError rejection = assertThrows(
+                AssertionError.class,
+                () -> assertWorkflowSensitiveScope(mutation),
+                label + " escaped whole-workflow scope validation");
+        assertTrue(rejection.getMessage().contains("sensitive workflow content escaped"),
+                label + " failed for an unrelated reason");
     }
 
     private static void assertWorkflowSensitiveScope(List<String> workflow) {
@@ -137,9 +215,16 @@ class SchemaDiffIntegrationWorkflowContractTest {
     }
 
     private static boolean isSensitiveWorkflowLine(String line) {
+        return isSchemaDiffVariableLine(line) || isSecretsExpressionLine(line);
+    }
+
+    private static boolean isSchemaDiffVariableLine(String line) {
+        return line.contains("DATACUBE_SCHEMA_DIFF_");
+    }
+
+    private static boolean isSecretsExpressionLine(String line) {
         String lowerCaseLine = line.toLowerCase(Locale.ROOT);
-        return line.contains("DATACUBE_SCHEMA_DIFF_")
-                || (lowerCaseLine.contains("${{") && lowerCaseLine.contains("secrets"));
+        return lowerCaseLine.contains("${{") && lowerCaseLine.contains("secrets");
     }
 
     private static int indentation(String line) {
