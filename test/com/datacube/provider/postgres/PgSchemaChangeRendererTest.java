@@ -470,6 +470,74 @@ class PgSchemaChangeRendererTest {
     }
 
     @Test
+    void definitionHeadersMatchStructuredPostgresIdentifierTokens() {
+        RenderContext lowerContext = new RenderContext(DbType.POSTGRESQL,
+                PgSchemaIdentifierNormalizer.schema("source"),
+                PgSchemaIdentifierNormalizer.schema("target"), false);
+        ObjectKey functionKey = key(ObjectType.FUNCTION, "source", "lower_fn", "");
+        String functionSql = "CREATE OR REPLACE FUNCTION source.lower_fn() RETURNS integer "
+                + "LANGUAGE sql AS $$SELECT 1$$";
+        SchemaChange functionCreate = change("chg:lower-function", ChangeKind.CREATE,
+                functionKey, definition(functionKey, functionSql), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertEquals("CREATE OR REPLACE FUNCTION \"target\".lower_fn() RETURNS integer "
+                        + "LANGUAGE sql AS $$SELECT 1$$;",
+                renderer.render(functionCreate, lowerContext).getFirst().sql());
+
+        ObjectKey procedureKey = key(ObjectType.PROCEDURE, "source", "lower_proc", "");
+        String procedureSql = "CREATE PROCEDURE source.lower_proc() LANGUAGE sql AS $$SELECT 1$$";
+        SchemaChange procedureCreate = change("chg:lower-procedure", ChangeKind.CREATE,
+                procedureKey, definition(procedureKey, procedureSql), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertEquals("CREATE PROCEDURE \"target\".lower_proc() LANGUAGE sql AS $$SELECT 1$$;",
+                renderer.render(procedureCreate, lowerContext).getFirst().sql());
+
+        ObjectKey owner = key(ObjectType.TABLE, "source", "owner", "");
+        for (String prefix : List.of("CREATE TRIGGER ", "CREATE CONSTRAINT TRIGGER ")) {
+            ObjectKey triggerKey = key(ObjectType.TRIGGER, "source", "lower_trig",
+                    owner.name().comparisonKey());
+            String triggerSql = prefix + "lower_trig AFTER INSERT ON source.owner "
+                    + "EXECUTE FUNCTION source.lower_fn()";
+            DefinitionObject trigger = new DefinitionObject(triggerKey, triggerSql, triggerSql,
+                    Set.of(owner), DefinitionConfidence.HIGH);
+            SchemaChange triggerCreate = change("chg:lower-trigger", ChangeKind.CREATE,
+                    triggerKey, trigger, null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+            assertTrue(renderer.render(triggerCreate, lowerContext).getFirst().sql()
+                    .startsWith(prefix + "lower_trig AFTER INSERT ON \"target\".owner "));
+        }
+
+        ObjectKey mixedKey = key(ObjectType.FUNCTION, "Source", "MixedFn", "");
+        String mixedSql = "CREATE FUNCTION \"Source\".\"MixedFn\"() RETURNS integer "
+                + "LANGUAGE sql AS $$SELECT 1$$";
+        SchemaChange mixedCreate = change("chg:mixed-function", ChangeKind.CREATE, mixedKey,
+                definition(mixedKey, mixedSql), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertTrue(renderer.render(mixedCreate, context(DbType.POSTGRESQL, false)).getFirst().sql()
+                .startsWith("CREATE FUNCTION \"Target\".\"MixedFn\"()"));
+
+        for (String wrongSql : List.of(
+                "CREATE FUNCTION source.other() RETURNS integer LANGUAGE sql AS $$SELECT 1$$",
+                "CREATE FUNCTION other.lower_fn() RETURNS integer LANGUAGE sql AS $$SELECT 1$$")) {
+            SchemaChange wrong = change("chg:wrong-function-header", ChangeKind.CREATE,
+                    functionKey, definition(functionKey, wrongSql), null,
+                    AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+            assertSafeFailure("Schema definition cannot be retargeted safely", "other",
+                    () -> renderer.render(wrong, lowerContext));
+        }
+
+        ObjectKey triggerKey = key(ObjectType.TRIGGER, "source", "lower_trig",
+                owner.name().comparisonKey());
+        String wrongTriggerSql = "CREATE TRIGGER other AFTER INSERT ON source.owner "
+                + "EXECUTE FUNCTION source.lower_fn()";
+        DefinitionObject wrongTrigger = new DefinitionObject(triggerKey, wrongTriggerSql,
+                wrongTriggerSql, Set.of(owner), DefinitionConfidence.HIGH);
+        SchemaChange wrongTriggerCreate = change("chg:wrong-trigger-header", ChangeKind.CREATE,
+                triggerKey, wrongTrigger, null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertSafeFailure("Schema definition cannot be retargeted safely", "other",
+                () -> renderer.render(wrongTriggerCreate, lowerContext));
+    }
+
+    @Test
     void approvedDropMatrixUsesPostgresSyntaxAndTriggerOwnerDependency() {
         ObjectKey owner = key(ObjectType.TABLE, "Source", "Owner", "");
         List<DropCase> cases = List.of(
@@ -802,6 +870,35 @@ class PgSchemaChangeRendererTest {
     }
 
     @Test
+    void dollarQuoteOpenersRequireIdentifierBoundariesAndExactClosers() {
+        ObjectKey viewKey = key(ObjectType.VIEW, "Source", "embedded_tag", "");
+        String disguisedMultiple = "CREATE VIEW \"Source\".\"embedded_tag\" AS "
+                + "SELECT value$tag$one; SELECT 2; SELECT other$tag$value";
+        SchemaChange rejected = change("chg:embedded-dollar-tag", ChangeKind.CREATE, viewKey,
+                definition(viewKey, disguisedMultiple), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertSafeFailure("Schema definition cannot be retargeted safely", "SELECT 2",
+                () -> renderer.render(rejected, context(DbType.POSTGRESQL, false)));
+
+        String exact = "CREATE VIEW \"Source\".\"embedded_tag\" AS "
+                + "SELECT $tag$semi;colon$tag$ AS value";
+        SchemaChange accepted = change("chg:exact-dollar-tag", ChangeKind.CREATE, viewKey,
+                definition(viewKey, exact), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertEquals("CREATE VIEW \"Target\".\"embedded_tag\" AS "
+                        + "SELECT $tag$semi;colon$tag$ AS value;",
+                renderer.render(accepted, context(DbType.POSTGRESQL, false)).getFirst().sql());
+
+        String mismatched = "CREATE VIEW \"Source\".\"embedded_tag\" AS "
+                + "SELECT $tag$unterminated$Tag$";
+        SchemaChange unterminated = change("chg:mismatched-dollar-tag", ChangeKind.CREATE,
+                viewKey, definition(viewKey, mismatched), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertSafeFailure("Schema definition cannot be retargeted safely", "unterminated",
+                () -> renderer.render(unterminated, context(DbType.POSTGRESQL, false)));
+    }
+
+    @Test
     void routineDefinitionMustMatchStructuredIdentityArgumentsWithoutGuessingDeclarations() {
         ObjectKey mismatchedKey = key(ObjectType.FUNCTION, "Source", "identity_guard",
                 "\"pg_catalog\".\"int4\"");
@@ -843,6 +940,39 @@ class PgSchemaChangeRendererTest {
         assertTrue(renderer.render(exactCreate, context(DbType.POSTGRESQL, false)).getFirst().sql()
                 .startsWith("CREATE FUNCTION \"Target\".\"identity_guard\"("
                         + "\"pg_catalog\".\"numeric\"(10, 2), \"Target\".\"payload\"[])"));
+    }
+
+    @Test
+    void routineIdentityNormalizesReaderQualifiedBuiltinsAndDeparserAliases() {
+        ObjectKey key = key(ObjectType.FUNCTION, "Source", "reader_identity",
+                "pg_catalog.int4, \"pg_catalog\".\"int4\", pg_catalog.int4, "
+                        + "pg_catalog.int4[], pg_catalog.int4, "
+                        + "\"pg_catalog\".\"numeric\"(10, 2), \"Source\".\"payload\"[]");
+        String sql = "CREATE FUNCTION \"Source\".\"reader_identity\"(arg integer, "
+                + "IN named_in integer, INOUT named_inout int4, "
+                + "VARIADIC variadic_arg integer[], defaulted integer DEFAULT 7, "
+                + "amount numeric(10,2), custom \"Source\".\"payload\"[], OUT result text) "
+                + "RETURNS integer LANGUAGE sql AS $$SELECT 1$$";
+        SchemaChange create = change("chg:reader-identity", ChangeKind.CREATE, key,
+                definition(key, sql), null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+
+        String rendered = renderer.render(
+                create, context(DbType.POSTGRESQL, false)).getFirst().sql();
+
+        assertTrue(rendered.startsWith("CREATE FUNCTION \"Target\".\"reader_identity\"("
+                + "arg integer, IN named_in integer, INOUT named_inout int4, "
+                + "VARIADIC variadic_arg integer[], defaulted integer DEFAULT 7, "
+                + "amount numeric(10,2), custom \"Target\".\"payload\"[], OUT result text)"));
+
+        ObjectKey wrongKey = key(ObjectType.FUNCTION, "Source", "reader_identity",
+                "\"Source\".\"payload\"[]");
+        String wrongSql = "CREATE FUNCTION \"Source\".\"reader_identity\"("
+                + "custom \"Other\".\"payload\"[]) RETURNS integer LANGUAGE sql AS $$SELECT 1$$";
+        SchemaChange wrongCreate = change("chg:wrong-udt-identity", ChangeKind.CREATE,
+                wrongKey, definition(wrongKey, wrongSql), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertSafeFailure("Schema definition cannot be retargeted safely", "Other",
+                () -> renderer.render(wrongCreate, context(DbType.POSTGRESQL, false)));
     }
 
     private static SchemaChange change(

@@ -192,6 +192,15 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
                     || !triggerOwnerMatches(retargeted, triggerHeaderEnd, owner, context)) {
                 throw new IllegalArgumentException(UNSAFE_DEFINITION);
             }
+        } else if (definition.key().type() == ObjectType.FUNCTION
+                || definition.key().type() == ObjectType.PROCEDURE) {
+            RoutineHeader header = routineHeaderAt(retargeted, definition.key(),
+                    schemaPart(context.targetSchema()));
+            if (header == null) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+            if (replace && !header.replace()) {
+                retargeted = retargeted.substring(0, header.createEnd()) + " OR REPLACE"
+                        + retargeted.substring(header.createEnd());
+            }
         } else {
             String header = definitionHeader(definition.key(), context);
             if (!matchesCreateHeader(retargeted, definition.key().type(), header)) {
@@ -203,12 +212,15 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static int triggerHeaderEnd(String definition, ObjectKey key) {
-        String name = nestedObjectName(key);
-        for (String prefix : List.of("CREATE TRIGGER ", "CREATE CONSTRAINT TRIGGER ")) {
-            String header = prefix + name;
-            if (definition.startsWith(header + ' ')) return header.length();
-        }
-        return -1;
+        int createEnd = keywordEnd(definition, 0, "CREATE");
+        if (createEnd < 0) return -1;
+        int constraintEnd = keywordEnd(definition, createEnd, "CONSTRAINT");
+        int triggerEnd = keywordEnd(definition,
+                constraintEnd < 0 ? createEnd : constraintEnd, "TRIGGER");
+        if (triggerEnd < 0) return -1;
+        SqlIdentifier name = sqlIdentifierAt(definition, skipTrivia(definition, triggerEnd));
+        return name != null && sqlIdentifierMatches(name, objectPart(key), false)
+                ? name.end() : -1;
     }
 
     private static boolean triggerOwnerMatches(
@@ -312,24 +324,14 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
 
     private static boolean routineIdentityMatches(
             String definition, ObjectKey key, RenderContext context) {
-        String noun = key.type() == ObjectType.FUNCTION ? "FUNCTION " : "PROCEDURE ";
-        String sourceName = PgSchemaIdentifierNormalizer.quote(schemaPart(context.sourceSchema()))
-                + '.' + PgSchemaIdentifierNormalizer.quote(objectPart(key));
-        String create = "CREATE " + noun + sourceName + '(';
-        String replace = "CREATE OR REPLACE " + noun + sourceName + '(';
-        int argumentsStart;
-        if (definition.startsWith(create)) {
-            argumentsStart = create.length();
-        } else if (definition.startsWith(replace)) {
-            argumentsStart = replace.length();
-        } else {
-            return false;
-        }
-        int argumentsEnd = matchingParenthesis(definition, argumentsStart - 1);
+        RoutineHeader header = routineHeaderAt(
+                definition, key, schemaPart(context.sourceSchema()));
+        if (header == null) return false;
+        int argumentsEnd = matchingParenthesis(definition, header.argumentsStart() - 1);
         if (argumentsEnd < 0) return false;
         List<String> expected = splitSqlList(key.signature());
         List<String> declarations = splitSqlList(
-                definition.substring(argumentsStart, argumentsEnd));
+                definition.substring(header.argumentsStart(), argumentsEnd));
         int expectedIndex = 0;
         for (String declaration : declarations) {
             RoutineArgument argument = routineArgument(declaration);
@@ -342,6 +344,41 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             expectedIndex++;
         }
         return expectedIndex == expected.size();
+    }
+
+    private static RoutineHeader routineHeaderAt(
+            String definition, ObjectKey key, String expectedSchema) {
+        int createEnd = keywordEnd(definition, 0, "CREATE");
+        if (createEnd < 0) return null;
+        boolean replace = false;
+        int nounStart = createEnd;
+        int orEnd = keywordEnd(definition, createEnd, "OR");
+        if (orEnd >= 0) {
+            int replaceEnd = keywordEnd(definition, orEnd, "REPLACE");
+            if (replaceEnd < 0) return null;
+            replace = true;
+            nounStart = replaceEnd;
+        }
+        String noun = key.type() == ObjectType.FUNCTION ? "FUNCTION" : "PROCEDURE";
+        int nounEnd = keywordEnd(definition, nounStart, noun);
+        if (nounEnd < 0) return null;
+        QualifiedSqlName name = qualifiedSqlNameAt(definition, nounEnd);
+        if (name == null
+                || !sqlIdentifierMatches(name.schema(), expectedSchema, true)
+                || !sqlIdentifierMatches(name.object(), objectPart(key), false)) {
+            return null;
+        }
+        int open = skipTrivia(definition, name.object().end());
+        return charAt(definition, open) == '('
+                ? new RoutineHeader(open + 1, createEnd, replace) : null;
+    }
+
+    private static int keywordEnd(String text, int start, String keyword) {
+        int index = skipTrivia(text, start);
+        return keywordAt(text, index, keyword) ? index + keyword.length() : -1;
+    }
+
+    private record RoutineHeader(int argumentsStart, int createEnd, boolean replace) {
     }
 
     private static int matchingParenthesis(String text, int openIndex) {
@@ -490,7 +527,11 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
 
     private static boolean argumentTypeMatches(String declaration, String expected) {
         String expectedType = canonicalIdentityType(expected);
-        if (canonicalIdentityType(declaration).equals(expectedType)) return true;
+        try {
+            if (canonicalIdentityType(declaration).equals(expectedType)) return true;
+        } catch (IllegalArgumentException ignored) {
+            // A named argument is not itself a valid type; verify the declaration without its name.
+        }
         String withoutName = withoutLeadingArgumentName(declaration);
         return withoutName != null && canonicalIdentityType(withoutName).equals(expectedType);
     }
@@ -533,14 +574,62 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
         }
         if (quoted) throw new IllegalArgumentException(UNSAFE_DEFINITION);
         String value = canonical.toString();
-        int suffixStart = value.indexOf('(');
-        int arrayStart = value.indexOf('[');
-        if (suffixStart < 0 || arrayStart >= 0 && arrayStart < suffixStart) suffixStart = arrayStart;
+        int suffixStart = identityTypeSuffixStart(value);
         if (suffixStart < 0) suffixStart = value.length();
         String base = value.substring(0, suffixStart);
-        String alias = PG_TYPE_ALIASES.get(base);
-        return alias == null ? value
-                : "\"pg_catalog\".\"" + alias + "\"" + value.substring(suffixStart);
+        return canonicalIdentityBase(base) + value.substring(suffixStart);
+    }
+
+    private static int identityTypeSuffixStart(String type) {
+        boolean quoted = false;
+        for (int index = 0; index < type.length(); index++) {
+            char current = type.charAt(index);
+            if (quoted) {
+                if (current == '"') {
+                    if (index + 1 < type.length() && type.charAt(index + 1) == '"') index++;
+                    else quoted = false;
+                }
+            } else if (current == '"') {
+                quoted = true;
+            } else if (current == '(' || current == '[') {
+                return index;
+            }
+        }
+        if (quoted) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        return -1;
+    }
+
+    private static String canonicalIdentityBase(String base) {
+        SqlIdentifier first = sqlIdentifierAt(base, 0);
+        if (first == null) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        if (first.end() == base.length()) {
+            String identifier = canonicalIdentifier(first);
+            String alias = first.quoted() && !PG_TYPE_ALIASES.containsValue(identifier)
+                    ? null : PG_TYPE_ALIASES.get(identifier);
+            return alias == null ? "type\0" + identifier : "pg_catalog\0" + alias;
+        }
+        if (charAt(base, first.end()) != '.') {
+            String alias = PG_TYPE_ALIASES.get(base);
+            if (alias == null) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+            return "pg_catalog\0" + alias;
+        }
+        SqlIdentifier second = sqlIdentifierAt(base, first.end() + 1);
+        if (second == null || second.end() != base.length()) {
+            throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        }
+        String schema = canonicalIdentifier(first);
+        String name = canonicalIdentifier(second);
+        if (schema.equals("pg_catalog")) {
+            String alias = second.quoted() && !PG_TYPE_ALIASES.containsValue(name)
+                    ? null : PG_TYPE_ALIASES.get(name);
+            return "pg_catalog\0" + (alias == null ? name : alias);
+        }
+        return "qualified\0" + schema + '\0' + name;
+    }
+
+    private static String canonicalIdentifier(SqlIdentifier identifier) {
+        return identifier.quoted() ? identifier.value()
+                : identifier.value().toLowerCase(java.util.Locale.ROOT);
     }
 
     private record RoutineArgument(String declaration, boolean outOnly) {
@@ -840,6 +929,7 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static String dollarTagAt(String text, int start) {
+        if (start > 0 && identifierPart(text.charAt(start - 1))) return null;
         int end = text.indexOf('$', start + 1);
         if (end < 0) return null;
         if (end == start + 1) return "$$";

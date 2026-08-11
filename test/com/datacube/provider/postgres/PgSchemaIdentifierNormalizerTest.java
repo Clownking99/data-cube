@@ -67,4 +67,14 @@ class PgSchemaIdentifierNormalizerTest {
         assertEquals("SELECT e'it\\'s'",
                 PgSchemaDefinitionNormalizer.normalize("SELECT e'it\\'s';"));
     }
+
+    @Test
+    void definitionNormalizerRequiresIdentifierBoundaryForDollarQuoteOpeners() {
+        assertEquals("SELECT identifier$tag$value",
+                PgSchemaDefinitionNormalizer.normalize("SELECT identifier$tag$value;"));
+        assertEquals("SELECT $tag$semi;colon$tag$",
+                PgSchemaDefinitionNormalizer.normalize("SELECT $tag$semi;colon$tag$;"));
+        assertEquals("SELECT $tag$unterminated$Tag$;",
+                PgSchemaDefinitionNormalizer.normalize("SELECT $tag$unterminated$Tag$;"));
+    }
 }

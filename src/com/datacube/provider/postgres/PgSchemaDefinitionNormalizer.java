@@ -96,6 +96,7 @@ public final class PgSchemaDefinitionNormalizer {
     }
 
     private static String dollarTagAt(String text, int start) {
+        if (start > 0 && identifierPart(text.charAt(start - 1))) return null;
         int end = text.indexOf('$', start + 1);
         if (end < 0) return null;
         if (end == start + 1) return "$$";
@@ -108,6 +109,10 @@ public final class PgSchemaDefinitionNormalizer {
             }
         }
         return text.substring(start, end + 1);
+    }
+
+    private static boolean identifierPart(char value) {
+        return value == '_' || value == '$' || Character.isLetterOrDigit(value);
     }
 
     private static boolean hasEscapeStringPrefix(String text, int quoteIndex) {
