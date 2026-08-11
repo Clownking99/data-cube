@@ -45,6 +45,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     private static final String SCHEMA_KEY_DOMAIN = "oracle-schema-v1\0";
     private static final String CHILD_KEY_DOMAIN = "oracle-child-v1\0";
     private static final String ROUTINE_SIGNATURE_DOMAIN = "oracle-routine-signature-v1\0";
+    private static final String ROUTINE_SELF_TYPE_DOMAIN = "oracle-routine-self-type-v1\0";
     private static final Pattern IDENTITY_OPTIONS = Pattern.compile(
             "START WITH: ([+-]?[0-9]+), INCREMENT BY: ([+-]?[0-9]+), "
                     + "MAX_VALUE: ([+-]?[0-9]+), MIN_VALUE: ([+-]?[0-9]+), "
@@ -155,11 +156,15 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         }
         String sourceOwner = schemaPart(context.sourceSchema());
         String targetOwner = schemaPart(context.targetSchema());
+        String currentOwner = objectOwner(key);
+        if (!currentOwner.equals(sourceOwner) && !currentOwner.equals(targetOwner)) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
         StringBuilder comparison = new StringBuilder(ROUTINE_SIGNATURE_DOMAIN);
         for (RoutineArgument argument : decodeRoutineSignature(key.signature())) {
             appendSignatureField(comparison, argument.mode());
-            appendSignatureField(comparison, retargetRoutineIdentityType(
-                    argument.type(), sourceOwner, targetOwner));
+            appendSignatureField(comparison, canonicalRoutineIdentityType(
+                    argument.type(), currentOwner));
         }
         return comparison.toString();
     }
@@ -168,14 +173,13 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         signature.append(value.length()).append(':').append(value);
     }
 
-    private static String retargetRoutineIdentityType(
-            String type, String sourceOwner, String targetOwner) {
-        String sourcePrefix = sourceOwner + '.';
-        if (!type.startsWith(sourcePrefix)) return type;
-        if (type.length() == sourcePrefix.length()) {
+    private static String canonicalRoutineIdentityType(String type, String selfOwner) {
+        String selfPrefix = selfOwner + '.';
+        if (!type.startsWith(selfPrefix)) return type;
+        if (type.length() == selfPrefix.length()) {
             throw new IllegalArgumentException(UNSAFE_DEFINITION);
         }
-        return targetOwner + type.substring(sourceOwner.length());
+        return ROUTINE_SELF_TYPE_DOMAIN + type.substring(selfOwner.length());
     }
 
     private static void validateContextOwners(SchemaChange change, RenderContext context) {

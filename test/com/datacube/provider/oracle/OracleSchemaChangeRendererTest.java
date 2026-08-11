@@ -652,6 +652,101 @@ class OracleSchemaChangeRendererTest {
     }
 
     @Test
+    void routineIdentityCanonicalizationUsesTheOwningSideForSelfTypes() {
+        RenderContext sideContext = new RenderContext(DbType.ORACLE,
+                OracleSchemaIdentifierNormalizer.schema("Source"),
+                OracleSchemaIdentifierNormalizer.schema("Target"), true);
+        PropertyDifference difference = new PropertyDifference(
+                "normalizedDefinition", "desired", "current", "safe");
+
+        ObjectKey sourceSelfKey = key(ObjectType.FUNCTION,
+                "Source", "FORMAT_ADDRESS", oracleSignature("IN", "Source.ADDRESS_T"));
+        ObjectKey targetSelfKey = key(ObjectType.FUNCTION,
+                "Target", "FORMAT_ADDRESS", oracleSignature("IN", "Target.ADDRESS_T"));
+        DefinitionObject sourceSelf = definition(sourceSelfKey,
+                "CREATE OR REPLACE FUNCTION \"Source\".\"FORMAT_ADDRESS\" "
+                        + "(P_ADDRESS IN \"Source\".\"ADDRESS_T\") RETURN VARCHAR2 IS "
+                        + "BEGIN RETURN 'new'; END;");
+        DefinitionObject targetSelf = definition(targetSelfKey,
+                "CREATE OR REPLACE FUNCTION \"Target\".\"FORMAT_ADDRESS\" "
+                        + "(P_ADDRESS IN \"Target\".\"ADDRESS_T\") RETURN VARCHAR2 IS "
+                        + "BEGIN RETURN 'old'; END;");
+        SchemaChange selfToSelf = change(ChangeKind.REPLACE, sourceSelfKey,
+                sourceSelf, targetSelf, difference, AutomationLevel.DESTRUCTIVE_OPT_IN);
+        assertTrue(RENDERER.render(selfToSelf, sideContext).getFirst().sql()
+                .contains("P_ADDRESS IN \"Target\".\"ADDRESS_T\""));
+
+        ObjectKey targetExternalSourceKey = key(ObjectType.FUNCTION,
+                "Target", "FORMAT_ADDRESS", oracleSignature("IN", "Source.ADDRESS_T"));
+        DefinitionObject targetExternalSource = definition(targetExternalSourceKey,
+                "CREATE OR REPLACE FUNCTION \"Target\".\"FORMAT_ADDRESS\" "
+                        + "(P_ADDRESS IN \"Source\".\"ADDRESS_T\") RETURN VARCHAR2 IS "
+                        + "BEGIN RETURN 'old'; END;");
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.REPLACE, sourceSelfKey,
+                                        sourceSelf, targetExternalSource, difference,
+                                        AutomationLevel.DESTRUCTIVE_OPT_IN),
+                                sideContext)).getMessage());
+
+        ObjectKey sourceExternalTargetKey = key(ObjectType.FUNCTION,
+                "Source", "FORMAT_ADDRESS", oracleSignature("IN", "Target.ADDRESS_T"));
+        DefinitionObject sourceExternalTarget = definition(sourceExternalTargetKey,
+                "CREATE OR REPLACE FUNCTION \"Source\".\"FORMAT_ADDRESS\" "
+                        + "(P_ADDRESS IN \"Target\".\"ADDRESS_T\") RETURN VARCHAR2 IS "
+                        + "BEGIN RETURN 'new'; END;");
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.REPLACE,
+                                        sourceExternalTargetKey, sourceExternalTarget,
+                                        targetSelf, difference,
+                                        AutomationLevel.DESTRUCTIVE_OPT_IN),
+                                sideContext)).getMessage());
+
+        ObjectKey sourceThirdPartyKey = key(ObjectType.FUNCTION,
+                "Source", "FORMAT_ADDRESS", oracleSignature("IN", "Other.ADDRESS_T"));
+        ObjectKey targetThirdPartyKey = key(ObjectType.FUNCTION,
+                "Target", "FORMAT_ADDRESS", oracleSignature("IN", "Other.ADDRESS_T"));
+        DefinitionObject sourceThirdParty = definition(sourceThirdPartyKey,
+                "CREATE OR REPLACE FUNCTION \"Source\".\"FORMAT_ADDRESS\" "
+                        + "(P_ADDRESS IN \"Other\".\"ADDRESS_T\") RETURN VARCHAR2 IS "
+                        + "BEGIN RETURN 'new'; END;");
+        DefinitionObject targetThirdParty = definition(targetThirdPartyKey,
+                "CREATE OR REPLACE FUNCTION \"Target\".\"FORMAT_ADDRESS\" "
+                        + "(P_ADDRESS IN \"Other\".\"ADDRESS_T\") RETURN VARCHAR2 IS "
+                        + "BEGIN RETURN 'old'; END;");
+        assertTrue(RENDERER.render(change(ChangeKind.REPLACE, sourceThirdPartyKey,
+                        sourceThirdParty, targetThirdParty, difference,
+                        AutomationLevel.DESTRUCTIVE_OPT_IN), sideContext).getFirst().sql()
+                .contains("P_ADDRESS IN \"Other\".\"ADDRESS_T\""));
+
+        for (String externalType : List.of("OtherTwo.ADDRESS_T", "other.ADDRESS_T")) {
+            ObjectKey mismatchedExternalKey = key(ObjectType.FUNCTION,
+                    "Target", "FORMAT_ADDRESS", oracleSignature("IN", externalType));
+            assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                    assertThrows(IllegalArgumentException.class,
+                            () -> RENDERER.render(change(ChangeKind.REPLACE,
+                                            sourceThirdPartyKey, sourceThirdParty,
+                                            definition(mismatchedExternalKey,
+                                                    targetThirdParty.originalDefinition()),
+                                            difference, AutomationLevel.DESTRUCTIVE_OPT_IN),
+                                    sideContext)).getMessage());
+        }
+
+        ObjectKey malformedTargetKey = key(ObjectType.FUNCTION,
+                "Target", "FORMAT_ADDRESS",
+                "oracle-routine-signature-v1\0" + "2:IN99:secret");
+        IllegalArgumentException malformed = assertThrows(IllegalArgumentException.class,
+                () -> RENDERER.render(change(ChangeKind.REPLACE, sourceSelfKey,
+                                sourceSelf,
+                                definition(malformedTargetKey, targetSelf.originalDefinition()),
+                                difference, AutomationLevel.DESTRUCTIVE_OPT_IN),
+                        sideContext));
+        assertEquals(OracleSchemaChangeRenderer.UNSAFE_DEFINITION, malformed.getMessage());
+        assertFalse(malformed.getMessage().contains("secret"));
+    }
+
+    @Test
     void changeObjectOwnerMustFollowKindShapeAndRenderContext() {
         ObjectKey sourceTableKey = key(ObjectType.TABLE, "Source", "OWNER_MATRIX", "");
         ObjectKey targetTableKey = key(
