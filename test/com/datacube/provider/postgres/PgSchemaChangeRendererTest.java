@@ -975,6 +975,24 @@ class PgSchemaChangeRendererTest {
                 () -> renderer.render(wrongCreate, context(DbType.POSTGRESQL, false)));
     }
 
+    @Test
+    void routineIdentityTreatsUnqualifiedDeparserBuiltinsAsPgCatalogTypes() {
+        ObjectKey key = key(ObjectType.FUNCTION, "Source", "builtin_identity",
+                "pg_catalog.uuid, pg_catalog.jsonb, pg_catalog.date, "
+                        + "pg_catalog.bytea, pg_catalog.inet[]");
+        String sql = "CREATE FUNCTION \"Source\".\"builtin_identity\"(id uuid, "
+                + "IN payload jsonb, INOUT effective_date date, "
+                + "bytes bytea DEFAULT NULL, VARIADIC networks inet[], OUT result text) "
+                + "RETURNS integer LANGUAGE sql AS $$SELECT 1$$";
+        SchemaChange create = change("chg:builtin-identity", ChangeKind.CREATE, key,
+                definition(key, sql), null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+
+        assertTrue(renderer.render(create, context(DbType.POSTGRESQL, false)).getFirst().sql()
+                .startsWith("CREATE FUNCTION \"Target\".\"builtin_identity\"(id uuid, "
+                        + "IN payload jsonb, INOUT effective_date date, "
+                        + "bytes bytea DEFAULT NULL, VARIADIC networks inet[], OUT result text)"));
+    }
+
     private static SchemaChange change(
             String id, ChangeKind kind, ObjectKey key,
             com.datacube.spi.schemadiff.SchemaObject source,

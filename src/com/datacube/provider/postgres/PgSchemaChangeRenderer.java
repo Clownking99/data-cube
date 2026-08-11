@@ -526,14 +526,19 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static boolean argumentTypeMatches(String declaration, String expected) {
-        String expectedType = canonicalIdentityType(expected);
+        String expectedType = canonicalIdentityType(
+                expected, IdentityTypeOrigin.READER_SIGNATURE);
         try {
-            if (canonicalIdentityType(declaration).equals(expectedType)) return true;
+            if (canonicalIdentityType(
+                    declaration, IdentityTypeOrigin.DEPARSED_DECLARATION).equals(expectedType)) {
+                return true;
+            }
         } catch (IllegalArgumentException ignored) {
             // A named argument is not itself a valid type; verify the declaration without its name.
         }
         String withoutName = withoutLeadingArgumentName(declaration);
-        return withoutName != null && canonicalIdentityType(withoutName).equals(expectedType);
+        return withoutName != null && canonicalIdentityType(
+                withoutName, IdentityTypeOrigin.DEPARSED_DECLARATION).equals(expectedType);
     }
 
     private static String withoutLeadingArgumentName(String declaration) {
@@ -551,7 +556,7 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
         return declaration.substring(end).stripLeading();
     }
 
-    private static String canonicalIdentityType(String type) {
+    private static String canonicalIdentityType(String type, IdentityTypeOrigin origin) {
         StringBuilder canonical = new StringBuilder(type.length());
         boolean quoted = false;
         for (int index = 0; index < type.length(); index++) {
@@ -577,7 +582,7 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
         int suffixStart = identityTypeSuffixStart(value);
         if (suffixStart < 0) suffixStart = value.length();
         String base = value.substring(0, suffixStart);
-        return canonicalIdentityBase(base) + value.substring(suffixStart);
+        return canonicalIdentityBase(base, origin) + value.substring(suffixStart);
     }
 
     private static int identityTypeSuffixStart(String type) {
@@ -599,14 +604,16 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
         return -1;
     }
 
-    private static String canonicalIdentityBase(String base) {
+    private static String canonicalIdentityBase(String base, IdentityTypeOrigin origin) {
         SqlIdentifier first = sqlIdentifierAt(base, 0);
         if (first == null) throw new IllegalArgumentException(UNSAFE_DEFINITION);
         if (first.end() == base.length()) {
             String identifier = canonicalIdentifier(first);
             String alias = first.quoted() && !PG_TYPE_ALIASES.containsValue(identifier)
                     ? null : PG_TYPE_ALIASES.get(identifier);
-            return alias == null ? "type\0" + identifier : "pg_catalog\0" + alias;
+            if (alias != null) return "pg_catalog\0" + alias;
+            return origin == IdentityTypeOrigin.DEPARSED_DECLARATION
+                    ? "pg_catalog\0" + identifier : "type\0" + identifier;
         }
         if (charAt(base, first.end()) != '.') {
             String alias = PG_TYPE_ALIASES.get(base);
@@ -630,6 +637,11 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
     private static String canonicalIdentifier(SqlIdentifier identifier) {
         return identifier.quoted() ? identifier.value()
                 : identifier.value().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private enum IdentityTypeOrigin {
+        READER_SIGNATURE,
+        DEPARSED_DECLARATION
     }
 
     private record RoutineArgument(String declaration, boolean outOnly) {
