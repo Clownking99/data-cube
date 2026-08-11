@@ -11,10 +11,12 @@ import com.datacube.spi.SqlRunner;
 import com.datacube.spi.SequenceDdlBuilder;
 import com.datacube.spi.TableDdlBuilder;
 import com.datacube.spi.model.DbType;
+import com.datacube.spi.schemadiff.SchemaDiffCapability;
 
 import com.datacube.provider.jdbc.JdbcDataEditor;
 
 import java.sql.Connection;
+import java.util.Optional;
 
 /**
  * PostgreSQL 能力提供者：组装 6 个能力实现。
@@ -29,6 +31,7 @@ public final class PostgresProvider implements DatabaseProvider {
     private final PgSqlRunner sqlRunner = new PgSqlRunner(dialect);
     private final PgTableDdlBuilder tableDdlBuilder = new PgTableDdlBuilder();
     private final PgSequenceDdlBuilder sequenceDdlBuilder = new PgSequenceDdlBuilder();
+    private final SchemaDiffCapability schemaDiffCapability = new PgSchemaDiffCapability();
 
     @Override
     public DbType type() {
@@ -83,5 +86,10 @@ public final class PostgresProvider implements DatabaseProvider {
     @Override
     public DataEditor dataEditor(Connection c) {
         return new JdbcDataEditor(c, dialect);
+    }
+
+    @Override
+    public Optional<SchemaDiffCapability> schemaDiffCapability() {
+        return Optional.of(schemaDiffCapability);
     }
 }
