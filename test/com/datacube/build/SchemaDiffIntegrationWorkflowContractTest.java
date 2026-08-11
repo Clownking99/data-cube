@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -14,6 +15,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SchemaDiffIntegrationWorkflowContractTest {
@@ -40,28 +42,50 @@ class SchemaDiffIntegrationWorkflowContractTest {
     @Test
     void providerCredentialsAndWriteGateExistOnlyOnTheMatchingRunStep() throws IOException {
         List<String> lines = workflow().lines().toList();
+        Map<String, String> postgresqlEnvironment = Map.of(
+                "DATACUBE_SCHEMA_DIFF_TEST_ALLOW_WRITE", "'true'",
+                "DATACUBE_SCHEMA_DIFF_POSTGRES_HOST", secret("SCHEMA_DIFF_POSTGRES_HOST"),
+                "DATACUBE_SCHEMA_DIFF_POSTGRES_PORT", secret("SCHEMA_DIFF_POSTGRES_PORT"),
+                "DATACUBE_SCHEMA_DIFF_POSTGRES_DATABASE", secret("SCHEMA_DIFF_POSTGRES_DATABASE"),
+                "DATACUBE_SCHEMA_DIFF_POSTGRES_USERNAME", secret("SCHEMA_DIFF_POSTGRES_USERNAME"),
+                "DATACUBE_SCHEMA_DIFF_POSTGRES_PASSWORD", secret("SCHEMA_DIFF_POSTGRES_PASSWORD"));
+        Map<String, String> oracleEnvironment = Map.of(
+                "DATACUBE_SCHEMA_DIFF_TEST_ALLOW_WRITE", "'true'",
+                "DATACUBE_SCHEMA_DIFF_ORACLE_HOST", secret("SCHEMA_DIFF_ORACLE_HOST"),
+                "DATACUBE_SCHEMA_DIFF_ORACLE_PORT", secret("SCHEMA_DIFF_ORACLE_PORT"),
+                "DATACUBE_SCHEMA_DIFF_ORACLE_DATABASE", secret("SCHEMA_DIFF_ORACLE_DATABASE"),
+                "DATACUBE_SCHEMA_DIFF_ORACLE_USERNAME", secret("SCHEMA_DIFF_ORACLE_USERNAME"),
+                "DATACUBE_SCHEMA_DIFF_ORACLE_PASSWORD", secret("SCHEMA_DIFF_ORACLE_PASSWORD"),
+                "DATACUBE_SCHEMA_DIFF_ORACLE_TABLESPACE", secret("SCHEMA_DIFF_ORACLE_TABLESPACE"));
 
         assertRunStepEnvironment(
                 job(lines, "postgresql"),
                 "Run opt-in PostgreSQL Schema Diff smoke",
-                Map.of(
-                        "DATACUBE_SCHEMA_DIFF_TEST_ALLOW_WRITE", "'true'",
-                        "DATACUBE_SCHEMA_DIFF_POSTGRES_HOST", secret("SCHEMA_DIFF_POSTGRES_HOST"),
-                        "DATACUBE_SCHEMA_DIFF_POSTGRES_PORT", secret("SCHEMA_DIFF_POSTGRES_PORT"),
-                        "DATACUBE_SCHEMA_DIFF_POSTGRES_DATABASE", secret("SCHEMA_DIFF_POSTGRES_DATABASE"),
-                        "DATACUBE_SCHEMA_DIFF_POSTGRES_USERNAME", secret("SCHEMA_DIFF_POSTGRES_USERNAME"),
-                        "DATACUBE_SCHEMA_DIFF_POSTGRES_PASSWORD", secret("SCHEMA_DIFF_POSTGRES_PASSWORD")));
+                postgresqlEnvironment);
         assertRunStepEnvironment(
                 job(lines, "oracle"),
                 "Run opt-in Oracle Schema Diff smoke",
-                Map.of(
-                        "DATACUBE_SCHEMA_DIFF_TEST_ALLOW_WRITE", "'true'",
-                        "DATACUBE_SCHEMA_DIFF_ORACLE_HOST", secret("SCHEMA_DIFF_ORACLE_HOST"),
-                        "DATACUBE_SCHEMA_DIFF_ORACLE_PORT", secret("SCHEMA_DIFF_ORACLE_PORT"),
-                        "DATACUBE_SCHEMA_DIFF_ORACLE_DATABASE", secret("SCHEMA_DIFF_ORACLE_DATABASE"),
-                        "DATACUBE_SCHEMA_DIFF_ORACLE_USERNAME", secret("SCHEMA_DIFF_ORACLE_USERNAME"),
-                        "DATACUBE_SCHEMA_DIFF_ORACLE_PASSWORD", secret("SCHEMA_DIFF_ORACLE_PASSWORD"),
-                        "DATACUBE_SCHEMA_DIFF_ORACLE_TABLESPACE", secret("SCHEMA_DIFF_ORACLE_TABLESPACE")));
+                oracleEnvironment);
+        assertWorkflowSensitiveScope(lines);
+
+        List<String> workflowScopedSecret = new ArrayList<>(lines);
+        int permissions = workflowScopedSecret.indexOf("permissions:");
+        assertTrue(permissions >= 0, "missing top-level permissions block");
+        workflowScopedSecret.addAll(permissions, List.of(
+                "env:",
+                "  DATACUBE_SCHEMA_DIFF_ESCAPED: ${{ secrets['SCHEMA_DIFF_ESCAPED'] }}"));
+
+        // The old job-slice assertions remain green and demonstrate the inherited-scope gap.
+        assertRunStepEnvironment(
+                job(workflowScopedSecret, "postgresql"),
+                "Run opt-in PostgreSQL Schema Diff smoke",
+                postgresqlEnvironment);
+        assertRunStepEnvironment(
+                job(workflowScopedSecret, "oracle"),
+                "Run opt-in Oracle Schema Diff smoke",
+                oracleEnvironment);
+        assertThrows(AssertionError.class,
+                () -> assertWorkflowSensitiveScope(workflowScopedSecret));
     }
 
     @Test
@@ -81,6 +105,47 @@ class SchemaDiffIntegrationWorkflowContractTest {
                 "schema-diff-integration.yml");
         assertTrue(Files.exists(path), "missing workflow: " + path);
         return Files.readString(path);
+    }
+
+    private static void assertWorkflowSensitiveScope(List<String> workflow) {
+        Set<Integer> allowedLines = new java.util.HashSet<>();
+        for (String stepName : List.of(
+                "Run opt-in PostgreSQL Schema Diff smoke",
+                "Run opt-in Oracle Schema Diff smoke")) {
+            String marker = "      - name: " + stepName;
+            List<Integer> starts = java.util.stream.IntStream.range(0, workflow.size())
+                    .filter(index -> workflow.get(index).equals(marker))
+                    .boxed()
+                    .toList();
+            assertEquals(1, starts.size(), "expected exactly one approved smoke step: " + stepName);
+
+            int start = starts.getFirst();
+            int stepIndent = indentation(workflow.get(start));
+            int end = start + 1;
+            while (end < workflow.size()
+                    && (workflow.get(end).isBlank() || indentation(workflow.get(end)) > stepIndent)) {
+                end++;
+            }
+            for (int index = start; index < end; index++) allowedLines.add(index);
+        }
+
+        for (int index = 0; index < workflow.size(); index++) {
+            if (!isSensitiveWorkflowLine(workflow.get(index))) continue;
+            assertTrue(allowedLines.contains(index),
+                    "sensitive workflow content escaped approved smoke steps at line " + (index + 1));
+        }
+    }
+
+    private static boolean isSensitiveWorkflowLine(String line) {
+        String lowerCaseLine = line.toLowerCase(Locale.ROOT);
+        return line.contains("DATACUBE_SCHEMA_DIFF_")
+                || (lowerCaseLine.contains("${{") && lowerCaseLine.contains("secrets"));
+    }
+
+    private static int indentation(String line) {
+        int indentation = 0;
+        while (indentation < line.length() && line.charAt(indentation) == ' ') indentation++;
+        return indentation;
     }
 
     private static void assertRunStepEnvironment(
