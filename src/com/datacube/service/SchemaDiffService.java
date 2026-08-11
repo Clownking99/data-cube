@@ -131,7 +131,7 @@ public final class SchemaDiffService {
         private final SchemaDiffCapability capability;
         private final SchemaDeploymentControl parentControl;
         private final SqlExecutionControl sqlControl = new SqlExecutionControl();
-        private final AtomicReference<Connection> connection = new AtomicReference<>();
+        private final ReadConnectionOwner connection = new ReadConnectionOwner();
         private final SchemaDeploymentControl.Registration registration;
 
         private ReadOperation(
@@ -161,10 +161,7 @@ public final class SchemaDiffService {
         private SchemaSnapshot read() throws SQLException {
             ensureNotCancelled();
             Connection opened = connections.openDedicated(config, provider);
-            if (!connection.compareAndSet(null, opened)) {
-                closeDirect(opened);
-                throw new SQLException(SNAPSHOT_FAILED);
-            }
+            connection.publish(opened);
             try {
                 ensureNotCancelled();
                 try {
@@ -177,7 +174,7 @@ public final class SchemaDiffService {
                 return capability.snapshotReader(opened).read(
                         config.id(), schema, new SqlExecutionOptions(0, timeout, sqlControl));
             } finally {
-                closeConnection();
+                connection.close();
             }
         }
 
@@ -188,40 +185,94 @@ public final class SchemaDiffService {
         }
 
         private void cancel() throws SQLException {
-            SQLException cancellationFailure = null;
+            Throwable cancellationFailure = null;
             try {
                 sqlControl.cancel();
-            } catch (SQLException failure) {
+            } catch (Throwable failure) {
                 cancellationFailure = failure;
             }
             try {
-                closeConnection();
-            } catch (SQLException closeFailure) {
+                connection.close();
+            } catch (Throwable closeFailure) {
                 if (cancellationFailure == null) cancellationFailure = closeFailure;
                 else cancellationFailure.addSuppressed(closeFailure);
             }
-            if (cancellationFailure != null) throw cancellationFailure;
+            rethrowCleanupFailure(cancellationFailure);
         }
 
         private void close() {
             registration.close();
             try {
-                closeConnection();
-            } catch (SQLException ignored) {
+                connection.close();
+            } catch (Throwable ignored) {
                 // Snapshot failure remains terminal; the connection has still received close once.
             }
         }
 
-        private void closeConnection() throws SQLException {
-            Connection owned = connection.getAndSet(null);
-            if (owned != null) owned.close();
+        private static void rethrowCleanupFailure(Throwable failure) throws SQLException {
+            if (failure == null) return;
+            if (failure instanceof SQLException sqlFailure) throw sqlFailure;
+            if (failure instanceof RuntimeException runtimeFailure) throw runtimeFailure;
+            if (failure instanceof Error error) throw error;
+            throw new SQLException(SNAPSHOT_FAILED, failure);
         }
 
-        private static void closeDirect(Connection connection) {
-            try {
-                connection.close();
-            } catch (SQLException ignored) {
-                // No owner can retain this rejected connection.
+        private static final class ReadConnectionOwner {
+            private Connection connection;
+            private boolean closeRequested;
+            private boolean closing;
+            private boolean closed;
+            private Throwable closeFailure;
+
+            private void publish(Connection opened) throws SQLException {
+                boolean closeAfterPublish;
+                synchronized (this) {
+                    if (connection != null || closing || closed) {
+                        throw new IllegalStateException("Snapshot connection ownership already published");
+                    }
+                    connection = Objects.requireNonNull(opened, "opened");
+                    closeAfterPublish = closeRequested;
+                }
+                if (closeAfterPublish) close();
+            }
+
+            private void close() throws SQLException {
+                Connection current;
+                boolean interrupted = false;
+                synchronized (this) {
+                    closeRequested = true;
+                    while (closing) {
+                        try {
+                            wait();
+                        } catch (InterruptedException interruption) {
+                            interrupted = true;
+                        }
+                    }
+                    if (interrupted) Thread.currentThread().interrupt();
+                    if (closed) {
+                        rethrowCleanupFailure(closeFailure);
+                        return;
+                    }
+                    if (connection == null) return;
+                    current = connection;
+                    connection = null;
+                    closing = true;
+                }
+
+                Throwable failure = null;
+                try {
+                    current.close();
+                } catch (Throwable closeProblem) {
+                    failure = closeProblem;
+                } finally {
+                    synchronized (this) {
+                        closeFailure = failure;
+                        closed = true;
+                        closing = false;
+                        notifyAll();
+                    }
+                }
+                rethrowCleanupFailure(failure);
             }
         }
     }

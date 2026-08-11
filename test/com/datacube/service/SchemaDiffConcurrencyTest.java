@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -148,6 +149,32 @@ class SchemaDiffConcurrencyTest {
         assertEquals(2, factory.closeCount());
     }
 
+    @Test
+    void cancelErrorsStillPhysicallyCloseBothReadersBeforeControlReturns() throws Exception {
+        CredentialCipher cipher = new CredentialCipher();
+        CountDownLatch bothReadersEntered = new CountDownLatch(2);
+        RecordingFactory factory = new RecordingFactory(false);
+        RecordingCapability capability = new RecordingCapability(
+                factory, bothReadersEntered, ReadScenario.CANCEL_THROWS);
+        ConnectionManager manager = manager(cipher, factory, capability);
+        SchemaDeploymentControl control = new SchemaDeploymentControl();
+        CompletionStage<SchemaDiffResult> stage =
+                new SchemaDiffService(manager).compare(request(cipher), control);
+        assertTrue(capability.cancelTargetsPublished.await(2, TimeUnit.SECONDS));
+
+        assertTrue(control.cancel());
+        int closesWhenCancelReturned = factory.closeCount();
+        capability.releaseReaders.countDown();
+        Throwable failure = failure(stage);
+
+        assertInstanceOf(java.util.concurrent.CancellationException.class, failure);
+        assertEquals("Schema comparison cancelled", failure.getMessage());
+        assertFalse(failure.toString().contains("compare-driver-cancel-secret"));
+        assertEquals(2, capability.cancelFailures.get());
+        assertEquals(2, closesWhenCancelReturned);
+        assertEquals(2, factory.closeCount());
+    }
+
     private static ConnectionManager manager(
             CredentialCipher cipher, RecordingFactory factory, RecordingCapability capability) {
         DatabaseProvider provider = provider(factory, capability);
@@ -201,7 +228,7 @@ class SchemaDiffConcurrencyTest {
                 });
     }
 
-    private enum ReadScenario { SUCCESS, SOURCE_FAILS, BLOCK_UNTIL_CANCEL }
+    private enum ReadScenario { SUCCESS, SOURCE_FAILS, BLOCK_UNTIL_CANCEL, CANCEL_THROWS }
 
     private static final class RecordingCapability implements SchemaDiffCapability {
         private final RecordingFactory factory;
@@ -211,6 +238,9 @@ class SchemaDiffConcurrencyTest {
         private final List<Connection> connections = Collections.synchronizedList(new ArrayList<>());
         private final List<SqlExecutionControl> controls =
                 Collections.synchronizedList(new ArrayList<>());
+        private final AtomicInteger cancelFailures = new AtomicInteger();
+        private final CountDownLatch releaseReaders = new CountDownLatch(1);
+        private final CountDownLatch cancelTargetsPublished = new CountDownLatch(2);
 
         private RecordingCapability(
                 RecordingFactory factory,
@@ -238,6 +268,26 @@ class SchemaDiffConcurrencyTest {
                 ConnConfig config = factory.config(connection);
                 if (scenario == ReadScenario.SOURCE_FAILS && config.id().equals("source")) {
                     throw new SQLException("reader-driver-secret");
+                }
+                if (scenario == ReadScenario.CANCEL_THROWS) {
+                    Statement statement = (Statement) Proxy.newProxyInstance(
+                            getClass().getClassLoader(), new Class<?>[]{Statement.class},
+                            (proxy, method, args) -> switch (method.getName()) {
+                                case "cancel" -> {
+                                    cancelFailures.incrementAndGet();
+                                    throw new AssertionError("compare-driver-cancel-secret");
+                                }
+                                case "setQueryTimeout", "close" -> null;
+                                default -> defaultValue(method.getReturnType());
+                            });
+                    SqlExecutionControl.Activation activation = options.control().activate(
+                            statement, options.queryTimeoutSeconds());
+                    try {
+                        cancelTargetsPublished.countDown();
+                        awaitPhysicalClose(connection);
+                    } finally {
+                        options.control().release(activation);
+                    }
                 }
                 if (scenario != ReadScenario.SUCCESS) {
                     awaitCancellation(options.control(), connection);
@@ -268,6 +318,23 @@ class SchemaDiffConcurrencyTest {
             }
             if (!control.cancellationRequested() && !factory.isClosed(connection)) {
                 throw new SQLException("Cancellation did not reach snapshot reader");
+            }
+        }
+
+        private void awaitPhysicalClose(Connection connection) throws SQLException {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (!factory.isClosed(connection)
+                    && releaseReaders.getCount() > 0
+                    && System.nanoTime() < deadline) {
+                try {
+                    releaseReaders.await(10, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new SQLException("Physical-close wait interrupted");
+                }
+            }
+            if (!factory.isClosed(connection) && releaseReaders.getCount() > 0) {
+                throw new SQLException("Physical close did not reach snapshot reader");
             }
         }
     }

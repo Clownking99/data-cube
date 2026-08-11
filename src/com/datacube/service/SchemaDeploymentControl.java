@@ -63,8 +63,8 @@ public final class SchemaDeploymentControl {
     private static void cancelQuietly(CancellationTarget target) {
         try {
             target.cancel();
-        } catch (Exception ignored) {
-            // Each operation still runs its own strict cleanup path.
+        } catch (Throwable ignored) {
+            // Isolate every target without exposing driver details; targets retain cleanup evidence.
         }
     }
 

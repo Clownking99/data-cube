@@ -245,7 +245,7 @@ public final class JdbcEditorSession implements AutoCloseable {
         SqlExecutionControl control = activeControl.get();
         try {
             if (control != null && control.cancel()) return CancelOutcome.CANCELLED;
-        } catch (SQLException ignored) {
+        } catch (Throwable ignored) {
             // Fall through to the driver-independent cancellation path.
         }
         breakConnection();

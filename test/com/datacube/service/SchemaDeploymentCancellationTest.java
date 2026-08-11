@@ -23,7 +23,10 @@ import com.datacube.spi.schemadiff.SchemaSnapshotReader;
 import com.datacube.spi.schemadiff.SnapshotCompleteness;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -61,6 +64,66 @@ class SchemaDeploymentCancellationTest {
         assertEquals(List.of(), result.steps());
         assertEquals(0, fixture.factory.opens.get());
         assertEquals(0, fixture.runner.calls.get());
+    }
+
+    @Test
+    void cancellationTargetErrorsAreIsolatedWithoutLeakingAndRepeatedCancelIsIdempotent() {
+        SchemaDeploymentControl control = new SchemaDeploymentControl();
+        AtomicInteger throwingCalls = new AtomicInteger();
+        AtomicInteger healthyCalls = new AtomicInteger();
+        control.register(() -> {
+            throwingCalls.incrementAndGet();
+            throw new AssertionError("driver-cancel-secret");
+        });
+        control.register(healthyCalls::incrementAndGet);
+        ByteArrayOutputStream capturedErrors = new ByteArrayOutputStream();
+        PrintStream originalError = System.err;
+
+        boolean first;
+        boolean repeated;
+        try (PrintStream replacement = new PrintStream(
+                capturedErrors, true, StandardCharsets.UTF_8)) {
+            System.setErr(replacement);
+            try {
+                first = control.cancel();
+                repeated = control.cancel();
+            } finally {
+                System.setErr(originalError);
+            }
+        }
+
+        assertTrue(first);
+        assertFalse(repeated);
+        assertEquals(2, throwingCalls.get());
+        assertEquals(2, healthyCalls.get());
+        assertEquals("", capturedErrors.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void executionCancelErrorStillPhysicallyClosesSessionBeforeControlReturns()
+            throws Exception {
+        RecordingFactory factory = new RecordingFactory();
+        SchemaDeploymentControl control = new SchemaDeploymentControl();
+        CancelErrorRunner runner = new CancelErrorRunner(factory.sessionClosed);
+        SchemaSnapshot expected = snapshot();
+        Harness harness = harness(factory, runner, capability(expected), DbType.POSTGRESQL);
+        var stage = harness.service.deploy(harness.request, expected, plan(), control);
+        assertTrue(runner.started.await(2, TimeUnit.SECONDS));
+
+        assertTrue(control.cancel());
+        int closesWhenCancelReturned = factory.closes.get();
+        runner.releaseRunner.countDown();
+        SchemaDeploymentResult result = stage.toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+        assertEquals(SchemaDeploymentState.CANCELLED, result.state());
+        assertEquals(List.of(
+                        SchemaDeploymentState.CANCELLED,
+                        SchemaDeploymentState.SKIPPED_FAIL_FAST),
+                result.steps().stream().map(SchemaDeploymentStepResult::state).toList());
+        assertEquals(1, runner.calls.get());
+        assertEquals(1, runner.cancelFailures.get());
+        assertEquals(2, closesWhenCancelReturned);
+        assertEquals(2, factory.closes.get());
     }
 
     @Test
@@ -831,6 +894,67 @@ class SchemaDeploymentCancellationTest {
                 Connection connection, String sql, String schema, boolean analyze,
                 SqlExecutionOptions options) {
             return QueryResult.update(1, 1);
+        }
+    }
+
+    private static final class CancelErrorRunner implements SqlRunner {
+        private final CountDownLatch physicalSessionClose;
+        private final CountDownLatch started = new CountDownLatch(1);
+        private final CountDownLatch releaseRunner = new CountDownLatch(1);
+        private final AtomicInteger calls = new AtomicInteger();
+        private final AtomicInteger cancelFailures = new AtomicInteger();
+
+        private CancelErrorRunner(CountDownLatch physicalSessionClose) {
+            this.physicalSessionClose = physicalSessionClose;
+        }
+
+        @Override public QueryResult execute(
+                Connection connection, String sql, String schema, SqlExecutionOptions options) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override public List<ScriptOutcome> executeScript(
+                Connection connection, String script, String schema,
+                SqlExecutionOptions options, ScriptErrorPolicy policy) {
+            calls.incrementAndGet();
+            Statement statement = (Statement) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{Statement.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "cancel" -> {
+                            cancelFailures.incrementAndGet();
+                            throw new AssertionError("execution-driver-cancel-secret");
+                        }
+                        case "setQueryTimeout", "close" -> null;
+                        default -> defaultValue(method.getReturnType());
+                    });
+            SqlExecutionControl.Activation activation;
+            try {
+                activation = options.control().activate(statement, options.queryTimeoutSeconds());
+                started.countDown();
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+                while (physicalSessionClose.getCount() > 0
+                        && releaseRunner.getCount() > 0
+                        && System.nanoTime() < deadline) {
+                    releaseRunner.await(10, TimeUnit.MILLISECONDS);
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return List.of(new ScriptOutcome(1, script,
+                        QueryResult.cancelled("fixed cancellation", 1)));
+            } catch (SQLException activationFailure) {
+                return List.of(new ScriptOutcome(1, script,
+                        QueryResult.cancelled("fixed cancellation", 1)));
+            } finally {
+                options.control().release(statement);
+            }
+            options.control().release(activation);
+            return List.of(new ScriptOutcome(1, script,
+                    QueryResult.cancelled("fixed cancellation", 1)));
+        }
+
+        @Override public QueryResult explain(
+                Connection connection, String sql, String schema, boolean analyze,
+                SqlExecutionOptions options) {
+            throw new UnsupportedOperationException();
         }
     }
 
