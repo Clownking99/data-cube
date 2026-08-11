@@ -289,7 +289,7 @@ public record RenderedStatement(
 3. fresh target fingerprint 与计划目标不一致时阻止整个执行并提示重新比较。
 4. 不允许用户通过普通确认跳过完整性或漂移检查。
 
-执行过程中每个 change 完成后记录实际结果；取消或异常后重新读取受影响对象并显示“已应用 / 未应用 / 状态未知”。
+执行过程中保留每个已开始 statement 的实际终态和所有已记录的 per-step outcomes。取消或异常不会触发自动对象重读，也不声称完成 reconciliation；只有无法证明 driver/server 最终结果的当前步骤才标记 `UNKNOWN_AFTER_CANCEL`。
 
 ## 13. 部署执行
 
@@ -297,7 +297,7 @@ public record RenderedStatement(
 - 执行在受管 JDK 25 虚拟线程中串行进行。
 - 默认遇到第一个失败即停止。
 - 依赖失败对象的后续 change 标记 `SKIPPED_DEPENDENCY`。
-- 用户取消后不启动新 statement；当前 statement 使用既有 timeout/cancel 机制。
+- 用户取消后不启动新 statement；当前 statement 使用既有 timeout/cancel 机制。已经返回的成功、SQL 错误或 timeout batch 保持权威，只有实际终态无法证明时使用 `UNKNOWN_AFTER_CANCEL`。
 - 不承诺整体回滚：Oracle DDL 存在隐式提交，PostgreSQL 也统一按逐项实际结果记录。
 - 生产目标和破坏性 change 继续经过安全策略与最终确认。
 - 执行日志只保存对象、statement 摘要、时间和结果，不保存完整敏感 SQL 内容。
@@ -315,7 +315,7 @@ public record RenderedStatement(
 
 ### 15.1 入口与选择
 
-连接树和主工具栏提供“Schema 对比”。打开受管 `SchemaDiffPane`：
+连接树中关系型 CONNECTION/SCHEMA 节点的右键菜单提供“Schema 对比...”；Redis 节点不提供该入口。打开受管 `SchemaDiffPane`：
 
 - 源连接、源 Schema。
 - 目标连接、目标 Schema。
@@ -369,7 +369,7 @@ public record RenderedStatement(
 - SKIPPED_DEPENDENCY
 - SKIPPED_FAIL_FAST
 
-失败后保留标签、差异和日志；用户可重新读取目标并生成新的计划，不复用过期计划直接重试。
+失败、取消或 unknown 终态后保留标签、diff tree、选择快照、源/目标详情、SQL preview、诊断和逐步结果作为只读审查上下文，同时撤销执行权限和旧确认 token。只有用户发起 fresh Compare，重新读取两侧并生成新计划后才允许再次部署；不复用过期计划直接重试。
 
 ## 16. 错误处理与安全
 
@@ -379,7 +379,7 @@ public record RenderedStatement(
 - 普通元数据失败不会产生删除建议。
 - 目标漂移、snapshot 不完整和数据库类型不一致属于硬阻止条件。
 - 破坏性 change 需要逐项 opt-in 与执行前二次确认。
-- 取消不等价于回滚；UI 必须展示当前对象的实际或未知状态。
+- 取消不等价于回滚；UI 展示已有实际结果或 `UNKNOWN_AFTER_CANCEL`，不自动重读受影响对象，也不声称完成 reconciliation。
 
 ## 17. Provider 能力
 

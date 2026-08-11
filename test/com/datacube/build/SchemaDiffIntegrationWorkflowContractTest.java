@@ -5,9 +5,14 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,7 +31,6 @@ class SchemaDiffIntegrationWorkflowContractTest {
                 () -> assertTrue(workflow.contains("type: choice")),
                 () -> assertTrue(workflow.contains("environment: schema-diff-postgresql")),
                 () -> assertTrue(workflow.contains("environment: schema-diff-oracle")),
-                () -> assertTrue(workflow.contains("DATACUBE_SCHEMA_DIFF_TEST_ALLOW_WRITE: 'true'")),
                 () -> assertTrue(workflow.contains("./gradlew test --tests "
                         + "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest")),
                 () -> assertFalse(workflow.contains("gradlew.bat")),
@@ -34,25 +38,30 @@ class SchemaDiffIntegrationWorkflowContractTest {
     }
 
     @Test
-    void eachProviderJobReceivesOnlyItsOwnRequiredSecretSet() throws IOException {
-        String workflow = workflow();
-        String postgres = job(workflow, "postgresql", "oracle");
-        String oracle = job(workflow, "oracle", null);
+    void providerCredentialsAndWriteGateExistOnlyOnTheMatchingRunStep() throws IOException {
+        List<String> lines = workflow().lines().toList();
 
-        assertAll(
-                () -> assertTrue(postgres.contains("DATACUBE_SCHEMA_DIFF_POSTGRES_HOST:")),
-                () -> assertTrue(postgres.contains("DATACUBE_SCHEMA_DIFF_POSTGRES_PORT:")),
-                () -> assertTrue(postgres.contains("DATACUBE_SCHEMA_DIFF_POSTGRES_DATABASE:")),
-                () -> assertTrue(postgres.contains("DATACUBE_SCHEMA_DIFF_POSTGRES_USERNAME:")),
-                () -> assertTrue(postgres.contains("DATACUBE_SCHEMA_DIFF_POSTGRES_PASSWORD:")),
-                () -> assertFalse(postgres.contains("DATACUBE_SCHEMA_DIFF_ORACLE_")),
-                () -> assertTrue(oracle.contains("DATACUBE_SCHEMA_DIFF_ORACLE_HOST:")),
-                () -> assertTrue(oracle.contains("DATACUBE_SCHEMA_DIFF_ORACLE_PORT:")),
-                () -> assertTrue(oracle.contains("DATACUBE_SCHEMA_DIFF_ORACLE_DATABASE:")),
-                () -> assertTrue(oracle.contains("DATACUBE_SCHEMA_DIFF_ORACLE_USERNAME:")),
-                () -> assertTrue(oracle.contains("DATACUBE_SCHEMA_DIFF_ORACLE_PASSWORD:")),
-                () -> assertTrue(oracle.contains("DATACUBE_SCHEMA_DIFF_ORACLE_TABLESPACE:")),
-                () -> assertFalse(oracle.contains("DATACUBE_SCHEMA_DIFF_POSTGRES_")));
+        assertRunStepEnvironment(
+                job(lines, "postgresql"),
+                "Run opt-in PostgreSQL Schema Diff smoke",
+                Map.of(
+                        "DATACUBE_SCHEMA_DIFF_TEST_ALLOW_WRITE", "'true'",
+                        "DATACUBE_SCHEMA_DIFF_POSTGRES_HOST", secret("SCHEMA_DIFF_POSTGRES_HOST"),
+                        "DATACUBE_SCHEMA_DIFF_POSTGRES_PORT", secret("SCHEMA_DIFF_POSTGRES_PORT"),
+                        "DATACUBE_SCHEMA_DIFF_POSTGRES_DATABASE", secret("SCHEMA_DIFF_POSTGRES_DATABASE"),
+                        "DATACUBE_SCHEMA_DIFF_POSTGRES_USERNAME", secret("SCHEMA_DIFF_POSTGRES_USERNAME"),
+                        "DATACUBE_SCHEMA_DIFF_POSTGRES_PASSWORD", secret("SCHEMA_DIFF_POSTGRES_PASSWORD")));
+        assertRunStepEnvironment(
+                job(lines, "oracle"),
+                "Run opt-in Oracle Schema Diff smoke",
+                Map.of(
+                        "DATACUBE_SCHEMA_DIFF_TEST_ALLOW_WRITE", "'true'",
+                        "DATACUBE_SCHEMA_DIFF_ORACLE_HOST", secret("SCHEMA_DIFF_ORACLE_HOST"),
+                        "DATACUBE_SCHEMA_DIFF_ORACLE_PORT", secret("SCHEMA_DIFF_ORACLE_PORT"),
+                        "DATACUBE_SCHEMA_DIFF_ORACLE_DATABASE", secret("SCHEMA_DIFF_ORACLE_DATABASE"),
+                        "DATACUBE_SCHEMA_DIFF_ORACLE_USERNAME", secret("SCHEMA_DIFF_ORACLE_USERNAME"),
+                        "DATACUBE_SCHEMA_DIFF_ORACLE_PASSWORD", secret("SCHEMA_DIFF_ORACLE_PASSWORD"),
+                        "DATACUBE_SCHEMA_DIFF_ORACLE_TABLESPACE", secret("SCHEMA_DIFF_ORACLE_TABLESPACE")));
     }
 
     @Test
@@ -74,12 +83,71 @@ class SchemaDiffIntegrationWorkflowContractTest {
         return Files.readString(path);
     }
 
-    private static String job(String workflow, String name, String nextName) {
+    private static void assertRunStepEnvironment(
+            List<String> job, String runStepName, Map<String, String> expected) {
+        assertFalse(job.stream().anyMatch(line -> line.equals("    env:")),
+                "provider secrets must not be job-scoped");
+        List<List<String>> steps = steps(job);
+        List<String> runStep = steps.stream()
+                .filter(step -> step.getFirst().equals("      - name: " + runStepName))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("missing run step: " + runStepName));
+
+        assertEquals(expected, stepEnvironment(runStep));
+        for (List<String> step : steps) {
+            if (step == runStep) continue;
+            assertFalse(step.stream().anyMatch(
+                            line -> line.contains("DATACUBE_SCHEMA_DIFF_") || line.contains("secrets.")),
+                    "non-run step received provider environment: " + step.getFirst());
+        }
+        Set<String> providerLines = job.stream()
+                .filter(line -> line.contains("DATACUBE_SCHEMA_DIFF_") || line.contains("secrets."))
+                .collect(java.util.stream.Collectors.toSet());
+        assertEquals(Set.copyOf(runStep.stream()
+                .filter(line -> line.contains("DATACUBE_SCHEMA_DIFF_") || line.contains("secrets."))
+                .toList()), providerLines);
+    }
+
+    private static List<String> job(List<String> workflow, String name) {
         String marker = "  " + name + ":";
         int start = workflow.indexOf(marker);
         assertTrue(start >= 0, "missing job: " + name);
-        int end = nextName == null ? workflow.length() : workflow.indexOf("  " + nextName + ":", start + 1);
-        assertTrue(end > start, "missing next job after: " + name);
-        return workflow.substring(start, end);
+        int end = start + 1;
+        while (end < workflow.size() && !workflow.get(end).matches("^  [A-Za-z0-9_-]+:$")) end++;
+        return workflow.subList(start, end);
+    }
+
+    private static List<List<String>> steps(List<String> job) {
+        java.util.ArrayList<List<String>> steps = new java.util.ArrayList<>();
+        for (int index = 0; index < job.size();) {
+            if (!job.get(index).startsWith("      - ")) {
+                index++;
+                continue;
+            }
+            int end = index + 1;
+            while (end < job.size() && !job.get(end).startsWith("      - ")) end++;
+            steps.add(job.subList(index, end));
+            index = end;
+        }
+        return List.copyOf(steps);
+    }
+
+    private static Map<String, String> stepEnvironment(List<String> step) {
+        int env = step.indexOf("        env:");
+        assertTrue(env >= 0, "run step has no step-scoped env");
+        Map<String, String> values = new LinkedHashMap<>();
+        for (int index = env + 1; index < step.size(); index++) {
+            String line = step.get(index);
+            if (!line.startsWith("          ")) break;
+            String entry = line.substring(10);
+            int separator = entry.indexOf(':');
+            assertTrue(separator > 0, "invalid environment entry");
+            values.put(entry.substring(0, separator), entry.substring(separator + 1).stripLeading());
+        }
+        return Map.copyOf(values);
+    }
+
+    private static String secret(String name) {
+        return "${{ secrets." + name + " }}";
     }
 }
