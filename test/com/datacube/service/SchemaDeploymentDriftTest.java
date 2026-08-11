@@ -57,6 +57,8 @@ class SchemaDeploymentDriftTest {
                             : SchemaDeploymentState.BLOCKED_INCOMPLETE,
                     result.state());
             assertEquals(List.of(), result.steps());
+            assertEquals(SchemaDeploymentService.confirmationToken(statements()),
+                    result.planDigest());
             assertEquals(1, fixture.factory.opens.get(), "only the fresh drift read may open");
             assertEquals(1, fixture.factory.closes.get());
             assertEquals(0, fixture.runner.calls.get());

@@ -4,6 +4,7 @@ import com.datacube.spi.DatabaseProvider;
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.ConnectionEnvironment;
 import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.model.QueryResult;
@@ -31,7 +32,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 
 /** Drift-gated, sequential schema deployment orchestration. */
 public final class SchemaDeploymentService {
@@ -43,6 +43,10 @@ public final class SchemaDeploymentService {
             "Destructive schema plan confirmation is invalid";
     static final String SAFETY_ESCALATION_WARNING =
             "CREATE OR REPLACE was safety-escalated and required exact plan confirmation";
+    static final String PRODUCTION_CONFIRMATION_WARNING =
+            "Production schema deployment required exact plan confirmation";
+    private static final String INVALID_PRODUCTION_CONFIRMATION =
+            "Production schema deployment confirmation is invalid";
     private static final String DIGEST_DOMAIN = "datacube.rendered-schema-plan.v1";
     private static final java.util.regex.Pattern CHANGE_ID =
             java.util.regex.Pattern.compile("chg:[0-9a-f]{64}");
@@ -67,6 +71,8 @@ public final class SchemaDeploymentService {
                 request.sourceConfig(), request.sourceSchema(),
                 request.targetConfig(), request.targetSchema());
         ConnConfig target = admitted.targetConfig();
+        boolean production = ConnectionSafetyOptions.from(target).environment()
+                == ConnectionEnvironment.PRODUCTION;
         if (target.type() == DbType.REDIS
                 || admitted.sourceConfig().type() != target.type()) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(INVALID_TARGET));
@@ -76,17 +82,22 @@ public final class SchemaDeploymentService {
                 || !expectedTarget.completeness().complete()) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(INVALID_EXPECTED));
         }
-        PlanAdmission plan;
+        PlanAdmission validatedPlan;
         try {
-            plan = validatePlan(statements, target.type());
+            validatedPlan = validatePlan(statements, target.type());
         } catch (RuntimeException invalid) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(INVALID_PLAN));
         }
-        if (plan.destructive()
+        boolean productionDdl = production && !validatedPlan.statements().isEmpty();
+        PlanAdmission plan = productionDdl
+                ? validatedPlan.withSafetyWarning(PRODUCTION_CONFIRMATION_WARNING)
+                : validatedPlan;
+        if ((plan.destructive() || productionDdl)
                 && (control.confirmationToken() == null
                 || control.confirmationToken().isBlank()
                 || !plan.digest().equals(control.confirmationToken()))) {
-            return CompletableFuture.failedFuture(new IllegalArgumentException(INVALID_CONFIRMATION));
+            return CompletableFuture.failedFuture(new IllegalArgumentException(
+                    productionDdl ? INVALID_PRODUCTION_CONFIRMATION : INVALID_CONFIRMATION));
         }
         if (control.cancellationRequested()) {
             return CompletableFuture.completedFuture(new SchemaDeploymentResult(
@@ -112,13 +123,13 @@ public final class SchemaDeploymentService {
                     result = cancelled(plan);
                 } else if (!current.completeness().complete()) {
                     result = new SchemaDeploymentResult(
-                            SchemaDeploymentState.BLOCKED_INCOMPLETE, List.of(), "",
+                            SchemaDeploymentState.BLOCKED_INCOMPLETE, List.of(), plan.digest(),
                             plan.safetyWarnings());
                 } else if (current.databaseType() != target.type()
                         || !current.schema().equals(admitted.targetSchema())
                         || !current.fingerprint().equals(expectedTarget.fingerprint())) {
                     result = new SchemaDeploymentResult(
-                            SchemaDeploymentState.BLOCKED_DRIFT, List.of(), "",
+                            SchemaDeploymentState.BLOCKED_DRIFT, List.of(), plan.digest(),
                             plan.safetyWarnings());
                 } else {
                     result = executePlan(
@@ -126,7 +137,7 @@ public final class SchemaDeploymentService {
                 }
                 control.settle(
                         settlement, result, cancellationAlternative(result, plan));
-            } catch (SQLException | RuntimeException failure) {
+            } catch (Throwable failure) {
                 control.settleExceptionally(
                         settlement, new IllegalStateException(SNAPSHOT_FAILED), cancelled(plan));
             }
@@ -142,11 +153,9 @@ public final class SchemaDeploymentService {
 
     private static SchemaDeploymentResult cancellationAlternative(
             SchemaDeploymentResult result, PlanAdmission plan) {
+        if (!result.steps().isEmpty()) return result;
         return switch (result.state()) {
             case CANCELLED, FAILED_PARTIAL, FAILED_SQL, TIMED_OUT -> result;
-            case SUCCEEDED -> new SchemaDeploymentResult(
-                    SchemaDeploymentState.CANCELLED,
-                    result.steps(), result.planDigest(), result.safetyWarnings());
             default -> cancelled(plan);
         };
     }
@@ -174,6 +183,7 @@ public final class SchemaDeploymentService {
                 RenderedStatement statement = plan.statements().get(index);
                 if (failedChangeId != null) {
                     SchemaDeploymentState skipped = overall != SchemaDeploymentState.CANCELLED
+                            && overall != SchemaDeploymentState.UNKNOWN_AFTER_CANCEL
                             && dependsTransitively(
                             statement.changeId(), failedChangeId, plan.groupDependencies())
                             ? SchemaDeploymentState.SKIPPED_DEPENDENCY
@@ -191,16 +201,12 @@ public final class SchemaDeploymentService {
                 JdbcEditorSession.ExecutionBatch batch = session.executeScript(
                         statement.sql(), schema, 0, null, target.type() == DbType.ORACLE,
                         control::cancellationRequested);
-                SchemaDeploymentState stepState = executionState(batch, control);
+                SchemaDeploymentState stepState = executionState(batch, control, target.type());
                 steps.add(new SchemaDeploymentStepResult(index + 1, statement.changeId(), stepState));
                 if (stepState != SchemaDeploymentState.SUCCEEDED) {
                     overall = stepState;
                     failedChangeId = statement.changeId();
                 }
-            }
-            if (overall == SchemaDeploymentState.SUCCEEDED
-                    && control.cancellationRequested()) {
-                overall = SchemaDeploymentState.CANCELLED;
             }
         } finally {
             if (!strictCleanup(session)) overall = SchemaDeploymentState.FAILED_PARTIAL;
@@ -243,23 +249,40 @@ public final class SchemaDeploymentService {
     }
 
     private static SchemaDeploymentState executionState(
-            JdbcEditorSession.ExecutionBatch batch, SchemaDeploymentControl control) {
-        if (control.cancellationRequested()) return SchemaDeploymentState.CANCELLED;
-        if (batch.outcomes().isEmpty()) return SchemaDeploymentState.FAILED_SQL;
+            JdbcEditorSession.ExecutionBatch batch,
+            SchemaDeploymentControl control,
+            DbType databaseType) {
+        if (batch.outcomes().isEmpty()) {
+            return control.cancellationRequested()
+                    ? cancellationState(databaseType, false)
+                    : SchemaDeploymentState.FAILED_SQL;
+        }
         boolean timeout = false;
         boolean sqlFailure = false;
+        boolean priorOutcome = false;
         for (ScriptOutcome outcome : batch.outcomes()) {
             QueryResult result = outcome.result();
-            if (result.kind != QueryResult.Kind.ERROR) continue;
+            if (result.kind != QueryResult.Kind.ERROR) {
+                priorOutcome = true;
+                continue;
+            }
             if (result.failureKind == QueryResult.FailureKind.CANCELLED) {
-                return SchemaDeploymentState.CANCELLED;
+                return cancellationState(databaseType, priorOutcome);
             }
             if (result.failureKind == QueryResult.FailureKind.TIMEOUT) timeout = true;
             else sqlFailure = true;
+            priorOutcome = true;
         }
         if (timeout) return SchemaDeploymentState.TIMED_OUT;
         if (sqlFailure) return SchemaDeploymentState.FAILED_SQL;
         return SchemaDeploymentState.SUCCEEDED;
+    }
+
+    private static SchemaDeploymentState cancellationState(
+            DbType databaseType, boolean priorOutcome) {
+        return databaseType == DbType.ORACLE || priorOutcome
+                ? SchemaDeploymentState.UNKNOWN_AFTER_CANCEL
+                : SchemaDeploymentState.CANCELLED;
     }
 
     private static boolean dependsTransitively(
@@ -418,6 +441,13 @@ public final class SchemaDeploymentService {
             boolean destructive,
             Map<String, Set<String>> groupDependencies,
             List<String> safetyWarnings) {
+        private PlanAdmission withSafetyWarning(String warning) {
+            if (safetyWarnings.contains(warning)) return this;
+            List<String> combined = new ArrayList<>(safetyWarnings);
+            combined.add(warning);
+            return new PlanAdmission(
+                    statements, digest, destructive, groupDependencies, List.copyOf(combined));
+        }
     }
 
     private record StatementAdmission(
@@ -432,15 +462,17 @@ public final class SchemaDeploymentService {
             SchemaDiffCapability capability,
             SchemaDeploymentControl control) throws SQLException {
         SqlExecutionControl sqlControl = new SqlExecutionControl();
-        AtomicReference<Connection> owned = new AtomicReference<>();
+        FreshConnectionOwner owned = new FreshConnectionOwner();
         try (SchemaDeploymentControl.Registration ignored = control.register(() -> {
-            sqlControl.cancel();
-            Connection current = owned.getAndSet(null);
-            if (current != null) current.close();
+            cancelFreshRead(sqlControl, owned);
         })) {
             if (control.cancellationRequested()) throw new SQLException("Schema deployment cancelled");
             Connection opened = connections.openDedicated(target, provider);
-            owned.set(opened);
+            owned.publish(opened);
+            if (control.cancellationRequested()) {
+                owned.close();
+                throw new SQLException("Schema deployment cancelled");
+            }
             try {
                 opened.setReadOnly(true);
             } catch (SQLException unsupported) {
@@ -450,8 +482,92 @@ public final class SchemaDeploymentService {
             return capability.snapshotReader(opened).read(
                     target.id(), schema, new SqlExecutionOptions(0, timeout, sqlControl));
         } finally {
-            Connection current = owned.getAndSet(null);
-            if (current != null) current.close();
+            owned.close();
+        }
+    }
+
+    private static void cancelFreshRead(
+            SqlExecutionControl sqlControl, FreshConnectionOwner owned) throws SQLException {
+        Throwable failure = null;
+        try {
+            sqlControl.cancel();
+        } catch (Throwable cancellationFailure) {
+            failure = cancellationFailure;
+        }
+        try {
+            owned.close();
+        } catch (Throwable closeFailure) {
+            if (failure == null) failure = closeFailure;
+            else failure.addSuppressed(closeFailure);
+        }
+        rethrowJdbcCleanupFailure(failure);
+    }
+
+    private static void rethrowJdbcCleanupFailure(Throwable failure) throws SQLException {
+        if (failure == null) return;
+        if (failure instanceof SQLException sqlFailure) throw sqlFailure;
+        if (failure instanceof RuntimeException runtimeFailure) throw runtimeFailure;
+        if (failure instanceof Error error) throw error;
+        throw new SQLException("JDBC cleanup failed", failure);
+    }
+
+    /** Coordinates one fresh-read connection and makes cleanup completion observable to all callers. */
+    private static final class FreshConnectionOwner {
+        private Connection connection;
+        private boolean closeRequested;
+        private boolean closing;
+        private boolean closed;
+        private Throwable closeFailure;
+
+        private void publish(Connection opened) throws SQLException {
+            boolean closeAfterPublish;
+            synchronized (this) {
+                if (connection != null || closing || closed) {
+                    throw new IllegalStateException("Fresh connection ownership already published");
+                }
+                connection = Objects.requireNonNull(opened, "opened");
+                closeAfterPublish = closeRequested;
+            }
+            if (closeAfterPublish) close();
+        }
+
+        private void close() throws SQLException {
+            Connection current;
+            boolean interrupted = false;
+            synchronized (this) {
+                closeRequested = true;
+                while (closing) {
+                    try {
+                        wait();
+                    } catch (InterruptedException interruption) {
+                        interrupted = true;
+                    }
+                }
+                if (interrupted) Thread.currentThread().interrupt();
+                if (closed) {
+                    rethrowJdbcCleanupFailure(closeFailure);
+                    return;
+                }
+                if (connection == null) return;
+                current = connection;
+                connection = null;
+                closing = true;
+            }
+
+            Throwable failure = null;
+            try {
+                current.close();
+            } catch (Throwable closeProblem) {
+                failure = closeProblem;
+            } finally {
+                synchronized (this) {
+                    closeFailure = failure;
+                    closed = true;
+                    closing = false;
+                    notifyAll();
+                }
+            }
+            rethrowJdbcCleanupFailure(failure);
         }
     }
 }

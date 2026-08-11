@@ -217,6 +217,38 @@ class SchemaDeploymentServiceTest {
     }
 
     @Test
+    void productionSafePlanRequiresExactCurrentDigestBeforeAnySql() throws Exception {
+        List<RenderedStatement> plan = List.of(
+                statement(CHANGE_A, "CREATE TABLE production_safe(id int)", Set.of()));
+        for (SchemaDeploymentControl control : List.of(
+                new SchemaDeploymentControl(),
+                new SchemaDeploymentControl("0".repeat(64)))) {
+            TypedFixture rejected = new TypedFixture(DbType.POSTGRESQL, "PRODUCTION");
+
+            Throwable failure = failure(rejected.service.deploy(
+                    rejected.request, rejected.expected, plan, control));
+
+            assertEquals(IllegalArgumentException.class, failure.getClass());
+            assertEquals("Production schema deployment confirmation is invalid",
+                    failure.getMessage());
+            assertEquals(0, rejected.factory.opens.get());
+            assertEquals(0, rejected.runner.calls.get());
+        }
+
+        String token = SchemaDeploymentService.confirmationToken(plan);
+        TypedFixture accepted = new TypedFixture(DbType.POSTGRESQL, "PRODUCTION");
+        SchemaDeploymentResult result = accepted.service.deploy(
+                accepted.request, accepted.expected, plan, new SchemaDeploymentControl(token))
+                .toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+        assertEquals(SchemaDeploymentState.SUCCEEDED, result.state());
+        assertEquals(token, result.planDigest());
+        assertEquals(List.of(SchemaDeploymentService.PRODUCTION_CONFIRMATION_WARNING),
+                result.safetyWarnings());
+        assertEquals(List.of(plan.getFirst().sql()), accepted.runner.scripts);
+    }
+
+    @Test
     void malformedGroupsMetadataAndDependenciesFailClosedBeforeFreshRead() throws Exception {
         List<List<RenderedStatement>> invalidPlans = List.of(
                 List.of(new RenderedStatement("", "CREATE TABLE t(id int)", false, Set.of(), null)),
@@ -409,14 +441,19 @@ class SchemaDeploymentServiceTest {
         private final SchemaDiffRequest request;
 
         private TypedFixture(DbType type) {
+            this(type, "TEST");
+        }
+
+        private TypedFixture(DbType type, String environment) {
             factory = new RecordingFactory(false);
             runner = new RecordingRunner(Map.of());
             expected = snapshot(type);
             CredentialCipher cipher = new CredentialCipher();
             DatabaseProvider provider = provider(factory, runner, capability(expected), type);
             ConnectionManager manager = new ConnectionManager(cipher, ignored -> provider);
-            request = new SchemaDiffRequest(config(cipher, "source", type), name("desired"),
-                    config(cipher, "target", type), name("actual"));
+            request = new SchemaDiffRequest(
+                    config(cipher, "source", type, environment), name("desired"),
+                    config(cipher, "target", type, environment), name("actual"));
             service = new SchemaDeploymentService(manager);
         }
     }
@@ -468,10 +505,15 @@ class SchemaDeploymentServiceTest {
     }
 
     private static ConnConfig config(CredentialCipher cipher, String id, DbType type) {
+        return config(cipher, id, type, "TEST");
+    }
+
+    private static ConnConfig config(
+            CredentialCipher cipher, String id, DbType type, String environment) {
         return new ConnConfig(id, id, type, id + "-host",
                 type == DbType.ORACLE ? 1521 : 5432,
                 "database", "user", cipher.encrypt("credential-secret"), Map.of(
-                "environment", "TEST", "queryTimeoutSeconds", "17"));
+                "environment", environment, "queryTimeoutSeconds", "17"));
     }
 
     private static final class RecordingFactory implements ConnectionFactory {

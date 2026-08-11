@@ -8,6 +8,7 @@ public enum SchemaDeploymentState {
     FAILED_SQL,
     TIMED_OUT,
     CANCELLED,
+    UNKNOWN_AFTER_CANCEL,
     FAILED_PARTIAL,
     SKIPPED_DEPENDENCY,
     SKIPPED_FAIL_FAST
