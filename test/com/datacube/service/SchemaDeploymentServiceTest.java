@@ -43,13 +43,17 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SchemaDeploymentServiceTest {
@@ -148,6 +152,68 @@ class SchemaDeploymentServiceTest {
         assertEquals(SchemaDeploymentState.SUCCEEDED, cleanup.steps().getFirst().state());
         assertEquals(3, cleanupFixture.factory.closeAttempts(),
                 "drift close plus two strict session close attempts");
+    }
+
+    @Test
+    void lifecycleCloseRetriesRetainedSessionsStrictlyAndIsIdempotent() throws Exception {
+        Fixture recoverable = new Fixture(Map.of(), 2);
+        List<RenderedStatement> plan = List.of(
+                statement(CHANGE_A, "CREATE TABLE cleanup_table(id int)", Set.of()));
+        SchemaDeploymentResult partial = recoverable.service.deploy(
+                recoverable.request, recoverable.expected, plan,
+                new SchemaDeploymentControl()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+        assertEquals(SchemaDeploymentState.FAILED_PARTIAL, partial.state());
+
+        recoverable.service.closeRetainedSessionsStrict();
+        int closed = recoverable.factory.closeAttempts();
+        recoverable.service.closeRetainedSessionsStrict();
+
+        assertEquals(4, closed, "fresh read plus three strict session close attempts");
+        assertEquals(closed, recoverable.factory.closeAttempts(), "successful ownership is removed");
+
+        Fixture persistent = new Fixture(Map.of(), true);
+        persistent.service.deploy(persistent.request, persistent.expected, plan,
+                new SchemaDeploymentControl()).toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+        IllegalStateException failure = assertThrows(
+                IllegalStateException.class, persistent.service::closeRetainedSessionsStrict);
+        assertEquals("Schema deployment cleanup failed", failure.getMessage());
+        assertFalse(failure.toString().contains("driver-close-secret"));
+    }
+
+    @Test
+    void lifecycleCloseSealsAdmissionAndWaitsForRacingDeploymentOwnership() throws Exception {
+        CountDownLatch sqlEntered = new CountDownLatch(1);
+        CountDownLatch releaseSql = new CountDownLatch(1);
+        RecordingFactory factory = new RecordingFactory(2);
+        SqlRunner runner = blockingRunner(sqlEntered, releaseSql);
+        CredentialCipher cipher = new CredentialCipher();
+        SchemaSnapshot expected = snapshot();
+        DatabaseProvider provider = provider(factory, runner, capability(expected));
+        ConnectionManager manager = new ConnectionManager(cipher, ignored -> provider);
+        SchemaDeploymentService service = new SchemaDeploymentService(manager);
+        SchemaDiffRequest request = new SchemaDiffRequest(
+                config(cipher, "source"), name("desired"),
+                config(cipher, "target"), name("actual"));
+        List<RenderedStatement> plan = List.of(
+                statement(CHANGE_A, "CREATE TABLE cleanup_table(id int)", Set.of()));
+
+        var deployment = service.deploy(request, expected, plan, new SchemaDeploymentControl());
+        assertTrue(sqlEntered.await(5, TimeUnit.SECONDS));
+        CompletableFuture<Void> close = CompletableFuture.runAsync(service::closeRetainedSessionsStrict);
+        assertThrows(TimeoutException.class, () -> close.get(100, TimeUnit.MILLISECONDS),
+                "close must await the admitted deployment");
+
+        releaseSql.countDown();
+        assertEquals(SchemaDeploymentState.FAILED_PARTIAL,
+                deployment.toCompletableFuture().get(5, TimeUnit.SECONDS).state());
+        close.get(5, TimeUnit.SECONDS);
+        assertEquals(4, factory.closeAttempts());
+
+        Throwable rejected = failure(service.deploy(
+                request, expected, plan, new SchemaDeploymentControl()));
+        assertEquals(IllegalStateException.class, rejected.getClass());
+        assertEquals("Schema deployment service is closed", rejected.getMessage());
     }
 
     @Test
@@ -431,6 +497,18 @@ class SchemaDeploymentServiceTest {
                     config(cipher, "target"), name("actual"));
             service = new SchemaDeploymentService(manager);
         }
+
+        private Fixture(Map<String, QueryResult> outcomes, int sessionCloseFailures) {
+            factory = new RecordingFactory(sessionCloseFailures);
+            runner = new RecordingRunner(outcomes);
+            CredentialCipher cipher = new CredentialCipher();
+            SchemaDiffCapability capability = capability(expected);
+            DatabaseProvider provider = provider(factory, runner, capability);
+            ConnectionManager manager = new ConnectionManager(cipher, type -> provider);
+            request = new SchemaDiffRequest(config(cipher, "source"), name("desired"),
+                    config(cipher, "target"), name("actual"));
+            service = new SchemaDeploymentService(manager);
+        }
     }
 
     private static final class TypedFixture {
@@ -482,12 +560,12 @@ class SchemaDeploymentServiceTest {
     }
 
     private static DatabaseProvider provider(
-            RecordingFactory factory, RecordingRunner runner, SchemaDiffCapability capability) {
+            RecordingFactory factory, SqlRunner runner, SchemaDiffCapability capability) {
         return provider(factory, runner, capability, DbType.POSTGRESQL);
     }
 
     private static DatabaseProvider provider(
-            RecordingFactory factory, RecordingRunner runner,
+            RecordingFactory factory, SqlRunner runner,
             SchemaDiffCapability capability, DbType type) {
         return (DatabaseProvider) Proxy.newProxyInstance(
                 SchemaDeploymentServiceTest.class.getClassLoader(),
@@ -498,6 +576,39 @@ class SchemaDeploymentServiceTest {
                     case "schemaDiffCapability" -> Optional.of(capability);
                     default -> null;
                 });
+    }
+
+    private static SqlRunner blockingRunner(
+            CountDownLatch entered, CountDownLatch release) {
+        return new SqlRunner() {
+            @Override public QueryResult execute(
+                    Connection connection, String sql, String schema, SqlExecutionOptions options) {
+                return QueryResult.update(1, 1);
+            }
+
+            @Override public List<ScriptOutcome> executeScript(
+                    Connection connection, String script, String schema,
+                    SqlExecutionOptions options, ScriptErrorPolicy policy) {
+                entered.countDown();
+                try {
+                    if (!release.await(5, TimeUnit.SECONDS)) {
+                        return List.of(new ScriptOutcome(1, script,
+                                QueryResult.error("fixed timeout", 1)));
+                    }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return List.of(new ScriptOutcome(1, script,
+                            QueryResult.error("fixed interruption", 1)));
+                }
+                return List.of(new ScriptOutcome(1, script, QueryResult.update(1, 1)));
+            }
+
+            @Override public QueryResult explain(
+                    Connection connection, String sql, String schema, boolean analyze,
+                    SqlExecutionOptions options) {
+                return QueryResult.update(1, 1);
+            }
+        };
     }
 
     private static ConnConfig config(CredentialCipher cipher, String id) {
@@ -520,10 +631,14 @@ class SchemaDeploymentServiceTest {
         private final AtomicInteger opens = new AtomicInteger();
         private final List<Connection> connections = new ArrayList<>();
         private final List<AtomicInteger> closes = new ArrayList<>();
-        private final boolean failSessionClose;
+        private final AtomicInteger sessionCloseFailures;
 
         private RecordingFactory(boolean failSessionClose) {
-            this.failSessionClose = failSessionClose;
+            this(failSessionClose ? Integer.MAX_VALUE : 0);
+        }
+
+        private RecordingFactory(int sessionCloseFailures) {
+            this.sessionCloseFailures = new AtomicInteger(sessionCloseFailures);
         }
 
         @Override public void ensureDriverLoaded() { }
@@ -534,7 +649,8 @@ class SchemaDeploymentServiceTest {
                     new Class<?>[]{Connection.class}, (proxy, method, args) -> switch (method.getName()) {
                         case "close" -> {
                             closeAttempts.incrementAndGet();
-                            if (ordinal == 2 && failSessionClose) {
+                            if (ordinal == 2 && sessionCloseFailures.getAndUpdate(
+                                    remaining -> Math.max(0, remaining - 1)) > 0) {
                                 throw new SQLException("driver-close-secret");
                             }
                             yield null;

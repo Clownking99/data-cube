@@ -47,12 +47,17 @@ public final class SchemaDeploymentService {
             "Production schema deployment required exact plan confirmation";
     private static final String INVALID_PRODUCTION_CONFIRMATION =
             "Production schema deployment confirmation is invalid";
+    private static final String SERVICE_CLOSED = "Schema deployment service is closed";
+    private static final String CLEANUP_FAILED = "Schema deployment cleanup failed";
     private static final String DIGEST_DOMAIN = "datacube.rendered-schema-plan.v1";
     private static final java.util.regex.Pattern CHANGE_ID =
             java.util.regex.Pattern.compile("chg:[0-9a-f]{64}");
 
     private final ConnectionManager connections;
     private final Set<JdbcEditorSession> retainedCleanupSessions = ConcurrentHashMap.newKeySet();
+    private final Object lifecycleLock = new Object();
+    private int activeDeployments;
+    private boolean lifecycleClosed;
 
     public SchemaDeploymentService(ConnectionManager connections) {
         this.connections = Objects.requireNonNull(connections, "connections");
@@ -109,11 +114,14 @@ public final class SchemaDeploymentService {
         if (provider.type() != target.type() || capability == null) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(INVALID_TARGET));
         }
+        if (!beginDeployment()) {
+            return CompletableFuture.failedFuture(new IllegalStateException(SERVICE_CLOSED));
+        }
         CompletableFuture<SchemaDeploymentResult> settlement = new CompletableFuture<>();
         settlement.whenComplete((ignored, failure) -> {
             if (settlement.isCancelled()) control.cancel();
         });
-        Thread.ofVirtual().name("schema-deployment").start(() -> {
+        Runnable deployment = () -> {
             try {
                 retryRetainedCleanup();
                 SchemaSnapshot current = readFreshTarget(
@@ -140,9 +148,63 @@ public final class SchemaDeploymentService {
             } catch (Throwable failure) {
                 control.settleExceptionally(
                         settlement, new IllegalStateException(SNAPSHOT_FAILED), cancelled(plan));
+            } finally {
+                endDeployment();
             }
-        });
+        };
+        try {
+            Thread.ofVirtual().name("schema-deployment").start(deployment);
+        } catch (Throwable startupFailure) {
+            endDeployment();
+            control.settleExceptionally(
+                    settlement, new IllegalStateException(SNAPSHOT_FAILED), cancelled(plan));
+        }
         return settlement;
+    }
+
+    /**
+     * Seals this service, awaits all admitted deployments, then retries every retained strict
+     * session cleanup. This blocking lifecycle boundary must run outside the JavaFX thread.
+     */
+    public void closeRetainedSessionsStrict() {
+        synchronized (lifecycleLock) {
+            lifecycleClosed = true;
+            while (activeDeployments > 0) {
+                try {
+                    lifecycleLock.wait();
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(CLEANUP_FAILED);
+                }
+            }
+            boolean failed = false;
+            for (JdbcEditorSession retained : List.copyOf(retainedCleanupSessions)) {
+                try {
+                    retained.closeStrict();
+                    retainedCleanupSessions.remove(retained);
+                } catch (Throwable failure) {
+                    failed = true;
+                }
+            }
+            if (failed || !retainedCleanupSessions.isEmpty()) {
+                throw new IllegalStateException(CLEANUP_FAILED);
+            }
+        }
+    }
+
+    private boolean beginDeployment() {
+        synchronized (lifecycleLock) {
+            if (lifecycleClosed) return false;
+            activeDeployments++;
+            return true;
+        }
+    }
+
+    private void endDeployment() {
+        synchronized (lifecycleLock) {
+            activeDeployments--;
+            lifecycleLock.notifyAll();
+        }
     }
 
     private static SchemaDeploymentResult cancelled(PlanAdmission plan) {

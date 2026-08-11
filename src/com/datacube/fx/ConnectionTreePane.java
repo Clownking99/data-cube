@@ -46,6 +46,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     /** 树操作回调（由 AppShell 实现，打开对应内容标签）。 */
     public interface Actions {
         void openSqlEditor(ConnConfig conn, String schema);
+        void openSchemaDiff(ConnConfig source, String sourceSchema);
         void openDataGrid(String connId, TableRef table, boolean readOnly);
         void openDdl(String connId, NodeData node);
         void editObject(String connId, NodeData node);
@@ -526,6 +527,11 @@ public final class ConnectionTreePane implements AutoCloseable {
                     MenuItem refresh = new MenuItem("刷新");
                     refresh.setOnAction(e -> reload());
                     menu.getItems().addAll(primary, edit, del, refresh);
+                    if (d.conn.type() != DbType.REDIS) {
+                        MenuItem schemaDiff = new MenuItem("Schema 对比...");
+                        schemaDiff.setOnAction(e -> actions.openSchemaDiff(d.conn, null));
+                        menu.getItems().add(1, schemaDiff);
+                    }
                     // 仅在已连接时提供“断开连接”（连接为惰性建立，展开节点才连）。
                     if (connMgr.isConnected(d.connId)) {
                         MenuItem disconnect = new MenuItem("断开连接");
@@ -541,7 +547,9 @@ public final class ConnectionTreePane implements AutoCloseable {
                 case SCHEMA -> {
                     MenuItem sql = new MenuItem("打开 SQL 编辑器");
                     sql.setOnAction(e -> actions.openSqlEditor(connOf(getTreeItem()), d.schema));
-                    menu.getItems().add(sql);
+                    MenuItem schemaDiff = new MenuItem("Schema 对比...");
+                    schemaDiff.setOnAction(e -> actions.openSchemaDiff(connOf(getTreeItem()), d.schema));
+                    menu.getItems().addAll(sql, schemaDiff);
                 }
                 case TABLES -> {
                     MenuItem create = new MenuItem("新建表");
