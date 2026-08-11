@@ -62,6 +62,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
             throw new IllegalArgumentException(MANUAL_CHANGE);
         }
         validateShape(change);
+        validateContextOwners(change, context);
         boolean destructive = change.automation() == AutomationLevel.DESTRUCTIVE_OPT_IN
                 || hasDestructiveSemantics(change);
         if (destructive && !context.destructiveApproved()) {
@@ -106,11 +107,12 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     private static void validateShape(SchemaChange change) {
         switch (change.kind()) {
             case CREATE -> requireShape(change.source(), change.target(), change.object());
-            case DROP -> requireShape(change.target(), change.source(), change.object());
+            case DROP -> requireComparisonShape(
+                    change.target(), change.source(), change.object());
             case ALTER, REPLACE -> {
                 if (change.source() == null || change.target() == null
-                        || !change.object().equals(change.source().key())
-                        || !change.object().equals(change.target().key())) {
+                        || !sameComparisonIdentity(change.object(), change.source().key())
+                        || !sameComparisonIdentity(change.object(), change.target().key())) {
                     throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
                 }
             }
@@ -125,6 +127,35 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     private static void requireShape(SchemaObject present, SchemaObject absent, ObjectKey key) {
         if (present == null || absent != null || !key.equals(present.key())) {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
+    }
+
+    private static void requireComparisonShape(
+            SchemaObject present, SchemaObject absent, ObjectKey key) {
+        if (present == null || absent != null
+                || !sameComparisonIdentity(key, present.key())) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
+    }
+
+    private static boolean sameComparisonIdentity(ObjectKey left, ObjectKey right) {
+        return left.type() == right.type()
+                && left.signature().equals(right.signature())
+                && objectPart(left).equals(objectPart(right));
+    }
+
+    private static void validateContextOwners(SchemaChange change, RenderContext context) {
+        String sourceOwner = schemaPart(context.sourceSchema());
+        String targetOwner = schemaPart(context.targetSchema());
+        if (change.source() != null
+                && !objectOwner(change.source().key()).equals(sourceOwner)) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
+        if (change.target() != null) {
+            String owner = objectOwner(change.target().key());
+            if (!owner.equals(sourceOwner) && !owner.equals(targetOwner)) {
+                throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+            }
         }
     }
 
@@ -156,6 +187,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
                 || change.object().type() == ObjectType.MATERIALIZED_VIEW) {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }
+        targetName(change.target().key(), context);
         return List.of(renderDefinition(definition, context, true));
     }
 
@@ -167,21 +199,24 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
                 .contains(definition.key().type())) {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }
-        ObjectKey triggerOwner = definition.key().type() == ObjectType.TRIGGER
-                ? triggerOwner(definition) : null;
         validateDefinitionDependencyShape(definition);
         try {
             String original = definition.originalDefinition();
+            String definitionOwner = objectOwner(definition.key());
+            String sourceOwner = schemaPart(context.sourceSchema());
+            String targetOwner = schemaPart(context.targetSchema());
             if (original == null || original.isBlank()
-                    || !objectOwner(definition.key())
-                            .equals(schemaPart(context.sourceSchema()))) {
+                    || (!definitionOwner.equals(sourceOwner)
+                            && !definitionOwner.equals(targetOwner))) {
                 throw new IllegalArgumentException(UNSAFE_DEFINITION);
             }
             String normalized = OracleSchemaDefinitionNormalizer.normalize(original);
             if (normalized == null || normalized.isBlank() || normalized.indexOf('\0') >= 0) {
                 throw new IllegalArgumentException(UNSAFE_DEFINITION);
             }
-            DefinitionHeader header = definitionHeader(normalized, definition.key(), context);
+            validateDefinitionSegments(normalized);
+            DefinitionHeader header = definitionHeader(
+                    normalized, definition.key(), definitionOwner);
             if (header == null || replace && !header.replace()) {
                 throw new IllegalArgumentException(UNSAFE_DEFINITION);
             }
@@ -190,13 +225,14 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
                     && !routineIdentityMatches(normalized, header, definition.key())) {
                 throw new IllegalArgumentException(UNSAFE_DEFINITION);
             }
-            if (triggerOwner != null
+            if (definition.key().type() == ObjectType.TRIGGER
                     && !triggerOwnerMatches(normalized, header.nameEnd(),
-                            triggerOwner, context)) {
+                            definition, definitionOwner)) {
                 throw new IllegalArgumentException(UNSAFE_DEFINITION);
             }
             validateDefinitionTerminator(normalized, definition.key());
-            String retargeted = retargetDefinitionBasic(normalized, context);
+            String retargeted = definitionOwner.equals(sourceOwner)
+                    ? retargetDefinitionBasic(normalized, context) : normalized;
             return requiresSlash(definition.key())
                     ? retargeted.stripTrailing() + "\n/"
                     : retargeted.stripTrailing();
@@ -206,7 +242,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static DefinitionHeader definitionHeader(
-            String definition, ObjectKey key, RenderContext context) {
+            String definition, ObjectKey key, String expectedOwner) {
         int index = keywordEnd(definition, 0, "CREATE");
         if (index < 0) return null;
         boolean replace = false;
@@ -237,7 +273,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         }
         QualifiedSqlName name = qualifiedSqlNameAt(definition, index);
         if (name == null
-                || !identifierMatches(name.schema(), schemaPart(context.sourceSchema()), true)
+                || !identifierMatches(name.schema(), expectedOwner, true)
                 || !identifierMatches(name.object(), objectPart(key), false)) {
             return null;
         }
@@ -509,35 +545,39 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static boolean triggerOwnerMatches(
-            String definition, int start, ObjectKey owner, RenderContext context) {
-        if (!Set.of(ObjectType.TABLE, ObjectType.VIEW).contains(owner.type())
-                || !objectOwner(owner).equals(schemaPart(context.sourceSchema()))) {
-            return false;
-        }
+            String ddl, int start, DefinitionObject definition, String expectedOwner) {
         int index = start;
-        while (index < definition.length()) {
-            char current = definition.charAt(index);
-            if (alternativeQuoteAt(definition, index)) {
-                index = alternativeQuoteEnd(definition, index);
+        while (index < ddl.length()) {
+            char current = ddl.charAt(index);
+            if (alternativeQuoteAt(ddl, index)) {
+                index = alternativeQuoteEnd(ddl, index);
             } else if (current == '\'') {
-                index = singleQuotedEnd(definition, index);
+                index = singleQuotedEnd(ddl, index);
             } else if (current == '"') {
-                SqlIdentifier quoted = sqlIdentifierAt(definition, index);
+                SqlIdentifier quoted = sqlIdentifierAt(ddl, index);
                 if (quoted == null) return false;
                 index = quoted.end();
-            } else if (current == '-' && charAt(definition, index + 1) == '-') {
-                index = lineCommentEnd(definition, index);
-            } else if (current == '/' && charAt(definition, index + 1) == '*') {
-                index = blockCommentEnd(definition, index);
+            } else if (current == '-' && charAt(ddl, index + 1) == '-') {
+                index = lineCommentEnd(ddl, index);
+            } else if (current == '/' && charAt(ddl, index + 1) == '*') {
+                index = blockCommentEnd(ddl, index);
             } else if (identifierStart(current)) {
                 int end = index + 1;
-                while (end < definition.length() && identifierPart(definition.charAt(end))) end++;
-                if (definition.substring(index, end).equalsIgnoreCase("ON")) {
-                    QualifiedSqlName candidate = qualifiedSqlNameAt(definition, end);
-                    return candidate != null
-                            && identifierMatches(candidate.schema(),
-                                    schemaPart(context.sourceSchema()), true)
-                            && identifierMatches(candidate.object(), objectPart(owner), false);
+                while (end < ddl.length() && identifierPart(ddl.charAt(end))) end++;
+                if (ddl.substring(index, end).equalsIgnoreCase("ON")) {
+                    QualifiedSqlName candidate = qualifiedSqlNameAt(ddl, end);
+                    if (candidate == null
+                            || !identifierMatches(candidate.schema(), expectedOwner, true)) {
+                        return false;
+                    }
+                    long matches = definition.dependencies().stream()
+                            .filter(dependency -> dependency.type() == ObjectType.TABLE
+                                    || dependency.type() == ObjectType.VIEW)
+                            .filter(dependency -> objectOwner(dependency).equals(expectedOwner))
+                            .filter(dependency -> identifierMatches(
+                                    candidate.object(), objectPart(dependency), false))
+                            .count();
+                    return matches == 1;
                 }
                 index = end;
             } else {
@@ -545,15 +585,6 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
             }
         }
         return false;
-    }
-
-    private static ObjectKey triggerOwner(DefinitionObject definition) {
-        List<ObjectKey> owners = definition.dependencies().stream()
-                .filter(dependency -> dependency.type() == ObjectType.TABLE
-                        || dependency.type() == ObjectType.VIEW)
-                .toList();
-        if (owners.size() != 1) throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
-        return owners.getFirst();
     }
 
     private static void validateDefinitionTerminator(String definition, ObjectKey key) {
@@ -576,6 +607,59 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         if (beforeLast.quoted() || !beforeLast.value().equalsIgnoreCase("END")) {
             throw new IllegalArgumentException(UNSAFE_DEFINITION);
         }
+        if (!identifierMatches(last, objectPart(key), false)) {
+            throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        }
+    }
+
+    private static void validateDefinitionSegments(String definition) {
+        int index = 0;
+        int createCount = 0;
+        while (index < definition.length()) {
+            char current = definition.charAt(index);
+            if (alternativeQuoteAt(definition, index)) {
+                index = alternativeQuoteEnd(definition, index);
+            } else if (current == '\'') {
+                index = singleQuotedEnd(definition, index);
+            } else if (current == '"') {
+                SqlIdentifier quoted = sqlIdentifierAt(definition, index);
+                if (quoted == null) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+                index = quoted.end();
+            } else if (current == '-' && charAt(definition, index + 1) == '-') {
+                index = lineCommentEnd(definition, index);
+            } else if (current == '/' && charAt(definition, index + 1) == '*') {
+                index = blockCommentEnd(definition, index);
+            } else if (identifierStart(current)) {
+                int end = index + 1;
+                while (end < definition.length()
+                        && identifierPart(definition.charAt(end))) {
+                    end++;
+                }
+                if (definition.substring(index, end).equalsIgnoreCase("CREATE")
+                        && ++createCount > 1) {
+                    throw new IllegalArgumentException(UNSAFE_DEFINITION);
+                }
+                index = end;
+            } else {
+                if (current == '/' && standaloneSlashAt(definition, index)) {
+                    throw new IllegalArgumentException(UNSAFE_DEFINITION);
+                }
+                index++;
+            }
+        }
+    }
+
+    private static boolean standaloneSlashAt(String definition, int slash) {
+        int lineStart = definition.lastIndexOf('\n', slash - 1) + 1;
+        for (int index = lineStart; index < slash; index++) {
+            if (!Character.isWhitespace(definition.charAt(index))) return false;
+        }
+        int lineEnd = definition.indexOf('\n', slash + 1);
+        if (lineEnd < 0) lineEnd = definition.length();
+        for (int index = slash + 1; index < lineEnd; index++) {
+            if (!Character.isWhitespace(definition.charAt(index))) return false;
+        }
+        return true;
     }
 
     private static List<SqlIdentifier> definitionIdentifiers(String definition) {
@@ -964,10 +1048,10 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
                 && source.columns().contains(column)
                 && target.columns().stream().noneMatch(candidate -> sameColumn(candidate, column))) {
             List<String> statements = new ArrayList<>();
-            statements.add("ALTER TABLE " + targetName(source.key(), context)
+            statements.add("ALTER TABLE " + targetName(target.key(), context)
                     + " ADD (" + columnClause(column, context) + ");");
             if (column.comment() != null && !column.comment().isBlank()) {
-                statements.add(commentOnColumn(source.key(), column, context));
+                statements.add(commentOnColumn(target.key(), column, context));
             }
             return List.copyOf(statements);
         }
@@ -976,7 +1060,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
                 && change.property().path().equals(columnPath(column))
                 && target.columns().contains(column)
                 && source.columns().stream().noneMatch(candidate -> sameColumn(candidate, column))) {
-            return List.of("ALTER TABLE " + targetName(source.key(), context)
+            return List.of("ALTER TABLE " + targetName(target.key(), context)
                     + " DROP COLUMN " + childName(column.name()) + ';');
         }
         List<String> columnAlter = alterColumnProperty(change, source, target, context);
@@ -1043,7 +1127,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
             case "providerExtensions" -> sequenceOrderOption(change, source, target);
             default -> throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         };
-        return List.of("ALTER SEQUENCE " + targetName(source.key(), context) + ' '
+        return List.of("ALTER SEQUENCE " + targetName(target.key(), context) + ' '
                 + option + ';');
     }
 
@@ -1094,7 +1178,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
                     .filter(candidate -> sameColumn(candidate, desired)).findFirst().orElse(null);
             if (current == null) continue;
             String prefix = columnPath(desired);
-            String tableName = targetName(source.key(), context);
+            String tableName = targetName(target.key(), context);
             String columnName = childName(desired.name());
             if (change.property().path().equals(prefix + ".dataType")
                     && Objects.equals(change.property().sourceValue(), desired.dataType())
@@ -1184,13 +1268,13 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         target.constraints().stream()
                 .filter(constraint -> !source.constraints().contains(constraint))
                 .sorted(Comparator.comparing(ConstraintDefinition::key))
-                .map(constraint -> "ALTER TABLE " + targetName(source.key(), context)
+                .map(constraint -> "ALTER TABLE " + targetName(target.key(), context)
                         + " DROP CONSTRAINT " + nestedObjectName(constraint.key()) + ';')
                 .forEach(statements::add);
         source.constraints().stream()
                 .filter(constraint -> !target.constraints().contains(constraint))
                 .sorted(Comparator.comparing(ConstraintDefinition::key))
-                .map(constraint -> "ALTER TABLE " + targetName(source.key(), context)
+                .map(constraint -> "ALTER TABLE " + targetName(target.key(), context)
                         + " ADD " + constraintClause(constraint, context) + ';')
                 .forEach(statements::add);
         if (statements.isEmpty()) throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
@@ -1212,7 +1296,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
                 .filter(index -> !index.providerGeneratedName()
                         && !target.indexes().contains(index))
                 .sorted(Comparator.comparing(IndexDefinition::key))
-                .map(index -> createIndex(index, source.key(), context))
+                .map(index -> createIndex(index, target.key(), context))
                 .forEach(statements::add);
         if (statements.isEmpty()) throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         return List.copyOf(statements);
@@ -1337,15 +1421,30 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static boolean alternativeQuoteAt(String text, int start) {
-        if (start < 0 || start + 2 >= text.length()) return false;
-        char prefix = text.charAt(start);
-        return (prefix == 'q' || prefix == 'Q')
-                && text.charAt(start + 1) == '\''
-                && (start == 0 || !identifierPart(text.charAt(start - 1)));
+        return alternativeQuotePrefixLength(text, start) > 0;
+    }
+
+    private static int alternativeQuotePrefixLength(String text, int start) {
+        if (start < 0 || start >= text.length()
+                || start > 0 && identifierPart(text.charAt(start - 1))) {
+            return 0;
+        }
+        char first = text.charAt(start);
+        if ((first == 'q' || first == 'Q')
+                && charAt(text, start + 1) == '\''
+                && start + 2 < text.length()) {
+            return 2;
+        }
+        return (first == 'n' || first == 'N')
+                && (charAt(text, start + 1) == 'q' || charAt(text, start + 1) == 'Q')
+                && charAt(text, start + 2) == '\''
+                && start + 3 < text.length() ? 3 : 0;
     }
 
     private static int alternativeQuoteEnd(String text, int start) {
-        char opener = charAt(text, start + 2);
+        int prefixLength = alternativeQuotePrefixLength(text, start);
+        if (prefixLength == 0) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        char opener = charAt(text, start + prefixLength);
         if (opener == '\0' || opener == '\'' || Character.isWhitespace(opener)) {
             throw new IllegalArgumentException(UNSAFE_DEFINITION);
         }
@@ -1356,7 +1455,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
             case '<' -> '>';
             default -> opener;
         };
-        for (int index = start + 3; index < text.length(); index++) {
+        for (int index = start + prefixLength + 1; index < text.length(); index++) {
             if (text.charAt(index) == close && charAt(text, index + 1) == '\'') {
                 return index + 2;
             }
@@ -1370,21 +1469,9 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static int blockCommentEnd(String text, int start) {
-        int depth = 1;
-        int index = start + 2;
-        while (index < text.length()) {
-            if (charAt(text, index) == '/' && charAt(text, index + 1) == '*') {
-                depth++;
-                index += 2;
-            } else if (charAt(text, index) == '*' && charAt(text, index + 1) == '/') {
-                depth--;
-                index += 2;
-                if (depth == 0) return index;
-            } else {
-                index++;
-            }
-        }
-        throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        int end = text.indexOf("*/", start + 2);
+        if (end < 0) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        return end + 2;
     }
 
     private static SqlIdentifier sqlIdentifierAt(String text, int start) {
@@ -1509,7 +1596,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static String renderDrop(SchemaChange change, RenderContext context) {
-        ObjectKey key = change.object();
+        ObjectKey key = change.target().key();
         if (change.target() instanceof TableDefinition) {
             validateTopLevelKey(key, ObjectType.TABLE);
         } else if (change.target() instanceof SequenceDefinition) {
@@ -1539,7 +1626,9 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static String targetName(ObjectKey key, RenderContext context) {
-        if (!objectOwner(key).equals(schemaPart(context.sourceSchema()))) {
+        String owner = objectOwner(key);
+        if (!owner.equals(schemaPart(context.sourceSchema()))
+                && !owner.equals(schemaPart(context.targetSchema()))) {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }
         return OracleSchemaIdentifierNormalizer.quote(schemaPart(context.targetSchema())) + '.'

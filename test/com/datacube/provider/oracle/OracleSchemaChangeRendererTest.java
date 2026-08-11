@@ -509,6 +509,97 @@ class OracleSchemaChangeRendererTest {
     }
 
     @Test
+    void crossSchemaDropAlterAndReplaceUseComparisonIdentityAndTargetOwner() {
+        ObjectKey sourceTableKey = key(ObjectType.TABLE, "Source", "ORDERS", "");
+        ObjectKey targetTableKey = key(ObjectType.TABLE, "Target\"Owner", "ORDERS", "");
+        ColumnDefinition desiredColumn = column("STATUS",
+                type("VARCHAR2", extensions("formattedType", "VARCHAR2(30)")),
+                false, null, 1, null);
+        ColumnDefinition currentColumn = column("STATUS",
+                type("VARCHAR2", extensions("formattedType", "VARCHAR2(10)")),
+                false, null, 1, null);
+        TableDefinition desiredTable = table(sourceTableKey, List.of(desiredColumn));
+        TableDefinition currentTable = table(targetTableKey, List.of(currentColumn));
+        SchemaChange alterTable = tablePropertyChange(sourceTableKey, desiredTable, currentTable,
+                "columns[" + desiredColumn.name().comparisonKey() + "].dataType",
+                desiredColumn.dataType(), currentColumn.dataType());
+        assertEquals("ALTER TABLE \"Target\"\"Owner\".\"ORDERS\" "
+                        + "MODIFY (\"STATUS\" VARCHAR2(30));",
+                renderApproved(alterTable).getFirst().sql());
+
+        ObjectKey sourceSequenceKey = key(ObjectType.SEQUENCE, "Source", "ORDERS_SEQ", "");
+        ObjectKey targetSequenceKey = key(
+                ObjectType.SEQUENCE, "Target\"Owner", "ORDERS_SEQ", "");
+        SequenceDefinition desiredSequence = new SequenceDefinition(sourceSequenceKey,
+                "1", "5", "1", "999", false, 20, Set.of(),
+                Map.of("oracle.order", "NOORDER", "oracle.startValueKnown", "true"));
+        SequenceDefinition currentSequence = new SequenceDefinition(targetSequenceKey,
+                "1", "1", "1", "999", false, 20, Set.of(),
+                Map.of("oracle.order", "NOORDER", "oracle.startValueKnown", "true"));
+        SchemaChange alterSequence = change(ChangeKind.ALTER, sourceSequenceKey,
+                desiredSequence, currentSequence,
+                new PropertyDifference("incrementBy", "5", "1", "safe"),
+                AutomationLevel.DESTRUCTIVE_OPT_IN);
+        assertEquals("ALTER SEQUENCE \"Target\"\"Owner\".\"ORDERS_SEQ\" "
+                        + "INCREMENT BY 5;",
+                renderApproved(alterSequence).getFirst().sql());
+
+        SchemaChange drop = change(ChangeKind.DROP, sourceTableKey,
+                null, currentTable, null, AutomationLevel.DESTRUCTIVE_OPT_IN);
+        assertEquals("DROP TABLE \"Target\"\"Owner\".\"ORDERS\";",
+                renderApproved(drop).getFirst().sql());
+
+        ObjectKey sourceViewKey = key(ObjectType.VIEW, "Source", "ORDERS_V", "");
+        ObjectKey targetViewKey = key(ObjectType.VIEW, "Target\"Owner", "ORDERS_V", "");
+        DefinitionObject desiredView = definition(sourceViewKey,
+                "CREATE OR REPLACE VIEW \"Source\".\"ORDERS_V\" AS SELECT 1 X FROM DUAL;");
+        DefinitionObject currentView = definition(targetViewKey,
+                "CREATE OR REPLACE VIEW \"Target\"\"Owner\".\"ORDERS_V\" "
+                        + "AS SELECT 2 X FROM DUAL;");
+        SchemaChange replace = change(ChangeKind.REPLACE, sourceViewKey,
+                desiredView, currentView,
+                new PropertyDifference("normalizedDefinition", "desired", "current", "safe"),
+                AutomationLevel.DESTRUCTIVE_OPT_IN);
+        assertEquals("CREATE OR REPLACE VIEW \"Target\"\"Owner\".\"ORDERS_V\" "
+                        + "AS SELECT 1 X FROM DUAL;",
+                renderApproved(replace).getFirst().sql());
+
+        ObjectKey wrongTargetKey = key(ObjectType.TABLE, "Target\"Owner", "OTHER", "");
+        SchemaChange mismatched = tablePropertyChange(sourceTableKey, desiredTable,
+                table(wrongTargetKey, List.of(currentColumn)),
+                "columns[" + desiredColumn.name().comparisonKey() + "].dataType",
+                desiredColumn.dataType(), currentColumn.dataType());
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(mismatched,
+                                context(DbType.ORACLE, true))).getMessage());
+
+        ObjectKey unrelatedOwnerViewKey = key(ObjectType.VIEW, "Other", "ORDERS_V", "");
+        DefinitionObject unrelatedOwnerView = definition(unrelatedOwnerViewKey,
+                "CREATE OR REPLACE VIEW \"Other\".\"ORDERS_V\" AS SELECT 2 X FROM DUAL;");
+        SchemaChange unrelatedTargetOwner = change(ChangeKind.REPLACE, sourceViewKey,
+                desiredView, unrelatedOwnerView,
+                new PropertyDifference("normalizedDefinition", "desired", "current", "safe"),
+                AutomationLevel.DESTRUCTIVE_OPT_IN);
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(unrelatedTargetOwner,
+                                context(DbType.ORACLE, true))).getMessage());
+
+        ObjectKey unrelatedSourceTableKey = key(ObjectType.TABLE, "Other", "ORDERS", "");
+        TableDefinition unrelatedDesiredTable = table(
+                unrelatedSourceTableKey, List.of(desiredColumn));
+        SchemaChange unrelatedSourceOwner = tablePropertyChange(unrelatedSourceTableKey,
+                unrelatedDesiredTable, currentTable,
+                "columns[" + desiredColumn.name().comparisonKey() + "].dataType",
+                desiredColumn.dataType(), currentColumn.dataType());
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(unrelatedSourceOwner,
+                                context(DbType.ORACLE, true))).getMessage());
+    }
+
+    @Test
     void lexicalRetargetChangesOnlyOracleQualifiedOwnerTokensAcrossCommentsAndQuotes() {
         String sourceOwner = "Src\"Owner";
         ObjectKey key = key(ObjectType.VIEW, sourceOwner, "Mixed\"View", "");
@@ -536,6 +627,43 @@ class OracleSchemaChangeRendererTest {
         assertTrue(sql.contains("q'[\"Src\"\"Owner\".\"q;value\"]'"));
         assertTrue(sql.contains("-- keep \"Src\"\"Owner\".\"line\""));
         assertFalse(sql.endsWith("\n/"));
+    }
+
+    @Test
+    void supportsNationalAlternativeQuotesAndValidatesOptionalEndLabelIdentity() {
+        ObjectKey viewKey = key(ObjectType.VIEW, "Source", "MESSAGES_V", "");
+        String viewDdl = "CREATE OR REPLACE VIEW \"Source\".\"MESSAGES_V\" AS\n"
+                + "SELECT nq'[owner's; \"Source\".\"literal\"]' LOWER_NQ,\n"
+                + "       NQ'<other's; \"Source\".\"literal\">' UPPER_NQ\n"
+                + "FROM DUAL;";
+        String viewSql = RENDERER.render(change(ChangeKind.CREATE, viewKey,
+                        definition(viewKey, viewDdl), null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst().sql();
+        assertTrue(viewSql.contains("nq'[owner's; \"Source\".\"literal\"]'"));
+        assertTrue(viewSql.contains("NQ'<other's; \"Source\".\"literal\">'"));
+
+        ObjectKey functionKey = key(
+                ObjectType.FUNCTION, "Source", "SAFE_F", oracleSignature());
+        String correctlyLabeled = "CREATE OR REPLACE FUNCTION \"Source\".\"SAFE_F\" "
+                + "RETURN NVARCHAR2 IS\nBEGIN RETURN NQ'[owner's; value]'; END SAFE_F;\n/";
+        String functionSql = RENDERER.render(change(ChangeKind.CREATE, functionKey,
+                        definition(functionKey, correctlyLabeled), null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst().sql();
+        assertTrue(functionSql.endsWith("END SAFE_F;\n/"));
+
+        assertSafeDefinitionFailure(change(ChangeKind.CREATE, functionKey,
+                definition(functionKey,
+                        "CREATE FUNCTION \"Source\".\"SAFE_F\" RETURN NUMBER IS "
+                                + "BEGIN RETURN 1; END OTHER_F;"),
+                null, null, AutomationLevel.SAFE_AUTOMATIC));
+
+        assertSafeDefinitionFailure(change(ChangeKind.CREATE, viewKey,
+                definition(viewKey,
+                        "CREATE VIEW \"Source\".\"MESSAGES_V\" AS SELECT $tag$secret; "
+                                + "DROP TABLE hidden;$tag$ FROM DUAL;"),
+                null, null, AutomationLevel.SAFE_AUTOMATIC));
     }
 
     @Test
@@ -581,12 +709,21 @@ class OracleSchemaChangeRendererTest {
         assertSafeDefinitionFailure(change(ChangeKind.CREATE, triggerKey,
                 definition(triggerKey, triggerDdl, Set.of(view)), null, null,
                 AutomationLevel.SAFE_AUTOMATIC));
-        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
-                assertThrows(IllegalArgumentException.class,
-                        () -> RENDERER.render(change(ChangeKind.CREATE, triggerKey,
-                                        definition(triggerKey, triggerDdl, Set.of(table, view)),
-                                        null, null, AutomationLevel.SAFE_AUTOMATIC),
-                                context(DbType.ORACLE, false))).getMessage());
+        ObjectKey helper = key(ObjectType.PROCEDURE, "Source", "AUDIT_HELPER",
+                oracleSignature());
+        String withBodyDependencies = RENDERER.render(change(ChangeKind.CREATE, triggerKey,
+                        definition(triggerKey, triggerDdl, Set.of(table, view, helper)),
+                        null, null, AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst().sql();
+        assertTrue(withBodyDependencies.contains(
+                "ON \"Target\"\"Owner\".\"ORDERS\""));
+        assertSafeDefinitionFailure(change(ChangeKind.CREATE, triggerKey,
+                definition(triggerKey, triggerDdl, Set.of(helper)), null, null,
+                AutomationLevel.SAFE_AUTOMATIC));
+        ObjectKey ambiguousView = key(ObjectType.VIEW, "Source", "ORDERS", "");
+        assertSafeDefinitionFailure(change(ChangeKind.CREATE, triggerKey,
+                definition(triggerKey, triggerDdl, Set.of(table, ambiguousView)), null, null,
+                AutomationLevel.SAFE_AUTOMATIC));
 
         ObjectKey viewTriggerKey = key(ObjectType.TRIGGER, "Source", "AUDIT_VIEW", "");
         String viewTriggerDdl = "CREATE OR REPLACE TRIGGER \"Source\".\"AUDIT_VIEW\" "
@@ -656,6 +793,62 @@ class OracleSchemaChangeRendererTest {
         assertFalse(replacement.sql().contains("unrelated-secret"));
         assertFalse(replacement.sql().contains("credential-secret"));
         assertFalse(replacement.toString().contains("SELECT 1"));
+    }
+
+    @Test
+    void rejectsInternalStandaloneSlashAndMultipleDefinitionSegments() {
+        ObjectKey functionKey = key(
+                ObjectType.FUNCTION, "Source", "SAFE_F", oracleSignature());
+        List<String> unsafeDefinitions = List.of(
+                "CREATE OR REPLACE FUNCTION \"Source\".\"SAFE_F\" RETURN NUMBER IS\n"
+                        + "BEGIN RETURN 1; END;\n/\n"
+                        + "CREATE OR REPLACE FUNCTION \"Source\".\"SAFE_F\" "
+                        + "RETURN NUMBER IS BEGIN RETURN 2; END;",
+                "CREATE OR REPLACE FUNCTION \"Source\".\"SAFE_F\" RETURN NUMBER IS\n"
+                        + "BEGIN NULL;\n  /  \nRETURN 1; END;",
+                "CREATE OR REPLACE FUNCTION \"Source\".\"SAFE_F\" RETURN NUMBER IS "
+                        + "BEGIN RETURN 1; END; "
+                        + "CREATE OR REPLACE FUNCTION \"Source\".\"SAFE_F\" "
+                        + "RETURN NUMBER IS BEGIN RETURN 2; END;");
+        for (String unsafe : unsafeDefinitions) {
+            assertSafeDefinitionFailure(change(ChangeKind.CREATE, functionKey,
+                    definition(functionKey, unsafe), null, null,
+                    AutomationLevel.SAFE_AUTOMATIC));
+        }
+
+        String safe = "CREATE OR REPLACE FUNCTION \"Source\".\"SAFE_F\" "
+                + "RETURN VARCHAR2 IS\nBEGIN RETURN q'[line one / line two]'; END;";
+        String sql = RENDERER.render(change(ChangeKind.CREATE, functionKey,
+                        definition(functionKey, safe), null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst().sql();
+        assertEquals(1, sql.split("(?m)^/$", -1).length - 1);
+        assertTrue(sql.endsWith("END;\n/"));
+    }
+
+    @Test
+    void oracleBlockCommentEndsAtFirstClosingDelimiterAndUnclosedCommentFails() {
+        ObjectKey functionKey = key(
+                ObjectType.FUNCTION, "Source", "SAFE_F", oracleSignature());
+        String ddl = "CREATE OR REPLACE FUNCTION \"Source\".\"SAFE_F\" "
+                + "RETURN NUMBER IS\nBEGIN\n"
+                + "  /* outer text /* is not nested */\n"
+                + "  RETURN \"Source\".\"NUMBERS\".NEXTVAL;\n"
+                + "END SAFE_F;\n/";
+
+        String sql = RENDERER.render(change(ChangeKind.CREATE, functionKey,
+                        definition(functionKey, ddl), null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst().sql();
+        assertTrue(sql.contains("/* outer text /* is not nested */"));
+        assertTrue(sql.contains("RETURN \"Target\"\"Owner\".\"NUMBERS\".NEXTVAL;"));
+        assertEquals(1, sql.split("(?m)^/$", -1).length - 1);
+
+        assertSafeDefinitionFailure(change(ChangeKind.CREATE, functionKey,
+                definition(functionKey,
+                        "CREATE FUNCTION \"Source\".\"SAFE_F\" RETURN NUMBER IS "
+                                + "BEGIN /* never closed secret RETURN 1; END;"),
+                null, null, AutomationLevel.SAFE_AUTOMATIC));
     }
 
     @Test

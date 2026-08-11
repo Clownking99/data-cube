@@ -41,17 +41,17 @@ public final class OracleSchemaDefinitionNormalizer {
     private static State stateAt(String text, int target) {
         State state = State.NORMAL;
         char alternativeClose = '\0';
-        int blockDepth = 0;
         for (int index = 0; index < target; index++) {
             char current = text.charAt(index);
             char next = index + 1 < target ? text.charAt(index + 1) : '\0';
             switch (state) {
                 case NORMAL -> {
-                    if ((current == 'q' || current == 'Q') && next == '\''
-                            && index + 2 < target) {
-                        alternativeClose = closingDelimiter(text.charAt(index + 2));
+                    int alternativePrefix = alternativeQuotePrefixLength(text, index, target);
+                    if (alternativePrefix > 0) {
+                        alternativeClose = closingDelimiter(
+                                text.charAt(index + alternativePrefix));
                         state = State.ALTERNATIVE_QUOTE;
-                        index += 2;
+                        index += alternativePrefix;
                     } else if (current == '\'') {
                         state = State.SINGLE_QUOTE;
                     } else if (current == '"') {
@@ -61,7 +61,6 @@ public final class OracleSchemaDefinitionNormalizer {
                         index++;
                     } else if (current == '/' && next == '*') {
                         state = State.BLOCK_COMMENT;
-                        blockDepth = 1;
                         index++;
                     }
                 }
@@ -83,13 +82,9 @@ public final class OracleSchemaDefinitionNormalizer {
                     if (current == '\n') state = State.NORMAL;
                 }
                 case BLOCK_COMMENT -> {
-                    if (current == '/' && next == '*') {
-                        blockDepth++;
+                    if (current == '*' && next == '/') {
                         index++;
-                    } else if (current == '*' && next == '/') {
-                        blockDepth--;
-                        index++;
-                        if (blockDepth == 0) state = State.NORMAL;
+                        state = State.NORMAL;
                     }
                 }
                 case ALTERNATIVE_QUOTE -> {
@@ -101,6 +96,27 @@ public final class OracleSchemaDefinitionNormalizer {
             }
         }
         return state;
+    }
+
+    private static int alternativeQuotePrefixLength(String text, int start, int limit) {
+        if (start < 0 || start >= limit
+                || start > 0 && identifierPart(text.charAt(start - 1))) {
+            return 0;
+        }
+        char first = text.charAt(start);
+        if ((first == 'q' || first == 'Q')
+                && start + 2 < limit && text.charAt(start + 1) == '\'') {
+            return 2;
+        }
+        return (first == 'n' || first == 'N')
+                && start + 3 < limit
+                && (text.charAt(start + 1) == 'q' || text.charAt(start + 1) == 'Q')
+                && text.charAt(start + 2) == '\'' ? 3 : 0;
+    }
+
+    private static boolean identifierPart(char value) {
+        return value == '_' || value == '$' || value == '#'
+                || Character.isLetterOrDigit(value);
     }
 
     private static char closingDelimiter(char opener) {
