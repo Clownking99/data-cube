@@ -11,13 +11,15 @@ import com.datacube.spi.SqlRunner;
 import com.datacube.spi.SequenceDdlBuilder;
 import com.datacube.spi.TableDdlBuilder;
 import com.datacube.spi.model.DbType;
+import com.datacube.spi.schemadiff.SchemaDiffCapability;
 
 import com.datacube.provider.jdbc.JdbcDataEditor;
 
 import java.sql.Connection;
+import java.util.Optional;
 
 /**
- * Oracle 能力提供者：组装 6 个能力实现，与 {@code provider.postgres} 对等。
+ * Oracle 能力提供者：组装数据库能力实现，与 {@code provider.postgres} 对等。
  *
  * <p>无状态能力（工厂/方言/执行器）单例复用；绑定连接的能力
  * （元数据/DDL/数据访问）按 {@link Connection} 现建。
@@ -29,6 +31,7 @@ public final class OracleProvider implements DatabaseProvider {
     private final OracleSqlRunner sqlRunner = new OracleSqlRunner(dialect);
     private final OracleTableDdlBuilder tableDdlBuilder = new OracleTableDdlBuilder();
     private final OracleSequenceDdlBuilder sequenceDdlBuilder = new OracleSequenceDdlBuilder();
+    private final SchemaDiffCapability schemaDiffCapability = new OracleSchemaDiffCapability();
 
     @Override
     public DbType type() {
@@ -83,5 +86,10 @@ public final class OracleProvider implements DatabaseProvider {
     @Override
     public DataEditor dataEditor(Connection c) {
         return new JdbcDataEditor(c, dialect);
+    }
+
+    @Override
+    public Optional<SchemaDiffCapability> schemaDiffCapability() {
+        return Optional.of(schemaDiffCapability);
     }
 }

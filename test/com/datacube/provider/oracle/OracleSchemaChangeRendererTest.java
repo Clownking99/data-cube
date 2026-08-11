@@ -1,0 +1,1062 @@
+package com.datacube.provider.oracle;
+
+import com.datacube.schemadiff.PropertyDifference;
+import com.datacube.spi.model.DbType;
+import com.datacube.spi.schemadiff.AutomationLevel;
+import com.datacube.spi.schemadiff.CanonicalDataType;
+import com.datacube.spi.schemadiff.ChangeKind;
+import com.datacube.spi.schemadiff.ColumnDefinition;
+import com.datacube.spi.schemadiff.ConstraintDefinition;
+import com.datacube.spi.schemadiff.ConstraintKind;
+import com.datacube.spi.schemadiff.DefinitionConfidence;
+import com.datacube.spi.schemadiff.DefinitionObject;
+import com.datacube.spi.schemadiff.IndexDefinition;
+import com.datacube.spi.schemadiff.ObjectKey;
+import com.datacube.spi.schemadiff.ObjectType;
+import com.datacube.spi.schemadiff.RenderContext;
+import com.datacube.spi.schemadiff.RenderedStatement;
+import com.datacube.spi.schemadiff.RiskLevel;
+import com.datacube.spi.schemadiff.SchemaChange;
+import com.datacube.spi.schemadiff.SchemaObject;
+import com.datacube.spi.schemadiff.SequenceDefinition;
+import com.datacube.spi.schemadiff.TableDefinition;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class OracleSchemaChangeRendererTest {
+    private static final OracleSchemaChangeRenderer RENDERER =
+            new OracleSchemaChangeRenderer();
+
+    @Test
+    void enforcesDatabaseManualShapeAndDerivedDestructiveSafetyWithFixedWarnings() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "Order\"Line", "");
+        TableDefinition table = table(tableKey, List.of());
+        SchemaChange create = change(ChangeKind.CREATE, tableKey, table, null, null,
+                AutomationLevel.SAFE_AUTOMATIC);
+
+        assertEquals(OracleSchemaChangeRenderer.WRONG_DATABASE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(create,
+                                context(DbType.POSTGRESQL, false))).getMessage());
+        SchemaChange manual = change(ChangeKind.MANUAL, tableKey, null, null, null,
+                AutomationLevel.MANUAL_ONLY);
+        assertEquals(OracleSchemaChangeRenderer.MANUAL_CHANGE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(manual, context(DbType.ORACLE, false))).getMessage());
+        SchemaChange malformed = change(ChangeKind.CREATE, tableKey, null, null, null,
+                AutomationLevel.SAFE_AUTOMATIC);
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(malformed, context(DbType.ORACLE, false))).getMessage());
+
+        SchemaChange misclassifiedDrop = change(ChangeKind.DROP, tableKey, null, table, null,
+                AutomationLevel.SAFE_AUTOMATIC);
+        assertEquals(OracleSchemaChangeRenderer.DESTRUCTIVE_APPROVAL,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(misclassifiedDrop,
+                                context(DbType.ORACLE, false))).getMessage());
+        RenderedStatement drop = RENDERER.render(
+                misclassifiedDrop, context(DbType.ORACLE, true)).getFirst();
+        assertEquals("DROP TABLE \"Target\"\"Owner\".\"Order\"\"Line\";", drop.sql());
+        assertTrue(drop.destructive());
+        assertEquals(OracleSchemaChangeRenderer.DESTRUCTIVE_WARNING, drop.warning());
+        assertFalse(drop.sql().contains("BEGIN"));
+        assertFalse(drop.sql().contains("COMMIT"));
+        assertFalse(drop.sql().contains("ROLLBACK"));
+    }
+
+    @Test
+    void createsOnlyASequenceWithProvableStartAndOracleDeclarativeOptions() {
+        ObjectKey key = key(ObjectType.SEQUENCE, "Source", "MiX\"Seq", "");
+        SequenceDefinition sequence = new SequenceDefinition(
+                key, "42", "-2", "-9", "999", true, 20, Set.of(),
+                Map.of("oracle.order", "ORDER", "oracle.startValueKnown", "true"));
+
+        RenderedStatement statement = RENDERER.render(
+                change(ChangeKind.CREATE, key, sequence, null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst();
+
+        assertEquals("CREATE SEQUENCE \"Target\"\"Owner\".\"MiX\"\"Seq\""
+                + " START WITH 42 INCREMENT BY -2 MINVALUE -9 MAXVALUE 999"
+                + " CYCLE CACHE 20 ORDER;", statement.sql());
+        assertFalse(statement.destructive());
+        assertEquals(OracleSchemaChangeRenderer.IMPLICIT_COMMIT_WARNING, statement.warning());
+        assertEquals(Set.of("chg:dependency"), statement.dependencyIds());
+        assertEquals("chg:test", statement.changeId());
+    }
+
+    @Test
+    void refusesUnknownOrUnprovableSequenceStartWithoutGuessing() {
+        ObjectKey key = key(ObjectType.SEQUENCE, "Source", "secret-sequence", "");
+        SequenceDefinition unknown = new SequenceDefinition(
+                key, null, "1", "1", "999", false, 0, Set.of(),
+                Map.of("oracle.order", "NOORDER", "oracle.startValueKnown", "false"));
+        SchemaChange create = change(ChangeKind.CREATE, key, unknown, null, null,
+                AutomationLevel.SAFE_AUTOMATIC);
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> RENDERER.render(create, context(DbType.ORACLE, false)));
+        assertEquals(OracleSchemaChangeRenderer.UNKNOWN_SEQUENCE_START, failure.getMessage());
+        assertFalse(failure.getMessage().contains("secret-sequence"));
+
+        SequenceDefinition malformed = new SequenceDefinition(
+                key, "1; DROP USER secret", "1", "1", "999", false, 20, Set.of(),
+                Map.of("oracle.order", "NOORDER", "oracle.startValueKnown", "true"));
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, key, malformed, null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+    }
+
+    @Test
+    void createsStructuredTableThenForeignKeysCommentsAndIndependentIndexes() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "Order\"Line", "");
+        ObjectKey customerKey = key(ObjectType.TABLE, "Source", "Customer", "");
+        CanonicalDataType identityType = new CanonicalDataType(
+                "NUMBER", null, 12, -2, false, 0,
+                extensions("oracle.identity", "ALWAYS",
+                        "oracle.identityOptions", "START WITH: 1, INCREMENT BY: 5, "
+                                + "MAX_VALUE: 999, MIN_VALUE: 1, CYCLE_FLAG: N, "
+                                + "CACHE_SIZE: 20, ORDER_FLAG: Y"));
+        CanonicalDataType codeType = new CanonicalDataType(
+                "VARCHAR2", 40L, null, null, false, 0,
+                extensions("oracle.lengthSemantics", "CHAR",
+                        "oracle.defaultOnNull", "true"));
+        CanonicalDataType addressType = type("Source.ADDRESS_T",
+                extensions("formattedType", "\"Source\".\"ADDRESS_T\"",
+                        "oracle.typeOwner", "Source"));
+        ColumnDefinition id = column("ID", identityType, false,
+                "GENERATED ALWAYS AS IDENTITY", 1, null);
+        ColumnDefinition code = column("Co\"de", codeType, true,
+                "DEFAULT ON NULL 'new''value'", 2, "owner's code");
+        ColumnDefinition address = column("ADDRESS", addressType, true, null, 3, null);
+        ConstraintDefinition primary = constraint(
+                ObjectType.PRIMARY_KEY, "PK_ORDERS", ConstraintKind.PRIMARY_KEY,
+                List.of(id), null, List.of(), null, null, false);
+        ConstraintDefinition check = constraint(
+                ObjectType.CHECK_CONSTRAINT, "CK_ORDERS", ConstraintKind.CHECK,
+                List.of(), null, List.of(), "\"ID\" > 0", null, false);
+        ConstraintDefinition foreign = constraint(
+                ObjectType.FOREIGN_KEY, "FK_ORDERS_CUSTOMER", ConstraintKind.FOREIGN_KEY,
+                List.of(code), customerKey,
+                List.of(OracleSchemaIdentifierNormalizer.child("CODE")),
+                null, "CASCADE", false);
+        IndexDefinition backing = index("PK_ORDERS", false, List.of("\"ID\""), true);
+        IndexDefinition function = index("IX_ORDERS_CODE", false,
+                List.of("UPPER(\"Co\"\"de\") DESC"), false);
+        TableDefinition table = new TableDefinition(tableKey,
+                List.of(address, code, id), List.of(foreign, primary, check),
+                List.of(function, backing), Set.of(customerKey));
+
+        List<RenderedStatement> statements = RENDERER.render(
+                change(ChangeKind.CREATE, tableKey, table, null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false));
+
+        assertEquals(List.of(
+                "CREATE TABLE \"Target\"\"Owner\".\"Order\"\"Line\" (\n"
+                        + "    \"ID\" NUMBER(12,-2) GENERATED ALWAYS AS IDENTITY "
+                        + "(START WITH 1 INCREMENT BY 5 MAXVALUE 999 MINVALUE 1 "
+                        + "NOCYCLE CACHE 20 ORDER) NOT NULL,\n"
+                        + "    \"Co\"\"de\" VARCHAR2(40 CHAR) DEFAULT ON NULL "
+                        + "'new''value' NULL,\n"
+                        + "    \"ADDRESS\" \"Target\"\"Owner\".\"ADDRESS_T\" NULL,\n"
+                        + "    CONSTRAINT \"PK_ORDERS\" PRIMARY KEY (\"ID\"),\n"
+                        + "    CONSTRAINT \"CK_ORDERS\" CHECK (\"ID\" > 0)\n);",
+                "ALTER TABLE \"Target\"\"Owner\".\"Order\"\"Line\" ADD CONSTRAINT "
+                        + "\"FK_ORDERS_CUSTOMER\" FOREIGN KEY (\"Co\"\"de\") REFERENCES "
+                        + "\"Target\"\"Owner\".\"Customer\" (\"CODE\") ON DELETE CASCADE;",
+                "COMMENT ON COLUMN \"Target\"\"Owner\".\"Order\"\"Line\".\"Co\"\"de\""
+                        + " IS 'owner''s code';",
+                "CREATE INDEX \"Target\"\"Owner\".\"IX_ORDERS_CODE\" ON "
+                        + "\"Target\"\"Owner\".\"Order\"\"Line\" (UPPER(\"Co\"\"de\") DESC);"),
+                statements.stream().map(RenderedStatement::sql).toList());
+        assertTrue(statements.stream().allMatch(statement ->
+                OracleSchemaChangeRenderer.IMPLICIT_COMMIT_WARNING.equals(statement.warning())));
+        assertTrue(statements.stream().noneMatch(RenderedStatement::destructive));
+    }
+
+    @Test
+    void addsOnlyAnExactWholeStructuredColumnAndItsComment() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "ORDERS", "");
+        ColumnDefinition added = column("New\"Column",
+                new CanonicalDataType("VARCHAR2", 30L, null, null, false, 0,
+                        extensions("oracle.lengthSemantics", "BYTE")),
+                true, null, 2, "new column");
+        TableDefinition desired = table(tableKey, List.of(added));
+        TableDefinition current = table(tableKey, List.of());
+        PropertyDifference exact = new PropertyDifference(
+                "columns[" + added.name().comparisonKey() + "]", added, null, "safe");
+
+        List<RenderedStatement> statements = RENDERER.render(
+                change(ChangeKind.ALTER, tableKey, desired, current, exact,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false));
+
+        assertEquals(List.of(
+                "ALTER TABLE \"Target\"\"Owner\".\"ORDERS\" ADD "
+                        + "(\"New\"\"Column\" VARCHAR2(30 BYTE) NULL);",
+                "COMMENT ON COLUMN \"Target\"\"Owner\".\"ORDERS\".\"New\"\"Column\""
+                        + " IS 'new column';"),
+                statements.stream().map(RenderedStatement::sql).toList());
+
+        PropertyDifference fake = new PropertyDifference(
+                "columns[secret-path]", added, null, "unsafe");
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> RENDERER.render(change(ChangeKind.ALTER, tableKey, desired, current, fake,
+                                AutomationLevel.SAFE_AUTOMATIC),
+                        context(DbType.ORACLE, false)));
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE, failure.getMessage());
+        assertFalse(failure.getMessage().contains("secret-path"));
+    }
+
+    @Test
+    void rendersConstraintAndIndexSetDifferencesRemovalFirstWithDerivedDestructiveMetadata() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "ORDERS", "");
+        ColumnDefinition id = column("ID",
+                new CanonicalDataType("NUMBER", null, 10, 0, false, 0, extensions()),
+                false, null, 1, null);
+        ConstraintDefinition oldCheck = constraint(ObjectType.CHECK_CONSTRAINT,
+                "CK_OLD", ConstraintKind.CHECK, List.of(), null, List.of(),
+                "\"ID\" > 0", null, false);
+        ConstraintDefinition desiredUnique = constraint(ObjectType.UNIQUE_CONSTRAINT,
+                "UK_NEW", ConstraintKind.UNIQUE, List.of(id), null, List.of(),
+                null, null, false);
+        IndexDefinition oldIndex = index("IX_OLD", false, List.of("\"ID\""), false);
+        IndexDefinition desiredIndex = index("IX_NEW", true,
+                List.of("\"ID\" DESC"), false);
+        IndexDefinition generated = index("SYS_C001", true, List.of("\"ID\""), true);
+        TableDefinition desiredConstraints = new TableDefinition(tableKey, List.of(id),
+                List.of(desiredUnique), List.of(), Set.of());
+        TableDefinition currentConstraints = new TableDefinition(tableKey, List.of(id),
+                List.of(oldCheck), List.of(), Set.of());
+        PropertyDifference constraints = new PropertyDifference("constraints",
+                desiredConstraints.constraints(), currentConstraints.constraints(), "safe");
+        SchemaChange constraintChange = change(ChangeKind.ALTER, tableKey,
+                desiredConstraints, currentConstraints, constraints,
+                AutomationLevel.SAFE_AUTOMATIC);
+
+        assertEquals(OracleSchemaChangeRenderer.DESTRUCTIVE_APPROVAL,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(constraintChange,
+                                context(DbType.ORACLE, false))).getMessage());
+        List<RenderedStatement> constraintStatements = RENDERER.render(
+                constraintChange, context(DbType.ORACLE, true));
+        assertEquals(List.of(
+                "ALTER TABLE \"Target\"\"Owner\".\"ORDERS\" DROP CONSTRAINT \"CK_OLD\";",
+                "ALTER TABLE \"Target\"\"Owner\".\"ORDERS\" ADD CONSTRAINT \"UK_NEW\""
+                        + " UNIQUE (\"ID\");"),
+                constraintStatements.stream().map(RenderedStatement::sql).toList());
+        assertTrue(constraintStatements.stream().allMatch(RenderedStatement::destructive));
+        assertTrue(constraintStatements.stream().allMatch(statement ->
+                OracleSchemaChangeRenderer.DESTRUCTIVE_WARNING.equals(statement.warning())));
+
+        TableDefinition desiredIndexes = new TableDefinition(tableKey, List.of(id), List.of(),
+                List.of(desiredIndex, generated), Set.of());
+        TableDefinition currentIndexes = new TableDefinition(tableKey, List.of(id), List.of(),
+                List.of(oldIndex, generated), Set.of());
+        PropertyDifference indexes = new PropertyDifference("indexes",
+                desiredIndexes.indexes(), currentIndexes.indexes(), "safe");
+        List<RenderedStatement> indexStatements = RENDERER.render(
+                change(ChangeKind.ALTER, tableKey, desiredIndexes, currentIndexes, indexes,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, true));
+        assertEquals(List.of(
+                "DROP INDEX \"Target\"\"Owner\".\"IX_OLD\";",
+                "CREATE UNIQUE INDEX \"Target\"\"Owner\".\"IX_NEW\" ON "
+                        + "\"Target\"\"Owner\".\"ORDERS\" (\"ID\" DESC);"),
+                indexStatements.stream().map(RenderedStatement::sql).toList());
+        assertTrue(indexStatements.stream().allMatch(RenderedStatement::destructive));
+    }
+
+    @Test
+    void rendersExactOracleColumnPropertiesAndApprovedWholeColumnDrop() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "ORDERS", "");
+        ColumnDefinition desired = column("Amount",
+                new CanonicalDataType("NUMBER", null, 14, 2, false, 0, extensions()),
+                false, null, 1, null);
+        ColumnDefinition current = column("Amount",
+                new CanonicalDataType("NUMBER", null, 10, 0, false, 0, extensions()),
+                true, "1", 1, "old comment");
+        TableDefinition source = table(tableKey, List.of(desired));
+        TableDefinition target = table(tableKey, List.of(current));
+
+        assertEquals("ALTER TABLE \"Target\"\"Owner\".\"ORDERS\" MODIFY "
+                        + "(\"Amount\" NUMBER(14,2));",
+                renderApproved(tablePropertyChange(tableKey, source, target,
+                        "columns[" + desired.name().comparisonKey() + "].dataType",
+                        desired.dataType(), current.dataType())).getFirst().sql());
+        assertEquals("ALTER TABLE \"Target\"\"Owner\".\"ORDERS\" MODIFY "
+                        + "(\"Amount\" NOT NULL);",
+                renderApproved(tablePropertyChange(tableKey, source, target,
+                        "columns[" + desired.name().comparisonKey() + "].nullable",
+                        false, true)).getFirst().sql());
+        assertEquals("ALTER TABLE \"Target\"\"Owner\".\"ORDERS\" MODIFY "
+                        + "(\"Amount\" DEFAULT NULL);",
+                renderApproved(tablePropertyChange(tableKey, source, target,
+                        "columns[" + desired.name().comparisonKey() + "].normalizedDefault",
+                        null, "1")).getFirst().sql());
+
+        SchemaChange commentChange = tablePropertyChange(tableKey, source, target,
+                "columns[" + desired.name().comparisonKey() + "].comment", null, "old comment");
+        RenderedStatement comment = RENDERER.render(
+                commentChange, context(DbType.ORACLE, false)).getFirst();
+        assertEquals("COMMENT ON COLUMN \"Target\"\"Owner\".\"ORDERS\".\"Amount\" IS '';",
+                comment.sql());
+        assertFalse(comment.destructive());
+
+        TableDefinition absent = table(tableKey, List.of());
+        PropertyDifference dropProperty = new PropertyDifference(
+                "columns[" + current.name().comparisonKey() + "]", null, current, "drop");
+        SchemaChange drop = change(ChangeKind.ALTER, tableKey, absent, target, dropProperty,
+                AutomationLevel.SAFE_AUTOMATIC);
+        assertEquals(OracleSchemaChangeRenderer.DESTRUCTIVE_APPROVAL,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(drop, context(DbType.ORACLE, false))).getMessage());
+        assertEquals("ALTER TABLE \"Target\"\"Owner\".\"ORDERS\" DROP COLUMN \"Amount\";",
+                RENDERER.render(drop, context(DbType.ORACLE, true)).getFirst().sql());
+
+        PropertyDifference mismatch = new PropertyDifference(
+                "columns[" + desired.name().comparisonKey() + "].nullable", true, false, "bad");
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.ALTER, tableKey, source, target,
+                                        mismatch, AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, true))).getMessage());
+    }
+
+    @Test
+    void rendersOnlyProvableOracleSequenceAltersIncludingOrderAndRefusesStartChanges() {
+        ObjectKey key = key(ObjectType.SEQUENCE, "Source", "ORDERS_SEQ", "");
+        Map<String, String> desiredExtensions = Map.of(
+                "oracle.order", "ORDER", "oracle.startValueKnown", "false");
+        Map<String, String> currentExtensions = Map.of(
+                "oracle.order", "NOORDER", "oracle.startValueKnown", "false");
+        SequenceDefinition desired = new SequenceDefinition(key, null, "5", null,
+                null, true, 0, Set.of(), desiredExtensions);
+        SequenceDefinition current = new SequenceDefinition(key, null, "1", "1",
+                "999", false, 20, Set.of(), currentExtensions);
+
+        List<PropertyDifference> properties = List.of(
+                new PropertyDifference("incrementBy", "5", "1", "safe"),
+                new PropertyDifference("minimumValue", null, "1", "safe"),
+                new PropertyDifference("maximumValue", null, "999", "safe"),
+                new PropertyDifference("cycle", true, false, "safe"),
+                new PropertyDifference("cacheSize", 0, 20, "safe"),
+                new PropertyDifference("providerExtensions",
+                        desiredExtensions, currentExtensions, "safe"));
+        assertEquals(List.of(
+                        "ALTER SEQUENCE \"Target\"\"Owner\".\"ORDERS_SEQ\" INCREMENT BY 5;",
+                        "ALTER SEQUENCE \"Target\"\"Owner\".\"ORDERS_SEQ\" NOMINVALUE;",
+                        "ALTER SEQUENCE \"Target\"\"Owner\".\"ORDERS_SEQ\" NOMAXVALUE;",
+                        "ALTER SEQUENCE \"Target\"\"Owner\".\"ORDERS_SEQ\" CYCLE;",
+                        "ALTER SEQUENCE \"Target\"\"Owner\".\"ORDERS_SEQ\" NOCACHE;",
+                        "ALTER SEQUENCE \"Target\"\"Owner\".\"ORDERS_SEQ\" ORDER;"),
+                properties.stream().map(property -> RENDERER.render(
+                                change(ChangeKind.ALTER, key, desired, current, property,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, true)).getFirst().sql())
+                        .toList());
+
+        SequenceDefinition unknownDesired = new SequenceDefinition(key, null, "1", "1",
+                "999", false, 20, Set.of(), currentExtensions);
+        SequenceDefinition knownCurrent = new SequenceDefinition(key, "50", "1", "1",
+                "999", false, 20, Set.of(),
+                Map.of("oracle.order", "NOORDER", "oracle.startValueKnown", "true"));
+        SchemaChange unknownStart = change(ChangeKind.ALTER, key, unknownDesired, knownCurrent,
+                new PropertyDifference("startValue", null, "50", "unsafe"),
+                AutomationLevel.SAFE_AUTOMATIC);
+        assertEquals(OracleSchemaChangeRenderer.UNKNOWN_SEQUENCE_START,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(unknownStart,
+                                context(DbType.ORACLE, true))).getMessage());
+
+        SequenceDefinition knownDesired = new SequenceDefinition(key, "40", "1", "1",
+                "999", false, 20, Set.of(),
+                Map.of("oracle.order", "NOORDER", "oracle.startValueKnown", "true"));
+        SchemaChange versionDependentStart = change(ChangeKind.ALTER, key,
+                knownDesired, knownCurrent,
+                new PropertyDifference("startValue", "40", "50", "unsafe"),
+                AutomationLevel.SAFE_AUTOMATIC);
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(versionDependentStart,
+                                context(DbType.ORACLE, true))).getMessage());
+    }
+
+    @Test
+    void createsEveryOracleDefinitionWithRetargetedOwnerAndExactClientDelimiter() {
+        ObjectKey tableOwner = key(ObjectType.TABLE, "Source", "ORDERS", "");
+        ObjectKey typeSpec = key(ObjectType.TYPE, "Source", "ADDRESS_T", "SPEC");
+        List<DefinitionCase> cases = List.of(
+                new DefinitionCase(key(ObjectType.VIEW, "Source", "ORDERS_V", ""),
+                        "CREATE OR REPLACE VIEW \"Source\".\"ORDERS_V\" AS SELECT * "
+                                + "FROM \"Source\".\"ORDERS\";", Set.of(), false),
+                new DefinitionCase(key(ObjectType.MATERIALIZED_VIEW,
+                        "Source", "ORDERS_MV", ""),
+                        "CREATE MATERIALIZED VIEW \"Source\".\"ORDERS_MV\" AS SELECT * "
+                                + "FROM \"Source\".\"ORDERS\";", Set.of(), false),
+                new DefinitionCase(key(ObjectType.FUNCTION, "Source", "CALC",
+                        oracleSignature("IN", "NUMBER")),
+                        "CREATE OR REPLACE FUNCTION \"Source\".\"CALC\" "
+                                + "(\"P\" IN NUMBER) RETURN NUMBER IS\n"
+                                + "BEGIN\n RETURN 1;\nEND;\n/", Set.of(), true),
+                new DefinitionCase(key(ObjectType.PROCEDURE,
+                        "Source", "REFRESH_ORDERS", oracleSignature()),
+                        "CREATE OR REPLACE PROCEDURE \"Source\".\"REFRESH_ORDERS\" IS\n"
+                                + "BEGIN\n NULL;\nEND;", Set.of(), true),
+                new DefinitionCase(key(ObjectType.TRIGGER, "Source", "AUDIT_ORDERS", ""),
+                        "CREATE OR REPLACE TRIGGER \"Source\".\"AUDIT_ORDERS\" "
+                                + "BEFORE INSERT ON \"Source\".\"ORDERS\"\n"
+                                + "BEGIN NULL; END;\n/", Set.of(tableOwner), true),
+                new DefinitionCase(key(ObjectType.PACKAGE_SPEC, "Source", "ORDER_API", ""),
+                        "CREATE OR REPLACE PACKAGE \"Source\".\"ORDER_API\" IS\n"
+                                + " PROCEDURE refresh;\nEND;\n/", Set.of(), true),
+                new DefinitionCase(key(ObjectType.PACKAGE_BODY, "Source", "ORDER_API", ""),
+                        "CREATE OR REPLACE PACKAGE BODY \"Source\".\"ORDER_API\" IS\n"
+                                + " PROCEDURE refresh IS BEGIN NULL; END;\nEND;\n/",
+                        Set.of(key(ObjectType.PACKAGE_SPEC, "Source", "ORDER_API", "")), true),
+                new DefinitionCase(typeSpec,
+                        "CREATE TYPE \"Source\".\"ADDRESS_T\" AS OBJECT "
+                                + "(\"CITY\" VARCHAR2(20));", Set.of(), true),
+                new DefinitionCase(key(ObjectType.TYPE, "Source", "ADDRESS_T", "BODY"),
+                        "CREATE OR REPLACE TYPE BODY \"Source\".\"ADDRESS_T\" AS\n"
+                                + " MEMBER FUNCTION value RETURN NUMBER IS\n"
+                                + " BEGIN RETURN 1; END;\nEND;\n/", Set.of(typeSpec), true));
+
+        for (DefinitionCase definitionCase : cases) {
+            DefinitionObject definition = definition(definitionCase.key(),
+                    definitionCase.ddl(), definitionCase.dependencies());
+            RenderedStatement statement = RENDERER.render(
+                    change(ChangeKind.CREATE, definitionCase.key(), definition, null, null,
+                            AutomationLevel.SAFE_AUTOMATIC),
+                    context(DbType.ORACLE, false)).getFirst();
+
+            assertTrue(statement.sql().contains("\"Target\"\"Owner\"."));
+            assertFalse(statement.sql().contains("\"Source\"."));
+            assertEquals(definitionCase.slash(), statement.sql().endsWith("\n/"));
+            assertEquals(definitionCase.slash() ? 1 : 0,
+                    statement.sql().split("(?m)^/$", -1).length - 1);
+            if (definitionCase.slash()
+                    && definitionCase.key().type() != ObjectType.TYPE
+                            || definitionCase.key().signature().equals("BODY")) {
+                assertTrue(statement.sql().contains("END;"));
+            }
+            assertFalse(statement.sql().startsWith("BEGIN\n"));
+            assertEquals(OracleSchemaChangeRenderer.IMPLICIT_COMMIT_WARNING,
+                    statement.warning());
+        }
+    }
+
+    @Test
+    void replacesOnlyDefinitionsWhoseOriginalOracleHeaderProvesReplaceSemantics() {
+        ObjectKey packageKey = key(ObjectType.PACKAGE_BODY, "Source", "ORDER_API", "");
+        DefinitionObject desiredPackage = definition(packageKey,
+                "CREATE OR REPLACE PACKAGE BODY \"Source\".\"ORDER_API\" IS\nEND;\n/",
+                Set.of(key(ObjectType.PACKAGE_SPEC, "Source", "ORDER_API", "")));
+        DefinitionObject currentPackage = definition(packageKey,
+                "CREATE OR REPLACE PACKAGE BODY \"Source\".\"ORDER_API\" IS\n"
+                        + " PROCEDURE old;\nEND;\n/", desiredPackage.dependencies());
+        SchemaChange replacePackage = changeWithDependencies(ChangeKind.REPLACE, packageKey,
+                desiredPackage, currentPackage,
+                new PropertyDifference("normalizedDefinition", "desired-digest",
+                        "current-digest", "safe"),
+                AutomationLevel.DESTRUCTIVE_OPT_IN, Set.of("chg:package-spec"));
+
+        RenderedStatement rendered = RENDERER.render(
+                replacePackage, context(DbType.ORACLE, true)).getFirst();
+        assertTrue(rendered.sql().startsWith("CREATE OR REPLACE PACKAGE BODY "
+                + "\"Target\"\"Owner\".\"ORDER_API\""));
+        assertEquals(Set.of("chg:package-spec"), rendered.dependencyIds());
+        assertTrue(rendered.destructive());
+
+        ObjectKey materializedKey = key(ObjectType.MATERIALIZED_VIEW,
+                "Source", "ORDERS_MV", "");
+        DefinitionObject materialized = definition(materializedKey,
+                "CREATE MATERIALIZED VIEW \"Source\".\"ORDERS_MV\" AS SELECT 1 X FROM DUAL;",
+                Set.of());
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.REPLACE, materializedKey,
+                                        materialized, materialized,
+                                        new PropertyDifference("normalizedDefinition", "a", "b", "safe"),
+                                        AutomationLevel.DESTRUCTIVE_OPT_IN),
+                                context(DbType.ORACLE, true))).getMessage());
+
+        ObjectKey typeKey = key(ObjectType.TYPE, "Source", "ADDRESS_T", "SPEC");
+        DefinitionObject nonReplaceType = definition(typeKey,
+                "CREATE TYPE \"Source\".\"ADDRESS_T\" AS OBJECT (\"CITY\" VARCHAR2(20));",
+                Set.of());
+        assertEquals(OracleSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.REPLACE, typeKey,
+                                        nonReplaceType, nonReplaceType,
+                                        new PropertyDifference("normalizedDefinition", "a", "b", "safe"),
+                                        AutomationLevel.DESTRUCTIVE_OPT_IN),
+                                context(DbType.ORACLE, true))).getMessage());
+    }
+
+    @Test
+    void lexicalRetargetChangesOnlyOracleQualifiedOwnerTokensAcrossCommentsAndQuotes() {
+        String sourceOwner = "Src\"Owner";
+        ObjectKey key = key(ObjectType.VIEW, sourceOwner, "Mixed\"View", "");
+        String ddl = "CREATE OR REPLACE FORCE EDITIONABLE VIEW "
+                + "\"Src\"\"Owner\".\"Mixed\"\"View\" AS\n"
+                + "SELECT '\"Src\"\"Owner\".\"literal;value\"' TXT,\n"
+                + "       q'[\"Src\"\"Owner\".\"q;value\"]' QTXT\n"
+                + "FROM \"Src\"\"Owner\" /* keep \"Src\"\"Owner\".\"comment\" */ . \"T\"\n"
+                + "-- keep \"Src\"\"Owner\".\"line\"\n"
+                + "WHERE \"Src\"\"Owner\".\"T\".\"ID\" > 0;";
+        RenderContext context = new RenderContext(DbType.ORACLE,
+                OracleSchemaIdentifierNormalizer.schema(sourceOwner),
+                OracleSchemaIdentifierNormalizer.schema("Tgt\"Owner"), false);
+
+        String sql = RENDERER.render(change(ChangeKind.CREATE, key,
+                        definition(key, ddl), null, null, AutomationLevel.SAFE_AUTOMATIC),
+                context).getFirst().sql();
+
+        assertTrue(sql.startsWith("CREATE OR REPLACE FORCE EDITIONABLE VIEW "
+                + "\"Tgt\"\"Owner\".\"Mixed\"\"View\""));
+        assertTrue(sql.contains("FROM \"Tgt\"\"Owner\" "
+                + "/* keep \"Src\"\"Owner\".\"comment\" */ . \"T\""));
+        assertTrue(sql.contains("WHERE \"Tgt\"\"Owner\".\"T\".\"ID\" > 0"));
+        assertTrue(sql.contains("'\"Src\"\"Owner\".\"literal;value\"'"));
+        assertTrue(sql.contains("q'[\"Src\"\"Owner\".\"q;value\"]'"));
+        assertTrue(sql.contains("-- keep \"Src\"\"Owner\".\"line\""));
+        assertFalse(sql.endsWith("\n/"));
+    }
+
+    @Test
+    void routineAndTriggerIdentityMustMatchStructuredSignatureAndOwningDependency() {
+        ObjectKey routineKey = key(ObjectType.FUNCTION, "Source", "CALC",
+                oracleSignature("IN", "NUMBER", "INOUT", "Source.ADDRESS_T"));
+        String routineDdl = "CREATE OR REPLACE EDITIONABLE FUNCTION \"Source\".\"CALC\" (\n"
+                + "  \"P_AMOUNT\" IN NUMBER DEFAULT 1,\n"
+                + "  \"P_ADDRESS\" IN OUT \"Source\".\"ADDRESS_T\",\n"
+                + "  \"P_RESULT\" OUT VARCHAR2\n"
+                + ") RETURN NUMBER IS\nBEGIN RETURN 1; END;\n/";
+        String routineSql = RENDERER.render(change(ChangeKind.CREATE, routineKey,
+                        definition(routineKey, routineDdl), null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst().sql();
+        assertTrue(routineSql.contains("\"Tgt" ) == false,
+                "the shared context uses Target owner, not an unrelated target token");
+        assertTrue(routineSql.contains("\"Target\"\"Owner\".\"ADDRESS_T\""));
+
+        ObjectKey wrongRoutineKey = key(ObjectType.FUNCTION, "Source", "CALC",
+                oracleSignature("IN", "VARCHAR2", "INOUT", "Source.ADDRESS_T"));
+        assertSafeDefinitionFailure(change(ChangeKind.CREATE, wrongRoutineKey,
+                definition(wrongRoutineKey, routineDdl), null, null,
+                AutomationLevel.SAFE_AUTOMATIC));
+        ObjectKey malformedSignature = key(ObjectType.FUNCTION, "Source", "CALC",
+                "oracle-routine-signature-v1\0secret");
+        assertSafeDefinitionFailure(change(ChangeKind.CREATE, malformedSignature,
+                definition(malformedSignature, routineDdl), null, null,
+                AutomationLevel.SAFE_AUTOMATIC));
+
+        ObjectKey table = key(ObjectType.TABLE, "Source", "ORDERS", "");
+        ObjectKey view = key(ObjectType.VIEW, "Source", "ORDERS_V", "");
+        ObjectKey triggerKey = key(ObjectType.TRIGGER, "Source", "AUDIT_ORDERS", "");
+        String triggerDdl = "CREATE OR REPLACE TRIGGER \"Source\".\"AUDIT_ORDERS\"\n"
+                + "/* ON \"Source\".\"FAKE\" */ BEFORE INSERT ON "
+                + "\"Source\".\"ORDERS\"\nBEGIN NULL; END;\n/";
+        String triggerSql = RENDERER.render(change(ChangeKind.CREATE, triggerKey,
+                        definition(triggerKey, triggerDdl, Set.of(table)), null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst().sql();
+        assertTrue(triggerSql.contains("ON \"Target\"\"Owner\".\"ORDERS\""));
+
+        assertSafeDefinitionFailure(change(ChangeKind.CREATE, triggerKey,
+                definition(triggerKey, triggerDdl, Set.of(view)), null, null,
+                AutomationLevel.SAFE_AUTOMATIC));
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, triggerKey,
+                                        definition(triggerKey, triggerDdl, Set.of(table, view)),
+                                        null, null, AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        ObjectKey viewTriggerKey = key(ObjectType.TRIGGER, "Source", "AUDIT_VIEW", "");
+        String viewTriggerDdl = "CREATE OR REPLACE TRIGGER \"Source\".\"AUDIT_VIEW\" "
+                + "INSTEAD OF INSERT ON \"Source\".\"ORDERS_V\"\nBEGIN NULL; END;\n/";
+        assertTrue(RENDERER.render(change(ChangeKind.CREATE, viewTriggerKey,
+                        definition(viewTriggerKey, viewTriggerDdl, Set.of(view)), null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst().sql()
+                .contains("ON \"Target\"\"Owner\".\"ORDERS_V\""));
+    }
+
+    @Test
+    void failsClosedForLowConfidenceMultipleStatementsAndMalformedLexicalState() {
+        ObjectKey viewKey = key(ObjectType.VIEW, "Source", "SAFE_V", "");
+        List<String> unsafeViews = List.of(
+                "CREATE VIEW \"Source\".\"SAFE_V\" AS SELECT 1 X FROM DUAL; "
+                        + "DROP TABLE secret;",
+                "CREATE VIEW \"Source\".\"SAFE_V\" AS SELECT 'secret FROM DUAL;",
+                "CREATE VIEW \"Source\".\"SAFE_V AS SELECT 1 X FROM DUAL;",
+                "CREATE VIEW \"Source\".\"SAFE_V\" AS SELECT 1 /* secret FROM DUAL;",
+                "CREATE VIEW \"Source\".\"SAFE_V\" AS SELECT q'[secret' X FROM DUAL;",
+                "CREATE VIEW \"Source\".\"SAFE_V\" AS SELECT 1 X FROM DUAL;\0secret",
+                "CREATE VIEW \"Source\".\"SAFE_V\" AS SELECT 1 X FROM DUAL;\n/\n/");
+        for (String unsafe : unsafeViews) {
+            assertSafeDefinitionFailure(change(ChangeKind.CREATE, viewKey,
+                    definition(viewKey, unsafe), null, null,
+                    AutomationLevel.SAFE_AUTOMATIC));
+        }
+
+        ObjectKey functionKey = key(ObjectType.FUNCTION,
+                "Source", "SAFE_F", oracleSignature());
+        assertSafeDefinitionFailure(change(ChangeKind.CREATE, functionKey,
+                definition(functionKey,
+                        "CREATE FUNCTION \"Source\".\"SAFE_F\" RETURN NUMBER IS\n"
+                                + "BEGIN RETURN 1; END; DROP TABLE secret;"),
+                null, null, AutomationLevel.SAFE_AUTOMATIC));
+
+        DefinitionObject low = new DefinitionObject(viewKey,
+                "CREATE VIEW safe", "CREATE VIEW secret", Set.of(), DefinitionConfidence.LOW);
+        IllegalArgumentException lowFailure = assertThrows(IllegalArgumentException.class,
+                () -> RENDERER.render(change(ChangeKind.CREATE, viewKey, low, null, null,
+                                AutomationLevel.SAFE_AUTOMATIC),
+                        context(DbType.ORACLE, false)));
+        assertEquals(OracleSchemaChangeRenderer.MANUAL_CHANGE, lowFailure.getMessage());
+        assertFalse(lowFailure.getMessage().contains("secret"));
+
+        ObjectKey unsupportedKey = key(ObjectType.TABLE, "Source", "secret", "");
+        DefinitionObject unsupported = definition(unsupportedKey,
+                "CREATE TABLE \"Source\".\"secret\" (\"ID\" NUMBER);");
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, unsupportedKey,
+                                        unsupported, null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        DefinitionObject desired = definition(viewKey,
+                "CREATE OR REPLACE VIEW \"Source\".\"SAFE_V\" AS SELECT 1 X FROM DUAL;");
+        DefinitionObject current = definition(viewKey,
+                "CREATE OR REPLACE VIEW \"Source\".\"SAFE_V\" AS SELECT 2 X FROM DUAL;");
+        RenderedStatement replacement = RENDERER.render(change(ChangeKind.REPLACE, viewKey,
+                        desired, current,
+                        new PropertyDifference("dependencies", "DROP USER unrelated-secret",
+                                "jdbc:oracle:thin:credential-secret", "safe"),
+                        AutomationLevel.DESTRUCTIVE_OPT_IN),
+                context(DbType.ORACLE, true)).getFirst();
+        assertFalse(replacement.sql().contains("unrelated-secret"));
+        assertFalse(replacement.sql().contains("credential-secret"));
+        assertFalse(replacement.toString().contains("SELECT 1"));
+    }
+
+    @Test
+    void approvedDropMatrixUsesOracleSyntaxWithoutClientDelimiterAndRevalidatesIdentity() {
+        ObjectKey table = key(ObjectType.TABLE, "Source", "ORDERS", "");
+        ObjectKey sequence = key(ObjectType.SEQUENCE, "Source", "ORDERS_SEQ", "");
+        ObjectKey view = key(ObjectType.VIEW, "Source", "ORDERS_V", "");
+        ObjectKey materialized = key(ObjectType.MATERIALIZED_VIEW, "Source", "ORDERS_MV", "");
+        ObjectKey function = key(ObjectType.FUNCTION, "Source", "CALC",
+                oracleSignature("IN", "NUMBER"));
+        ObjectKey procedure = key(ObjectType.PROCEDURE, "Source", "REFRESH", oracleSignature());
+        ObjectKey trigger = key(ObjectType.TRIGGER, "Source", "AUDIT_ORDERS", "");
+        ObjectKey packageSpec = key(ObjectType.PACKAGE_SPEC, "Source", "ORDER_API", "");
+        ObjectKey packageBody = key(ObjectType.PACKAGE_BODY, "Source", "ORDER_API", "");
+        ObjectKey typeSpec = key(ObjectType.TYPE, "Source", "ADDRESS_T", "SPEC");
+        ObjectKey typeBody = key(ObjectType.TYPE, "Source", "ADDRESS_T", "BODY");
+        SequenceDefinition sequenceDefinition = new SequenceDefinition(sequence,
+                null, "1", "1", "999", false, 0, Set.of(),
+                Map.of("oracle.order", "NOORDER", "oracle.startValueKnown", "false"));
+        List<DropCase> cases = List.of(
+                new DropCase(table, table(table, List.of()),
+                        "DROP TABLE \"Target\"\"Owner\".\"ORDERS\";"),
+                new DropCase(sequence, sequenceDefinition,
+                        "DROP SEQUENCE \"Target\"\"Owner\".\"ORDERS_SEQ\";"),
+                new DropCase(view, definition(view,
+                        "CREATE VIEW \"Source\".\"ORDERS_V\" AS SELECT 1 X FROM DUAL;"),
+                        "DROP VIEW \"Target\"\"Owner\".\"ORDERS_V\";"),
+                new DropCase(materialized, definition(materialized,
+                        "CREATE MATERIALIZED VIEW \"Source\".\"ORDERS_MV\" "
+                                + "AS SELECT 1 X FROM DUAL;"),
+                        "DROP MATERIALIZED VIEW \"Target\"\"Owner\".\"ORDERS_MV\";"),
+                new DropCase(function, definition(function,
+                        "CREATE FUNCTION \"Source\".\"CALC\" (P IN NUMBER) RETURN NUMBER IS\n"
+                                + "BEGIN RETURN 1; END;"),
+                        "DROP FUNCTION \"Target\"\"Owner\".\"CALC\";"),
+                new DropCase(procedure, definition(procedure,
+                        "CREATE PROCEDURE \"Source\".\"REFRESH\" IS\nBEGIN NULL; END;"),
+                        "DROP PROCEDURE \"Target\"\"Owner\".\"REFRESH\";"),
+                new DropCase(trigger, definition(trigger,
+                        "CREATE TRIGGER \"Source\".\"AUDIT_ORDERS\" BEFORE INSERT ON "
+                                + "\"Source\".\"ORDERS\" BEGIN NULL; END;", Set.of(table)),
+                        "DROP TRIGGER \"Target\"\"Owner\".\"AUDIT_ORDERS\";"),
+                new DropCase(packageSpec, definition(packageSpec,
+                        "CREATE PACKAGE \"Source\".\"ORDER_API\" IS END;"),
+                        "DROP PACKAGE \"Target\"\"Owner\".\"ORDER_API\";"),
+                new DropCase(packageBody, definition(packageBody,
+                        "CREATE PACKAGE BODY \"Source\".\"ORDER_API\" IS END;",
+                        Set.of(packageSpec)),
+                        "DROP PACKAGE BODY \"Target\"\"Owner\".\"ORDER_API\";"),
+                new DropCase(typeSpec, definition(typeSpec,
+                        "CREATE TYPE \"Source\".\"ADDRESS_T\" AS OBJECT (CITY VARCHAR2(20));"),
+                        "DROP TYPE \"Target\"\"Owner\".\"ADDRESS_T\";"),
+                new DropCase(typeBody, definition(typeBody,
+                        "CREATE TYPE BODY \"Source\".\"ADDRESS_T\" AS END;", Set.of(typeSpec)),
+                        "DROP TYPE BODY \"Target\"\"Owner\".\"ADDRESS_T\";"));
+
+        for (DropCase dropCase : cases) {
+            SchemaChange drop = change(ChangeKind.DROP, dropCase.key(),
+                    null, dropCase.target(), null, AutomationLevel.SAFE_AUTOMATIC);
+            assertEquals(OracleSchemaChangeRenderer.DESTRUCTIVE_APPROVAL,
+                    assertThrows(IllegalArgumentException.class,
+                            () -> RENDERER.render(drop,
+                                    context(DbType.ORACLE, false))).getMessage());
+            RenderedStatement statement = RENDERER.render(
+                    drop, context(DbType.ORACLE, true)).getFirst();
+            assertEquals(dropCase.sql(), statement.sql());
+            assertTrue(statement.destructive());
+            assertEquals(OracleSchemaChangeRenderer.DESTRUCTIVE_WARNING, statement.warning());
+            assertFalse(statement.sql().contains("\n/"));
+        }
+
+        DefinitionObject wrongTriggerOwner = definition(trigger,
+                "CREATE TRIGGER \"Source\".\"AUDIT_ORDERS\" BEFORE INSERT ON "
+                        + "\"Source\".\"OTHER\" BEGIN NULL; END;", Set.of(table));
+        assertSafeDefinitionFailure(change(ChangeKind.DROP, trigger,
+                null, wrongTriggerOwner, null, AutomationLevel.SAFE_AUTOMATIC));
+        ObjectKey malformedFunction = key(ObjectType.FUNCTION, "Source", "CALC", "secret");
+        assertSafeDefinitionFailure(change(ChangeKind.DROP, malformedFunction, null,
+                definition(malformedFunction,
+                        "CREATE FUNCTION \"Source\".\"CALC\" RETURN NUMBER IS "
+                                + "BEGIN RETURN 1; END;"),
+                null, AutomationLevel.SAFE_AUTOMATIC));
+    }
+
+    @Test
+    void structuredFragmentsSupportOracleAlternativeQuotesAndRejectUnsafeIdentityOrStatements() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "MESSAGES", "");
+        CanonicalDataType varchar = new CanonicalDataType("VARCHAR2", 100L,
+                null, null, false, 0, extensions("oracle.lengthSemantics", "CHAR"));
+        ColumnDefinition quotedDefault = column("TEXT_VALUE", varchar, true,
+                "q'[owner's; \"Source\".\"literal\"]'", 1, null);
+        ColumnDefinition qualifiedDefault = column("NEXT_ID",
+                new CanonicalDataType("NUMBER", null, 10, 0,
+                        false, 0, extensions()), true,
+                "\"Source\".\"ORDERS_SEQ\".NEXTVAL", 2, null);
+
+        String tableSql = RENDERER.render(change(ChangeKind.CREATE, tableKey,
+                        table(tableKey, List.of(quotedDefault, qualifiedDefault)), null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst().sql();
+        assertTrue(tableSql.contains("DEFAULT q'[owner's; \"Source\".\"literal\"]'"));
+        assertTrue(tableSql.contains("DEFAULT \"Target\"\"Owner\"."
+                + "\"ORDERS_SEQ\".NEXTVAL"));
+
+        ColumnDefinition malformedQuote = column("BAD", varchar, true,
+                "q'[owner's secret'", 1, null);
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, tableKey,
+                                        table(tableKey, List.of(malformedQuote)), null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        CanonicalDataType unsafeIdentity = new CanonicalDataType(
+                "NUMBER", null, 10, 0, false, 0,
+                extensions("oracle.identity", "ALWAYS",
+                        "oracle.identityOptions", "START WITH: 1, INCREMENT BY: 1, "
+                                + "MAX_VALUE: 999, MIN_VALUE: 1, CYCLE_FLAG: N, "
+                                + "CACHE_SIZE: 20, ORDER_FLAG: Y; DROP USER secret"));
+        ColumnDefinition identity = column("ID", unsafeIdentity, false,
+                "GENERATED ALWAYS AS IDENTITY", 1, null);
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, tableKey,
+                                        table(tableKey, List.of(identity)), null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        IndexDefinition injectedIndex = new IndexDefinition(
+                key(ObjectType.INDEX, "Source", "IX_BAD", ""), false,
+                List.of("\"TEXT_VALUE\"); DROP TABLE secret"), null, false, Set.of());
+        TableDefinition badIndexTable = new TableDefinition(tableKey,
+                List.of(quotedDefault), List.of(), List.of(injectedIndex), Set.of());
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, tableKey,
+                                        badIndexTable, null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+    }
+
+    @Test
+    void refusesGuessedTableRebuildOwnerOrdinalAndIncompleteStructuredPaths() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "ORDERS", "");
+        ColumnDefinition first = column("ID",
+                new CanonicalDataType("NUMBER", null, 10, 0, false, 0, extensions()),
+                true, null, 1, null);
+        ColumnDefinition reordered = column("ID", first.dataType(), true, null, 2, null);
+        TableDefinition desired = table(tableKey, List.of(first));
+        TableDefinition current = table(tableKey, List.of(reordered));
+
+        for (PropertyDifference property : List.of(
+                new PropertyDifference("columns", desired.columns(), current.columns(), "unsafe"),
+                new PropertyDifference("columns[" + first.name().comparisonKey() + "].ordinal",
+                        1, 2, "unsafe"))) {
+            assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                    assertThrows(IllegalArgumentException.class,
+                            () -> RENDERER.render(change(ChangeKind.ALTER, tableKey,
+                                            desired, current, property,
+                                            AutomationLevel.SAFE_AUTOMATIC),
+                                    context(DbType.ORACLE, true))).getMessage());
+        }
+
+        ObjectKey wrongOwner = key(ObjectType.TABLE, "Other", "ORDERS", "");
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, wrongOwner,
+                                        table(wrongOwner, List.of(first)), null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        ColumnDefinition duplicateOrdinal = column("OTHER", first.dataType(), true, null, 1, null);
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, tableKey,
+                                        table(tableKey, List.of(first, duplicateOrdinal)), null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        IndexDefinition partial = new IndexDefinition(
+                key(ObjectType.INDEX, "Source", "IX_PARTIAL", ""), false,
+                List.of("\"ID\""), "\"ID\" > 0", false, Set.of());
+        TableDefinition partialTable = new TableDefinition(tableKey,
+                List.of(first), List.of(), List.of(partial), Set.of());
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, tableKey,
+                                        partialTable, null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        ColumnDefinition required = column("REQUIRED", first.dataType(), false, null, 2, null);
+        TableDefinition desiredRequired = table(tableKey, List.of(first, required));
+        PropertyDifference addRequired = new PropertyDifference(
+                "columns[" + required.name().comparisonKey() + "]", required, null, "unsafe");
+        assertEquals(OracleSchemaChangeRenderer.DESTRUCTIVE_APPROVAL,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.ALTER, tableKey,
+                                        desiredRequired, desired, addRequired,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+    }
+
+    @Test
+    void rejectsInternallyInconsistentKeysExtensionsBodyDependenciesAndNulComments() {
+        ObjectKey disguisedTableKey = key(ObjectType.VIEW, "Source", "FAKE_TABLE", "");
+        ColumnDefinition id = column("ID",
+                new CanonicalDataType("NUMBER", null, 10, 0, false, 0, extensions()),
+                true, null, 1, null);
+        TableDefinition disguisedTable = table(disguisedTableKey, List.of(id));
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, disguisedTableKey,
+                                        disguisedTable, null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        ObjectKey signedSequenceKey = key(ObjectType.SEQUENCE, "Source", "SEQ", "secret");
+        SequenceDefinition signedSequence = new SequenceDefinition(signedSequenceKey,
+                "1", "1", "1", "999", false, 0, Set.of(),
+                Map.of("oracle.order", "NOORDER", "oracle.startValueKnown", "true"));
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, signedSequenceKey,
+                                        signedSequence, null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "ORDERS", "");
+        ConstraintDefinition mismatchedConstraint = new ConstraintDefinition(
+                key(ObjectType.INDEX, "Source", "PK_BAD", ""),
+                ConstraintKind.PRIMARY_KEY, List.of(id.name()), null, List.of(),
+                null, null, null, false, Set.of());
+        TableDefinition badConstraintTable = new TableDefinition(tableKey,
+                List.of(id), List.of(mismatchedConstraint), List.of(), Set.of());
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, tableKey,
+                                        badConstraintTable, null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        IndexDefinition mismatchedIndex = new IndexDefinition(
+                key(ObjectType.VIEW, "Source", "IX_BAD", ""), false,
+                List.of("\"ID\""), null, false, Set.of());
+        TableDefinition badIndexTable = new TableDefinition(tableKey,
+                List.of(id), List.of(), List.of(mismatchedIndex), Set.of());
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, tableKey,
+                                        badIndexTable, null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        ObjectKey packageBody = key(ObjectType.PACKAGE_BODY, "Source", "ORDER_API", "");
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, packageBody,
+                                        definition(packageBody,
+                                                "CREATE PACKAGE BODY \"Source\".\"ORDER_API\" "
+                                                        + "IS END;"),
+                                        null, null, AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+        ObjectKey typeBody = key(ObjectType.TYPE, "Source", "ADDRESS_T", "BODY");
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, typeBody,
+                                        definition(typeBody,
+                                                "CREATE TYPE BODY \"Source\".\"ADDRESS_T\" "
+                                                        + "AS END;"),
+                                        null, null, AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        ColumnDefinition unknownExtension = column("UNKNOWN", type("NUMBER",
+                extensions("oracle.unproved", "secret")), true, null, 1, null);
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(change(ChangeKind.CREATE, tableKey,
+                                        table(tableKey, List.of(unknownExtension)), null, null,
+                                        AutomationLevel.SAFE_AUTOMATIC),
+                                context(DbType.ORACLE, false))).getMessage());
+
+        ColumnDefinition nulComment = column("NUL_COMMENT", id.dataType(),
+                true, null, 1, "safe\0secret");
+        IllegalArgumentException nulFailure = assertThrows(IllegalArgumentException.class,
+                () -> RENDERER.render(change(ChangeKind.CREATE, tableKey,
+                                table(tableKey, List.of(nulComment)), null, null,
+                                AutomationLevel.SAFE_AUTOMATIC),
+                        context(DbType.ORACLE, false)));
+        assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE, nulFailure.getMessage());
+        assertFalse(nulFailure.getMessage().contains("secret"));
+    }
+
+    private static SchemaChange change(
+            ChangeKind kind, ObjectKey key, SchemaObject source, SchemaObject target,
+            PropertyDifference property, AutomationLevel automation) {
+        return changeWithDependencies(kind, key, source, target, property, automation,
+                Set.of("chg:dependency"));
+    }
+
+    private static SchemaChange changeWithDependencies(
+            ChangeKind kind, ObjectKey key, SchemaObject source, SchemaObject target,
+            PropertyDifference property, AutomationLevel automation, Set<String> dependencies) {
+        return new SchemaChange("chg:test", kind, key, source, target, property,
+                RiskLevel.LOW, automation, automation == AutomationLevel.SAFE_AUTOMATIC,
+                dependencies, "fixed explanation");
+    }
+
+    private static SchemaChange tablePropertyChange(
+            ObjectKey key, TableDefinition source, TableDefinition target,
+            String path, Object sourceValue, Object targetValue) {
+        return change(ChangeKind.ALTER, key, source, target,
+                new PropertyDifference(path, sourceValue, targetValue, "safe"),
+                AutomationLevel.SAFE_AUTOMATIC);
+    }
+
+    private static List<RenderedStatement> renderApproved(SchemaChange change) {
+        return RENDERER.render(change, context(DbType.ORACLE, true));
+    }
+
+    private static void assertSafeDefinitionFailure(SchemaChange change) {
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> RENDERER.render(change, context(DbType.ORACLE, true)));
+        assertEquals(OracleSchemaChangeRenderer.UNSAFE_DEFINITION, failure.getMessage());
+        assertFalse(failure.getMessage().contains("secret"));
+        assertFalse(failure.getMessage().contains("jdbc:"));
+    }
+
+    private static ObjectKey key(
+            ObjectType type, String schema, String name, String signature) {
+        return new ObjectKey(type, OracleSchemaIdentifierNormalizer.object(schema, name), signature);
+    }
+
+    private static ColumnDefinition column(
+            String name, CanonicalDataType type, boolean nullable,
+            String defaultExpression, int ordinal, String comment) {
+        return new ColumnDefinition(OracleSchemaIdentifierNormalizer.child(name), type,
+                nullable, defaultExpression, ordinal, comment);
+    }
+
+    private static CanonicalDataType type(String baseType, SortedMap<String, String> extensions) {
+        return new CanonicalDataType(baseType, null, null, null,
+                false, 0, extensions);
+    }
+
+    private static TableDefinition table(ObjectKey key, List<ColumnDefinition> columns) {
+        return new TableDefinition(key, columns, List.<ConstraintDefinition>of(),
+                List.<IndexDefinition>of(), Set.of());
+    }
+
+    private static ConstraintDefinition constraint(
+            ObjectType type, String name, ConstraintKind kind, List<ColumnDefinition> columns,
+            ObjectKey referencedTable,
+            List<com.datacube.spi.schemadiff.QualifiedName> referencedColumns,
+            String expression, String deleteAction, boolean providerGenerated) {
+        return new ConstraintDefinition(key(type, "Source", name, ""), kind,
+                columns.stream().map(ColumnDefinition::name).toList(), referencedTable,
+                referencedColumns, expression, null, deleteAction, providerGenerated, Set.of());
+    }
+
+    private static IndexDefinition index(
+            String name, boolean unique, List<String> expressions, boolean providerGenerated) {
+        return new IndexDefinition(key(ObjectType.INDEX, "Source", name, ""), unique,
+                expressions, null, providerGenerated, Set.of());
+    }
+
+    private static DefinitionObject definition(ObjectKey key, String definition) {
+        return definition(key, definition, Set.of());
+    }
+
+    private static DefinitionObject definition(
+            ObjectKey key, String definition, Set<ObjectKey> dependencies) {
+        return new DefinitionObject(key, definition, definition, dependencies,
+                DefinitionConfidence.HIGH);
+    }
+
+    private static String oracleSignature(String... modeAndType) {
+        StringBuilder signature = new StringBuilder("oracle-routine-signature-v1\0");
+        for (String value : modeAndType) signature.append(value.length()).append(':').append(value);
+        return signature.toString();
+    }
+
+    private static SortedMap<String, String> extensions(String... entries) {
+        SortedMap<String, String> values = new TreeMap<>();
+        for (int index = 0; index < entries.length; index += 2) {
+            values.put(entries[index], entries[index + 1]);
+        }
+        return values;
+    }
+
+    private static RenderContext context(DbType type, boolean destructiveApproved) {
+        return new RenderContext(type,
+                OracleSchemaIdentifierNormalizer.schema("Source"),
+                OracleSchemaIdentifierNormalizer.schema("Target\"Owner"),
+                destructiveApproved);
+    }
+
+    private record DefinitionCase(
+            ObjectKey key, String ddl, Set<ObjectKey> dependencies, boolean slash) {
+    }
+
+    private record DropCase(ObjectKey key, SchemaObject target, String sql) {
+    }
+}
