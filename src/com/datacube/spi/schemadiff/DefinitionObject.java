@@ -12,4 +12,13 @@ public record DefinitionObject(
         dependencies = Set.copyOf(Objects.requireNonNull(dependencies, "dependencies"));
         confidence = Objects.requireNonNull(confidence, "confidence");
     }
+
+    @Override
+    public String toString() {
+        return "DefinitionObject[type=" + key.type()
+                + ", definitionPresent="
+                + (normalizedDefinition != null || originalDefinition != null)
+                + ", dependencyCount=" + dependencies.size()
+                + ", confidence=" + confidence + "]";
+    }
 }

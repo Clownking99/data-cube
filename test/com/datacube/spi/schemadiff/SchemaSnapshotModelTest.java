@@ -19,6 +19,51 @@ import static org.junit.jupiter.api.Assertions.*;
 class SchemaSnapshotModelTest {
 
     @Test
+    void publicModelSummariesNeverRenderConnectionSchemaObjectDdlPlsqlOrDefaults() {
+        String connectionSecret = "production-admin:password-secret@database";
+        QualifiedName schema = new QualifiedName(
+                "\"SecretOwner\"", "oracle-schema-v1\0SecretOwner", true);
+        ObjectKey tableKey = new ObjectKey(ObjectType.TABLE,
+                new QualifiedName("\"SecretOwner\".\"PayrollTable\"",
+                        "oracle-object-v1\0PayrollTable", true), "");
+        ColumnDefinition column = new ColumnDefinition(
+                new QualifiedName("\"SalarySecret\"", "oracle-child-v1\0SalarySecret", true),
+                new CanonicalDataType("VARCHAR2", 200L, null, null,
+                        false, 0, new TreeMap<>()), false,
+                "decrypt('column-default-secret')", 1, "confidential-comment");
+        TableDefinition table = new TableDefinition(
+                tableKey, List.of(column), List.of(), List.of(), Set.of());
+        ObjectKey functionKey = new ObjectKey(ObjectType.FUNCTION,
+                new QualifiedName("\"SecretOwner\".\"PayrollFunction\"",
+                        "oracle-object-v1\0PayrollFunction", true), "oracle-signature-secret");
+        String normalizedPlsql = "CREATE FUNCTION PayrollFunction RETURN VARCHAR2 IS "
+                + "BEGIN RETURN 'plsql-secret'; END;";
+        DefinitionObject definition = new DefinitionObject(
+                functionKey, normalizedPlsql, normalizedPlsql + "\n/", Set.of(),
+                DefinitionConfidence.HIGH);
+        SortedMap<ObjectKey, SchemaObject> objects = new TreeMap<>();
+        objects.put(tableKey, table);
+        objects.put(functionKey, definition);
+        SchemaSnapshot snapshot = new SchemaSnapshot(
+                DbType.ORACLE, connectionSecret, schema, Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), objects, "safe-fingerprint");
+
+        assertEquals("SchemaSnapshot[complete=true, objectCount=2, fingerprint=safe-fingerprint]",
+                snapshot.toString());
+        assertEquals("DefinitionObject[type=FUNCTION, definitionPresent=true, "
+                        + "dependencyCount=0, confidence=HIGH]", definition.toString());
+        assertEquals("ColumnDefinition[nullable=false, ordinal=1, defaultPresent=true, "
+                        + "commentPresent=true]", column.toString());
+        String summaries = snapshot + "\n" + definition + "\n" + column;
+        for (String sensitive : List.of(
+                connectionSecret, "SecretOwner", "PayrollTable", "SalarySecret",
+                "PayrollFunction", "oracle-signature-secret", "CREATE FUNCTION",
+                "plsql-secret", "column-default-secret", "confidential-comment")) {
+            assertFalse(summaries.contains(sensitive), sensitive);
+        }
+    }
+
+    @Test
     void modelDefensivelyCopiesAndExposesOnlyUnmodifiableCollections() {
         ObjectKey tableKey = key(ObjectType.TABLE, "orders", "");
         List<ColumnDefinition> columns = new ArrayList<>(List.of(column("id", "bigint")));

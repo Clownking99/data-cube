@@ -20,4 +20,11 @@ public record SchemaSnapshot(
         objects = Collections.unmodifiableSortedMap(new TreeMap<>(Objects.requireNonNull(objects, "objects")));
         fingerprint = Objects.requireNonNull(fingerprint, "fingerprint");
     }
+
+    @Override
+    public String toString() {
+        return "SchemaSnapshot[complete=" + completeness.complete()
+                + ", objectCount=" + objects.size()
+                + ", fingerprint=" + fingerprint + "]";
+    }
 }
