@@ -22,6 +22,7 @@ import com.datacube.spi.schemadiff.TableDefinition;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -38,6 +39,24 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
     private static final String OBJECT_KEY_DOMAIN = "pg-object-v1\0";
     private static final String SCHEMA_KEY_DOMAIN = "pg-schema-v1\0";
     private static final String CHILD_KEY_DOMAIN = "pg-child-v1\0";
+    private static final Map<String, String> PG_TYPE_ALIASES = Map.ofEntries(
+            Map.entry("smallint", "int2"), Map.entry("int2", "int2"),
+            Map.entry("integer", "int4"), Map.entry("int", "int4"), Map.entry("int4", "int4"),
+            Map.entry("bigint", "int8"), Map.entry("int8", "int8"),
+            Map.entry("real", "float4"), Map.entry("float4", "float4"),
+            Map.entry("doubleprecision", "float8"), Map.entry("float8", "float8"),
+            Map.entry("boolean", "bool"), Map.entry("bool", "bool"),
+            Map.entry("character", "bpchar"), Map.entry("char", "bpchar"),
+            Map.entry("bpchar", "bpchar"), Map.entry("charactervarying", "varchar"),
+            Map.entry("varchar", "varchar"), Map.entry("decimal", "numeric"),
+            Map.entry("numeric", "numeric"), Map.entry("text", "text"),
+            Map.entry("timestampwithtimezone", "timestamptz"),
+            Map.entry("timestamptz", "timestamptz"),
+            Map.entry("timestampwithouttimezone", "timestamp"), Map.entry("timestamp", "timestamp"),
+            Map.entry("timewithtimezone", "timetz"), Map.entry("timetz", "timetz"),
+            Map.entry("timewithouttimezone", "time"), Map.entry("time", "time"),
+            Map.entry("bitvarying", "varbit"), Map.entry("varbit", "varbit"),
+            Map.entry("bit", "bit"));
 
     @Override
     public List<RenderedStatement> render(SchemaChange change, RenderContext context) {
@@ -51,7 +70,8 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             throw new IllegalArgumentException(MANUAL_CHANGE);
         }
         validateShape(change);
-        boolean destructive = change.automation() == AutomationLevel.DESTRUCTIVE_OPT_IN;
+        boolean destructive = change.automation() == AutomationLevel.DESTRUCTIVE_OPT_IN
+                || hasDestructiveSemantics(change);
         if (destructive && !context.destructiveApproved()) {
             throw new IllegalArgumentException(DESTRUCTIVE_APPROVAL);
         }
@@ -66,6 +86,26 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
         String warning = destructive ? DESTRUCTIVE_WARNING : null;
         return sql.stream().map(statement -> new RenderedStatement(
                 change.id(), statement, destructive, change.dependencyChangeIds(), warning)).toList();
+    }
+
+    private static boolean hasDestructiveSemantics(SchemaChange change) {
+        if (change.kind() == ChangeKind.DROP || change.kind() == ChangeKind.REPLACE) return true;
+        if (change.kind() != ChangeKind.ALTER || change.property() == null) return false;
+        Object sourceValue = change.property().sourceValue();
+        Object targetValue = change.property().targetValue();
+        if (sourceValue == null && targetValue instanceof ColumnDefinition) return true;
+        if ((change.property().path().equals("constraints")
+                || change.property().path().equals("indexes"))
+                && sourceValue instanceof List<?> source
+                && targetValue instanceof List<?> target) {
+            return target.stream().anyMatch(value -> !source.contains(value));
+        }
+        if (change.property().path().endsWith(".dataType")
+                || change.property().path().endsWith(".normalizedDefault")) return true;
+        if (change.property().path().endsWith(".nullable")) {
+            return Boolean.FALSE.equals(sourceValue) && Boolean.TRUE.equals(targetValue);
+        }
+        return change.source() instanceof SequenceDefinition;
     }
 
     private static void validateShape(SchemaChange change) {
@@ -139,12 +179,17 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
                 || hasTrailingLineComment(normalized)) {
             throw new IllegalArgumentException(UNSAFE_DEFINITION);
         }
+        if ((definition.key().type() == ObjectType.FUNCTION
+                || definition.key().type() == ObjectType.PROCEDURE)
+                && !routineIdentityMatches(normalized, definition.key(), context)) {
+            throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        }
         String retargeted = retargetDefinition(normalized, definition.key().type(), context);
         if (definition.key().type() == ObjectType.TRIGGER) {
             ObjectKey owner = triggerOwner(definition);
-            String triggerHeader = "CREATE TRIGGER " + nestedObjectName(definition.key());
-            if (!retargeted.startsWith(triggerHeader + ' ')
-                    || !retargeted.contains(" ON " + targetName(owner, context) + ' ')) {
+            int triggerHeaderEnd = triggerHeaderEnd(retargeted, definition.key());
+            if (triggerHeaderEnd < 0
+                    || !triggerOwnerMatches(retargeted, triggerHeaderEnd, owner, context)) {
                 throw new IllegalArgumentException(UNSAFE_DEFINITION);
             }
         } else {
@@ -155,6 +200,350 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             if (replace) retargeted = ensureCreateOrReplace(retargeted, definition.key().type(), header);
         }
         return retargeted.stripTrailing() + ';';
+    }
+
+    private static int triggerHeaderEnd(String definition, ObjectKey key) {
+        String name = nestedObjectName(key);
+        for (String prefix : List.of("CREATE TRIGGER ", "CREATE CONSTRAINT TRIGGER ")) {
+            String header = prefix + name;
+            if (definition.startsWith(header + ' ')) return header.length();
+        }
+        return -1;
+    }
+
+    private static boolean triggerOwnerMatches(
+            String definition, int start, ObjectKey owner, RenderContext context) {
+        int index = start;
+        while (index < definition.length()) {
+            char current = definition.charAt(index);
+            if (current == '\'') {
+                index = skipSingleQuoted(definition, index);
+            } else if (current == '"') {
+                QuotedIdentifier identifier = quotedIdentifierAt(definition, index);
+                if (identifier == null) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+                index = identifier.end();
+            } else if (current == '-' && charAt(definition, index + 1) == '-') {
+                index = skipLineComment(definition, index);
+            } else if (current == '/' && charAt(definition, index + 1) == '*') {
+                index = skipBlockComment(definition, index);
+            } else if (current == '$') {
+                String tag = dollarTagAt(definition, index);
+                if (tag == null) {
+                    index++;
+                } else {
+                    int end = definition.indexOf(tag, index + tag.length());
+                    if (end < 0) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+                    index = end + tag.length();
+                }
+            } else if (identifierStart(current)) {
+                int end = index + 1;
+                while (end < definition.length() && identifierPart(definition.charAt(end))) end++;
+                String token = definition.substring(index, end);
+                if (token.equalsIgnoreCase("ON")) {
+                    QualifiedSqlName candidate = qualifiedSqlNameAt(definition, end);
+                    if (candidate != null) {
+                        return sqlIdentifierMatches(candidate.schema(), schemaPart(context.targetSchema()), true)
+                                && sqlIdentifierMatches(candidate.object(), objectPart(owner), false);
+                    }
+                }
+                index = end;
+            } else {
+                index++;
+            }
+        }
+        return false;
+    }
+
+    private static QualifiedSqlName qualifiedSqlNameAt(String text, int start) {
+        int index = skipTrivia(text, start);
+        SqlIdentifier schema = sqlIdentifierAt(text, index);
+        if (schema == null) return null;
+        index = skipTrivia(text, schema.end());
+        if (charAt(text, index) != '.') return null;
+        index = skipTrivia(text, index + 1);
+        SqlIdentifier object = sqlIdentifierAt(text, index);
+        return object == null ? null : new QualifiedSqlName(schema, object);
+    }
+
+    private static SqlIdentifier sqlIdentifierAt(String text, int start) {
+        if (start >= text.length()) return null;
+        if (text.charAt(start) == '"') {
+            QuotedIdentifier quoted = quotedIdentifierAt(text, start);
+            if (quoted == null) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+            return new SqlIdentifier(quoted.value(), true, quoted.end());
+        }
+        if (!identifierStart(text.charAt(start))) return null;
+        int end = start + 1;
+        while (end < text.length() && identifierPart(text.charAt(end))) end++;
+        return new SqlIdentifier(text.substring(start, end), false, end);
+    }
+
+    private static int skipTrivia(String text, int start) {
+        int index = start;
+        while (index < text.length()) {
+            if (Character.isWhitespace(text.charAt(index))) {
+                index++;
+            } else if (charAt(text, index) == '-' && charAt(text, index + 1) == '-') {
+                index = skipLineComment(text, index);
+            } else if (charAt(text, index) == '/' && charAt(text, index + 1) == '*') {
+                index = skipBlockComment(text, index);
+            } else {
+                return index;
+            }
+        }
+        return index;
+    }
+
+    private static boolean sqlIdentifierMatches(
+            SqlIdentifier token, String expected, boolean schema) {
+        if (token.quoted()) return token.value().equals(expected);
+        boolean expectedRequiresQuoting = schema
+                ? PgSchemaIdentifierNormalizer.schema(expected).quoted()
+                : PgSchemaIdentifierNormalizer.child(expected).quoted();
+        return !expectedRequiresQuoting
+                && token.value().equalsIgnoreCase(expected);
+    }
+
+    private record SqlIdentifier(String value, boolean quoted, int end) {
+    }
+
+    private record QualifiedSqlName(SqlIdentifier schema, SqlIdentifier object) {
+    }
+
+    private static boolean routineIdentityMatches(
+            String definition, ObjectKey key, RenderContext context) {
+        String noun = key.type() == ObjectType.FUNCTION ? "FUNCTION " : "PROCEDURE ";
+        String sourceName = PgSchemaIdentifierNormalizer.quote(schemaPart(context.sourceSchema()))
+                + '.' + PgSchemaIdentifierNormalizer.quote(objectPart(key));
+        String create = "CREATE " + noun + sourceName + '(';
+        String replace = "CREATE OR REPLACE " + noun + sourceName + '(';
+        int argumentsStart;
+        if (definition.startsWith(create)) {
+            argumentsStart = create.length();
+        } else if (definition.startsWith(replace)) {
+            argumentsStart = replace.length();
+        } else {
+            return false;
+        }
+        int argumentsEnd = matchingParenthesis(definition, argumentsStart - 1);
+        if (argumentsEnd < 0) return false;
+        List<String> expected = splitSqlList(key.signature());
+        List<String> declarations = splitSqlList(
+                definition.substring(argumentsStart, argumentsEnd));
+        int expectedIndex = 0;
+        for (String declaration : declarations) {
+            RoutineArgument argument = routineArgument(declaration);
+            if (argument == null) return false;
+            if (argument.outOnly()) continue;
+            if (expectedIndex >= expected.size()
+                    || !argumentTypeMatches(argument.declaration(), expected.get(expectedIndex))) {
+                return false;
+            }
+            expectedIndex++;
+        }
+        return expectedIndex == expected.size();
+    }
+
+    private static int matchingParenthesis(String text, int openIndex) {
+        int depth = 1;
+        int index = openIndex + 1;
+        while (index < text.length()) {
+            char current = text.charAt(index);
+            if (current == '\'') {
+                index = skipSingleQuoted(text, index);
+            } else if (current == '"') {
+                QuotedIdentifier identifier = quotedIdentifierAt(text, index);
+                if (identifier == null) return -1;
+                index = identifier.end();
+            } else if (current == '-' && charAt(text, index + 1) == '-') {
+                index = skipLineComment(text, index);
+            } else if (current == '/' && charAt(text, index + 1) == '*') {
+                index = skipBlockComment(text, index);
+            } else if (current == '$') {
+                String tag = dollarTagAt(text, index);
+                if (tag == null) {
+                    index++;
+                } else {
+                    int end = text.indexOf(tag, index + tag.length());
+                    if (end < 0) return -1;
+                    index = end + tag.length();
+                }
+            } else if (current == '(') {
+                depth++;
+                index++;
+            } else if (current == ')') {
+                if (--depth == 0) return index;
+                index++;
+            } else {
+                index++;
+            }
+        }
+        return -1;
+    }
+
+    private static List<String> splitSqlList(String text) {
+        if (text == null || text.isBlank()) return List.of();
+        List<String> parts = new ArrayList<>();
+        int start = 0;
+        int depth = 0;
+        int index = 0;
+        while (index < text.length()) {
+            char current = text.charAt(index);
+            if (current == '\'') {
+                index = skipSingleQuoted(text, index);
+            } else if (current == '"') {
+                QuotedIdentifier identifier = quotedIdentifierAt(text, index);
+                if (identifier == null) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+                index = identifier.end();
+            } else if (current == '-' && charAt(text, index + 1) == '-') {
+                index = skipLineComment(text, index);
+            } else if (current == '/' && charAt(text, index + 1) == '*') {
+                index = skipBlockComment(text, index);
+            } else if (current == '$') {
+                String tag = dollarTagAt(text, index);
+                if (tag == null) {
+                    index++;
+                } else {
+                    int end = text.indexOf(tag, index + tag.length());
+                    if (end < 0) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+                    index = end + tag.length();
+                }
+            } else if (current == '(' || current == '[') {
+                depth++;
+                index++;
+            } else if (current == ')' || current == ']') {
+                if (--depth < 0) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+                index++;
+            } else if (current == ',' && depth == 0) {
+                String part = text.substring(start, index).strip();
+                if (part.isEmpty()) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+                parts.add(part);
+                start = ++index;
+            } else {
+                index++;
+            }
+        }
+        if (depth != 0) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        String part = text.substring(start).strip();
+        if (part.isEmpty()) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        parts.add(part);
+        return List.copyOf(parts);
+    }
+
+    private static RoutineArgument routineArgument(String declaration) {
+        String withoutDefault = beforeTopLevelDefault(declaration);
+        if (withoutDefault == null || withoutDefault.isBlank()) return null;
+        String remaining = withoutDefault.strip();
+        String upper = remaining.toUpperCase(java.util.Locale.ROOT);
+        boolean outOnly = false;
+        if (upper.startsWith("IN OUT ")) {
+            remaining = remaining.substring(7).stripLeading();
+        } else if (upper.startsWith("INOUT ")) {
+            remaining = remaining.substring(6).stripLeading();
+        } else if (upper.startsWith("VARIADIC ")) {
+            remaining = remaining.substring(9).stripLeading();
+        } else if (upper.startsWith("IN ")) {
+            remaining = remaining.substring(3).stripLeading();
+        } else if (upper.startsWith("OUT ")) {
+            remaining = remaining.substring(4).stripLeading();
+            outOnly = true;
+        }
+        if (remaining.isBlank()) return null;
+        return new RoutineArgument(remaining, outOnly);
+    }
+
+    private static String beforeTopLevelDefault(String declaration) {
+        int depth = 0;
+        int index = 0;
+        while (index < declaration.length()) {
+            char current = declaration.charAt(index);
+            if (current == '\'') {
+                index = skipSingleQuoted(declaration, index);
+            } else if (current == '"') {
+                QuotedIdentifier identifier = quotedIdentifierAt(declaration, index);
+                if (identifier == null) return null;
+                index = identifier.end();
+            } else if (current == '(' || current == '[') {
+                depth++;
+                index++;
+            } else if (current == ')' || current == ']') {
+                if (--depth < 0) return null;
+                index++;
+            } else if (depth == 0 && current == '=') {
+                return declaration.substring(0, index).stripTrailing();
+            } else if (depth == 0 && keywordAt(declaration, index, "DEFAULT")) {
+                return declaration.substring(0, index).stripTrailing();
+            } else {
+                index++;
+            }
+        }
+        return depth == 0 ? declaration : null;
+    }
+
+    private static boolean keywordAt(String text, int index, String keyword) {
+        if (!text.regionMatches(true, index, keyword, 0, keyword.length())) return false;
+        int before = index - 1;
+        int after = index + keyword.length();
+        return (before < 0 || !identifierPart(text.charAt(before)))
+                && (after >= text.length() || !identifierPart(text.charAt(after)));
+    }
+
+    private static boolean argumentTypeMatches(String declaration, String expected) {
+        String expectedType = canonicalIdentityType(expected);
+        if (canonicalIdentityType(declaration).equals(expectedType)) return true;
+        String withoutName = withoutLeadingArgumentName(declaration);
+        return withoutName != null && canonicalIdentityType(withoutName).equals(expectedType);
+    }
+
+    private static String withoutLeadingArgumentName(String declaration) {
+        int end;
+        if (declaration.startsWith("\"")) {
+            QuotedIdentifier identifier = quotedIdentifierAt(declaration, 0);
+            if (identifier == null) return null;
+            end = identifier.end();
+        } else {
+            if (declaration.isEmpty() || !identifierStart(declaration.charAt(0))) return null;
+            end = 1;
+            while (end < declaration.length() && identifierPart(declaration.charAt(end))) end++;
+        }
+        if (end >= declaration.length() || !Character.isWhitespace(declaration.charAt(end))) return null;
+        return declaration.substring(end).stripLeading();
+    }
+
+    private static String canonicalIdentityType(String type) {
+        StringBuilder canonical = new StringBuilder(type.length());
+        boolean quoted = false;
+        for (int index = 0; index < type.length(); index++) {
+            char current = type.charAt(index);
+            if (quoted) {
+                canonical.append(current);
+                if (current == '"') {
+                    if (index + 1 < type.length() && type.charAt(index + 1) == '"') {
+                        canonical.append(type.charAt(++index));
+                    } else {
+                        quoted = false;
+                    }
+                }
+            } else if (current == '"') {
+                quoted = true;
+                canonical.append(current);
+            } else if (!Character.isWhitespace(current)) {
+                canonical.append(Character.toLowerCase(current));
+            }
+        }
+        if (quoted) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        String value = canonical.toString();
+        int suffixStart = value.indexOf('(');
+        int arrayStart = value.indexOf('[');
+        if (suffixStart < 0 || arrayStart >= 0 && arrayStart < suffixStart) suffixStart = arrayStart;
+        if (suffixStart < 0) suffixStart = value.length();
+        String base = value.substring(0, suffixStart);
+        String alias = PG_TYPE_ALIASES.get(base);
+        return alias == null ? value
+                : "\"pg_catalog\".\"" + alias + "\"" + value.substring(suffixStart);
+    }
+
+    private record RoutineArgument(String declaration, boolean outOnly) {
     }
 
     private static boolean hasTopLevelSemicolon(String text) {
@@ -266,9 +655,9 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             } else if (current == '"') {
                 QuotedIdentifier identifier = quotedIdentifierAt(definition, index);
                 if (identifier == null) throw new IllegalArgumentException(UNSAFE_DEFINITION);
-                if (identifier.value().equals(source)
-                        && identifier.end() < definition.length()
-                        && definition.charAt(identifier.end()) == '.') {
+                if (sqlIdentifierMatches(
+                        new SqlIdentifier(identifier.value(), true, identifier.end()), source, true)
+                        && qualifiedDotAt(definition, identifier.end())) {
                     output.append(PgSchemaIdentifierNormalizer.quote(target));
                 } else {
                     output.append(definition, index, identifier.end());
@@ -299,8 +688,8 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
                 int end = index + 1;
                 while (end < definition.length() && identifierPart(definition.charAt(end))) end++;
                 String identifier = definition.substring(index, end);
-                if (identifier.equals(source) && end < definition.length()
-                        && definition.charAt(end) == '.') {
+                if (sqlIdentifierMatches(new SqlIdentifier(identifier, false, end), source, true)
+                        && qualifiedDotAt(definition, end)) {
                     output.append(PgSchemaIdentifierNormalizer.quote(target));
                 } else {
                     output.append(identifier);
@@ -323,9 +712,9 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             } else if (current == '"') {
                 QuotedIdentifier identifier = quotedIdentifierAt(text, index);
                 if (identifier == null) throw new IllegalArgumentException(UNSAFE_DEFINITION);
-                if (identifier.value().equals(schema)
-                        && identifier.end() < text.length()
-                        && text.charAt(identifier.end()) == '.') {
+                if (sqlIdentifierMatches(
+                        new SqlIdentifier(identifier.value(), true, identifier.end()), schema, true)
+                        && qualifiedDotAt(text, identifier.end())) {
                     return true;
                 }
                 index = identifier.end();
@@ -345,8 +734,9 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             } else if (identifierStart(current)) {
                 int end = index + 1;
                 while (end < text.length() && identifierPart(text.charAt(end))) end++;
-                if (text.substring(index, end).equals(schema)
-                        && end < text.length() && text.charAt(end) == '.') {
+                if (sqlIdentifierMatches(
+                        new SqlIdentifier(text.substring(index, end), false, end), schema, true)
+                        && qualifiedDotAt(text, end)) {
                     return true;
                 }
                 index = end;
@@ -355,6 +745,10 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             }
         }
         return false;
+    }
+
+    private static boolean qualifiedDotAt(String text, int start) {
+        return charAt(text, skipTrivia(text, start)) == '.';
     }
 
     private static int skipSingleQuoted(String text, int start) {
@@ -371,13 +765,14 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static int copySingleQuoted(String text, int start, StringBuilder output) {
+        boolean escapeString = hasEscapeStringPrefix(text, start);
         int index = start;
         output.append(text.charAt(index++));
         while (index < text.length()) {
             char current = text.charAt(index);
             output.append(current);
             index++;
-            if (current == '\\' && index < text.length()) {
+            if (escapeString && current == '\\' && index < text.length()) {
                 output.append(text.charAt(index++));
             } else if (current == '\'') {
                 if (index < text.length() && text.charAt(index) == '\'') {
@@ -388,6 +783,13 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             }
         }
         throw new IllegalArgumentException(UNSAFE_DEFINITION);
+    }
+
+    private static boolean hasEscapeStringPrefix(String text, int quoteIndex) {
+        if (quoteIndex < 1) return false;
+        char prefix = text.charAt(quoteIndex - 1);
+        if (prefix != 'E' && prefix != 'e') return false;
+        return quoteIndex == 1 || !identifierPart(text.charAt(quoteIndex - 2));
     }
 
     private static int copyLineComment(String text, int start, StringBuilder output) {
@@ -592,12 +994,15 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
         Object sourceValue = change.property().sourceValue();
         if (sourceValue instanceof ColumnDefinition column
                 && change.property().targetValue() == null
-                && change.property().path().equals(columnPath(column))) {
+                && change.property().path().equals(columnPath(column))
+                && source.columns().contains(column)
+                && target.columns().stream().noneMatch(candidate -> sameColumn(candidate, column))) {
             return List.of("ALTER TABLE " + targetName(source.key(), context)
                     + " ADD COLUMN " + columnClause(column, context) + ';');
         }
         if (sourceValue == null && change.property().targetValue() instanceof ColumnDefinition column
                 && change.property().path().equals(columnPath(column))
+                && target.columns().contains(column)
                 && source.columns().stream().noneMatch(candidate -> sameColumn(candidate, column))) {
             return List.of("ALTER TABLE " + targetName(source.key(), context)
                     + " DROP COLUMN " + childName(column.name()) + ';');
@@ -838,8 +1243,8 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             case SEQUENCE -> "DROP SEQUENCE " + name + ';';
             case VIEW -> "DROP VIEW " + name + ';';
             case MATERIALIZED_VIEW -> "DROP MATERIALIZED VIEW " + name + ';';
-            case FUNCTION -> "DROP FUNCTION " + name + '(' + routineSignature(key.signature()) + ");";
-            case PROCEDURE -> "DROP PROCEDURE " + name + '(' + routineSignature(key.signature()) + ");";
+            case FUNCTION -> "DROP FUNCTION " + name + '(' + routineSignature(key.signature(), context) + ");";
+            case PROCEDURE -> "DROP PROCEDURE " + name + '(' + routineSignature(key.signature(), context) + ");";
             case TYPE -> "DROP TYPE " + name + ';';
             case TRIGGER -> dropTrigger(change, context);
             default -> throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
@@ -911,11 +1316,12 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
         return PgSchemaIdentifierNormalizer.quote(objectPart(key));
     }
 
-    private static String routineSignature(String signature) {
+    private static String routineSignature(String signature, RenderContext context) {
         if (signature == null || !safeRoutineSignature(signature)) {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }
-        return signature.strip();
+        if (signature.isBlank()) return "";
+        return renderFragment(signature, context);
     }
 
     private static boolean safeRoutineSignature(String signature) {

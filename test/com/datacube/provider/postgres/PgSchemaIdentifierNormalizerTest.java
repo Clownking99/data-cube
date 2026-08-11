@@ -57,4 +57,14 @@ class PgSchemaIdentifierNormalizerTest {
         assertEquals("SELECT ';' -- ;", PgSchemaDefinitionNormalizer.normalize("SELECT ';' -- ;"));
         assertNull(PgSchemaDefinitionNormalizer.normalize(null));
     }
+
+    @Test
+    void definitionNormalizerDistinguishesStandardAndEscapeStrings() {
+        assertEquals("SELECT 'path\\'",
+                PgSchemaDefinitionNormalizer.normalize("SELECT 'path\\';"));
+        assertEquals("SELECT E'it\\'s'",
+                PgSchemaDefinitionNormalizer.normalize("SELECT E'it\\'s';"));
+        assertEquals("SELECT e'it\\'s'",
+                PgSchemaDefinitionNormalizer.normalize("SELECT e'it\\'s';"));
+    }
 }

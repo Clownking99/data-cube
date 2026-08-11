@@ -94,8 +94,8 @@ class PgSchemaChangeRendererTest {
 
     @Test
     void approvedOverloadedRoutineDropUsesOnlyStructuredIdentitySignature() {
-        ObjectKey key = key(ObjectType.FUNCTION, "source", "calculate",
-                "\"pg_catalog\".\"int4\", \"source\".\"money_type\"[]");
+        ObjectKey key = key(ObjectType.FUNCTION, "Source", "calculate",
+                "\"pg_catalog\".\"numeric\"(10, 2), \"Source\".\"money_type\"[]");
         DefinitionObject target = new DefinitionObject(key,
                 "definition-secret", "display-secret", Set.of(), DefinitionConfidence.HIGH);
         SchemaChange change = new SchemaChange(
@@ -107,8 +107,8 @@ class PgSchemaChangeRendererTest {
                 context(DbType.POSTGRESQL, true));
 
         assertEquals(1, statements.size());
-        assertEquals("DROP FUNCTION \"Target\".\"calculate\"(\"pg_catalog\".\"int4\", "
-                + "\"source\".\"money_type\"[]);", statements.getFirst().sql());
+        assertEquals("DROP FUNCTION \"Target\".\"calculate\"(\"pg_catalog\".\"numeric\"(10, 2), "
+                + "\"Target\".\"money_type\"[]);", statements.getFirst().sql());
         assertStatementMetadata(statements.getFirst(), change, true, DESTRUCTIVE_WARNING);
         assertFalse(statements.getFirst().sql().contains("definition-secret"));
         assertFalse(statements.getFirst().sql().contains("display-secret"));
@@ -205,6 +205,40 @@ class PgSchemaChangeRendererTest {
 
         assertEquals("Schema change shape is unsupported", failure.getMessage());
         assertFalse(failure.getMessage().contains("secret_column"));
+    }
+
+    @Test
+    void wholeColumnChangesRequireExactMembershipAndAbsenceOnTheOtherSide() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "source", "events", "");
+        ColumnDefinition propertyColumn = column("payload", "integer", true, null, 2);
+        ColumnDefinition differentColumn = column("payload", "text", true, null, 2);
+        String path = "columns[" + propertyColumn.name().comparisonKey() + "]";
+
+        SchemaChange forgedAdd = new SchemaChange(
+                "chg:forged-add", ChangeKind.ALTER, tableKey,
+                table(tableKey, List.of(differentColumn)), table(tableKey, List.of()),
+                new PropertyDifference(path, propertyColumn, null, "safe"),
+                RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, true, Set.of(), "safe");
+        SchemaChange duplicateAdd = new SchemaChange(
+                "chg:duplicate-add", ChangeKind.ALTER, tableKey,
+                table(tableKey, List.of(propertyColumn)), table(tableKey, List.of(differentColumn)),
+                new PropertyDifference(path, propertyColumn, null, "safe"),
+                RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, true, Set.of(), "safe");
+        SchemaChange forgedDrop = new SchemaChange(
+                "chg:forged-drop", ChangeKind.ALTER, tableKey,
+                table(tableKey, List.of()), table(tableKey, List.of(differentColumn)),
+                new PropertyDifference(path, null, propertyColumn, "safe"),
+                RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, false, Set.of(), "safe");
+        SchemaChange retainedDrop = new SchemaChange(
+                "chg:retained-drop", ChangeKind.ALTER, tableKey,
+                table(tableKey, List.of(differentColumn)), table(tableKey, List.of(propertyColumn)),
+                new PropertyDifference(path, null, propertyColumn, "safe"),
+                RiskLevel.HIGH, AutomationLevel.DESTRUCTIVE_OPT_IN, false, Set.of(), "safe");
+
+        for (SchemaChange invalid : List.of(forgedAdd, duplicateAdd, forgedDrop, retainedDrop)) {
+            assertSafeFailure("Schema change shape is unsupported", "payload",
+                    () -> renderer.render(invalid, context(DbType.POSTGRESQL, true)));
+        }
     }
 
     @Test
@@ -493,6 +527,45 @@ class PgSchemaChangeRendererTest {
     }
 
     @Test
+    void lexicalRetargetUsesPostgresFoldingAndPreservesTriviaOutsideText() {
+        ObjectKey viewKey = key(ObjectType.VIEW, "src", "lexical", "");
+        String definition = "CREATE VIEW \"src\".\"lexical\" AS SELECT 'SRC . literal' AS note "
+                + "FROM SRC /* gap */ . items JOIN \"src\"   . others ON true "
+                + "/* SRC . ignored */";
+        SchemaChange create = change("chg:folded-retarget", ChangeKind.CREATE, viewKey,
+                definition(viewKey, definition), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        RenderContext lowerContext = new RenderContext(DbType.POSTGRESQL,
+                PgSchemaIdentifierNormalizer.schema("src"),
+                PgSchemaIdentifierNormalizer.schema("target"), false);
+
+        assertEquals("CREATE VIEW \"target\".\"lexical\" AS SELECT 'SRC . literal' AS note "
+                        + "FROM \"target\" /* gap */ . items JOIN \"target\"   . others ON true "
+                        + "/* SRC . ignored */;",
+                renderer.render(create, lowerContext).getFirst().sql());
+
+        ObjectKey mixedViewKey = key(ObjectType.VIEW, "Src", "lexical", "");
+        String mixedDefinition = "CREATE VIEW \"Src\".\"lexical\" AS SELECT * FROM SRC . items";
+        SchemaChange mixedCreate = change("chg:mixed-case-retarget", ChangeKind.CREATE,
+                mixedViewKey, definition(mixedViewKey, mixedDefinition), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        RenderContext mixedContext = new RenderContext(DbType.POSTGRESQL,
+                PgSchemaIdentifierNormalizer.schema("Src"),
+                PgSchemaIdentifierNormalizer.schema("target"), false);
+        assertEquals("CREATE VIEW \"target\".\"lexical\" AS SELECT * FROM SRC . items;",
+                renderer.render(mixedCreate, mixedContext).getFirst().sql());
+
+        ObjectKey routineKey = key(ObjectType.FUNCTION, "src", "unsafe", "");
+        String routine = "CREATE FUNCTION \"src\".\"unsafe\"() RETURNS integer LANGUAGE plpgsql "
+                + "AS $body$ BEGIN PERFORM SRC /* gap */ . secret; RETURN 1; END $body$";
+        SchemaChange unsafeRoutine = change("chg:folded-dollar-body", ChangeKind.CREATE,
+                routineKey, definition(routineKey, routine), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertSafeFailure("Schema definition cannot be retargeted safely", "secret",
+                () -> renderer.render(unsafeRoutine, lowerContext));
+    }
+
+    @Test
     void rendersEveryStructuredSequenceAlterProperty() {
         ObjectKey key = key(ObjectType.SEQUENCE, "Source", "Seq", "");
         SequenceDefinition source = new SequenceDefinition(
@@ -606,6 +679,170 @@ class PgSchemaChangeRendererTest {
                 () -> renderer.render(create, context(DbType.POSTGRESQL, false)));
         assertSafeFailure("Schema change shape is unsupported", "secret_table",
                 () -> renderer.render(drop, context(DbType.POSTGRESQL, true)));
+    }
+
+    @Test
+    void triggerCreateOwnerMustComeFromTheNormalCreateHeaderTokens() {
+        ObjectKey owner = key(ObjectType.TABLE, "Source", "Owner", "");
+        ObjectKey triggerKey = key(ObjectType.TRIGGER, "Source", "Trig",
+                owner.name().comparisonKey());
+        for (String sql : List.of(
+                "CREATE TRIGGER \"Trig\" AFTER INSERT ON \"Source\".\"Owner\" "
+                        + "EXECUTE FUNCTION \"Source\".\"Fn\"()",
+                "CREATE CONSTRAINT TRIGGER \"Trig\" AFTER INSERT ON \"Source\".\"Owner\" "
+                        + "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW "
+                        + "EXECUTE FUNCTION \"Source\".\"Fn\"()")) {
+            DefinitionObject definition = new DefinitionObject(triggerKey, sql, sql,
+                    Set.of(owner), DefinitionConfidence.HIGH);
+            SchemaChange create = change("chg:trigger-owner-positive", ChangeKind.CREATE,
+                    triggerKey, definition, null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+            assertTrue(renderer.render(create, context(DbType.POSTGRESQL, false)).getFirst().sql()
+                    .contains(" ON \"Target\".\"Owner\" "));
+        }
+
+        List<String> definitions = List.of(
+                "CREATE TRIGGER \"Trig\" AFTER INSERT ON \"Source\".\"Other\" "
+                        + "/* ON \"Target\".\"Owner\" */ EXECUTE FUNCTION \"Source\".\"Fn\"()",
+                "CREATE TRIGGER \"Trig\" AFTER INSERT ON \"Source\".\"Other\" "
+                        + "WHEN (' ON \"Target\".\"Owner\" ' IS NOT NULL) "
+                        + "EXECUTE FUNCTION \"Source\".\"Fn\"()");
+
+        for (String sql : definitions) {
+            DefinitionObject definition = new DefinitionObject(triggerKey, sql, sql,
+                    Set.of(owner), DefinitionConfidence.HIGH);
+            SchemaChange create = change("chg:trigger-owner", ChangeKind.CREATE, triggerKey,
+                    definition, null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+
+            assertSafeFailure("Schema definition cannot be retargeted safely", "Other",
+                    () -> renderer.render(create, context(DbType.POSTGRESQL, false)));
+        }
+    }
+
+    @Test
+    void derivesDestructiveSemanticsForMisclassifiedObjectAndNestedDrops() {
+        ObjectKey sequenceKey = key(ObjectType.SEQUENCE, "Source", "misclassified_sequence", "");
+        SequenceDefinition sequence = new SequenceDefinition(
+                sequenceKey, "1", "1", "1", "9", false, 1, Set.of());
+        SchemaChange objectDrop = new SchemaChange("chg:object-drop", ChangeKind.DROP,
+                sequenceKey, null, sequence, null, RiskLevel.LOW,
+                AutomationLevel.SAFE_AUTOMATIC, true, Set.of("chg:before"), "safe");
+
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "misclassified_table", "");
+        ColumnDefinition removedColumn = column("removed_column", "integer", true, null, 1);
+        SchemaChange columnDrop = new SchemaChange("chg:column-drop", ChangeKind.ALTER,
+                tableKey, table(tableKey, List.of()), table(tableKey, List.of(removedColumn)),
+                new PropertyDifference("columns[" + removedColumn.name().comparisonKey() + "]",
+                        null, removedColumn, "safe"), RiskLevel.LOW,
+                AutomationLevel.SAFE_AUTOMATIC, true, Set.of("chg:before"), "safe");
+
+        ConstraintDefinition removedConstraint = constraint(ObjectType.CHECK_CONSTRAINT,
+                "removed_constraint", ConstraintKind.CHECK, List.of(), null, List.of(),
+                "CHECK (true)", false, Set.of());
+        TableDefinition constraintSource = new TableDefinition(
+                tableKey, List.of(removedColumn), List.of(), List.of(), Set.of());
+        TableDefinition constraintTarget = new TableDefinition(
+                tableKey, List.of(removedColumn), List.of(removedConstraint), List.of(), Set.of());
+        SchemaChange constraintDrop = new SchemaChange("chg:constraint-drop", ChangeKind.ALTER,
+                tableKey, constraintSource, constraintTarget,
+                new PropertyDifference("constraints", List.of(), List.of(removedConstraint), "safe"),
+                RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, true,
+                Set.of("chg:before"), "safe");
+
+        IndexDefinition removedIndex = index(
+                "removed_index", false, List.of("\"removed_column\""), null, false);
+        TableDefinition indexSource = new TableDefinition(
+                tableKey, List.of(removedColumn), List.of(), List.of(), Set.of());
+        TableDefinition indexTarget = new TableDefinition(
+                tableKey, List.of(removedColumn), List.of(), List.of(removedIndex), Set.of());
+        SchemaChange indexDrop = new SchemaChange("chg:index-drop", ChangeKind.ALTER,
+                tableKey, indexSource, indexTarget,
+                new PropertyDifference("indexes", List.of(), List.of(removedIndex), "safe"),
+                RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, true,
+                Set.of("chg:before"), "safe");
+
+        for (SchemaChange change : List.of(objectDrop, columnDrop, constraintDrop, indexDrop)) {
+            assertEquals(DESTRUCTIVE_APPROVAL, assertThrows(IllegalArgumentException.class,
+                    () -> renderer.render(change, context(DbType.POSTGRESQL, false))).getMessage());
+            List<RenderedStatement> statements = renderer.render(
+                    change, context(DbType.POSTGRESQL, true));
+            assertFalse(statements.isEmpty());
+            statements.forEach(statement -> assertStatementMetadata(
+                    statement, change, true, DESTRUCTIVE_WARNING));
+        }
+    }
+
+    @Test
+    void distinguishesStandardAndEscapeStringsWhenCheckingDefinitionBoundaries() {
+        ObjectKey viewKey = key(ObjectType.VIEW, "Source", "string_boundary", "");
+        String disguisedMultiple = "CREATE VIEW \"Source\".\"string_boundary\" AS "
+                + "SELECT 'path\\'; SELECT 2; --'";
+        SchemaChange rejected = change("chg:standard-string", ChangeKind.CREATE, viewKey,
+                definition(viewKey, disguisedMultiple), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+
+        assertSafeFailure("Schema definition cannot be retargeted safely", "SELECT 2",
+                () -> renderer.render(rejected, context(DbType.POSTGRESQL, false)));
+
+        String escapeString = "CREATE VIEW \"Source\".\"string_boundary\" AS "
+                + "SELECT E'it\\'s' AS label";
+        SchemaChange accepted = change("chg:escape-string", ChangeKind.CREATE, viewKey,
+                definition(viewKey, escapeString), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertEquals("CREATE VIEW \"Target\".\"string_boundary\" AS "
+                        + "SELECT E'it\\'s' AS label;",
+                renderer.render(accepted, context(DbType.POSTGRESQL, false)).getFirst().sql());
+
+        String unterminatedEscape = "CREATE VIEW \"Source\".\"string_boundary\" AS "
+                + "SELECT E'unterminated\\'";
+        SchemaChange unterminated = change("chg:unterminated-escape", ChangeKind.CREATE, viewKey,
+                definition(viewKey, unterminatedEscape), null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertSafeFailure("Schema definition cannot be retargeted safely", "unterminated",
+                () -> renderer.render(unterminated, context(DbType.POSTGRESQL, false)));
+    }
+
+    @Test
+    void routineDefinitionMustMatchStructuredIdentityArgumentsWithoutGuessingDeclarations() {
+        ObjectKey mismatchedKey = key(ObjectType.FUNCTION, "Source", "identity_guard",
+                "\"pg_catalog\".\"int4\"");
+        DefinitionObject mismatched = definition(mismatchedKey,
+                "CREATE FUNCTION \"Source\".\"identity_guard\"(\"pg_catalog\".\"text\") "
+                        + "RETURNS integer LANGUAGE sql AS $$SELECT 1$$");
+        SchemaChange mismatchCreate = change("chg:routine-mismatch", ChangeKind.CREATE,
+                mismatchedKey, mismatched, null,
+                AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertSafeFailure("Schema definition cannot be retargeted safely", "identity_guard",
+                () -> renderer.render(mismatchCreate, context(DbType.POSTGRESQL, false)));
+
+        ObjectKey declaredKey = key(ObjectType.FUNCTION, "Source", "identity_guard",
+                "\"pg_catalog\".\"int4\", \"pg_catalog\".\"int4\", "
+                        + "\"pg_catalog\".\"int4\", \"pg_catalog\".\"int4\"[], "
+                        + "\"pg_catalog\".\"int4\"");
+        DefinitionObject declared = definition(declaredKey,
+                "CREATE FUNCTION \"Source\".\"identity_guard\"(arg integer, "
+                        + "IN named_in integer, INOUT named_inout integer, "
+                        + "VARIADIC variadic_arg integer[], defaulted integer DEFAULT 7, "
+                        + "OUT result text) RETURNS integer LANGUAGE sql AS $$SELECT 1$$");
+        SchemaChange declaredCreate = change("chg:routine-declarations", ChangeKind.CREATE,
+                declaredKey, declared, null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertTrue(renderer.render(declaredCreate,
+                        context(DbType.POSTGRESQL, false)).getFirst().sql()
+                .startsWith("CREATE FUNCTION \"Target\".\"identity_guard\"(arg integer, "
+                        + "IN named_in integer, INOUT named_inout integer, "
+                        + "VARIADIC variadic_arg integer[], defaulted integer DEFAULT 7, "
+                        + "OUT result text)"));
+
+        ObjectKey exactKey = key(ObjectType.FUNCTION, "Source", "identity_guard",
+                "\"pg_catalog\".\"numeric\"(10, 2), \"Source\".\"payload\"[]");
+        DefinitionObject exact = definition(exactKey,
+                "CREATE FUNCTION \"Source\".\"identity_guard\"("
+                        + "\"pg_catalog\".\"numeric\"(10, 2), \"Source\".\"payload\"[]) "
+                        + "RETURNS integer LANGUAGE sql AS $$SELECT 1$$");
+        SchemaChange exactCreate = change("chg:routine-exact", ChangeKind.CREATE,
+                exactKey, exact, null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        assertTrue(renderer.render(exactCreate, context(DbType.POSTGRESQL, false)).getFirst().sql()
+                .startsWith("CREATE FUNCTION \"Target\".\"identity_guard\"("
+                        + "\"pg_catalog\".\"numeric\"(10, 2), \"Target\".\"payload\"[])"));
     }
 
     private static SchemaChange change(

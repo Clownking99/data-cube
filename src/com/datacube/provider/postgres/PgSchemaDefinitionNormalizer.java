@@ -25,7 +25,8 @@ public final class PgSchemaDefinitionNormalizer {
             switch (state) {
                 case NORMAL -> {
                     if (current == '\'') {
-                        state = State.SINGLE_QUOTE;
+                        state = hasEscapeStringPrefix(text, index)
+                                ? State.ESCAPE_STRING : State.SINGLE_QUOTE;
                     } else if (current == '"') {
                         state = State.DOUBLE_QUOTE;
                     } else if (current == '-' && next == '-') {
@@ -47,6 +48,13 @@ public final class PgSchemaDefinitionNormalizer {
                     }
                 }
                 case SINGLE_QUOTE -> {
+                    if (current == '\'' && next == '\'') {
+                        index++;
+                    } else if (current == '\'') {
+                        state = State.NORMAL;
+                    }
+                }
+                case ESCAPE_STRING -> {
                     if (current == '\\' && next != '\0') {
                         index++;
                     } else if (current == '\'' && next == '\'') {
@@ -102,7 +110,17 @@ public final class PgSchemaDefinitionNormalizer {
         return text.substring(start, end + 1);
     }
 
+    private static boolean hasEscapeStringPrefix(String text, int quoteIndex) {
+        if (quoteIndex < 1) return false;
+        char prefix = text.charAt(quoteIndex - 1);
+        if (prefix != 'E' && prefix != 'e') return false;
+        if (quoteIndex == 1) return true;
+        char before = text.charAt(quoteIndex - 2);
+        return before != '_' && before != '$' && !Character.isLetterOrDigit(before);
+    }
+
     private enum State {
-        NORMAL, SINGLE_QUOTE, DOUBLE_QUOTE, LINE_COMMENT, BLOCK_COMMENT, DOLLAR_QUOTE
+        NORMAL, SINGLE_QUOTE, ESCAPE_STRING, DOUBLE_QUOTE,
+        LINE_COMMENT, BLOCK_COMMENT, DOLLAR_QUOTE
     }
 }
