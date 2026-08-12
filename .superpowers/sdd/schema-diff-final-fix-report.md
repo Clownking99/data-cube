@@ -1,5 +1,31 @@
 # Schema Diff 累计终审统一修复报告
 
+## 第六次累计复审 follow-up（2026-08-12）
+
+- 状态：第六轮代码与 fresh gates 已完成，等待新的独立累计 reviewer；本报告不自行标记 Ready。
+- PostgreSQL/Oracle label metadata 已与 SQL alias、CTE、relation binding 及普通 PL/SQL binding 分离。`label.declaration[.field]` 只查找该 label exact owning scope 自身的 parameter/DECLARE declaration，不查 parent/child scope 或 SQL alias。relation owner 与 PG schema function 使用独立语法证明；同时存在 relation 与 visible binding 时 fail closed，不做猜测。
+- PG/Oracle block scope 保存 opening label token，`END label` 按 provider folding 与 quoted identity 精确匹配；quoted mixed case、nested unwind、closing-without-opening 及 mismatch 均有覆盖。不可证明的 routine 由 reader 降为 LOW，通过 missing diff 传播为 MANUAL_ONLY/default-unselected，不阻断其他对象。
+- Oracle PACKAGE_SPEC 进入保守 declaration parser：覆盖 variable/constant、TYPE RECORD、FUNCTION/PROCEDURE forward signature 与 self/external type owner。同名 package variable chain 保留，可证明的 self type 仅在 type position retarget，external owner 保持精确。未支持/未完整 grammar 不扩大 heuristic，reader 降 LOW，projector 生成对象特异 opaque/manual projection，renderer 拒绝，marker 不进入 SQL/UI/digest/toString。
+- 无新增 public SPI/model seam；沿用已批准的 provider comparison projector 与对象级 `DefinitionConfidence`。二参 `SchemaDiffEngine.compare()` 语义不变。
+
+### 第六次 follow-up TDD RED → GREEN
+
+1. C1 RED：PG label 通过 generic bindings 吞掉 SQL alias/outer/child binding，且 relation proof 与 label 竞争。GREEN：`openingLabel` + own `plSqlDeclarations` 分离，relation/function proof 独立分类，歧义 fail closed；真实 reader→projector→plan→render→second-diff 收敛。
+2. C2 RED：Oracle label chain 遍历 parent generic bindings，误把 parent declaration/SQL alias 当自有 declaration。GREEN：exact label scope lookup，declared chain 仅查 owning scope 自身 declaration；relation/package 另行证明。
+3. C3 RED：PACKAGE_SPEC 落入 legacy/global three-part heuristic，未知 declaration 仍会自动投影。GREEN：保守 spec parser/type-position projection，unknown grammar 局部 LOW/manual；真实 reader 安全 spec render 后模拟回读收敛，unknown spec 不阻断 sequence。
+4. I RED：PG/Oracle optional closing label 只被跳过，mismatch/orphan 仍被接受。GREEN：opening token 跟踪、provider quoted/fold match，nested unwind/orphan/mismatch reader LOW/manual 全链。
+
+### 第六次 follow-up fresh verification
+
+- Implementation commit：`05944a499cef08d1f3d385245d2e46f1f0356e0f`；最终 review range 为 `3d8c40b..HEAD`，以本报告提交后回报的实际 HEAD 为上界，必须同时包含 implementation 与 report/progress。
+- Focused：PG/Oracle renderer+reader 与 cross-owner 5 suites / 128 tests / 0 failures / 0 errors / 0 skips，使用 `--rerun-tasks --no-build-cache`。
+- Task 1–10 matrix：35 suites / 337 tests / 0 failures / 0 errors / 2 documented relational live skips。
+- Clean full+jlink：111 suites / 762 tests / 0 failures / 0 errors / 3 documented live skips；`BUILD SUCCESSFUL`。clean 首次因先前超时 Gradle worker 占用 test result 文件失败，`gradlew --stop` 确认停止 workspace daemon 后原命令 fresh 重跑成功。
+- Explicit no-credential live gate：1 suite / 6 tests / 0 failures / 0 errors / 2 skips；显式移除 write gate 与 PG/Oracle provider env，未尝试连接。
+- Image：`build/image/bin/DataCube.bat` 存在，包含 `-Xms16m -Xmx256m -XX:+UseG1GC`。
+- CodeGraph：370 files / 10,288 nodes / 33,219 edges，index up to date；`git diff --check`/staged check 通过，`gradlew` mode `100755`。
+- changed-file credential/endpoint scan 仅命中既有的合成脱敏 failure fixture，未新增真实 endpoint/credential。未连接 live DB，未读取 saved connection；`.testagent/` 保持 pre-existing untracked，未读取、修改或暂存。未 amend/push/tag。
+
 ## 第三次累计复审 follow-up（2026-08-12）
 
 - 状态：代码与 fresh gates 已完成，等待新的独立累计 reviewer；本报告不自行标记 Ready。
