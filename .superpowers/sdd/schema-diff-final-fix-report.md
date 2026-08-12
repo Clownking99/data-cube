@@ -1,5 +1,29 @@
 # Schema Diff 累计终审统一修复报告
 
+## 第九次累计复审 follow-up（2026-08-12）
+
+- 状态：第九轮唯一 Critical 已按 TDD 窄修并完成 fresh gates，等待独立累计 reviewer；本报告不自行标记 Ready。
+- relation grammar 不再把裸 `INTO` 当 relation source。只有 `INSERT INTO`、`MERGE INTO` 以及既有明确的 FROM/JOIN/UPDATE/USING、DELETE FROM、trigger ON grammar 登记 relation target；SELECT INTO、WITH…SELECT INTO、UPDATE/INSERT RETURNING INTO 与 Oracle BULK COLLECT INTO 均作为 procedural target 走 exact label/binding classification，无法证明时继续 fail closed/reader LOW/manual。
+- PG/Oracle direct tests 覆盖 label variable procedural target 保留，以及 FROM/UPDATE/INSERT INTO/MERGE INTO/USING self relation retarget。真实 JDBC reader → projector → engine → planner → renderer → simulated reread second-diff 同时覆盖 procedural target 与 relation target 并收敛。
+- 无新增 SPI/model seam；renderer 与 projector 继续共用 `SqlScopeAwareOwnerRewriter`，default identity projector 与二参 engine API 不变。
+
+### 第九次 follow-up TDD RED → GREEN
+
+1. RED：PG/Oracle direct + reader 闭环中，SELECT/RETURNING/BULK COLLECT `INTO label.variable.field` 因裸 INTO 被登记 relation owner而误投影；初始 4-suite run 为 126 tests / 4 expected failures。
+2. GREEN：从通用 relation keyword 移除 INTO，只在 `INSERT`/`MERGE` 后紧邻 INTO 时解析 relation target；FROM/UPDATE/USING 与 DELETE FROM 正例保持。PG/Oracle renderer+reader 4 suites 全绿。
+3. Test efficacy：实现 GREEN 后临时恢复旧裸 INTO grammar，两个新增 direct test 2/2 按预期失败；恢复窄修后 2/2 重新 GREEN。WITH SELECT INTO、UPDATE/INSERT RETURNING INTO、Oracle BULK COLLECT INTO、INSERT/MERGE/USING grammar variants 均有强断言。
+
+### 第九次 follow-up fresh verification
+
+- Implementation commit：`438e285dadcbfbaa31b35947cbcb2a4a25af46d8`；最终累计 review range 为 `3d8c40b..HEAD`，本报告/progress 提交后的实际 HEAD 由 handoff 回报并必须纳入 reviewer 范围。
+- Focused：PG/Oracle renderer+reader 与 cross-owner 5 suites / 134 tests / 0 failures / 0 errors / 0 skips，使用 `--rerun-tasks --no-build-cache`。
+- Task 1–10 matrix：35 suites / 345 tests / 0 failures / 0 errors / 2 documented relational live skips。
+- Clean full+jlink：111 suites / 770 tests / 0 failures / 0 errors / 3 documented live skips；`BUILD SUCCESSFUL`。
+- Explicit no-credential live gate：1 suite / 6 tests / 0 failures / 0 errors / 2 skips；显式移除 write gate 与 PG/Oracle provider env，未尝试连接。
+- Image：Windows/Unix launchers 与 runtime 存在；`DataCube.bat` 包含 `-Xms16m -Xmx256m -XX:+UseG1GC`。
+- CodeGraph：370 files / 10,304 nodes / 33,380 edges，index up to date；`git diff --check`/staged check 通过，`gradlew` mode `100755`，full XML manual/owner marker scan 为 0，added-line sensitive value scan 为 0。
+- 未连接 live DB，未读取 saved connection；`.testagent/` 保持 pre-existing untracked，未读取、修改或暂存。未 amend/push/tag。
+
 ## 第八次累计复审 follow-up（2026-08-12）
 
 - 状态：第八轮唯一 Critical 已按 TDD 窄修并完成 fresh gates，等待独立累计 reviewer；本报告不自行标记 Ready。

@@ -20,8 +20,8 @@
 
 ## Cumulative review
 
-- Status: eighth cumulative-review Critical fixed locally; cumulative re-review pending, not self-declared Ready.
+- Status: ninth cumulative-review Critical fixed locally; cumulative re-review pending, not self-declared Ready.
 - Fresh cumulative review range: `3d8c40b..HEAD`; use the actual HEAD reported after the report/progress commit so the range includes both implementation and verification evidence.
-- Finding closed by TDD: exact relation-source owner token remains highest syntax priority, while ordinary qualifiers now prefer exact label-own declarations and visible PL/SQL aliases before scope relation/nonrelation inference; PG/Oracle alias-versus-relation-object collision converges through reader→projector→plan→render→reread.
-- Eighth follow-up gates: focused 5 suites / 132 tests; Task 1-10 matrix 35 suites / 343 tests / 2 documented live skips; clean full+jlink 111 suites / 768 tests / 3 documented live skips; explicit no-credential live gate 6 tests / 2 skips; all zero failures/errors.
-- Implementation commit: `ed772d95dcdf106aa0802688357edeb6481deb55`; report commit will be recorded in the final handoff. No amend/push/tag/live DB.
+- Finding closed by TDD: bare procedural INTO is no longer a relation source; SELECT/WITH SELECT/RETURNING/BULK COLLECT INTO preserve exact label/binding targets, while FROM/UPDATE/INSERT INTO/MERGE INTO/USING relations retarget and converge through PG/Oracle reader→projector→plan→render→reread.
+- Ninth follow-up gates: focused 5 suites / 134 tests; Task 1-10 matrix 35 suites / 345 tests / 2 documented live skips; clean full+jlink 111 suites / 770 tests / 3 documented live skips; explicit no-credential live gate 6 tests / 2 skips; all zero failures/errors.
+- Implementation commit: `438e285dadcbfbaa31b35947cbcb2a4a25af46d8`; report commit will be recorded in the final handoff. No amend/push/tag/live DB.
