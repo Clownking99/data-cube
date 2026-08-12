@@ -1,5 +1,29 @@
 # Schema Diff 累计终审统一修复报告
 
+## 第八次累计复审 follow-up（2026-08-12）
+
+- 状态：第八轮唯一 Critical 已按 TDD 窄修并完成 fresh gates，等待独立累计 reviewer；本报告不自行标记 Ready。
+- exact relation-source owner token 继续通过独立 `relationOwners` 集合保持最高语法优先；关系源不再同时污染普通 `provenOwners`。普通 qualifier chain 现在按 exact label-own declaration、structural header/type proof、visible PL binding/SQL alias、scope relation、其余可证明 nonrelation qualifier 分类；明确可见 alias 优先保留，未证明的 chain 仍 fail closed/LOW。
+- PG `FROM "Source".orders AS "Source"` 与 Oracle `FROM "Source".orders "Source"` 均覆盖 alias 与 relation object 同名：`"Source".orders` / `"Source".value` alias chain 保持，关系源本身精确 retarget 到 target。两 provider renderer/projector 共用相同 scanner，direct 与真实 reader → projector → engine → planner → renderer → simulated reread second-diff 均收敛。
+- 已迁移 PG/Oracle 将 outer visible PL binding 或 SQL alias 错当 ambiguous/manual 的旧期望；label exact-own declaration 与 function/package/type structural proof 不受影响。无新增 SPI/model seam，二参 engine API 与 default identity projector 不变。
+
+### 第八次 follow-up TDD RED → GREEN
+
+1. RED：PG/Oracle direct alias fixture 中 alias 与 relation object 同名时，普通 `alias.orders` 被 `visibleRelation` 提前改成 target；真实 reader 闭环因此降 manual。初始 4-suite run 为 124 tests / 5 expected failures。
+2. GREEN：relation-source owner 只进入 `relationOwners`；普通 chain 在 `visibleRelation` 前检查 visible binding，同时 structural header/type `provenOwners` 保持语法证明优先。direct 和两 provider reader→plan→render→second-diff 全绿，真实 relation source 仍为 target。
+3. 兼容迁移：PG/Oracle outer PL binding、SQL alias 和 relation-object collision 的旧 fail/manual 或误投影断言改为 preserve；无法建立明确 visible binding 的 chain 继续抛出 unsafe 并由 reader 降 LOW。
+
+### 第八次 follow-up fresh verification
+
+- Implementation commit：`ed772d95dcdf106aa0802688357edeb6481deb55`；最终累计 review range 为 `3d8c40b..HEAD`，本报告/progress 提交后的实际 HEAD 由 handoff 回报并必须纳入 reviewer 范围。
+- Focused：PG/Oracle renderer+reader 与 cross-owner 5 suites / 132 tests / 0 failures / 0 errors / 0 skips，使用 `--rerun-tasks --no-build-cache`。
+- Task 1–10 matrix：35 suites / 343 tests / 0 failures / 0 errors / 2 documented relational live skips。
+- Clean full+jlink：111 suites / 768 tests / 0 failures / 0 errors / 3 documented live skips；`BUILD SUCCESSFUL`。
+- Explicit no-credential live gate：精确类 `SchemaDiffLiveIntegrationTest` 为 1 suite / 6 tests / 0 failures / 0 errors / 2 skips；显式移除 write gate 与 PG/Oracle provider env，未尝试连接。一次先行错误类名 filter 仅报告 no tests found，未执行测试或连接，不作为门禁证据。
+- Image：Windows/Unix launchers 与 runtime 存在；`DataCube.bat` 包含 `-Xms16m -Xmx256m -XX:+UseG1GC`。
+- CodeGraph：370 files / 10,302 nodes / 33,369 edges，index up to date；`git diff --check`/staged check 通过，`gradlew` mode `100755`，full XML manual/owner marker scan 为 0。
+- Added-line credential/endpoint/private-key scan 为 0；完整文件命中仅来自既有脱敏 fixture 与防御性 JDBC 文本识别。未连接 live DB，未读取 saved connection；`.testagent/` 保持 pre-existing untracked，未读取、修改或暂存。未 amend/push/tag。
+
 ## 第七次累计复审 follow-up（2026-08-12）
 
 - 状态：第七轮代码与 fresh gates 已完成，等待新的独立累计 reviewer；本报告不自行标记 Ready。
