@@ -1,5 +1,30 @@
 # Schema Diff 累计终审统一修复报告
 
+## 第十次累计复审 follow-up（2026-08-13）
+
+- 状态：第十轮唯一 Critical 已按 TDD 窄修并完成 fresh gates，等待独立累计 reviewer；本报告不自行标记 Ready。
+- `SqlScopeAwareOwnerRewriter` 不再按定义全文词面登记 `FROM`、`USING`、`ON`。`FROM` 只在同层 query/DML statement 证明后登记，`DELETE FROM` 保留专门 grammar；`USING` 只在同层 `MERGE`/`DELETE` source grammar 登记；trigger `ON` 只接受 `CREATE [OR REPLACE] [EDITIONABLE|NONEDITIONABLE] [CONSTRAINT] TRIGGER` header、且必须在 body 前唯一可证明。`EXTRACT` value、dynamic `EXECUTE ... USING` bind、`JOIN USING` columns 与 trigger body `JOIN ... ON` predicate 均保持原文。
+- INTO、CTE、LATERAL、DELETE FROM、INSERT INTO、MERGE INTO/USING 与 query FROM/JOIN 正例继续 retarget；无法建立明确 binding/clause proof 的对象抛出并由 reader 保留原文、降 `DefinitionConfidence.LOW`，贯通 MANUAL_ONLY、默认不选择与 renderer 拒绝。
+- PG/Oracle direct tests 与真实 JDBC reader → comparison projector → engine → planner → renderer → simulated reread 同时断言 procedural expression 原文、relation target owner、HIGH confidence 与 second diff 全 EQUIVALENT；两 provider 另有歧义 fixture 证明 LOW/manual fail closed。
+
+### 第十次 follow-up TDD RED → GREEN
+
+1. RED：PG routine 的 `EXTRACT(... FROM label.record.field)` / dynamic `EXECUTE ... USING label.record.field`、Oracle 同类 routine 与 trigger body `JOIN ... ON label.field` 被旧词面规则误登记 relation owner；3 个 named direct tests / 3 expected failures。
+2. GREEN：引入同层 parentheses depth 与 statement-aware predicate；trigger header 只解析精确 CREATE TRIGGER noun/header ON。补 `CREATE CONSTRAINT TRIGGER` 边界后 PG/Oracle renderer 全套及 reader 闭环通过。
+3. Test efficacy：GREEN 后临时恢复旧词面分类，3 个 named direct tests 再次 3/3 expected failures；恢复 clause-aware 实现后 3/3 fresh GREEN。
+4. Coverage：direct tests 覆盖 EXTRACT FROM、EXECUTE/EXECUTE IMMEDIATE USING、JOIN USING、trigger body JOIN ON，且同 fixture 保留 CTE/LATERAL/DELETE/query relation positives；reader tests 覆盖真实跨 owner render 与 second-diff convergence，歧义测试覆盖 LOW/manual/renderer refusal。
+
+### 第十次 follow-up fresh verification
+
+- Implementation commit：`d28b5d5c942b7d521d9763c6c2a58b5d8bba0696`；最终累计 review range 为 `3d8c40b..HEAD`，本报告/progress 提交后的实际 HEAD 由 handoff 回报并必须纳入 reviewer 范围。
+- Focused：PG/Oracle renderer+reader 与 cross-owner 5 suites / 139 tests / 0 failures / 0 errors / 0 skips，使用 `--rerun-tasks --no-build-cache`。
+- Task 1–10 matrix：35 suites / 350 tests / 0 failures / 0 errors / 2 documented relational live skips。
+- Clean full+jlink：111 suites / 775 tests / 0 failures / 0 errors / 3 documented live skips；`BUILD SUCCESSFUL`。
+- Explicit no-credential live gate：1 suite / 6 tests / 0 failures / 0 errors / 2 exact skips；显式移除 write gate 与 PG/Oracle provider env，未尝试连接。
+- Image：Windows/Unix launchers 与 runtime 存在；`DataCube.bat` 包含 `-Xms16m -Xmx256m -XX:+UseG1GC`。
+- CodeGraph：370 files / 10,313 nodes / 33,471 edges，index up to date；`git diff --check`/staged check 通过，`gradlew` mode `100755`，XML manual/owner/NUL marker scan为 0，added-line endpoint/credential/private-key scan为 0。
+- 未连接 live DB，未读取 saved connection；`.testagent/` 保持 pre-existing untracked，未读取、修改或暂存。未 amend/push/tag。
+
 ## 第九次累计复审 follow-up（2026-08-12）
 
 - 状态：第九轮唯一 Critical 已按 TDD 窄修并完成 fresh gates，等待独立累计 reviewer；本报告不自行标记 Ready。
