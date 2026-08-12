@@ -99,7 +99,8 @@ public final class SchemaDiffService {
                                     new CancellationException(CANCELLED)));
                 } else {
                     try {
-                        settlement.complete(engine.compare(sourceFuture.join(), targetFuture.join()));
+                        settlement.complete(engine.compare(sourceFuture.join(), targetFuture.join(),
+                                capability.comparisonProjector()));
                     } catch (RuntimeException invalidSnapshots) {
                         settlement.completeExceptionally(new IllegalStateException(COMPARISON_FAILED));
                     }

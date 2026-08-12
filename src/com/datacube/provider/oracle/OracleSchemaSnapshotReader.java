@@ -647,7 +647,10 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
                                        String typeSubname, String plsType) throws SQLException {
         String type;
         if (typeOwner != null && typeName != null) {
-            type = typeOwner + "." + typeName + (typeSubname == null ? "" : "." + typeSubname);
+            type = OracleSchemaIdentifierNormalizer.quote(typeOwner) + '.'
+                    + OracleSchemaIdentifierNormalizer.quote(typeName)
+                    + (typeSubname == null ? ""
+                    : "." + OracleSchemaIdentifierNormalizer.quote(typeSubname));
         } else if (dataType != null) {
             type = dataType;
         } else if (plsType != null) {

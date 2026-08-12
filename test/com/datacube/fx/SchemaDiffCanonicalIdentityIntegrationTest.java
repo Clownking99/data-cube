@@ -9,11 +9,13 @@ import com.datacube.schemadiff.SchemaChangePlanner;
 import com.datacube.schemadiff.SchemaDiffResult;
 import com.datacube.service.SchemaDeploymentResult;
 import com.datacube.service.SchemaDeploymentState;
+import com.datacube.service.SchemaDeploymentService;
 import com.datacube.service.SchemaDiffRequest;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.schemadiff.AutomationLevel;
 import com.datacube.spi.schemadiff.ChangeKind;
+import com.datacube.spi.schemadiff.DefinitionObject;
 import com.datacube.spi.schemadiff.ObjectKey;
 import com.datacube.spi.schemadiff.ObjectType;
 import com.datacube.spi.schemadiff.QualifiedName;
@@ -26,6 +28,7 @@ import com.datacube.spi.schemadiff.SnapshotCompleteness;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,6 +45,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SchemaDiffCanonicalIdentityIntegrationTest {
     private static final String CHANGE_ID = "chg:" + "d".repeat(64);
+
+    @Test
+    void postgresRealCreateOrReplaceUsesServiceAdmissionForViewModelConfirmationAndToken()
+            throws Exception {
+        for (ObjectType objectType : List.of(
+                ObjectType.VIEW, ObjectType.FUNCTION, ObjectType.PROCEDURE)) {
+            assertCreateOrReplaceAdmissionFlow(DbType.POSTGRESQL, objectType,
+                    PgSchemaIdentifierNormalizer::schema,
+                    PgSchemaIdentifierNormalizer::object,
+                    new PgSchemaChangeRenderer());
+        }
+    }
+
+    @Test
+    void oracleRealCreateOrReplaceUsesServiceAdmissionForViewModelConfirmationAndToken()
+            throws Exception {
+        for (ObjectType objectType : List.of(
+                ObjectType.VIEW, ObjectType.FUNCTION, ObjectType.PROCEDURE)) {
+            assertCreateOrReplaceAdmissionFlow(DbType.ORACLE, objectType,
+                    OracleSchemaIdentifierNormalizer::schema,
+                    OracleSchemaIdentifierNormalizer::object,
+                    new OracleSchemaChangeRenderer());
+        }
+    }
 
     @Test
     void postgresSnapshotCanonicalIdentityFlowsThroughRealRendererIntoDeploymentRequest()
@@ -176,6 +203,119 @@ class SchemaDiffCanonicalIdentityIntegrationTest {
             assertTrue(renderedSql.get().contains("OrderSeq"));
         } finally {
             viewModel.closeResources();
+        }
+    }
+
+    private static void assertCreateOrReplaceAdmissionFlow(
+            DbType type,
+            ObjectType objectType,
+            Function<String, QualifiedName> schemaNormalizer,
+            ObjectNormalizer objectNormalizer,
+            SchemaChangeRenderer renderer) throws Exception {
+        String sourceOwner = type == DbType.ORACLE ? "SOURCE_OWNER" : "source_owner";
+        String targetOwner = type == DbType.ORACLE ? "TARGET_OWNER" : "target_owner";
+        QualifiedName sourceSchema = schemaNormalizer.apply(sourceOwner);
+        QualifiedName targetSchema = schemaNormalizer.apply(targetOwner);
+        String objectName = "CURRENT_" + objectType.name();
+        ObjectKey objectKey = new ObjectKey(
+                objectType, objectNormalizer.normalize(sourceOwner, objectName),
+                type == DbType.ORACLE && objectType != ObjectType.VIEW
+                        ? "oracle-routine-signature-v1\0" : "");
+        String definition = createOrReplaceDefinition(type, objectType, sourceOwner, objectName);
+        DefinitionObject definitionObject = new DefinitionObject(objectKey, definition, definition,
+                Set.of(), com.datacube.spi.schemadiff.DefinitionConfidence.HIGH);
+        SchemaChange change = new SchemaChange(
+                CHANGE_ID, ChangeKind.CREATE, objectKey, definitionObject, null, null,
+                RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, true, Set.of(), "safe");
+        SchemaDiffResult diff = new SchemaDiffResult(
+                snapshot(type, "source", sourceSchema,
+                        Map.of(objectKey, definitionObject), "source-fp"),
+                snapshot(type, "target", targetSchema, Map.of(), "target-fp"),
+                List.of(), List.of());
+        AtomicReference<String> issuedToken = new AtomicReference<>();
+        java.util.concurrent.atomic.AtomicInteger deployCalls = new java.util.concurrent.atomic.AtomicInteger();
+        SchemaDiffViewModel viewModel = new SchemaDiffViewModel(
+                (request, control) -> CompletableFuture.completedFuture(diff),
+                (request, expected, statements, control) -> {
+                    deployCalls.incrementAndGet();
+                    issuedToken.set(confirmationToken(control));
+                    return CompletableFuture.completedFuture(new SchemaDeploymentResult(
+                            SchemaDeploymentState.SUCCEEDED, List.of(),
+                            SchemaDeploymentService.confirmationToken(statements)));
+                },
+                result -> new SchemaChangePlan(
+                        result, List.of(change), Set.of(CHANGE_ID), Set.of(), "plan"),
+                new SchemaChangePlanner(), renderer,
+                Executors.newThreadPerTaskExecutor(
+                        Thread.ofVirtual().name("schema-diff-admission-test-", 0).factory()),
+                Runnable::run, () -> {});
+        try {
+            assertTrue(viewModel.compare(new SchemaDiffRequest(
+                    config("source", type), sourceSchema,
+                    config("target", type), targetSchema)));
+            awaitState(viewModel, SchemaDiffViewModel.State.READY);
+            SchemaDiffViewModel.Confirmation confirmation =
+                    viewModel.confirmationRequest().orElseThrow();
+            String expectedDigest = SchemaDeploymentService.confirmationToken(
+                    viewModel.renderedStatements());
+            assertTrue(confirmation.destructive());
+            assertEquals(expectedDigest, confirmation.planDigest());
+            assertFalse(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                    confirmation, false, confirmation.targetSchemaConfirmationToken())));
+            assertFalse(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                    confirmation, true, null)));
+            SchemaDiffViewModel.Confirmation stale = new SchemaDiffViewModel.Confirmation(
+                    confirmation.selectionVersion(), confirmation.targetIdentity(),
+                    confirmation.targetSchema(), confirmation.targetSchemaComparisonKey(),
+                    confirmation.selectedChangeCount(), confirmation.production(),
+                    confirmation.oracleImplicitCommitWarning(), confirmation.destructive(),
+                    "0".repeat(64));
+            assertFalse(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                    stale, true, confirmation.targetSchemaConfirmationToken())));
+            assertEquals(0, deployCalls.get());
+            assertTrue(viewModel.deploy(new SchemaDiffViewModel.Approval(
+                    confirmation, true, confirmation.targetSchemaConfirmationToken())));
+            awaitState(viewModel, SchemaDiffViewModel.State.COMPLETED);
+            assertEquals(1, deployCalls.get());
+            assertEquals(expectedDigest, issuedToken.get());
+        } finally {
+            viewModel.closeResources();
+        }
+    }
+
+    private static String createOrReplaceDefinition(
+            DbType type, ObjectType objectType, String owner, String objectName) {
+        if (type == DbType.POSTGRESQL) {
+            return switch (objectType) {
+                case VIEW -> "CREATE OR REPLACE VIEW \"" + owner + "\".\"" + objectName
+                        + "\" AS SELECT 1";
+                case FUNCTION -> "CREATE OR REPLACE FUNCTION \"" + owner + "\".\"" + objectName
+                        + "\"() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$";
+                case PROCEDURE -> "CREATE OR REPLACE PROCEDURE \"" + owner + "\".\"" + objectName
+                        + "\"() LANGUAGE sql AS $$ SELECT 1 $$";
+                default -> throw new IllegalArgumentException("unsupported test object");
+            };
+        }
+        return switch (objectType) {
+            case VIEW -> "CREATE OR REPLACE VIEW \"" + owner + "\".\"" + objectName
+                    + "\" AS SELECT 1 FROM DUAL;";
+            case FUNCTION -> "CREATE OR REPLACE FUNCTION \"" + owner + "\".\"" + objectName
+                    + "\" RETURN NUMBER AS BEGIN RETURN 1; END;";
+            case PROCEDURE -> "CREATE OR REPLACE PROCEDURE \"" + owner + "\".\"" + objectName
+                    + "\" AS BEGIN NULL; END;";
+            default -> throw new IllegalArgumentException("unsupported test object");
+        };
+    }
+
+    private static String confirmationToken(
+            com.datacube.service.SchemaDeploymentControl control) {
+        try {
+            Method method = com.datacube.service.SchemaDeploymentControl.class
+                    .getDeclaredMethod("confirmationToken");
+            method.setAccessible(true);
+            return (String) method.invoke(control);
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
         }
     }
 

@@ -169,8 +169,59 @@ class PgSchemaChangeRendererTest {
     }
 
     @Test
+    void createTableEmitsStableTargetOwnerCommentsIncludingExplicitEmptyComment() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "Notes", "");
+        ColumnDefinition id = column("Id", "bigint", false, null, 1);
+        ColumnDefinition quoted = withComment(
+                column("Owner\"Note", "text", true, null, 2), "owner's note");
+        ColumnDefinition empty = withComment(
+                column("Empty", "text", true, null, 3), "");
+        TableDefinition source = table(tableKey, List.of(empty, quoted, id));
+        SchemaChange change = change("chg:create-comments", ChangeKind.CREATE, tableKey,
+                source, null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+
+        List<RenderedStatement> statements = renderer.render(change,
+                context(DbType.POSTGRESQL, false));
+
+        assertEquals(List.of(
+                "CREATE TABLE \"Target\".\"Notes\" (\n"
+                        + "    \"Id\" bigint NOT NULL,\n"
+                        + "    \"Owner\"\"Note\" text NULL,\n"
+                        + "    \"Empty\" text NULL\n"
+                        + ");",
+                "COMMENT ON COLUMN \"Target\".\"Notes\".\"Owner\"\"Note\" IS 'owner''s note';",
+                "COMMENT ON COLUMN \"Target\".\"Notes\".\"Empty\" IS '';"),
+                statements.stream().map(RenderedStatement::sql).toList());
+        statements.forEach(statement -> assertStatementMetadata(statement, change, false, null));
+    }
+
+    @Test
+    void addWholeColumnEmitsCommentInTheSameContinuousChangeGroup() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "Notes", "");
+        ColumnDefinition id = column("Id", "bigint", false, null, 1);
+        ColumnDefinition added = withComment(
+                column("Owner\"Note", "text", true, null, 2), "owner's note");
+        TableDefinition source = table(tableKey, List.of(id, added));
+        TableDefinition target = table(tableKey, List.of(id));
+        String path = "columns[" + added.name().comparisonKey() + ']';
+        SchemaChange change = new SchemaChange(
+                "chg:add-commented-column", ChangeKind.ALTER, tableKey, source, target,
+                new PropertyDifference(path, added, null, "safe"), RiskLevel.LOW,
+                AutomationLevel.SAFE_AUTOMATIC, true, Set.of("chg:before"), "safe");
+
+        List<RenderedStatement> statements = renderer.render(change,
+                context(DbType.POSTGRESQL, false));
+
+        assertEquals(List.of(
+                "ALTER TABLE \"Target\".\"Notes\" ADD COLUMN \"Owner\"\"Note\" text NULL;",
+                "COMMENT ON COLUMN \"Target\".\"Notes\".\"Owner\"\"Note\" IS 'owner''s note';"),
+                statements.stream().map(RenderedStatement::sql).toList());
+        statements.forEach(statement -> assertStatementMetadata(statement, change, false, null));
+    }
+
+    @Test
     void addsOnlyAnExactWholeStructuredColumnAndPreservesArrayTypmodAndNullability() {
-        ObjectKey tableKey = key(ObjectType.TABLE, "source", "events", "");
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "events", "");
         ColumnDefinition added = column("Payload\"s", "timestamp(3) with time zone[][]",
                 true, null, 2);
         TableDefinition source = table(tableKey, List.of(column("id", "bigint", false, null, 1), added));
@@ -243,7 +294,7 @@ class PgSchemaChangeRendererTest {
 
     @Test
     void rendersConstraintSetDifferenceWithRemovalBeforeAddition() {
-        ObjectKey tableKey = key(ObjectType.TABLE, "source", "accounts", "");
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "accounts", "");
         ColumnDefinition code = column("Code", "text", false, null, 1);
         ConstraintDefinition oldCheck = constraint(ObjectType.CHECK_CONSTRAINT, "old_rule",
                 ConstraintKind.CHECK, List.of(), null, List.of(), "CHECK (length(\"Code\") > 0)",
@@ -272,7 +323,7 @@ class PgSchemaChangeRendererTest {
 
     @Test
     void rendersIndependentIndexSetDifferenceAndSuppressesConstraintBackingIndexes() {
-        ObjectKey tableKey = key(ObjectType.TABLE, "source", "accounts", "");
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "accounts", "");
         ColumnDefinition code = column("Code", "text", false, null, 1);
         IndexDefinition oldIndex = index("old_ix", false, List.of("\"Code\""), null, false);
         IndexDefinition newIndex = index("new_ix", true, List.of("lower(\"Code\")"),
@@ -298,7 +349,7 @@ class PgSchemaChangeRendererTest {
 
     @Test
     void rendersExactColumnTypeNullabilityDefaultCommentAndApprovedDropChanges() {
-        ObjectKey tableKey = key(ObjectType.TABLE, "source", "accounts", "");
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "accounts", "");
         ColumnDefinition oldColumn = column("Value\"X", "numeric(10,2)", true, "0", 1);
         ColumnDefinition newColumn = column("Value\"X", "numeric(20,4)", false, "1", 1);
         String basePath = "columns[" + newColumn.name().comparisonKey() + "]";

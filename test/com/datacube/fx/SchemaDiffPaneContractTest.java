@@ -186,6 +186,17 @@ class SchemaDiffPaneContractTest {
     }
 
     @Test
+    void objectNameSearchIsVisibleFeedsThePureFilterAndIsDetachedOnClose() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SchemaDiffPane.java"));
+
+        assertTrue(source.contains("objectSearchField"));
+        assertTrue(source.contains("搜索对象名称"));
+        assertTrue(source.contains("objectSearchField.textProperty().addListener(objectSearchListener)"));
+        assertTrue(source.contains("objectSearchField.getText()"));
+        assertTrue(source.contains("objectSearchField.textProperty().removeListener(objectSearchListener)"));
+    }
+
+    @Test
     void exposesDistinctInteractiveMandatoryBlockingAndFxFinalizerContracts() throws Exception {
         Method interactive = SchemaDiffPane.class.getMethod("requestClose");
         Method mandatory = SchemaDiffPane.class.getMethod("requestMandatoryClose");

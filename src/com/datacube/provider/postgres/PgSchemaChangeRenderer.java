@@ -69,12 +69,13 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
                 || change.automation() == AutomationLevel.MANUAL_ONLY) {
             throw new IllegalArgumentException(MANUAL_CHANGE);
         }
-        validateShape(change);
+        validateShape(change, context);
         boolean destructive = change.automation() == AutomationLevel.DESTRUCTIVE_OPT_IN
                 || hasDestructiveSemantics(change);
         if (destructive && !context.destructiveApproved()) {
             throw new IllegalArgumentException(DESTRUCTIVE_APPROVAL);
         }
+        validateContextOwners(change, context);
 
         List<String> sql = switch (change.kind()) {
             case CREATE -> renderCreate(change.source(), context);
@@ -108,14 +109,16 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
         return change.source() instanceof SequenceDefinition;
     }
 
-    private static void validateShape(SchemaChange change) {
+    private static void validateShape(SchemaChange change, RenderContext context) {
         switch (change.kind()) {
-            case CREATE -> requireShape(change.source(), change.target(), true, change.object());
-            case DROP -> requireShape(change.target(), change.source(), true, change.object());
+            case CREATE -> requireShape(change.source(), change.target(), true,
+                    change.object(), context);
+            case DROP -> requireShape(change.target(), change.source(), true,
+                    change.object(), context);
             case ALTER, REPLACE -> {
                 if (change.source() == null || change.target() == null
-                        || !change.object().equals(change.source().key())
-                        || !change.object().equals(change.target().key())) {
+                        || !sameComparisonIdentity(change.object(), change.source().key(), context)
+                        || !sameComparisonIdentity(change.object(), change.target().key(), context)) {
                     throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
                 }
             }
@@ -128,8 +131,52 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static void requireShape(
-            SchemaObject present, SchemaObject absent, boolean absentRequired, ObjectKey key) {
-        if (present == null || absentRequired && absent != null || !key.equals(present.key())) {
+            SchemaObject present, SchemaObject absent, boolean absentRequired,
+            ObjectKey key, RenderContext context) {
+        if (present == null || absentRequired && absent != null
+                || !sameComparisonIdentity(key, present.key(), context)) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
+    }
+
+    private static boolean sameComparisonIdentity(
+            ObjectKey left, ObjectKey right, RenderContext context) {
+        return left.type() == right.type()
+                && objectPart(left).equals(objectPart(right))
+                && comparisonSignature(left, context).equals(comparisonSignature(right, context));
+    }
+
+    private static String comparisonSignature(ObjectKey key, RenderContext context) {
+        if (key.type() != ObjectType.FUNCTION && key.type() != ObjectType.PROCEDURE) {
+            return key.signature();
+        }
+        String owner = objectOwner(key);
+        String source = schemaPart(context.sourceSchema());
+        String target = schemaPart(context.targetSchema());
+        if (!owner.equals(source) && !owner.equals(target)) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
+        return comparisonFragment(key.signature(), owner);
+    }
+
+    private static void validateContextOwners(SchemaChange change, RenderContext context) {
+        String sourceOwner = schemaPart(context.sourceSchema());
+        String targetOwner = schemaPart(context.targetSchema());
+        if (change.source() != null && !objectOwner(change.source().key()).equals(sourceOwner)) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
+        if (change.target() != null) {
+            String owner = objectOwner(change.target().key());
+            if (!owner.equals(sourceOwner) && !owner.equals(targetOwner)) {
+                throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+            }
+        }
+        String shapeOwner = switch (change.kind()) {
+            case CREATE, ALTER, REPLACE -> objectOwner(change.source().key());
+            case DROP -> objectOwner(change.target().key());
+            case MANUAL -> throw new IllegalArgumentException(MANUAL_CHANGE);
+        };
+        if (!objectOwner(change.object()).equals(shapeOwner)) {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }
     }
@@ -747,6 +794,21 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             String definition, ObjectType type, RenderContext context) {
         String source = schemaPart(context.sourceSchema());
         String target = schemaPart(context.targetSchema());
+        return rewriteDefinitionOwner(definition, type, source,
+                PgSchemaIdentifierNormalizer.quote(target));
+    }
+
+    static String comparisonDefinition(String definition, ObjectType type, String sourceOwner) {
+        return rewriteDefinitionOwner(definition, type, sourceOwner, "\0pg-self-owner\0");
+    }
+
+    static String comparisonFragment(String fragment, String sourceOwner) {
+        return rewriteDefinitionOwner(fragment, ObjectType.TABLE,
+                sourceOwner, "\0pg-self-owner\0");
+    }
+
+    private static String rewriteDefinitionOwner(
+            String definition, ObjectType type, String source, String replacement) {
         StringBuilder output = new StringBuilder(definition.length());
         int index = 0;
         while (index < definition.length()) {
@@ -759,7 +821,7 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
                 if (sqlIdentifierMatches(
                         new SqlIdentifier(identifier.value(), true, identifier.end()), source, true)
                         && qualifiedDotAt(definition, identifier.end())) {
-                    output.append(PgSchemaIdentifierNormalizer.quote(target));
+                    output.append(replacement);
                 } else {
                     output.append(definition, index, identifier.end());
                 }
@@ -791,7 +853,7 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
                 String identifier = definition.substring(index, end);
                 if (sqlIdentifierMatches(new SqlIdentifier(identifier, false, end), source, true)
                         && qualifiedDotAt(definition, end)) {
-                    output.append(PgSchemaIdentifierNormalizer.quote(target));
+                    output.append(replacement);
                 } else {
                     output.append(identifier);
                 }
@@ -986,6 +1048,9 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
         List<String> statements = new ArrayList<>();
         statements.add("CREATE TABLE " + targetName(table.key(), context) + " (\n    "
                 + String.join(",\n    ", elements) + "\n);");
+        columns.stream().filter(column -> column.comment() != null)
+                .map(column -> commentOnColumn(table.key(), column, context))
+                .forEach(statements::add);
         constraints.stream().filter(constraint -> constraint.kind() == ConstraintKind.FOREIGN_KEY)
                 .map(constraint -> "ALTER TABLE " + targetName(table.key(), context)
                         + " ADD " + constraintClause(constraint, context) + ';')
@@ -1099,8 +1164,13 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
                 && change.property().path().equals(columnPath(column))
                 && source.columns().contains(column)
                 && target.columns().stream().noneMatch(candidate -> sameColumn(candidate, column))) {
-            return List.of("ALTER TABLE " + targetName(source.key(), context)
+            List<String> statements = new ArrayList<>();
+            statements.add("ALTER TABLE " + targetName(source.key(), context)
                     + " ADD COLUMN " + columnClause(column, context) + ';');
+            if (column.comment() != null) {
+                statements.add(commentOnColumn(source.key(), column, context));
+            }
+            return List.copyOf(statements);
         }
         if (sourceValue == null && change.property().targetValue() instanceof ColumnDefinition column
                 && change.property().path().equals(columnPath(column))
@@ -1122,6 +1192,12 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             return alterIndexes(source, target, context);
         }
         throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+    }
+
+    private static String commentOnColumn(
+            ObjectKey table, ColumnDefinition column, RenderContext context) {
+        return "COMMENT ON COLUMN " + targetName(table, context) + '.'
+                + childName(column.name()) + " IS " + sqlString(column.comment()) + ';';
     }
 
     private static List<String> alterSequence(
@@ -1400,6 +1476,20 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }
         return identity.substring(separator + 1);
+    }
+
+    private static String objectOwner(ObjectKey key) {
+        String comparisonKey = key.name().comparisonKey();
+        if (!comparisonKey.startsWith(OBJECT_KEY_DOMAIN)) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
+        String identity = comparisonKey.substring(OBJECT_KEY_DOMAIN.length());
+        int separator = identity.indexOf('\0');
+        if (separator <= 0 || separator == identity.length() - 1
+                || identity.indexOf('\0', separator + 1) >= 0) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
+        return identity.substring(0, separator);
     }
 
     private static String childName(com.datacube.spi.schemadiff.QualifiedName name) {

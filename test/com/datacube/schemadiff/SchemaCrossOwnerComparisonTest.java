@@ -1,0 +1,325 @@
+package com.datacube.schemadiff;
+
+import com.datacube.provider.oracle.OracleSchemaDiffCapability;
+import com.datacube.provider.oracle.OracleSchemaIdentifierNormalizer;
+import com.datacube.provider.postgres.PgSchemaDiffCapability;
+import com.datacube.provider.postgres.PgSchemaIdentifierNormalizer;
+import com.datacube.spi.model.DbType;
+import com.datacube.spi.schemadiff.CanonicalDataType;
+import com.datacube.spi.schemadiff.ColumnDefinition;
+import com.datacube.spi.schemadiff.ConstraintDefinition;
+import com.datacube.spi.schemadiff.ConstraintKind;
+import com.datacube.spi.schemadiff.DefinitionConfidence;
+import com.datacube.spi.schemadiff.DefinitionObject;
+import com.datacube.spi.schemadiff.IndexDefinition;
+import com.datacube.spi.schemadiff.ObjectKey;
+import com.datacube.spi.schemadiff.ObjectType;
+import com.datacube.spi.schemadiff.QualifiedName;
+import com.datacube.spi.schemadiff.RenderContext;
+import com.datacube.spi.schemadiff.RenderedStatement;
+import com.datacube.spi.schemadiff.SchemaChange;
+import com.datacube.spi.schemadiff.SchemaDiffCapability;
+import com.datacube.spi.schemadiff.SchemaObject;
+import com.datacube.spi.schemadiff.SchemaSnapshot;
+import com.datacube.spi.schemadiff.SequenceDefinition;
+import com.datacube.spi.schemadiff.SnapshotCompleteness;
+import com.datacube.spi.schemadiff.TableDefinition;
+import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class SchemaCrossOwnerComparisonTest {
+
+    @Test
+    void postgresDifferentOwnersComparePlanRenderAndConvergeWithoutOwnerLeakage() {
+        assertCrossOwnerClosure(DbType.POSTGRESQL, new PgSchemaDiffCapability(),
+                PgSchemaIdentifierNormalizer::schema, PgSchemaIdentifierNormalizer::object);
+    }
+
+    @Test
+    void oracleDifferentOwnersComparePlanRenderAndConvergeWithoutOwnerLeakage() {
+        assertCrossOwnerClosure(DbType.ORACLE, new OracleSchemaDiffCapability(),
+                OracleSchemaIdentifierNormalizer::schema, OracleSchemaIdentifierNormalizer::object);
+    }
+
+    @Test
+    void crossOwnerTargetDependencyReleaseOrdersReplacementBeforeDrop() {
+        assertCrossOwnerDependencyRelease(DbType.POSTGRESQL, new PgSchemaDiffCapability(),
+                PgSchemaIdentifierNormalizer::schema, PgSchemaIdentifierNormalizer::object);
+        assertCrossOwnerDependencyRelease(DbType.ORACLE, new OracleSchemaDiffCapability(),
+                OracleSchemaIdentifierNormalizer::schema, OracleSchemaIdentifierNormalizer::object);
+    }
+
+    @Test
+    void malformedProviderIdentityFailsClosedWithFixedDiagnostics() {
+        QualifiedName pgSchema = PgSchemaIdentifierNormalizer.schema("owner");
+        ObjectKey malformedPgKey = new ObjectKey(ObjectType.TABLE,
+                new QualifiedName("\"orders\"", "pg-object-v1\0owner", true), "");
+        TableDefinition malformedPg = new TableDefinition(malformedPgKey,
+                List.of(new ColumnDefinition(PgSchemaIdentifierNormalizer.child("id"),
+                        scalarType(), false, null, 1, null)), List.of(), List.of(), Set.of());
+        IllegalArgumentException pgFailure = assertThrows(IllegalArgumentException.class,
+                () -> new PgSchemaDiffCapability().comparisonProjector().project(
+                        snapshot(DbType.POSTGRESQL, "bad-pg", pgSchema,
+                                malformedPg)));
+        assertEquals("PostgreSQL schema comparison projection is invalid", pgFailure.getMessage());
+
+        QualifiedName oracleSchema = OracleSchemaIdentifierNormalizer.schema("OWNER");
+        ObjectKey malformedOracleKey = new ObjectKey(ObjectType.TABLE,
+                new QualifiedName("\"ORDERS\"", "oracle-object-v1\0002:OWNER", true), "");
+        TableDefinition malformedOracle = new TableDefinition(malformedOracleKey,
+                List.of(new ColumnDefinition(OracleSchemaIdentifierNormalizer.child("ID"),
+                        scalarType(), false, null, 1, null)), List.of(), List.of(), Set.of());
+        IllegalArgumentException oracleFailure = assertThrows(IllegalArgumentException.class,
+                () -> new OracleSchemaDiffCapability().comparisonProjector().project(
+                        snapshot(DbType.ORACLE, "bad-oracle", oracleSchema,
+                                malformedOracle)));
+        assertEquals("Oracle schema comparison projection is invalid", oracleFailure.getMessage());
+    }
+
+    private static void assertCrossOwnerDependencyRelease(
+            DbType type, SchemaDiffCapability capability,
+            SchemaName schemaName, ObjectName objectName) {
+        String sourceOwner = "Source\"Release";
+        String targetOwner = "Target\"Release";
+        ObjectKey sourceViewKey = key(ObjectType.VIEW, sourceOwner, "Active\"View", "", objectName);
+        ObjectKey targetViewKey = key(ObjectType.VIEW, targetOwner, "Active\"View", "", objectName);
+        ObjectKey targetTypeKey = key(ObjectType.TYPE, targetOwner, "Legacy\"Type",
+                type == DbType.ORACLE ? "SPEC" : "domain", objectName);
+        String sourceViewDdl = "CREATE VIEW " + quote(type, sourceOwner) + ".\"Active\"\"View\" AS SELECT 1";
+        String targetViewDdl = "CREATE VIEW " + quote(type, targetOwner)
+                + ".\"Active\"\"View\" AS SELECT legacy_value FROM "
+                + quote(type, targetOwner) + ".\"Legacy\"\"Type\"";
+        DefinitionObject sourceView = new DefinitionObject(sourceViewKey,
+                sourceViewDdl, sourceViewDdl, Set.of(), DefinitionConfidence.HIGH);
+        DefinitionObject targetView = new DefinitionObject(targetViewKey,
+                targetViewDdl, targetViewDdl, Set.of(targetTypeKey), DefinitionConfidence.HIGH);
+        String targetTypeDdl = type == DbType.ORACLE
+                ? "CREATE TYPE " + quote(type, targetOwner) + ".\"Legacy\"\"Type\" AS OBJECT (id NUMBER)"
+                : "CREATE DOMAIN " + quote(type, targetOwner) + ".\"Legacy\"\"Type\" AS bigint";
+        DefinitionObject targetType = new DefinitionObject(targetTypeKey,
+                targetTypeDdl, targetTypeDdl, Set.of(), DefinitionConfidence.HIGH);
+        SchemaSnapshot source = snapshot(type, "release-source", sourceOwner, schemaName,
+                sourceView);
+        SchemaSnapshot target = snapshot(type, "release-target", targetOwner, schemaName,
+                targetView, targetType);
+
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(new SchemaDiffEngine().compare(
+                source, target, capability.comparisonProjector()));
+
+        SchemaChange replace = plan.changes().stream()
+                .filter(change -> change.object().type() == ObjectType.VIEW).findFirst().orElseThrow();
+        SchemaChange drop = plan.changes().stream()
+                .filter(change -> change.object().type() == ObjectType.TYPE).findFirst().orElseThrow();
+        assertEquals(com.datacube.spi.schemadiff.ChangeKind.REPLACE, replace.kind());
+        assertEquals(com.datacube.spi.schemadiff.ChangeKind.DROP, drop.kind());
+        assertEquals(Set.of(replace.id()), drop.dependencyChangeIds());
+        assertTrue(plan.changes().indexOf(replace) < plan.changes().indexOf(drop));
+    }
+
+    private static void assertCrossOwnerClosure(
+            DbType type, SchemaDiffCapability capability,
+            SchemaName schemaName, ObjectName objectName) {
+        String sourceOwner = "Source\"Owner";
+        String targetOwner = "Target\"Owner";
+        String externalOwner = "External.Owner";
+        SchemaSnapshot source = snapshot(type, "source", sourceOwner, true,
+                schemaName, objectName, externalOwner);
+        SchemaSnapshot targetBefore = snapshot(type, "target", targetOwner, false,
+                schemaName, objectName, externalOwner);
+
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, targetBefore, capability.comparisonProjector());
+
+        assertEquals(1, diff.differences().stream()
+                .filter(difference -> difference.kind() != DifferenceKind.EQUIVALENT).count());
+        assertTrue(diff.renameSuggestions().isEmpty());
+        SchemaDifference tableDifference = diff.differences().stream()
+                .filter(difference -> difference.kind() == DifferenceKind.MODIFIED)
+                .findFirst().orElseThrow();
+        assertSame(source.objects().get(tableDifference.source().key()), tableDifference.source());
+        assertSame(targetBefore.objects().get(tableDifference.target().key()), tableDifference.target());
+        assertTrue(tableDifference.dependencies().stream()
+                .anyMatch(key -> key.name().original().contains(externalOwner)));
+
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+        assertEquals(1, plan.changes().size());
+        List<RenderedStatement> statements = capability.changeRenderer().render(
+                plan.changes().getFirst(), new RenderContext(type,
+                        schemaName.normalize(sourceOwner), schemaName.normalize(targetOwner), true));
+        assertFalse(statements.isEmpty());
+        assertTrue(statements.stream().allMatch(
+                statement -> statement.sql().contains(quote(type, targetOwner))));
+        assertTrue(statements.stream().noneMatch(
+                statement -> statement.sql().contains(quote(type, sourceOwner))));
+        assertTrue(statements.stream().noneMatch(statement -> statement.sql().contains("\0")
+                || statement.sql().contains("comparison-object")
+                || statement.sql().contains("self-owner")));
+        if (type == DbType.POSTGRESQL) {
+            assertTrue(statements.stream().anyMatch(statement -> statement.sql().equals(
+                    "COMMENT ON COLUMN \"Target\"\"Owner\".\"Order\"\"Line\".\"Note\" "
+                            + "IS 'owner-safe comment';")));
+        }
+
+        SchemaSnapshot targetAfter = snapshot(type, "target-after", targetOwner, true,
+                schemaName, objectName, externalOwner);
+        SchemaDiffResult converged = new SchemaDiffEngine().compare(
+                source, targetAfter, capability.comparisonProjector());
+        assertTrue(converged.differences().stream()
+                .allMatch(difference -> difference.kind() == DifferenceKind.EQUIVALENT));
+        assertTrue(converged.renameSuggestions().isEmpty());
+        assertTrue(new SchemaChangePlanner().plan(converged).changes().isEmpty());
+    }
+
+    private static SchemaSnapshot snapshot(
+            DbType type, String connectionId, String owner, boolean includeAddedColumn,
+            SchemaName schemaName, ObjectName objectName, String externalOwner) {
+        ObjectKey tableKey = key(ObjectType.TABLE, owner, "Order\"Line", "", objectName);
+        ObjectKey externalType = key(ObjectType.TYPE, externalOwner, "Shared.Type", "domain", objectName);
+        ObjectKey constraintKey = key(ObjectType.PRIMARY_KEY, owner, "PK\"Orders",
+                tableKey.name().comparisonKey(), objectName);
+        ObjectKey indexKey = key(ObjectType.INDEX, owner, "IX\"Orders", "", objectName);
+        ConstraintDefinition primaryKey = new ConstraintDefinition(
+                constraintKey, ConstraintKind.PRIMARY_KEY, List.of(child(type, "Id")),
+                tableKey, List.of(child(type, "Id")), null, null, null,
+                false, Set.of(tableKey));
+        ObjectKey checkKey = key(ObjectType.CHECK_CONSTRAINT, owner, "CK\"Orders",
+                tableKey.name().comparisonKey(), objectName);
+        ConstraintDefinition check = new ConstraintDefinition(
+                checkKey, ConstraintKind.CHECK, List.of(), null, List.of(),
+                "CHECK (" + qualified(type, owner, "is_valid") + "(\"Id\"))",
+                null, null, false, Set.of(tableKey));
+        IndexDefinition index = new IndexDefinition(indexKey, false,
+                List.of(qualified(type, owner, "normalize") + "(\"Id\")"),
+                qualified(type, owner, "is_visible") + "(\"Id\")",
+                false, Set.of(tableKey));
+        List<ColumnDefinition> columns = new java.util.ArrayList<>();
+        columns.add(new ColumnDefinition(child(type, "Id"), scalarType(), false,
+                qualified(type, owner, "default_value") + "()", 1, null));
+        if (includeAddedColumn) {
+            columns.add(new ColumnDefinition(child(type, "Note"), selfType(type, owner), true,
+                    null, 2, "owner-safe comment"));
+        }
+        TableDefinition table = new TableDefinition(tableKey, columns,
+                List.of(primaryKey, check), List.of(index), Set.of(externalType));
+
+        ObjectKey sequenceKey = key(ObjectType.SEQUENCE, owner, "Seq\"Orders", "", objectName);
+        SequenceDefinition sequence = type == DbType.ORACLE
+                ? new SequenceDefinition(sequenceKey, "1", "1", "1", "999", false, 20,
+                        Set.of(), Map.of("oracle.order", "NOORDER", "oracle.startValueKnown", "true"))
+                : new SequenceDefinition(sequenceKey, "1", "1", "1", "999", false, 20, Set.of());
+
+        ObjectKey viewKey = key(ObjectType.VIEW, owner, "View\"Orders", "", objectName);
+        String viewDefinition = "CREATE VIEW " + qualified(type, owner, "View\"Orders")
+                + " AS SELECT * FROM " + qualified(type, owner, "Order\"Line")
+                + " JOIN " + qualified(type, externalOwner, "Audit.Table") + " ON 1 = 1";
+        DefinitionObject view = new DefinitionObject(viewKey, viewDefinition, viewDefinition,
+                Set.of(tableKey, externalType), DefinitionConfidence.HIGH);
+
+        String routineSignature = type == DbType.POSTGRESQL
+                ? qualified(type, owner, "Self.Type") + "[], "
+                        + qualified(type, externalOwner, "External.Type")
+                : oracleSignature("IN", owner + ".Self.Type", "IN", externalOwner + ".External.Type");
+        ObjectKey routineKey = key(ObjectType.FUNCTION, owner, "Fn\"Orders", routineSignature, objectName);
+        String routineDefinition = type == DbType.POSTGRESQL
+                ? "CREATE FUNCTION " + qualified(type, owner, "Fn\"Orders") + "(value "
+                        + qualified(type, owner, "Self.Type") + ") RETURNS integer LANGUAGE sql AS 'SELECT 1'"
+                : "CREATE FUNCTION " + qualified(type, owner, "Fn\"Orders") + "(value IN "
+                        + qualified(type, owner, "Self.Type") + ") RETURN NUMBER AS BEGIN RETURN 1; END;";
+        DefinitionObject routine = new DefinitionObject(routineKey,
+                routineDefinition, routineDefinition, Set.of(tableKey, externalType),
+                DefinitionConfidence.HIGH);
+
+        SortedMap<ObjectKey, SchemaObject> objects = new TreeMap<>();
+        for (SchemaObject object : List.of(table, sequence, view, routine)) {
+            objects.put(object.key(), object);
+        }
+        return new SchemaSnapshot(type, connectionId, schemaName.normalize(owner), Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), objects,
+                connectionId + "-fingerprint");
+    }
+
+    private static SchemaSnapshot snapshot(
+            DbType type, String connectionId, String owner,
+            SchemaName schemaName, SchemaObject... objects) {
+        SortedMap<ObjectKey, SchemaObject> values = new TreeMap<>();
+        for (SchemaObject object : objects) values.put(object.key(), object);
+        return new SchemaSnapshot(type, connectionId, schemaName.normalize(owner), Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), values, connectionId + "-fingerprint");
+    }
+
+    private static SchemaSnapshot snapshot(
+            DbType type, String connectionId, QualifiedName schema,
+            SchemaObject object) {
+        SortedMap<ObjectKey, SchemaObject> values = new TreeMap<>();
+        values.put(object.key(), object);
+        return new SchemaSnapshot(type, connectionId, schema, Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), values,
+                connectionId + "-fingerprint");
+    }
+
+    private static CanonicalDataType selfType(DbType type, String owner) {
+        SortedMap<String, String> extensions = new TreeMap<>();
+        if (type == DbType.POSTGRESQL) {
+            extensions.put("formattedType", qualified(type, owner, "Self.Type"));
+            extensions.put("typeSchema", owner);
+            return new CanonicalDataType("Self.Type", null, null, null, false, 0, extensions);
+        }
+        extensions.put("formattedType", qualified(type, owner, "Self.Type"));
+        extensions.put("oracle.typeOwner", owner);
+        return new CanonicalDataType(owner + ".Self.Type", null, null, null,
+                false, 0, extensions);
+    }
+
+    private static CanonicalDataType scalarType() {
+        return new CanonicalDataType("integer", null, null, null,
+                false, 0, new TreeMap<>());
+    }
+
+    private static QualifiedName child(DbType type, String name) {
+        return type == DbType.POSTGRESQL
+                ? PgSchemaIdentifierNormalizer.child(name)
+                : OracleSchemaIdentifierNormalizer.child(name);
+    }
+
+    private static ObjectKey key(
+            ObjectType type, String owner, String name, String signature, ObjectName objectName) {
+        return new ObjectKey(type, objectName.normalize(owner, name), signature);
+    }
+
+    private static String qualified(DbType type, String owner, String name) {
+        return quote(type, owner) + "." + quote(type, name);
+    }
+
+    private static String quote(DbType type, String name) {
+        String escaped = name.replace("\"", "\"\"");
+        return "\"" + escaped + "\"";
+    }
+
+    private static String oracleSignature(String... fields) {
+        StringBuilder value = new StringBuilder("oracle-routine-signature-v1\0");
+        for (String field : fields) value.append(field.length()).append(':').append(field);
+        return value.toString();
+    }
+
+    @FunctionalInterface
+    private interface SchemaName {
+        QualifiedName normalize(String schema);
+    }
+
+    @FunctionalInterface
+    private interface ObjectName {
+        QualifiedName normalize(String schema, String object);
+    }
+}

@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -180,17 +181,28 @@ public final class SchemaDiffSelectionModel {
             Set<ObjectType> objectTypes,
             Set<RiskLevel> risks,
             Set<AutomationLevel> automationLevels,
-            SelectedState selectedState) {
+            SelectedState selectedState,
+            String objectSearch) {
         public Filter {
             objectTypes = Set.copyOf(Objects.requireNonNull(objectTypes, "objectTypes"));
             risks = Set.copyOf(Objects.requireNonNull(risks, "risks"));
             automationLevels = Set.copyOf(
                     Objects.requireNonNull(automationLevels, "automationLevels"));
             selectedState = Objects.requireNonNull(selectedState, "selectedState");
+            objectSearch = Objects.requireNonNull(objectSearch, "objectSearch")
+                    .strip().toLowerCase(Locale.ROOT);
+        }
+
+        public Filter(
+                Set<ObjectType> objectTypes,
+                Set<RiskLevel> risks,
+                Set<AutomationLevel> automationLevels,
+                SelectedState selectedState) {
+            this(objectTypes, risks, automationLevels, selectedState, "");
         }
 
         public static Filter all() {
-            return new Filter(Set.of(), Set.of(), Set.of(), SelectedState.ALL);
+            return new Filter(Set.of(), Set.of(), Set.of(), SelectedState.ALL, "");
         }
 
         boolean matches(Entry entry) {
@@ -199,6 +211,11 @@ public final class SchemaDiffSelectionModel {
                     && (risks.isEmpty() || risks.contains(change.risk()))
                     && (automationLevels.isEmpty()
                     || automationLevels.contains(change.automation()))
+                    && (objectSearch.isEmpty()
+                    || change.object().name().original().toLowerCase(Locale.ROOT)
+                    .contains(objectSearch)
+                    || change.object().type().name().toLowerCase(Locale.ROOT)
+                    .contains(objectSearch))
                     && switch (selectedState) {
                         case ALL -> true;
                         case SELECTED -> entry.selected();

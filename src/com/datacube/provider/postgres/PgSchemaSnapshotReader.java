@@ -143,6 +143,11 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             JOIN pg_catalog.pg_namespace n ON n.oid = table_class.relnamespace
             JOIN LATERAL pg_catalog.generate_series(1, index_meta.indnkeyatts) positions(position) ON true
             WHERE n.nspname = ? AND table_class.relkind IN ('r', 'p')
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_catalog.pg_constraint constraint_index
+                  WHERE constraint_index.conindid = index_meta.indexrelid
+              )
             ORDER BY table_class.relname, index_class.relname, positions.position
             """;
 

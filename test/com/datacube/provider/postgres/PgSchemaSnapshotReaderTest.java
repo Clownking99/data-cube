@@ -1,8 +1,14 @@
 package com.datacube.provider.postgres;
 
+import com.datacube.schemadiff.DifferenceKind;
+import com.datacube.schemadiff.SchemaDiffEngine;
+import com.datacube.schemadiff.SchemaDiffResult;
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
+import com.datacube.spi.model.DbType;
+import com.datacube.spi.schemadiff.AutomationLevel;
 import com.datacube.spi.schemadiff.CanonicalDataType;
+import com.datacube.spi.schemadiff.ChangeKind;
 import com.datacube.spi.schemadiff.ColumnDefinition;
 import com.datacube.spi.schemadiff.ConstraintDefinition;
 import com.datacube.spi.schemadiff.ConstraintKind;
@@ -10,6 +16,10 @@ import com.datacube.spi.schemadiff.DefinitionConfidence;
 import com.datacube.spi.schemadiff.DefinitionObject;
 import com.datacube.spi.schemadiff.ObjectKey;
 import com.datacube.spi.schemadiff.ObjectType;
+import com.datacube.spi.schemadiff.RenderContext;
+import com.datacube.spi.schemadiff.RenderedStatement;
+import com.datacube.spi.schemadiff.RiskLevel;
+import com.datacube.spi.schemadiff.SchemaChange;
 import com.datacube.spi.schemadiff.SchemaSnapshot;
 import com.datacube.spi.schemadiff.SequenceDefinition;
 import com.datacube.spi.schemadiff.SnapshotCompleteness;
@@ -39,6 +49,89 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PgSchemaSnapshotReaderTest {
+    @Test
+    void jdbcProxySnapshotsWithDifferentOwnersCompareByProviderRelativeIdentity() throws Exception {
+        SnapshotJdbc sourceJdbc = new SnapshotJdbc("Source\"Owner")
+                .rows("tables", row("object_oid", 10L, "object_name", "Order\"Line"))
+                .rows("columns", column(10L, "Id", 1, "int8", 0, null, "", ""));
+        SnapshotJdbc targetJdbc = new SnapshotJdbc("Target\"Owner")
+                .rows("tables", row("object_oid", 20L, "object_name", "Order\"Line"))
+                .rows("columns", column(20L, "Id", 1, "int8", 0, null, "", ""));
+        SchemaSnapshot source = new PgSchemaSnapshotReader(sourceJdbc.connection()).read(
+                "source", PgSchemaIdentifierNormalizer.schema("Source\"Owner"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot target = new PgSchemaSnapshotReader(targetJdbc.connection()).read(
+                "target", PgSchemaIdentifierNormalizer.schema("Target\"Owner"),
+                SqlExecutionOptions.defaults(0));
+
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, target, new PgSchemaDiffCapability().comparisonProjector());
+
+        assertTrue(diff.differences().stream()
+                .allMatch(difference -> difference.kind() == DifferenceKind.EQUIVALENT));
+        assertTrue(diff.renameSuggestions().isEmpty());
+    }
+
+    @Test
+    void constraintBackingIndexesUseConindidAndDoNotRenderAsStandaloneIndexes() throws Exception {
+        SnapshotJdbc jdbc = new SnapshotJdbc("app")
+                .rows("tables", row("object_oid", 10L, "object_name", "orders"))
+                .rows("columns",
+                        column(10L, "id", 1, "int8", 0, null, "", ""),
+                        column(10L, "code", 2, "text", 0, null, "", ""))
+                .rows("constraints",
+                        row("constraint_oid", 20L, "table_oid", 10L,
+                                "constraint_name", "orders_pkey", "constraint_type", "p",
+                                "position", 1, "column_name", "id",
+                                "referenced_table_oid", null, "referenced_column_name", null,
+                                "check_expression", null, "update_action", null,
+                                "delete_action", null, "provider_generated", false),
+                        row("constraint_oid", 21L, "table_oid", 10L,
+                                "constraint_name", "orders_code_key", "constraint_type", "u",
+                                "position", 1, "column_name", "code",
+                                "referenced_table_oid", null, "referenced_column_name", null,
+                                "check_expression", null, "update_action", null,
+                                "delete_action", null, "provider_generated", false))
+                .rows("indexes",
+                        row("index_oid", 32L, "table_oid", 10L,
+                                "index_name", "orders_code_idx", "is_unique", false,
+                                "position", 1, "index_expression", "code",
+                                "predicate", null, "provider_generated", false),
+                        row("index_oid", 33L, "table_oid", 10L,
+                                "index_name", "orders_code_expr_idx", "is_unique", false,
+                                "position", 1, "index_expression", "lower(code)",
+                                "predicate", "code IS NOT NULL", "provider_generated", false));
+
+        SchemaSnapshot snapshot = new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "source", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+
+        String indexSql = jdbc.statement("indexes").sql;
+        assertTrue(indexSql.contains("constraint_index.conindid = index_meta.indexrelid"));
+        assertTrue(indexSql.contains("NOT EXISTS"));
+        assertFalse(indexSql.contains("constraint_index.conname"));
+        TableDefinition table = assertInstanceOf(TableDefinition.class,
+                snapshot.objects().get(key(ObjectType.TABLE, "app", "orders")));
+        assertEquals(2, table.constraints().size());
+        assertEquals(List.of("\"app\".\"orders_code_expr_idx\"", "\"app\".\"orders_code_idx\""),
+                table.indexes().stream().map(index -> index.key().name().original())
+                .sorted().toList());
+
+        SchemaChange create = new SchemaChange(
+                "create:orders", ChangeKind.CREATE, table.key(), table, null, null,
+                RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, false, Set.of(), "safe");
+        List<RenderedStatement> rendered = new PgSchemaChangeRenderer().render(create,
+                new RenderContext(DbType.POSTGRESQL,
+                        PgSchemaIdentifierNormalizer.schema("app"),
+                        PgSchemaIdentifierNormalizer.schema("deployed"), false));
+        List<String> statements = rendered.stream().map(RenderedStatement::sql).toList();
+        assertTrue(statements.getFirst().contains("CONSTRAINT \"orders_pkey\" PRIMARY KEY"));
+        assertTrue(statements.getFirst().contains("CONSTRAINT \"orders_code_key\" UNIQUE"));
+        assertEquals(2, statements.stream().filter(sql -> sql.startsWith("CREATE INDEX")).count());
+        assertTrue(statements.stream().noneMatch(sql -> sql.contains("CREATE INDEX \"deployed\".\"orders_pkey\"")
+                || sql.contains("CREATE INDEX \"deployed\".\"orders_code_key\"")));
+    }
+
     @Test
     void readsTableColumnsConstraintsExpressionIndexesAndSequencesFromPgCatalog() throws Exception {
         SnapshotJdbc jdbc = new SnapshotJdbc("Sales Data")

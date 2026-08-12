@@ -20,6 +20,7 @@ import com.datacube.spi.schemadiff.SchemaDiffCapability;
 import com.datacube.spi.schemadiff.SchemaObject;
 
 import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
@@ -74,6 +75,7 @@ public final class SchemaDiffPane implements SchemaDiffManagedTabFactory.Managed
     private final ComboBox<RiskLevel> riskFilter = new ComboBox<>();
     private final ComboBox<AutomationLevel> automationFilter = new ComboBox<>();
     private final ComboBox<SchemaDiffSelectionModel.SelectedState> selectedFilter = new ComboBox<>();
+    private final TextField objectSearchField = new TextField();
     private final TreeView<DisplayRow> differenceTree = new TreeView<>();
     private final TextArea propertyComparison = detailsArea();
     private final TextArea sourceDefinition = detailsArea();
@@ -84,6 +86,8 @@ public final class SchemaDiffPane implements SchemaDiffManagedTabFactory.Managed
     private final Label status = new Label();
     private final Map<String, ConnConfig> connectionsById = new LinkedHashMap<>();
     private final Consumer<SchemaDiffViewModel.Snapshot> viewListener = this::renderSnapshot;
+    private final ChangeListener<String> objectSearchListener =
+            (ignored, before, current) -> refreshTree();
     private final SchemaDiffViewModel viewModel;
     private final CloseFlow closeFlow;
     private final ConnConfig source;
@@ -164,6 +168,7 @@ public final class SchemaDiffPane implements SchemaDiffManagedTabFactory.Managed
             throw new IllegalStateException("Schema Diff FX finalizer requires the FX thread");
         }
         viewModel.removeListener(viewListener);
+        objectSearchField.textProperty().removeListener(objectSearchListener);
         compareButton.setOnAction(null);
         exportButton.setOnAction(null);
         deployButton.setOnAction(null);
@@ -226,12 +231,15 @@ public final class SchemaDiffPane implements SchemaDiffManagedTabFactory.Managed
         selectedFilter.setItems(FXCollections.observableArrayList(
                 SchemaDiffSelectionModel.SelectedState.values()));
         selectedFilter.getSelectionModel().select(SchemaDiffSelectionModel.SelectedState.ALL);
+        objectSearchField.setPromptText("搜索对象名称");
+        objectSearchField.textProperty().addListener(objectSearchListener);
         objectTypeFilter.setOnAction(ignored -> refreshTree());
         riskFilter.setOnAction(ignored -> refreshTree());
         automationFilter.setOnAction(ignored -> refreshTree());
         selectedFilter.setOnAction(ignored -> refreshTree());
 
         HBox filters = new HBox(8,
+                new Label("对象名称"), objectSearchField,
                 new Label("对象类型"), objectTypeFilter,
                 new Label("风险"), riskFilter,
                 new Label("自动化"), automationFilter,
@@ -335,7 +343,8 @@ public final class SchemaDiffPane implements SchemaDiffManagedTabFactory.Managed
                     singleton(objectTypeFilter.getValue()), singleton(riskFilter.getValue()),
                     singleton(automationFilter.getValue()),
                     selectedFilter.getValue() == null
-                            ? SchemaDiffSelectionModel.SelectedState.ALL : selectedFilter.getValue());
+                            ? SchemaDiffSelectionModel.SelectedState.ALL : selectedFilter.getValue(),
+                    objectSearchField.getText());
             viewModel.selectionModel().ifPresent(model -> {
                 for (SchemaDiffSelectionModel.Group group : model.groups(filter)) {
                     TreeItem<DisplayRow> groupItem = new TreeItem<>(DisplayRow.group(group.objectType()));

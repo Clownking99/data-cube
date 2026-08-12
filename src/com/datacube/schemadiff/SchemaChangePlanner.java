@@ -353,9 +353,17 @@ public final class SchemaChangePlanner {
             List<SchemaChange> changes, Map<String, Set<ObjectKey>> objectDependencies,
             Map<String, Set<String>> canonicalPropertyPaths, SchemaDiffResult result) {
         Map<ObjectKey, List<SchemaChange>> byObject = new HashMap<>();
+        Map<ObjectKey, ObjectKey> sourceByTarget = new HashMap<>();
+        for (SchemaDifference difference : result.differences()) {
+            if (difference.source() != null && difference.target() != null) {
+                sourceByTarget.put(difference.target().key(), difference.source().key());
+            }
+        }
         Map<String, Set<String>> dependencyIds = new HashMap<>();
         for (SchemaChange change : changes) {
-            byObject.computeIfAbsent(change.object(), ignored -> new ArrayList<>()).add(change);
+            indexChange(byObject, change.object(), change);
+            if (change.source() != null) indexChange(byObject, change.source().key(), change);
+            if (change.target() != null) indexChange(byObject, change.target().key(), change);
             dependencyIds.put(change.id(), new TreeSet<>());
         }
 
@@ -393,14 +401,18 @@ public final class SchemaChangePlanner {
             List<SchemaChange> releaseChanges = canonicalDependencyChanges.stream()
                     .filter(SchemaChangePlanner::isExecutableNonDrop)
                     .toList();
-            var sourceDependent = result.source().objects().get(dependentObject);
+            ObjectKey sourceDependentKey = sourceByTarget.getOrDefault(
+                    dependentObject, dependentObject);
+            var sourceDependent = result.source().objects().get(sourceDependentKey);
 
             for (ObjectKey dependencyObject : targetEntry.getValue().dependencies()) {
                 List<SchemaChange> dependencyDrops = byObject.getOrDefault(dependencyObject, List.of())
                         .stream().filter(change -> change.kind() == ChangeKind.DROP).toList();
                 if (dependencyDrops.isEmpty()) continue;
+                ObjectKey sourceDependency = sourceByTarget.getOrDefault(
+                        dependencyObject, dependencyObject);
                 boolean dependencyRemovedInSource = sourceDependent != null
-                        && !sourceDependent.dependencies().contains(dependencyObject);
+                        && !sourceDependent.dependencies().contains(sourceDependency);
                 if (!dependencyRemovedInSource || releaseChanges.isEmpty()) {
                     dependencyDrops.forEach(change -> manualDropIds.add(change.id()));
                 } else {
@@ -419,6 +431,14 @@ public final class SchemaChangePlanner {
                     change.selectedByDefault(), dependencyIds.get(change.id()), change.explanation()));
         }
         return new DependencyWiring(wired, manualDropIds);
+    }
+
+    private static void indexChange(
+            Map<ObjectKey, List<SchemaChange>> byObject,
+            ObjectKey object, SchemaChange change) {
+        List<SchemaChange> indexed = byObject.computeIfAbsent(object,
+                ignored -> new ArrayList<>());
+        if (!indexed.contains(change)) indexed.add(change);
     }
 
     private static boolean isExecutableNonDrop(SchemaChange change) {

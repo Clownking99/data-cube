@@ -1,5 +1,8 @@
 package com.datacube.provider.oracle;
 
+import com.datacube.schemadiff.DifferenceKind;
+import com.datacube.schemadiff.SchemaDiffEngine;
+import com.datacube.schemadiff.SchemaDiffResult;
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.schemadiff.CanonicalDataType;
@@ -39,6 +42,65 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OracleSchemaSnapshotReaderTest {
+    @Test
+    void jdbcProxySnapshotsWithDifferentOwnersCompareByProviderRelativeIdentity() throws Exception {
+        SnapshotJdbc sourceJdbc = new SnapshotJdbc("Source\"Owner")
+                .rows("tables", row("table_name", "Order\"Line"))
+                .rows("columns", column("Order\"Line", "Id", 1, "NUMBER", 19, 0,
+                        null, null, null, null, "NO", "YES", "NO", null, null));
+        SnapshotJdbc targetJdbc = new SnapshotJdbc("Target\"Owner")
+                .rows("tables", row("table_name", "Order\"Line"))
+                .rows("columns", column("Order\"Line", "Id", 1, "NUMBER", 19, 0,
+                        null, null, null, null, "NO", "YES", "NO", null, null));
+        SchemaSnapshot source = new OracleSchemaSnapshotReader(sourceJdbc.connection()).read(
+                "source", OracleSchemaIdentifierNormalizer.schema("Source\"Owner"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot target = new OracleSchemaSnapshotReader(targetJdbc.connection()).read(
+                "target", OracleSchemaIdentifierNormalizer.schema("Target\"Owner"),
+                SqlExecutionOptions.defaults(0));
+
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, target, new OracleSchemaDiffCapability().comparisonProjector());
+
+        assertTrue(diff.differences().stream()
+                .allMatch(difference -> difference.kind() == DifferenceKind.EQUIVALENT));
+        assertTrue(diff.renameSuggestions().isEmpty());
+    }
+
+    @Test
+    void routineSignatureKeepsAmbiguousExternalOwnerAndTypeStructurallyDistinct() throws Exception {
+        SnapshotJdbc sourceJdbc = new SnapshotJdbc("Self.Owner")
+                .rows("definitions", definitionRow("CALC", "FUNCTION", 301, 1, null))
+                .rows("arguments", argument("CALC", 301, 1, 1, 0, "IN",
+                        "Owner.Type", "Self", null, null, null, "P_VALUE", null))
+                .ddl("FUNCTION", "CALC", "CREATE OR REPLACE FUNCTION "
+                        + "\"Self.Owner\".\"CALC\"(P_VALUE IN \"Self\".\"Owner.Type\") "
+                        + "RETURN NUMBER AS BEGIN RETURN 1; END;\n/");
+        SnapshotJdbc targetJdbc = new SnapshotJdbc("Target.Owner")
+                .rows("definitions", definitionRow("CALC", "FUNCTION", 401, 1, null))
+                .rows("arguments", argument("CALC", 401, 1, 1, 0, "IN",
+                        "Owner.Type", "Self", null, null, null, "P_VALUE", null))
+                .ddl("FUNCTION", "CALC", "CREATE OR REPLACE FUNCTION "
+                        + "\"Target.Owner\".\"CALC\"(P_VALUE IN \"Self\".\"Owner.Type\") "
+                        + "RETURN NUMBER AS BEGIN RETURN 1; END;\n/");
+        SchemaSnapshot source = new OracleSchemaSnapshotReader(sourceJdbc.connection()).read(
+                "source", OracleSchemaIdentifierNormalizer.schema("Self.Owner"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot target = new OracleSchemaSnapshotReader(targetJdbc.connection()).read(
+                "target", OracleSchemaIdentifierNormalizer.schema("Target.Owner"),
+                SqlExecutionOptions.defaults(0));
+
+        DefinitionObject routine = source.objects().values().stream()
+                .filter(DefinitionObject.class::isInstance).map(DefinitionObject.class::cast)
+                .findFirst().orElseThrow();
+        assertTrue(routine.key().signature().contains("\"Self\".\"Owner.Type\""));
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, target, new OracleSchemaDiffCapability().comparisonProjector());
+        assertTrue(diff.differences().stream()
+                .allMatch(difference -> difference.kind() == DifferenceKind.EQUIVALENT));
+        assertTrue(diff.renameSuggestions().isEmpty());
+    }
+
     @Test
     void readsFullOracleColumnTypeDefaultIdentityVirtualAndCommentMatrix() throws Exception {
         SnapshotJdbc jdbc = new SnapshotJdbc("Sales")

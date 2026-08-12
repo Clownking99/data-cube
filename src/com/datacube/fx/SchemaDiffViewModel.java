@@ -4,12 +4,11 @@ import com.datacube.schemadiff.SchemaChangePlan;
 import com.datacube.schemadiff.SchemaChangePlanner;
 import com.datacube.schemadiff.SchemaDiffResult;
 import com.datacube.service.SchemaDeploymentControl;
+import com.datacube.service.SchemaDeploymentAdmission;
 import com.datacube.service.SchemaDeploymentResult;
 import com.datacube.service.SchemaDeploymentService;
 import com.datacube.service.SchemaDeploymentState;
 import com.datacube.service.SchemaDiffRequest;
-import com.datacube.spi.model.ConnectionEnvironment;
-import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.schemadiff.AutomationLevel;
 import com.datacube.spi.schemadiff.QualifiedName;
@@ -72,6 +71,7 @@ public final class SchemaDiffViewModel {
     private SchemaDiffSelectionModel selection;
     private List<RenderedStatement> renderedStatements = List.of();
     private String renderedPlanDigest = "";
+    private SchemaDeploymentAdmission planAdmission;
     private SchemaDeploymentResult deploymentResult;
 
     SchemaDiffViewModel(
@@ -118,6 +118,7 @@ public final class SchemaDiffViewModel {
         selection = null;
         renderedStatements = List.of();
         renderedPlanDigest = "";
+        planAdmission = null;
         deploymentResult = null;
         renderUnsupported = false;
         executionAuthorityRevoked = false;
@@ -171,10 +172,9 @@ public final class SchemaDiffViewModel {
                 || selection == null || diff == null) {
             return Optional.empty();
         }
-        boolean production = ConnectionSafetyOptions.from(request.targetConfig()).environment()
-                == ConnectionEnvironment.PRODUCTION;
-        boolean destructive = selection.hasDestructiveSelection()
-                || renderedStatements.stream().anyMatch(RenderedStatement::destructive);
+        if (planAdmission == null) return Optional.empty();
+        boolean production = planAdmission.productionEscalated();
+        boolean destructive = planAdmission.effectiveDestructive();
         String targetSchemaToken = schemaConfirmationToken(request.targetSchema());
         if (targetSchemaToken == null) return Optional.empty();
         return Optional.of(new Confirmation(
@@ -200,7 +200,7 @@ public final class SchemaDiffViewModel {
             return false;
         }
         exportGeneration++;
-        String token = current.production() || current.destructive() ? current.planDigest() : null;
+        String token = planAdmission.confirmationRequired() ? current.planDigest() : null;
         selection.markConfirmed(current.planDigest());
         SchemaDeploymentControl control = new SchemaDeploymentControl(token);
         generation++;
@@ -371,6 +371,7 @@ public final class SchemaDiffViewModel {
                     selection = null;
                     renderedStatements = List.of();
                     renderedPlanDigest = "";
+                    planAdmission = null;
                 } else {
                     applyCompareResultLocked(admittedRequest, result);
                 }
@@ -410,6 +411,7 @@ public final class SchemaDiffViewModel {
             selection = null;
             renderedStatements = List.of();
             renderedPlanDigest = "";
+            planAdmission = null;
             state = State.FAILED;
             message = FAILED_MESSAGE;
         }
@@ -550,12 +552,19 @@ public final class SchemaDiffViewModel {
                 statements.addAll(rendered);
             }
             renderedStatements = List.copyOf(statements);
-            renderedPlanDigest = renderedStatements.isEmpty()
-                    ? "" : SchemaDeploymentService.confirmationToken(renderedStatements);
+            if (renderedStatements.isEmpty()) {
+                planAdmission = null;
+                renderedPlanDigest = "";
+            } else {
+                planAdmission = Objects.requireNonNull(
+                        deployGateway.admission(request, renderedStatements), "planAdmission");
+                renderedPlanDigest = planAdmission.planDigest();
+            }
         } catch (RuntimeException invalid) {
             renderUnsupported = true;
             renderedStatements = List.of();
             renderedPlanDigest = "";
+            planAdmission = null;
         }
     }
 
@@ -632,6 +641,11 @@ public final class SchemaDiffViewModel {
                 com.datacube.spi.schemadiff.SchemaSnapshot expectedTarget,
                 List<RenderedStatement> statements,
                 SchemaDeploymentControl control);
+
+        default SchemaDeploymentAdmission admission(
+                SchemaDiffRequest request, List<RenderedStatement> statements) {
+            return SchemaDeploymentService.planAdmission(request.targetConfig(), statements);
+        }
     }
 
     public enum State {

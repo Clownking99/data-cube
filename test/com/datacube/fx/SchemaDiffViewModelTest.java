@@ -250,7 +250,7 @@ class SchemaDiffViewModelTest {
     }
 
     @Test
-    void destructiveConfirmationComesFromSelectedDifferenceNotOnlyRendererMetadata()
+    void serviceAdmissionFailsClosedForMisclassifiedDestructiveRendererOutput()
             throws Exception {
         ExecutorService scope = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("schema-diff-difference-risk-test-", 0).factory());
@@ -259,14 +259,15 @@ class SchemaDiffViewModelTest {
                 completedCompare(DbType.ORACLE, true), neverDeploy(), ignored -> plan,
                 new SchemaChangePlanner(),
                 (change, context) -> List.of(new RenderedStatement(
-                        change.id(), "DROP VIEW old_view", false, Set.of(), null)),
+                        change.id(), "DROP VIEW old_view;", false, Set.of(), null)),
                 scope, Runnable::run, () -> {});
         try {
             viewModel.compare(request(DbType.ORACLE, false));
             awaitState(viewModel, SchemaDiffViewModel.State.READY);
             assertTrue(viewModel.setSelected(DESTRUCTIVE_ID, true, true));
 
-            assertTrue(viewModel.confirmationRequest().orElseThrow().destructive());
+            assertTrue(viewModel.confirmationRequest().isEmpty());
+            assertFalse(viewModel.snapshot().deployEnabled());
         } finally {
             viewModel.closeResources();
         }

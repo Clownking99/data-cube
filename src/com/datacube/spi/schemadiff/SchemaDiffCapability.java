@@ -8,6 +8,11 @@ public interface SchemaDiffCapability {
 
     SchemaChangeRenderer changeRenderer();
 
+    /** Provider-aware schema-relative comparison; exact snapshot identity remains untouched. */
+    default SchemaComparisonProjector comparisonProjector() {
+        return SchemaComparisonProjector.identity();
+    }
+
     /** Implementations return an immutable defensive snapshot of their supported types. */
     Set<ObjectType> supportedObjectTypes();
 }

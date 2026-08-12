@@ -76,8 +76,6 @@ public final class SchemaDeploymentService {
                 request.sourceConfig(), request.sourceSchema(),
                 request.targetConfig(), request.targetSchema());
         ConnConfig target = admitted.targetConfig();
-        boolean production = ConnectionSafetyOptions.from(target).environment()
-                == ConnectionEnvironment.PRODUCTION;
         if (target.type() == DbType.REDIS
                 || admitted.sourceConfig().type() != target.type()) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(INVALID_TARGET));
@@ -87,22 +85,21 @@ public final class SchemaDeploymentService {
                 || !expectedTarget.completeness().complete()) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(INVALID_EXPECTED));
         }
-        PlanAdmission validatedPlan;
+        ValidatedPlan validation;
         try {
-            validatedPlan = validatePlan(statements, target.type());
+            validation = validateForTarget(target, statements);
         } catch (RuntimeException invalid) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(INVALID_PLAN));
         }
-        boolean productionDdl = production && !validatedPlan.statements().isEmpty();
-        PlanAdmission plan = productionDdl
-                ? validatedPlan.withSafetyWarning(PRODUCTION_CONFIRMATION_WARNING)
-                : validatedPlan;
-        if ((plan.destructive() || productionDdl)
+        PlanAdmission plan = validation.plan();
+        SchemaDeploymentAdmission admission = validation.admission();
+        if (admission.confirmationRequired()
                 && (control.confirmationToken() == null
                 || control.confirmationToken().isBlank()
                 || !plan.digest().equals(control.confirmationToken()))) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(
-                    productionDdl ? INVALID_PRODUCTION_CONFIRMATION : INVALID_CONFIRMATION));
+                    admission.productionEscalated()
+                            ? INVALID_PRODUCTION_CONFIRMATION : INVALID_CONFIRMATION));
         }
         if (control.cancellationRequested()) {
             return CompletableFuture.completedFuture(new SchemaDeploymentResult(
@@ -370,6 +367,29 @@ public final class SchemaDeploymentService {
         return validatePlan(statements, null).digest();
     }
 
+    /** Exact service admission used by UI and deploy; contains no SQL or connection secrets. */
+    public static SchemaDeploymentAdmission planAdmission(
+            ConnConfig target, List<RenderedStatement> statements) {
+        Objects.requireNonNull(target, "target");
+        if (target.type() == DbType.REDIS) throw new IllegalArgumentException(INVALID_TARGET);
+        return validateForTarget(target, statements).admission();
+    }
+
+    private static ValidatedPlan validateForTarget(
+            ConnConfig target, List<RenderedStatement> statements) {
+        PlanAdmission validated = validatePlan(statements, target.type());
+        boolean production = ConnectionSafetyOptions.from(target).environment()
+                == ConnectionEnvironment.PRODUCTION;
+        boolean productionDdl = production && !validated.statements().isEmpty();
+        PlanAdmission plan = productionDdl
+                ? validated.withSafetyWarning(PRODUCTION_CONFIRMATION_WARNING) : validated;
+        boolean safetyEscalated = plan.safetyWarnings().contains(SAFETY_ESCALATION_WARNING);
+        SchemaDeploymentAdmission admission = new SchemaDeploymentAdmission(
+                plan.digest(), plan.destructive() || productionDdl,
+                plan.destructive(), safetyEscalated, productionDdl, plan.safetyWarnings());
+        return new ValidatedPlan(plan, admission);
+    }
+
     private static PlanAdmission validatePlan(
             List<RenderedStatement> statements, DbType databaseType) {
         List<RenderedStatement> copied = List.copyOf(Objects.requireNonNull(statements, "statements"));
@@ -515,6 +535,11 @@ public final class SchemaDeploymentService {
     private record StatementAdmission(
             boolean effectiveDestructive,
             boolean safetyEscalated) {
+    }
+
+    private record ValidatedPlan(
+            PlanAdmission plan,
+            SchemaDeploymentAdmission admission) {
     }
 
     private SchemaSnapshot readFreshTarget(

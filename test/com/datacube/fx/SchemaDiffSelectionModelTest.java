@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -88,6 +89,60 @@ class SchemaDiffSelectionModelTest {
         assertEquals(List.of("safe"), model.groups(filtered).stream()
                 .flatMap(group -> group.entries().stream())
                 .map(entry -> entry.change().id()).toList());
+    }
+
+    @Test
+    void objectSearchIsLocaleStableAndComposesWithEveryExistingFilter() {
+        SchemaDiffSelectionModel model = model();
+        Locale before = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            SchemaDiffSelectionModel.Filter filtered = new SchemaDiffSelectionModel.Filter(
+                    Set.of(ObjectType.TABLE), Set.of(RiskLevel.LOW),
+                    Set.of(AutomationLevel.SAFE_AUTOMATIC),
+                    SchemaDiffSelectionModel.SelectedState.SELECTED, "  SAFE  ");
+
+            assertEquals(List.of("safe"), model.groups(filtered).stream()
+                    .flatMap(group -> group.entries().stream())
+                    .map(entry -> entry.change().id()).toList());
+            assertEquals(List.of("safe"), model.groups(new SchemaDiffSelectionModel.Filter(
+                            Set.of(), Set.of(), Set.of(),
+                            SchemaDiffSelectionModel.SelectedState.ALL, "table"))
+                    .stream().flatMap(group -> group.entries().stream())
+                    .map(entry -> entry.change().id()).toList());
+            assertEquals(model.entries().size(), model.groups(
+                            new SchemaDiffSelectionModel.Filter(Set.of(), Set.of(), Set.of(),
+                                    SchemaDiffSelectionModel.SelectedState.ALL, "   "))
+                    .stream().mapToInt(group -> group.entries().size()).sum());
+        } finally {
+            Locale.setDefault(before);
+        }
+    }
+
+    @Test
+    void objectSearchNeverUsesCanonicalComparisonKeyOrRoutineSignature() {
+        ObjectKey displayOnly = new ObjectKey(ObjectType.FUNCTION,
+                new QualifiedName("Visible\"Function", "canonical-secret-token", true),
+                "signature-secret-token");
+        SchemaDiffResult diff = new SchemaDiffResult(
+                snapshot("source", "source-search"), snapshot("target", "target-search"),
+                List.of(), List.of());
+        SchemaChange change = new SchemaChange("search", ChangeKind.CREATE, displayOnly,
+                null, null, null, RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC,
+                true, Set.of(), "fixed explanation");
+        SchemaDiffSelectionModel model = new SchemaDiffSelectionModel(
+                new SchemaChangePlan(diff, List.of(change), Set.of("search"), Set.of(), "search"),
+                new SchemaChangePlanner());
+
+        assertEquals(List.of("search"), model.groups(new SchemaDiffSelectionModel.Filter(
+                        Set.of(), Set.of(), Set.of(), SchemaDiffSelectionModel.SelectedState.ALL,
+                        "visible\"function")).stream().flatMap(group -> group.entries().stream())
+                .map(entry -> entry.change().id()).toList());
+        for (String internal : List.of("canonical-secret-token", "signature-secret-token")) {
+            assertTrue(model.groups(new SchemaDiffSelectionModel.Filter(
+                    Set.of(), Set.of(), Set.of(), SchemaDiffSelectionModel.SelectedState.ALL,
+                    internal)).isEmpty());
+        }
     }
 
     @Test

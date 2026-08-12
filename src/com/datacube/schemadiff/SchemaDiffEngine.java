@@ -10,6 +10,8 @@ import com.datacube.spi.schemadiff.IndexDefinition;
 import com.datacube.spi.schemadiff.ObjectKey;
 import com.datacube.spi.schemadiff.QualifiedName;
 import com.datacube.spi.schemadiff.RiskLevel;
+import com.datacube.spi.schemadiff.SchemaComparisonProjection;
+import com.datacube.spi.schemadiff.SchemaComparisonProjector;
 import com.datacube.spi.schemadiff.SchemaObject;
 import com.datacube.spi.schemadiff.SchemaSnapshot;
 import com.datacube.spi.schemadiff.SequenceDefinition;
@@ -34,33 +36,53 @@ public final class SchemaDiffEngine {
     private static final String INVALID_OBJECTS_MESSAGE = "Schema snapshot objects are invalid";
 
     public SchemaDiffResult compare(SchemaSnapshot source, SchemaSnapshot target) {
+        return compare(source, target, SchemaComparisonProjector.identity());
+    }
+
+    /** Explicit provider-aware comparison path; the two-argument API retains identity semantics. */
+    public SchemaDiffResult compare(
+            SchemaSnapshot source, SchemaSnapshot target,
+            SchemaComparisonProjector projector) {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(projector, "projector");
         validateObjects(source);
         validateObjects(target);
         if (source.databaseType() != target.databaseType()) {
             throw new IllegalArgumentException("Schema snapshots use different database types");
         }
 
-        TreeSet<ObjectKey> keys = new TreeSet<>(source.objects().keySet());
-        keys.addAll(target.objects().keySet());
-        List<SchemaDifference> differences = new ArrayList<>(keys.size());
-        List<SchemaObject> missing = new ArrayList<>();
-        List<SchemaObject> extra = new ArrayList<>();
+        SchemaComparisonProjection sourceProjection = projector.project(source);
+        SchemaComparisonProjection targetProjection = projector.project(target);
+        if (sourceProjection.original() != source || targetProjection.original() != target) {
+            throw new IllegalArgumentException("Schema comparison projection is invalid");
+        }
 
-        for (ObjectKey key : keys) {
-            SchemaObject sourceObject = source.objects().get(key);
-            SchemaObject targetObject = target.objects().get(key);
-            if (isUnavailable(source, key) || isUnavailable(target, key)) {
-                differences.add(unsupported(key, sourceObject, targetObject));
-            } else if (sourceObject == null) {
-                differences.add(extra(key, targetObject));
-                extra.add(targetObject);
-            } else if (targetObject == null) {
-                differences.add(missing(key, sourceObject));
-                missing.add(sourceObject);
+        TreeSet<ObjectKey> keys = new TreeSet<>(sourceProjection.comparisonObjects().keySet());
+        keys.addAll(targetProjection.comparisonObjects().keySet());
+        List<SchemaDifference> differences = new ArrayList<>(keys.size());
+        List<ProjectedObject> missing = new ArrayList<>();
+        List<ProjectedObject> extra = new ArrayList<>();
+
+        for (ObjectKey comparisonKey : keys) {
+            SchemaObject sourceComparison = sourceProjection.comparisonObjects().get(comparisonKey);
+            SchemaObject targetComparison = targetProjection.comparisonObjects().get(comparisonKey);
+            SchemaObject sourceObject = sourceComparison == null
+                    ? null : sourceProjection.originalObject(comparisonKey);
+            SchemaObject targetObject = targetComparison == null
+                    ? null : targetProjection.originalObject(comparisonKey);
+            ObjectKey resultKey = sourceObject == null ? targetObject.key() : sourceObject.key();
+            if (isUnavailable(source, resultKey) || isUnavailable(target, resultKey)) {
+                differences.add(unsupported(resultKey, sourceObject, targetObject));
+            } else if (sourceComparison == null) {
+                differences.add(extra(resultKey, targetObject));
+                extra.add(new ProjectedObject(targetComparison, targetObject));
+            } else if (targetComparison == null) {
+                differences.add(missing(resultKey, sourceObject));
+                missing.add(new ProjectedObject(sourceComparison, sourceObject));
             } else {
-                differences.add(compareMatched(key, sourceObject, targetObject));
+                differences.add(compareMatched(resultKey, sourceComparison, targetComparison,
+                        sourceObject, targetObject));
             }
         }
 
@@ -108,9 +130,12 @@ public final class SchemaDiffEngine {
     }
 
     private static SchemaDifference compareMatched(
-            ObjectKey key, SchemaObject source, SchemaObject target) {
-        Comparison comparison = compareObjects(source, target);
-        if (comparison.properties().isEmpty() && comparison.reliable()) {
+            ObjectKey key, SchemaObject sourceComparison, SchemaObject targetComparison,
+            SchemaObject source, SchemaObject target) {
+        Comparison projected = compareObjects(sourceComparison, targetComparison);
+        List<PropertyDifference> properties = rehydrateProperties(
+                projected.properties(), sourceComparison, targetComparison, source, target);
+        if (properties.isEmpty() && projected.reliable()) {
             return new SchemaDifference(DifferenceKind.EQUIVALENT, key, source, target, List.of(),
                     RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, dependencies(source, target),
                     "Objects are semantically equivalent");
@@ -118,16 +143,71 @@ public final class SchemaDiffEngine {
 
         AutomationLevel automation;
         RiskLevel risk = RiskLevel.HIGH;
-        if (!comparison.reliable() || changedLowConfidenceDefinition(source, target)) {
+        if (!projected.reliable() || changedLowConfidenceDefinition(source, target)) {
             automation = AutomationLevel.MANUAL_ONLY;
-        } else if (isSafeNullableColumnAddition(source, target, comparison.properties())) {
+        } else if (isSafeNullableColumnAddition(source, target, properties)) {
             risk = RiskLevel.LOW;
             automation = AutomationLevel.SAFE_AUTOMATIC;
         } else {
             automation = AutomationLevel.DESTRUCTIVE_OPT_IN;
         }
-        return new SchemaDifference(DifferenceKind.MODIFIED, key, source, target, comparison.properties(),
+        return new SchemaDifference(DifferenceKind.MODIFIED, key, source, target, properties,
                 risk, automation, dependencies(source, target), "Object definitions differ");
+    }
+
+    private static List<PropertyDifference> rehydrateProperties(
+            List<PropertyDifference> projected,
+            SchemaObject sourceComparison, SchemaObject targetComparison,
+            SchemaObject source, SchemaObject target) {
+        List<PropertyDifference> properties = new ArrayList<>(projected.size());
+        for (PropertyDifference property : projected) {
+            properties.add(new PropertyDifference(property.path(),
+                    originalValue(source, sourceComparison, property.path(), property.sourceValue()),
+                    originalValue(target, targetComparison, property.path(), property.targetValue()),
+                    property.explanation()));
+        }
+        return List.copyOf(properties);
+    }
+
+    private static Object originalValue(
+            SchemaObject original, SchemaObject comparison, String path, Object fallback) {
+        if (original == null || comparison == null || fallback == null) return fallback;
+        if (path.equals("objectKey")) return original.key();
+        if (path.equals("dependencies")) return original.dependencies();
+        if (original instanceof TableDefinition originalTable
+                && comparison instanceof TableDefinition comparisonTable) {
+            if (path.equals("constraints")) return originalTable.constraints();
+            if (path.equals("indexes")) return originalTable.indexes();
+            for (int index = 0; index < comparisonTable.columns().size(); index++) {
+                ColumnDefinition projectedColumn = comparisonTable.columns().get(index);
+                String prefix = "columns[" + projectedColumn.name().comparisonKey() + "]";
+                if (!path.equals(prefix) && !path.startsWith(prefix + ".")) continue;
+                if (index >= originalTable.columns().size()) return fallback;
+                ColumnDefinition originalColumn = originalTable.columns().get(index);
+                if (path.equals(prefix)) return originalColumn;
+                return switch (path.substring(prefix.length() + 1)) {
+                    case "dataType" -> originalColumn.dataType();
+                    case "nullable" -> originalColumn.nullable();
+                    case "normalizedDefault" -> originalColumn.normalizedDefault();
+                    case "ordinal" -> originalColumn.ordinal();
+                    case "comment" -> originalColumn.comment();
+                    default -> fallback;
+                };
+            }
+        }
+        if (original instanceof SequenceDefinition sequence) {
+            return switch (path) {
+                case "startValue" -> sequence.startValue();
+                case "incrementBy" -> sequence.incrementBy();
+                case "minimumValue" -> sequence.minimumValue();
+                case "maximumValue" -> sequence.maximumValue();
+                case "cycle" -> sequence.cycle();
+                case "cacheSize" -> sequence.cacheSize();
+                case "providerExtensions" -> sequence.providerExtensions();
+                default -> fallback;
+            };
+        }
+        return fallback;
     }
 
     private static boolean changedLowConfidenceDefinition(SchemaObject source, SchemaObject target) {
@@ -146,8 +226,8 @@ public final class SchemaDiffEngine {
         PropertyDifference property = properties.getFirst();
         return property.path().startsWith("columns[")
                 && property.path().endsWith("]")
-                && property.sourceValue() == null
-                && property.targetValue() instanceof ColumnDefinition column
+                && property.sourceValue() instanceof ColumnDefinition column
+                && property.targetValue() == null
                 && column.nullable()
                 && column.normalizedDefault() == null;
     }
@@ -284,19 +364,21 @@ public final class SchemaDiffEngine {
     }
 
     private static List<RenameSuggestion> renameSuggestions(
-            List<SchemaObject> missing, List<SchemaObject> extra) {
+            List<ProjectedObject> missing, List<ProjectedObject> extra) {
         Map<ObjectKey, List<ObjectKey>> targetsBySource = new TreeMap<>();
         Map<ObjectKey, List<ObjectKey>> sourcesByTarget = new TreeMap<>();
-        Map<ObjectKey, SchemaObject> missingByKey = new TreeMap<>();
-        Map<ObjectKey, SchemaObject> extraByKey = new TreeMap<>();
-        missing.forEach(object -> missingByKey.put(object.key(), object));
-        extra.forEach(object -> extraByKey.put(object.key(), object));
+        Map<ObjectKey, ProjectedObject> missingByKey = new TreeMap<>();
+        Map<ObjectKey, ProjectedObject> extraByKey = new TreeMap<>();
+        missing.forEach(object -> missingByKey.put(object.original().key(), object));
+        extra.forEach(object -> extraByKey.put(object.original().key(), object));
 
-        for (SchemaObject source : missingByKey.values()) {
-            for (SchemaObject target : extraByKey.values()) {
-                if (semanticallyIdenticalRename(source, target)) {
-                    targetsBySource.computeIfAbsent(source.key(), ignored -> new ArrayList<>()).add(target.key());
-                    sourcesByTarget.computeIfAbsent(target.key(), ignored -> new ArrayList<>()).add(source.key());
+        for (ProjectedObject source : missingByKey.values()) {
+            for (ProjectedObject target : extraByKey.values()) {
+                if (semanticallyIdenticalRename(source.comparison(), target.comparison())) {
+                    targetsBySource.computeIfAbsent(source.original().key(), ignored -> new ArrayList<>())
+                            .add(target.original().key());
+                    sourcesByTarget.computeIfAbsent(target.original().key(), ignored -> new ArrayList<>())
+                            .add(source.original().key());
                 }
             }
         }
@@ -412,5 +494,8 @@ public final class SchemaDiffEngine {
             ObjectKey key, boolean unique, List<String> normalizedExpressions,
             String normalizedPredicate, boolean providerGeneratedName,
             Set<ObjectKey> dependencies) {
+    }
+
+    private record ProjectedObject(SchemaObject comparison, SchemaObject original) {
     }
 }

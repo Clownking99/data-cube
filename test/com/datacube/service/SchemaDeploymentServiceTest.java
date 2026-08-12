@@ -64,6 +64,81 @@ class SchemaDeploymentServiceTest {
     private static final String CHANGE_E = "chg:" + "e".repeat(64);
 
     @Test
+    void realProviderCreateOrReplaceAdmissionIsTheExactRedactedConfirmationAuthority() {
+        for (DbType type : List.of(DbType.POSTGRESQL, DbType.ORACLE)) {
+            QualifiedName sourceSchema = type == DbType.POSTGRESQL
+                    ? PgSchemaIdentifierNormalizer.schema("source_owner")
+                    : OracleSchemaIdentifierNormalizer.schema("SOURCE_OWNER");
+            QualifiedName targetSchema = type == DbType.POSTGRESQL
+                    ? PgSchemaIdentifierNormalizer.schema("target_owner")
+                    : OracleSchemaIdentifierNormalizer.schema("TARGET_OWNER");
+            SchemaChangeRenderer renderer = type == DbType.POSTGRESQL
+                    ? new PgSchemaChangeRenderer() : new OracleSchemaChangeRenderer();
+            ConnConfig target = new ConnConfig("target", "target", type, "host",
+                    type.defaultPort(), "database", "user", "encrypted",
+                    Map.of("environment", "DEVELOPMENT"));
+            for (ObjectType objectType : List.of(
+                    ObjectType.VIEW, ObjectType.FUNCTION, ObjectType.PROCEDURE)) {
+                String objectName = "current_" + objectType.name().toLowerCase(java.util.Locale.ROOT);
+                ObjectKey key = new ObjectKey(objectType,
+                        type == DbType.POSTGRESQL
+                                ? PgSchemaIdentifierNormalizer.object("source_owner", objectName)
+                                : OracleSchemaIdentifierNormalizer.object(
+                                        "SOURCE_OWNER", objectName.toUpperCase(java.util.Locale.ROOT)),
+                        type == DbType.ORACLE && objectType != ObjectType.VIEW
+                                ? "oracle-routine-signature-v1\0" : "");
+                String definition = createOrReplaceDefinition(type, objectType, objectName);
+                DefinitionObject source = new DefinitionObject(key, definition, definition,
+                        Set.of(), DefinitionConfidence.HIGH);
+                SchemaChange change = new SchemaChange(CHANGE_E, ChangeKind.CREATE, key,
+                        source, null, null, RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC,
+                        true, Set.of(), "fixed safe create");
+                List<RenderedStatement> rendered = renderer.render(change,
+                        new RenderContext(type, sourceSchema, targetSchema, false));
+
+                SchemaDeploymentAdmission admission =
+                        SchemaDeploymentService.planAdmission(target, rendered);
+
+                assertTrue(admission.confirmationRequired(), objectType.name());
+                assertTrue(admission.effectiveDestructive(), objectType.name());
+                assertTrue(admission.safetyEscalated(), objectType.name());
+                assertFalse(admission.productionEscalated(), objectType.name());
+                assertEquals(SchemaDeploymentService.confirmationToken(rendered),
+                        admission.planDigest(), objectType.name());
+                assertEquals(List.of(SchemaDeploymentService.SAFETY_ESCALATION_WARNING),
+                        admission.warnings(), objectType.name());
+                assertFalse(admission.toString().contains("CREATE"));
+                assertFalse(admission.toString().contains(objectName));
+            }
+        }
+    }
+
+    private static String createOrReplaceDefinition(
+            DbType type, ObjectType objectType, String objectName) {
+        if (type == DbType.POSTGRESQL) {
+            return switch (objectType) {
+                case VIEW -> "CREATE OR REPLACE VIEW \"source_owner\".\"" + objectName
+                        + "\" AS SELECT 1";
+                case FUNCTION -> "CREATE OR REPLACE FUNCTION \"source_owner\".\"" + objectName
+                        + "\"() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$";
+                case PROCEDURE -> "CREATE OR REPLACE PROCEDURE \"source_owner\".\"" + objectName
+                        + "\"() LANGUAGE sql AS $$ SELECT 1 $$";
+                default -> throw new IllegalArgumentException("unsupported test object");
+            };
+        }
+        String upperName = objectName.toUpperCase(java.util.Locale.ROOT);
+        return switch (objectType) {
+            case VIEW -> "CREATE OR REPLACE VIEW \"SOURCE_OWNER\".\"" + upperName
+                    + "\" AS SELECT 1 FROM DUAL;";
+            case FUNCTION -> "CREATE OR REPLACE FUNCTION \"SOURCE_OWNER\".\"" + upperName
+                    + "\" RETURN NUMBER AS BEGIN RETURN 1; END;";
+            case PROCEDURE -> "CREATE OR REPLACE PROCEDURE \"SOURCE_OWNER\".\"" + upperName
+                    + "\" AS BEGIN NULL; END;";
+            default -> throw new IllegalArgumentException("unsupported test object");
+        };
+    }
+
+    @Test
     void deploysStrictlySequentiallyInOneIndependentSessionAndStablePlanOrder() throws Exception {
         Fixture fixture = new Fixture();
         List<RenderedStatement> plan = List.of(

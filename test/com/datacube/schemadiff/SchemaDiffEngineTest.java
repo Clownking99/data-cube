@@ -131,7 +131,26 @@ class SchemaDiffEngineTest {
     }
 
     @Test
-    void addingOnlyNullableColumnWithoutDefaultIsSafeAutomatic() {
+    void sourceOnlyNullableColumnWithoutDefaultIsSafeAutomaticAddition() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "orders");
+        TableDefinition source = table(tableKey,
+                List.of(column("id", type("bigint"), false, null, 1),
+                        column("note", type("varchar"), true, null, 2)), List.of(), List.of(), Set.of());
+        TableDefinition target = table(tableKey,
+                List.of(column("id", type("bigint"), false, null, 1)), List.of(), List.of(), Set.of());
+
+        SchemaDifference difference = only(engine.compare(
+                snapshot(DbType.POSTGRESQL, complete(), source),
+                snapshot(DbType.POSTGRESQL, complete(), target)).differences());
+
+        assertEquals(DifferenceKind.MODIFIED, difference.kind());
+        assertEquals(List.of("columns[note]"), difference.properties().stream().map(PropertyDifference::path).toList());
+        assertEquals(RiskLevel.LOW, difference.risk());
+        assertEquals(AutomationLevel.SAFE_AUTOMATIC, difference.automation());
+    }
+
+    @Test
+    void targetOnlyNullableColumnIsDestructiveRemoval() {
         ObjectKey tableKey = key(ObjectType.TABLE, "orders");
         TableDefinition source = table(tableKey,
                 List.of(column("id", type("bigint"), false, null, 1)), List.of(), List.of(), Set.of());
@@ -144,9 +163,10 @@ class SchemaDiffEngineTest {
                 snapshot(DbType.POSTGRESQL, complete(), target)).differences());
 
         assertEquals(DifferenceKind.MODIFIED, difference.kind());
-        assertEquals(List.of("columns[note]"), difference.properties().stream().map(PropertyDifference::path).toList());
-        assertEquals(RiskLevel.LOW, difference.risk());
-        assertEquals(AutomationLevel.SAFE_AUTOMATIC, difference.automation());
+        assertEquals(List.of("columns[note]"), difference.properties().stream()
+                .map(PropertyDifference::path).toList());
+        assertEquals(RiskLevel.HIGH, difference.risk());
+        assertEquals(AutomationLevel.DESTRUCTIVE_OPT_IN, difference.automation());
     }
 
     @Test

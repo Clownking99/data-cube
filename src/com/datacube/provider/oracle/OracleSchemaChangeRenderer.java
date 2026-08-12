@@ -174,6 +174,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static String canonicalRoutineIdentityType(String type, String selfOwner) {
+        if (type.startsWith("\"")) return comparisonFragment(type, selfOwner);
         String selfPrefix = selfOwner + '.';
         if (!type.startsWith(selfPrefix)) return type;
         if (type.length() == selfPrefix.length()) {
@@ -497,7 +498,9 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
 
     private static String canonicalExpectedType(String value) {
         if (value == null || value.isBlank() || value.indexOf('\0') >= 0
-                || value.indexOf('"') >= 0 || value.indexOf('\'') >= 0) return "";
+                || value.indexOf('\'') >= 0) return "";
+        if (value.startsWith("\"")) return canonicalDefinitionType(value);
+        if (value.indexOf('"') >= 0) return "";
         String compact = value.replaceAll("\\s+", "");
         int suffixStart = compact.indexOf('(');
         String base = suffixStart < 0 ? compact : compact.substring(0, suffixStart);
@@ -779,7 +782,21 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     private static String retargetDefinitionBasic(String text, RenderContext context) {
         String source = schemaPart(context.sourceSchema());
         String target = schemaPart(context.targetSchema());
-        StringBuilder output = new StringBuilder(text.length() + target.length());
+        return rewriteDefinitionOwner(text, source,
+                OracleSchemaIdentifierNormalizer.quote(target));
+    }
+
+    static String comparisonDefinition(String text, String sourceOwner) {
+        return rewriteDefinitionOwner(text, sourceOwner, "\0oracle-self-owner\0");
+    }
+
+    static String comparisonFragment(String text, String sourceOwner) {
+        return rewriteDefinitionOwner(text, sourceOwner, "\0oracle-self-owner\0");
+    }
+
+    private static String rewriteDefinitionOwner(
+            String text, String source, String replacement) {
+        StringBuilder output = new StringBuilder(text.length() + replacement.length());
         int index = 0;
         while (index < text.length()) {
             char current = text.charAt(index);
@@ -812,7 +829,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
                 boolean retarget = identifierMatches(identifier, source, true)
                         && qualifiedDotAt(text, identifier.end());
                 output.append(retarget
-                        ? OracleSchemaIdentifierNormalizer.quote(target)
+                        ? replacement
                         : text.substring(index, identifier.end()));
                 index = identifier.end();
                 continue;
