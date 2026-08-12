@@ -855,6 +855,34 @@ class PgSchemaChangeRendererTest {
     }
 
     @Test
+    void retargetsOnlyStrictQualifiedRegclassLiteralsAndPreservesExternalOwners() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "regclass_table", "");
+        ColumnDefinition added = column("id", "bigint", true,
+                "nextval('\"Source\".\"Seq\"\"Name\"'::pg_catalog.regclass) + "
+                        + "nextval('\"External\".\"Seq\"'::regclass)", 1);
+        SchemaChange change = new SchemaChange("chg:regclass", ChangeKind.ALTER, tableKey,
+                table(tableKey, List.of(added)), table(tableKey, List.of()),
+                new PropertyDifference("columns[" + added.name().comparisonKey() + "]",
+                        added, null, "safe"), RiskLevel.LOW,
+                AutomationLevel.SAFE_AUTOMATIC, true, Set.of(), "safe");
+
+        String sql = renderer.render(change, context(DbType.POSTGRESQL, false)).getFirst().sql();
+        assertTrue(sql.contains("nextval('\"Target\".\"Seq\"\"Name\"'::pg_catalog.regclass)"), sql);
+        assertTrue(sql.contains("nextval('\"External\".\"Seq\"'::regclass)"), sql);
+        assertEquals("nextval('\0pg-self-owner\0.\"seq\"'::regclass)",
+                PgSchemaChangeRenderer.comparisonFragment(
+                        "nextval('source.\"seq\"'::regclass)", "source"));
+        assertEquals("nextval('\0pg-self-owner\0.\"Seq''Name\"'::regclass)",
+                PgSchemaChangeRenderer.comparisonFragment(
+                        "nextval('\"Source\".\"Seq''Name\"'::regclass)", "Source"));
+        assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> PgSchemaChangeRenderer.comparisonFragment(
+                                "nextval('\"Source\".\"broken'::regclass)", "Source"))
+                        .getMessage());
+    }
+
+    @Test
     void triggerCreateAndDropRequireExactlyOneStructuredOwningTable() {
         ObjectKey triggerKey = key(ObjectType.TRIGGER, "Source", "secret_trigger", "owner");
         DefinitionObject missingOwner = new DefinitionObject(triggerKey,

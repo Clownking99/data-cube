@@ -85,13 +85,86 @@ class OracleSchemaChangeRendererTest {
 
     @Test
     void nestedAliasDoesNotShadowAnOuterSchemaQualifier() {
-        String ddl = "CREATE VIEW \"Source\".\"SHADOW\" AS SELECT \"Source\".FN(), "
+        String ddl = "CREATE VIEW \"Source\".\"SHADOW\" AS SELECT \"Source\".\"PKG\".FN(), "
                 + "(SELECT \"Source\".ID FROM NESTED_TABLE AS \"Source\") FROM OUTER_TABLE;";
 
         String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
 
-        assertTrue(projected.contains("SELECT \0oracle-self-owner\0.FN()"));
+        assertTrue(projected.contains("SELECT \0oracle-self-owner\0.\"PKG\".FN()"));
         assertTrue(projected.contains("SELECT \"Source\".ID FROM NESTED_TABLE"));
+    }
+
+    @Test
+    void plSqlBindingsShadowOwnerCallsWhileRealPackageReferencesRetargetByBlockScope() {
+        ObjectKey functionKey = key(ObjectType.FUNCTION, "Source", "SCOPED_FN",
+                oracleSignature("IN", "NUMBER"));
+        String ddl = """
+                CREATE OR REPLACE EDITIONABLE FUNCTION "Source"."SCOPED_FN" ("Source" IN NUMBER)
+                RETURN NUMBER AS
+                  local_value "Source"."OBJ_T";
+                BEGIN
+                  "Source"."RUN"();
+                  "Source"."PKG"."RUN"();
+                  DECLARE
+                    "Source" "Source"."OBJ_T";
+                  BEGIN
+                    "Source"."RUN"();
+                  END;
+                  "Source"."PKG"."RUN"();
+                  RETURN 1;
+                END;
+                /
+                """;
+        SchemaChange create = change(ChangeKind.CREATE, functionKey,
+                definition(functionKey, ddl), null, null, AutomationLevel.SAFE_AUTOMATIC);
+
+        String rendered = RENDERER.render(create, context(DbType.ORACLE, false)).getFirst().sql();
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+
+        assertTrue(rendered.startsWith(
+                "CREATE OR REPLACE EDITIONABLE FUNCTION \"Target\"\"Owner\".\"SCOPED_FN\""), rendered);
+        assertTrue(rendered.contains("local_value \"Target\"\"Owner\".\"OBJ_T\""), rendered);
+        assertEquals(2, countOccurrences(rendered, "\"Source\".\"RUN\"()"));
+        assertEquals(2, countOccurrences(rendered,
+                "\"Source\".\"PKG\".\"RUN\"()"), rendered);
+        assertTrue(rendered.contains("\"Source\" \"Target\"\"Owner\".\"OBJ_T\""));
+        assertFalse(rendered.contains("\"Target\"\"Owner\".\"RUN\"()"));
+        assertEquals(2, countOccurrences(projected, "\"Source\".\"RUN\"()"));
+        assertEquals(2, countOccurrences(projected,
+                "\"Source\".\"PKG\".\"RUN\"()"));
+
+        ObjectKey unshadowedKey = key(ObjectType.FUNCTION, "Source", "PACKAGE_FN",
+                oracleSignature());
+        String unshadowed = """
+                CREATE FUNCTION "Source"."PACKAGE_FN" RETURN NUMBER AS
+                BEGIN
+                  "Source"."PKG"."RUN"();
+                  RETURN 1;
+                END;
+                /
+                """;
+        String renderedUnshadowed = RENDERER.render(change(ChangeKind.CREATE, unshadowedKey,
+                definition(unshadowedKey, unshadowed), null, null,
+                AutomationLevel.SAFE_AUTOMATIC), context(DbType.ORACLE, false)).getFirst().sql();
+        assertTrue(renderedUnshadowed.contains(
+                "\"Target\"\"Owner\".\"PKG\".\"RUN\"()"), renderedUnshadowed);
+        assertTrue(OracleSchemaChangeRenderer.comparisonDefinition(unshadowed, "Source")
+                .contains("\0oracle-self-owner\0.\"PKG\".\"RUN\"()"));
+    }
+
+    @Test
+    void embeddedQuoteOwnerAndMixedCaseBindingAreProjectedConservatively() {
+        String ddl = "CREATE FUNCTION \"Source\"\"Owner\".\"F\"(value IN "
+                + "\"Source\"\"Owner\".\"Self.Type\") RETURN NUMBER AS BEGIN DECLARE "
+                + "\"Source\"\"Owner\" \"Source\"\"Owner\".\"Self.Type\"; BEGIN "
+                + "\"Source\"\"Owner\".RUN(); END; \"Source\"\"Owner\".\"PKG\".RUN(); "
+                + "RETURN 1; END;";
+
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(
+                ddl, "Source\"Owner");
+
+        assertTrue(projected.contains("\"Source\"\"Owner\".RUN()"), projected);
+        assertEquals(4, countOccurrences(projected, "\0oracle-self-owner\0"), projected);
     }
 
     @Test
@@ -277,6 +350,31 @@ class OracleSchemaChangeRendererTest {
                         context(DbType.ORACLE, false)));
         assertEquals(OracleSchemaChangeRenderer.UNSUPPORTED_SHAPE, failure.getMessage());
         assertFalse(failure.getMessage().contains("secret-path"));
+    }
+
+    @Test
+    void blankDefaultsUseTheSameNoDefaultPredicateForDestructiveApproval() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "ORDERS", "");
+        for (String noDefault : new String[]{null, "", "   \t"}) {
+            ColumnDefinition added = column("OPTIONAL", type("NUMBER", extensions()),
+                    true, noDefault, 1, null);
+            SchemaChange change = change(ChangeKind.ALTER, tableKey,
+                    table(tableKey, List.of(added)), table(tableKey, List.of()),
+                    new PropertyDifference("columns[" + added.name().comparisonKey() + "]",
+                            added, null, "safe"), AutomationLevel.SAFE_AUTOMATIC);
+            assertFalse(RENDERER.render(change, context(DbType.ORACLE, false))
+                    .getFirst().destructive());
+        }
+        ColumnDefinition withDefault = column("OPTIONAL", type("NUMBER", extensions()),
+                true, "0", 1, null);
+        SchemaChange destructive = change(ChangeKind.ALTER, tableKey,
+                table(tableKey, List.of(withDefault)), table(tableKey, List.of()),
+                new PropertyDifference("columns[" + withDefault.name().comparisonKey() + "]",
+                        withDefault, null, "safe"), AutomationLevel.SAFE_AUTOMATIC);
+        assertEquals(OracleSchemaChangeRenderer.DESTRUCTIVE_APPROVAL,
+                assertThrows(IllegalArgumentException.class,
+                        () -> RENDERER.render(destructive, context(DbType.ORACLE, false)))
+                        .getMessage());
     }
 
     @Test

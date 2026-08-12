@@ -106,9 +106,7 @@ public final class SchemaChangePlanner {
                     ChangeKind.MANUAL, RiskLevel.HIGH, AutomationLevel.MANUAL_ONLY,
                     "Manual review is required because metadata is unavailable"));
             case MISSING_IN_TARGET -> List.of(missingChange(difference));
-            case EXTRA_IN_TARGET -> List.of(change(difference, null, OBJECT_PATH,
-                    ChangeKind.DROP, RiskLevel.CRITICAL, AutomationLevel.DESTRUCTIVE_OPT_IN,
-                    "Dropping an object requires explicit approval"));
+            case EXTRA_IN_TARGET -> List.of(extraChange(difference));
             case MODIFIED -> modifiedChanges(difference);
         };
     }
@@ -122,6 +120,17 @@ public final class SchemaChangePlanner {
         return change(difference, null, OBJECT_PATH,
                 ChangeKind.CREATE, RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC,
                 "The missing object can be created automatically");
+    }
+
+    private static SchemaChange extraChange(SchemaDifference difference) {
+        if (isLowConfidenceDefinition(difference)) {
+            return change(difference, null, OBJECT_PATH,
+                    ChangeKind.MANUAL, RiskLevel.HIGH, AutomationLevel.MANUAL_ONLY,
+                    "A low-confidence target definition requires manual review");
+        }
+        return change(difference, null, OBJECT_PATH,
+                ChangeKind.DROP, RiskLevel.CRITICAL, AutomationLevel.DESTRUCTIVE_OPT_IN,
+                "Dropping an object requires explicit approval");
     }
 
     private static List<SchemaChange> modifiedChanges(SchemaDifference difference) {

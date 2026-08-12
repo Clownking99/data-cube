@@ -400,9 +400,19 @@ public record RenderedStatement(
 public interface SchemaDiffCapability {
     SchemaSnapshotReader snapshotReader(Connection connection);
     SchemaChangeRenderer changeRenderer();
+    default SchemaComparisonProjector comparisonProjector() {
+        return SchemaComparisonProjector.identity();
+    }
     Set<ObjectType> supportedObjectTypes();
 }
 ```
+
+PostgreSQL/Oracle capability 覆盖 `comparisonProjector()`，把 schema 内 self owner
+投影为可逆的 schema-relative comparison identity；投影 collision、缺失反向映射或畸形
+provider key 必须 fail closed。engine 必须在返回 differences、rename、dependencies 与 canonical
+paths 前 rehydrate 到原 source/target 对象，projection placeholder 不得进入 renderer、UI、
+deploy digest、accessor 或 `toString()`。identity 默认值是兼容边界：通用两参 engine API 以及
+未 opt-in 的现有/第三方 provider 保持 exact identity 行为，不能暗中启用 owner-relative 比较。
 
 PostgreSQL 与 Oracle 分别实现：
 

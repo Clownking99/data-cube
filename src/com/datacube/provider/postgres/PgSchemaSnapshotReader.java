@@ -680,7 +680,8 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                     signature == null ? "" : signature);
             String definition = rows.getString("definition");
             DefinitionConfidence confidence = definition != null
-                    && SqlScopeAwareOwnerRewriter.supportsPostgresRoutineDefinition(definition)
+                    && SqlScopeAwareOwnerRewriter.supportsPostgresRoutineDefinition(
+                            definition, state.schema)
                     ? DefinitionConfidence.HIGH : DefinitionConfidence.LOW;
             state.addDefinition(key, definition, confidence);
             state.mapOid("pg_proc", oid, key);
@@ -948,7 +949,7 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
         private void addDefinition(ObjectKey key, String original, DefinitionConfidence confidence) {
             DefinitionConfidence actualConfidence = original == null || original.isBlank()
                     ? DefinitionConfidence.LOW : confidence;
-            if (actualConfidence == DefinitionConfidence.LOW) {
+            if (original == null || original.isBlank()) {
                 diagnostic(key.type(), SnapshotCompleteness.DEFINITION_UNAVAILABLE);
             }
             definitions.put(key, new DefinitionObject(key,

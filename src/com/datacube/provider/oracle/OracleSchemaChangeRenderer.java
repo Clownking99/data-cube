@@ -90,7 +90,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         Object targetValue = change.property().targetValue();
         if (sourceValue == null && targetValue instanceof ColumnDefinition) return true;
         if (sourceValue instanceof ColumnDefinition column && targetValue == null) {
-            return !column.nullable() || column.normalizedDefault() != null;
+            return !column.nullable() || column.hasDefault();
         }
         if ((change.property().path().equals("constraints")
                 || change.property().path().equals("indexes"))

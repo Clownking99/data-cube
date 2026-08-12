@@ -1,5 +1,38 @@
 # Schema Diff 累计终审统一修复报告
 
+## 第三次累计复审 follow-up（2026-08-12）
+
+- 状态：代码与 fresh gates 已完成，等待新的独立累计 reviewer；本报告不自行标记 Ready。
+- Oracle PL/SQL owner scanner 现在登记顶层 FUNCTION/PROCEDURE 参数、IS/AS 声明与 nested `DECLARE ... BEGIN ... END` scope 的局部 binding；quoted/mixed/embedded-quote binding 及 shadowed `owner.method()` 保留，未 shadow 且可证明的三段 package call、DDL header、关系/类型 owner 才 retarget。歧义继续 fail closed，renderer/projector 共用同一实现。
+- PostgreSQL reader 的 routine capability 判定实际执行 owner-aware dollar-body analysis；不可证明的 source-only routine 保留 original definition 并降为 LOW，但不把整个对象类型标成 unavailable。LOW confidence 在 missing/extra diff 传播为 HIGH-risk/MANUAL_ONLY，planner 产生未默认选择的 MANUAL change，renderer 不会接收 marker 或执行 SQL。
+- PostgreSQL `regclass` 仅处理严格解析的 qualified identifier string literal，且 cast 必须紧邻为 `::regclass` 或 `::pg_catalog.regclass`。quoted/unquoted、double-quote 与 SQL single-quote escape 均保留；仅 self owner retarget，external owner 精确保留，畸形 identifier fail closed。真实 JDBC reader fixture 覆盖 reader→compare→render→模拟回读收敛。
+- Oracle destructive inference 统一调用 `ColumnDefinition.hasDefault()`；null、empty、blank 为 no-default，nonblank 为 default，和 engine/planner 语义一致。
+- spec/plan 的 `SchemaDiffCapability` 示例已加入 default identity `comparisonProjector()`，并明确 provider opt-in、schema-relative self owner、external exact、可逆 rehydrate、collision/缺映射 fail closed 与 placeholder 隔离。没有新增 public SPI seam，二参 engine API 语义不变。
+
+### 第三次 follow-up TDD RED → GREEN
+
+1. C RED：Oracle 参数/局部变量与 nested shadow 的 `owner.method()` 被当作 schema qualifier 改写。GREEN：PL/SQL declaration/scope binding table；embedded quote owner、renderer/projector 与跨 owner second-diff closure 通过。
+2. I1 RED：已知 `plpgsql` 但 body owner qualifier 歧义的 source-only routine 被 reader 错标 HIGH。GREEN：owner-aware capability analysis、LOW missing/extra propagation、manual/unselected planner 与 renderer refusal 全链通过，marker 未进入 diff/plan/digest。
+3. I2 RED：`'owner.object'::regclass` 仍保留 source owner。GREEN：strict literal/cast parser、自 owner replacement、external exact、malformed fail closed，以及 JDBC 闭环收敛通过。
+4. M1 RED：blank default 触发 Oracle destructive approval。GREEN：`hasDefault()` null/empty/blank/nonblank matrix 通过。
+5. M2 RED：spec capability example 未展示 projector compatibility boundary。GREEN：spec/plan contract 同步。
+
+### 第三次 follow-up fresh verification
+
+- Focused：6 suites / 139 tests / 0 failures / 0 errors / 0 skips。
+- Task 1-10 matrix：32 suites / 306 tests / 0 failures / 0 errors / 2 skips；仅 PostgreSQL/Oracle relational live write tests。
+- Clean full + image：`clean test jlink --warning-mode fail --rerun-tasks --no-daemon --console=plain` BUILD SUCCESSFUL；111 suites / 740 tests / 0 failures / 0 errors / 3 documented live skips。
+- Explicit no-credential live gate：1 suite / 6 tests / 0 failures / 0 errors / 2 skips；精确为 PostgreSQL/Oracle safe deployment convergence tests，未尝试连接。
+- Image：`build/image/bin/DataCube.bat` 存在，包含 `-Xms16m -Xmx256m -XX:+UseG1GC`。
+- CodeGraph：370 files / 10,209 nodes / 32,415 edges，index up to date。`git diff --check` 通过；`gradlew` mode `100755`。
+- Changed-file credential/endpoint scan only matched pre-existing synthetic redaction fixtures; no real endpoint or credential value was added. Fresh live XML contains no NUL/comparison marker.
+- 未连接 live DB，未读取 saved connection；`.testagent/` 保持 pre-existing untracked 且未读取、修改、暂存。
+
+### 第三次 follow-up residuals
+
+- PostgreSQL/Oracle 真实 server 执行仍未验证，因为未提供且未授权 disposable endpoint。
+- 未 push、tag 或触发 GitHub workflow；提交 SHA 在独立 commit 完成后记录于本节。
+
 ## 结果
 
 - 授权的本地范围已 DONE；六条 cumulative finding 均按 RED → GREEN 实施并通过 fresh gates。

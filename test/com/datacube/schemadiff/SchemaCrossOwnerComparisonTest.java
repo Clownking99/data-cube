@@ -54,6 +54,41 @@ class SchemaCrossOwnerComparisonTest {
     }
 
     @Test
+    void oraclePlSqlSourceOwnerBindingRendersAndConvergesWithEmbeddedQuoteOwners() {
+        String sourceOwner = "Source\"Owner";
+        String targetOwner = "Target\"Owner";
+        ObjectKey sourceKey = key(ObjectType.FUNCTION, sourceOwner, "Scoped", oracleSignature(),
+                OracleSchemaIdentifierNormalizer::object);
+        ObjectKey targetKey = key(ObjectType.FUNCTION, targetOwner, "Scoped", oracleSignature(),
+                OracleSchemaIdentifierNormalizer::object);
+        String sourceDefinition = oracleScopedRoutine(sourceOwner, sourceOwner);
+        String targetDefinition = oracleScopedRoutine(targetOwner, sourceOwner);
+        DefinitionObject sourceRoutine = new DefinitionObject(sourceKey, sourceDefinition,
+                sourceDefinition, Set.of(), DefinitionConfidence.HIGH);
+        DefinitionObject targetRoutine = new DefinitionObject(targetKey, targetDefinition,
+                targetDefinition, Set.of(), DefinitionConfidence.HIGH);
+        SchemaSnapshot source = snapshot(DbType.ORACLE, "source", sourceOwner,
+                OracleSchemaIdentifierNormalizer::schema, sourceRoutine);
+        SchemaSnapshot emptyTarget = snapshot(DbType.ORACLE, "empty", targetOwner,
+                OracleSchemaIdentifierNormalizer::schema);
+        OracleSchemaDiffCapability capability = new OracleSchemaDiffCapability();
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(new SchemaDiffEngine().compare(
+                source, emptyTarget, capability.comparisonProjector()));
+
+        String rendered = capability.changeRenderer().render(plan.changes().getFirst(),
+                new RenderContext(DbType.ORACLE, source.schema(), emptyTarget.schema(), false))
+                .getFirst().sql();
+        assertTrue(rendered.contains(quote(DbType.ORACLE, sourceOwner) + ".RUN()"), rendered);
+        assertTrue(rendered.contains(qualified(DbType.ORACLE, targetOwner, "PKG") + ".RUN()"),
+                rendered);
+        assertTrue(new SchemaDiffEngine().compare(source,
+                        snapshot(DbType.ORACLE, "after", targetOwner,
+                                OracleSchemaIdentifierNormalizer::schema, targetRoutine),
+                        capability.comparisonProjector()).differences().stream()
+                .allMatch(difference -> difference.kind() == DifferenceKind.EQUIVALENT));
+    }
+
+    @Test
     void crossOwnerTargetDependencyReleaseOrdersReplacementBeforeDrop() {
         assertCrossOwnerDependencyRelease(DbType.POSTGRESQL, new PgSchemaDiffCapability(),
                 PgSchemaIdentifierNormalizer::schema, PgSchemaIdentifierNormalizer::object);
@@ -249,15 +284,15 @@ class SchemaCrossOwnerComparisonTest {
                 tableKey.name().comparisonKey(), objectName);
         ConstraintDefinition check = new ConstraintDefinition(
                 checkKey, ConstraintKind.CHECK, List.of(), null, List.of(),
-                "CHECK (" + qualified(type, owner, "is_valid") + "(\"Id\"))",
+                "CHECK (" + callable(type, owner, "is_valid") + "(\"Id\"))",
                 null, null, false, Set.of(tableKey));
         IndexDefinition index = new IndexDefinition(indexKey, false,
-                List.of(qualified(type, owner, "normalize") + "(\"Id\")"),
-                qualified(type, owner, "is_visible") + "(\"Id\")",
+                List.of(callable(type, owner, "normalize") + "(\"Id\")"),
+                callable(type, owner, "is_visible") + "(\"Id\")",
                 false, Set.of(tableKey));
         List<ColumnDefinition> columns = new java.util.ArrayList<>();
         columns.add(new ColumnDefinition(child(type, "Id"), scalarType(), false,
-                qualified(type, owner, "default_value") + "()", 1, null));
+                callable(type, owner, "default_value") + "()", 1, null));
         if (includeAddedColumn) {
             columns.add(new ColumnDefinition(child(type, "Note"), selfType(type, owner), true,
                     null, 2, "owner-safe comment"));
@@ -380,6 +415,20 @@ class SchemaCrossOwnerComparisonTest {
 
     private static String qualified(DbType type, String owner, String name) {
         return quote(type, owner) + "." + quote(type, name);
+    }
+
+    private static String callable(DbType type, String owner, String routine) {
+        return type == DbType.ORACLE
+                ? qualified(type, owner, "PKG") + "." + quote(type, routine)
+                : qualified(type, owner, routine);
+    }
+
+    private static String oracleScopedRoutine(String owner, String stableBinding) {
+        return "CREATE FUNCTION " + qualified(DbType.ORACLE, owner, "Scoped")
+                + " RETURN NUMBER AS BEGIN DECLARE " + quote(DbType.ORACLE, stableBinding)
+                + " " + qualified(DbType.ORACLE, owner, "Self.Type") + "; BEGIN "
+                + quote(DbType.ORACLE, stableBinding) + ".RUN(); END; "
+                + qualified(DbType.ORACLE, owner, "PKG") + ".RUN(); RETURN 1; END;";
     }
 
     private static String quote(DbType type, String name) {

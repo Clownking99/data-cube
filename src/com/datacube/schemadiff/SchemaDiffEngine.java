@@ -119,8 +119,11 @@ public final class SchemaDiffEngine {
     }
 
     private static SchemaDifference extra(ObjectKey key, SchemaObject target) {
+        boolean highConfidence = isHighConfidence(target);
         return new SchemaDifference(DifferenceKind.EXTRA_IN_TARGET, key, null, target, List.of(),
-                RiskLevel.CRITICAL, AutomationLevel.DESTRUCTIVE_OPT_IN, target.dependencies(),
+                highConfidence ? RiskLevel.CRITICAL : RiskLevel.HIGH,
+                highConfidence ? AutomationLevel.DESTRUCTIVE_OPT_IN : AutomationLevel.MANUAL_ONLY,
+                target.dependencies(),
                 "Object exists only in the target snapshot");
     }
 

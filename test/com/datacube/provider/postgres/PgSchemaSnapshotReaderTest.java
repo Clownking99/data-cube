@@ -3,6 +3,8 @@ package com.datacube.provider.postgres;
 import com.datacube.schemadiff.DifferenceKind;
 import com.datacube.schemadiff.SchemaDiffEngine;
 import com.datacube.schemadiff.SchemaDiffResult;
+import com.datacube.schemadiff.SchemaChangePlan;
+import com.datacube.schemadiff.SchemaChangePlanner;
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.model.DbType;
@@ -39,6 +41,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -388,6 +391,77 @@ class PgSchemaSnapshotReaderTest {
         assertEquals(DefinitionConfidence.LOW, opaque.confidence());
         assertEquals(definition, opaque.originalDefinition());
         assertTrue(snapshot.objects().containsKey(opaque.key()));
+    }
+
+    @Test
+    void ambiguousSourceOnlyRoutineFlowsFromJdbcReaderToManualUnselectedMissingChange() throws Exception {
+        String definition = "CREATE FUNCTION app.ambiguous() RETURNS integer LANGUAGE plpgsql "
+                + "AS $body$ DECLARE app record; BEGIN RETURN app.value; END $body$";
+        SnapshotJdbc jdbc = new SnapshotJdbc("app").rows("routines",
+                row("object_oid", 78L, "object_name", "ambiguous", "routine_kind", "f",
+                        "identity_arguments", "", "definition", definition));
+        SchemaSnapshot source = new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "source", PgSchemaIdentifierNormalizer.schema("app"),
+                new SqlExecutionOptions(0, 5, new SqlExecutionControl()));
+        SchemaSnapshot target = new SchemaSnapshot(DbType.POSTGRESQL, "target", source.schema(),
+                Instant.EPOCH, new SnapshotCompleteness(true, new TreeMap<>()),
+                new TreeMap<>(), "empty");
+
+        DefinitionObject original = definition(source, ObjectType.FUNCTION, "app", "ambiguous", "");
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, target, new PgSchemaDiffCapability().comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+
+        assertEquals(DefinitionConfidence.LOW, original.confidence());
+        assertEquals(1, diff.differences().size());
+        assertEquals(DifferenceKind.MISSING_IN_TARGET, diff.differences().getFirst().kind());
+        assertEquals(AutomationLevel.MANUAL_ONLY, diff.differences().getFirst().automation());
+        assertEquals(1, plan.changes().size());
+        assertEquals(ChangeKind.MANUAL, plan.changes().getFirst().kind());
+        assertEquals(AutomationLevel.MANUAL_ONLY, plan.changes().getFirst().automation());
+        assertTrue(plan.selectedChangeIds().isEmpty());
+        assertEquals(PgSchemaChangeRenderer.MANUAL_CHANGE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> new PgSchemaChangeRenderer().render(plan.changes().getFirst(),
+                                new RenderContext(DbType.POSTGRESQL, source.schema(), source.schema(), false)))
+                        .getMessage());
+        assertFalse((diff.toString() + plan + plan.digest()).contains("\0pg-"));
+    }
+
+    @Test
+    void regclassDefaultsConvergeAcrossReaderCompareRenderAndSimulatedReread() throws Exception {
+        String sourceDefault = "nextval('\"Source\".\"Seq\"\"Name\"'::pg_catalog.regclass)";
+        String targetDefault = "nextval('\"Target\".\"Seq\"\"Name\"'::pg_catalog.regclass)";
+        SchemaSnapshot source = new PgSchemaSnapshotReader(new SnapshotJdbc("Source")
+                .rows("tables", row("object_oid", 1L, "object_name", "orders"))
+                .rows("columns", column(1L, "id", 1, "int8", 0,
+                        sourceDefault, "", "")).connection()).read(
+                "source", PgSchemaIdentifierNormalizer.schema("Source"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot targetBefore = new PgSchemaSnapshotReader(new SnapshotJdbc("Target")
+                .rows("tables", row("object_oid", 2L, "object_name", "orders"))
+                .connection()).read("target-before", PgSchemaIdentifierNormalizer.schema("Target"),
+                SqlExecutionOptions.defaults(0));
+        PgSchemaDiffCapability capability = new PgSchemaDiffCapability();
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, targetBefore, capability.comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+
+        assertEquals(1, plan.changes().size());
+        String rendered = capability.changeRenderer().render(plan.changes().getFirst(),
+                new RenderContext(DbType.POSTGRESQL, source.schema(), targetBefore.schema(), true))
+                .getFirst().sql();
+        assertTrue(rendered.contains(targetDefault), rendered);
+
+        SchemaSnapshot targetAfter = new PgSchemaSnapshotReader(new SnapshotJdbc("Target")
+                .rows("tables", row("object_oid", 2L, "object_name", "orders"))
+                .rows("columns", column(2L, "id", 1, "int8", 0,
+                        targetDefault, "", "")).connection()).read(
+                "target-after", PgSchemaIdentifierNormalizer.schema("Target"),
+                SqlExecutionOptions.defaults(0));
+        assertTrue(new SchemaDiffEngine().compare(source, targetAfter,
+                        capability.comparisonProjector()).differences().stream()
+                .allMatch(difference -> difference.kind() == DifferenceKind.EQUIVALENT));
     }
 
     @Test

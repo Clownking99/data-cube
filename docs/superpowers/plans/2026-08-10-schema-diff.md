@@ -306,6 +306,9 @@ public interface SchemaChangeRenderer {
 public interface SchemaDiffCapability {
     SchemaSnapshotReader snapshotReader(Connection connection);
     SchemaChangeRenderer changeRenderer();
+    default SchemaComparisonProjector comparisonProjector() {
+        return SchemaComparisonProjector.identity();
+    }
     Set<ObjectType> supportedObjectTypes();
 }
 ```

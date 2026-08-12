@@ -3,6 +3,7 @@ package com.datacube.schemadiff;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.schemadiff.AutomationLevel;
 import com.datacube.spi.schemadiff.CanonicalDataType;
+import com.datacube.spi.schemadiff.ChangeKind;
 import com.datacube.spi.schemadiff.ColumnDefinition;
 import com.datacube.spi.schemadiff.ConstraintDefinition;
 import com.datacube.spi.schemadiff.ConstraintKind;
@@ -347,6 +348,26 @@ class SchemaDiffEngineTest {
         SchemaDifference lowConfidenceMissing = differences.get(2);
         assertEquals(RiskLevel.HIGH, lowConfidenceMissing.risk());
         assertEquals(AutomationLevel.MANUAL_ONLY, lowConfidenceMissing.automation());
+    }
+
+    @Test
+    void lowConfidenceExtraDefinitionAlsoRequiresManualReview() {
+        DefinitionObject target = definition(key(ObjectType.FUNCTION, "opaque", ""),
+                "opaque-marker", "original sql", DefinitionConfidence.LOW);
+
+        SchemaDifference extra = only(engine.compare(
+                snapshot(DbType.POSTGRESQL, complete()),
+                snapshot(DbType.POSTGRESQL, complete(), target)).differences());
+        var change = new SchemaChangePlanner().plan(new SchemaDiffResult(
+                snapshot(DbType.POSTGRESQL, complete()),
+                snapshot(DbType.POSTGRESQL, complete(), target),
+                List.of(extra), List.of())).changes().getFirst();
+
+        assertEquals(DifferenceKind.EXTRA_IN_TARGET, extra.kind());
+        assertEquals(RiskLevel.HIGH, extra.risk());
+        assertEquals(AutomationLevel.MANUAL_ONLY, extra.automation());
+        assertEquals(ChangeKind.MANUAL, change.kind());
+        assertEquals(AutomationLevel.MANUAL_ONLY, change.automation());
     }
 
     @Test

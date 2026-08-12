@@ -65,13 +65,9 @@ public final class SqlScopeAwareOwnerRewriter {
         return prefix + body.tag() + rewrittenBody + body.tag() + suffix;
     }
 
-    public static boolean supportsPostgresRoutineDefinition(String text) {
+    public static boolean supportsPostgresRoutineDefinition(String text, String sourceOwner) {
         try {
-            DollarBody body = postgresDollarBody(text, false);
-            List<Token> outer = body == null ? tokenize(text, Dialect.POSTGRESQL)
-                    : tokenize(text.substring(0, body.open())
-                            + text.substring(body.closeEnd()), Dialect.POSTGRESQL);
-            requireSupportedPostgresLanguage(outer);
+            rewritePostgresRoutineDefinition(text, sourceOwner, "\0pg-self-owner-check\0");
             return true;
         } catch (IllegalArgumentException failure) {
             return false;
@@ -100,13 +96,19 @@ public final class SqlScopeAwareOwnerRewriter {
                 || text.indexOf('\n') >= 0)) throw new IllegalArgumentException();
         List<Token> tokens = tokenize(text, dialect);
         Map<Integer, Integer> parentheses = matchingParentheses(tokens);
-        Scope root = scopes(tokens, parentheses);
+        Scope root = scopes(tokens, parentheses, dialect);
         Map<Integer, Scope> scopeByToken = mapScopes(root, tokens.size());
         Set<Integer> provenOwners = new HashSet<>();
         collectHeaderOwner(tokens, sourceOwner, dialect, provenOwners);
+        if (dialect == Dialect.ORACLE) {
+            collectOraclePlSqlBindings(root, tokens, parentheses,
+                    sourceOwner, dialect, provenOwners);
+        }
         collectBindings(root, tokens, parentheses, sourceOwner, dialect, provenOwners);
 
-        List<Replacement> replacements = new ArrayList<>();
+        List<Replacement> replacements = dialect == Dialect.POSTGRESQL
+                ? new ArrayList<>(postgresRegclassReplacements(
+                        text, sourceOwner, replacement)) : new ArrayList<>();
         for (int index = 0; index + 2 < tokens.size(); index++) {
             Token owner = tokens.get(index);
             if (!owner.identifier() || !matches(owner, sourceOwner, dialect)
@@ -120,7 +122,7 @@ public final class SqlScopeAwareOwnerRewriter {
             }
             Scope scope = scopeByToken.getOrDefault(index, root);
             if (visibleBinding(scope, owner, dialect)) continue;
-            if (fragment || provableNonRelationQualifier(tokens, index)) {
+            if (fragment || provableNonRelationQualifier(tokens, index, dialect)) {
                 replacements.add(new Replacement(owner.start(), owner.end(), replacement));
                 continue;
             }
@@ -137,12 +139,120 @@ public final class SqlScopeAwareOwnerRewriter {
         return output.append(text, cursor, text.length()).toString();
     }
 
+    private static List<Replacement> postgresRegclassReplacements(
+            String text, String sourceOwner, String replacement) {
+        List<Replacement> replacements = new ArrayList<>();
+        int index = 0;
+        while (index < text.length()) {
+            char current = text.charAt(index);
+            if (current == '\'') {
+                int end = singleQuoteEnd(text, index, escapeStringPrefix(text, index));
+                int cast = end;
+                while (cast < text.length() && Character.isWhitespace(text.charAt(cast))) cast++;
+                int castEnd = postgresRegclassCastEnd(text, cast);
+                if (castEnd >= 0) {
+                    if (escapeStringPrefix(text, index)) throw new IllegalArgumentException();
+                    String literal = text.substring(index + 1, end - 1).replace("''", "'");
+                    RegclassName name = postgresRegclassName(literal);
+                    if (name == null) throw new IllegalArgumentException();
+                    if (name.schema() != null
+                            && postgresIdentifierMatches(name.schema(), sourceOwner)) {
+                        String rewritten = replacement + "." + name.object().raw();
+                        replacements.add(new Replacement(index + 1, end - 1,
+                                rewritten.replace("'", "''")));
+                    }
+                }
+                index = end;
+            } else if (current == '"') {
+                index = quotedIdentifierEnd(text, index);
+            } else if (current == '-' && at(text, index + 1) == '-') {
+                int newline = text.indexOf('\n', index + 2);
+                index = newline < 0 ? text.length() : newline + 1;
+            } else if (current == '/' && at(text, index + 1) == '*') {
+                index = blockCommentEnd(text, index, Dialect.POSTGRESQL);
+            } else if (current == '$') {
+                String tag = dollarTag(text, index);
+                if (tag == null) index++;
+                else {
+                    int close = text.indexOf(tag, index + tag.length());
+                    if (close < 0) throw new IllegalArgumentException();
+                    index = close + tag.length();
+                }
+            } else index++;
+        }
+        return replacements;
+    }
+
+    private static int postgresRegclassCastEnd(String text, int start) {
+        if (at(text, start) != ':' || at(text, start + 1) != ':') return -1;
+        int index = start + 2;
+        if (wordAt(text, index, "regclass")) return index + "regclass".length();
+        if (!wordAt(text, index, "pg_catalog")) return -1;
+        index += "pg_catalog".length();
+        if (at(text, index++) != '.' || !wordAt(text, index, "regclass")) return -1;
+        return index + "regclass".length();
+    }
+
+    private static boolean wordAt(String text, int start, String expected) {
+        int end = start + expected.length();
+        return start >= 0 && end <= text.length()
+                && text.regionMatches(true, start, expected, 0, expected.length())
+                && (end == text.length()
+                        || !identifierPart(text.charAt(end), Dialect.POSTGRESQL));
+    }
+
+    private static RegclassName postgresRegclassName(String literal) {
+        ParsedIdentifier first = postgresIdentifier(literal, 0);
+        if (first == null) return null;
+        int index = skipSpaces(literal, first.end());
+        if (index == literal.length()) return new RegclassName(null, first);
+        if (at(literal, index++) != '.') return null;
+        ParsedIdentifier second = postgresIdentifier(literal, skipSpaces(literal, index));
+        return second != null && skipSpaces(literal, second.end()) == literal.length()
+                ? new RegclassName(first, second) : null;
+    }
+
+    private static ParsedIdentifier postgresIdentifier(String text, int start) {
+        if (start >= text.length()) return null;
+        if (text.charAt(start) == '"') {
+            int end;
+            try {
+                end = quotedIdentifierEnd(text, start);
+            } catch (IllegalArgumentException failure) {
+                return null;
+            }
+            return new ParsedIdentifier(text.substring(start, end),
+                    text.substring(start + 1, end - 1).replace("\"\"", "\""), true, end);
+        }
+        if (!identifierStart(text.charAt(start), Dialect.POSTGRESQL)) return null;
+        int end = start + 1;
+        while (end < text.length()
+                && identifierPart(text.charAt(end), Dialect.POSTGRESQL)) end++;
+        return new ParsedIdentifier(text.substring(start, end),
+                text.substring(start, end).toLowerCase(Locale.ROOT), false, end);
+    }
+
+    private static boolean postgresIdentifierMatches(
+            ParsedIdentifier identifier, String sourceOwner) {
+        return identifier.quoted() ? identifier.value().equals(sourceOwner)
+                : sourceOwner.equals(sourceOwner.toLowerCase(Locale.ROOT))
+                        && identifier.value().equals(sourceOwner);
+    }
+
+    private static int skipSpaces(String value, int start) {
+        int index = start;
+        while (index < value.length() && Character.isWhitespace(value.charAt(index))) index++;
+        return index;
+    }
+
     private static void collectHeaderOwner(
             List<Token> tokens, String source, Dialect dialect, Set<Integer> proven) {
         for (int index = 0; index < tokens.size(); index++) {
             if (!tokens.get(index).keyword("CREATE")) continue;
             int cursor = index + 1;
             if (keyword(tokens, cursor, "OR") && keyword(tokens, cursor + 1, "REPLACE")) cursor += 2;
+            if (dialect == Dialect.ORACLE && (keyword(tokens, cursor, "EDITIONABLE")
+                    || keyword(tokens, cursor, "NONEDITIONABLE"))) cursor++;
             if (keyword(tokens, cursor, "MATERIALIZED")) cursor++;
             if (cursor >= tokens.size() || !Set.of(
                     "VIEW", "FUNCTION", "PROCEDURE", "TRIGGER", "TYPE", "PACKAGE")
@@ -159,14 +269,15 @@ public final class SqlScopeAwareOwnerRewriter {
     }
 
     private static boolean provableNonRelationQualifier(
-            List<Token> tokens, int ownerIndex) {
+            List<Token> tokens, int ownerIndex, Dialect dialect) {
         int objectIndex = ownerIndex + 2;
         if (objectIndex + 1 < tokens.size() && tokens.get(objectIndex + 1).keyword("AS")) return true;
         if (objectIndex + 2 < tokens.size() && tokens.get(objectIndex + 1).symbol(".")
                 && tokens.get(objectIndex + 2).identifier()) return true;
         int routineBoundary = routineBodyBoundary(tokens);
         if (routineBoundary >= 0 && ownerIndex < routineBoundary) return true;
-        return objectIndex + 1 < tokens.size() && tokens.get(objectIndex + 1).symbol("(");
+        return dialect == Dialect.POSTGRESQL && objectIndex + 1 < tokens.size()
+                && tokens.get(objectIndex + 1).symbol("(");
     }
 
     private static int routineBodyBoundary(List<Token> tokens) {
@@ -181,8 +292,10 @@ public final class SqlScopeAwareOwnerRewriter {
         return -1;
     }
 
-    private static Scope scopes(List<Token> tokens, Map<Integer, Integer> parentheses) {
+    private static Scope scopes(
+            List<Token> tokens, Map<Integer, Integer> parentheses, Dialect dialect) {
         Scope root = new Scope(0, tokens.size(), null);
+        if (dialect == Dialect.ORACLE) collectOracleBlockScopes(root, tokens);
         for (Map.Entry<Integer, Integer> pair : parentheses.entrySet()) {
             int open = pair.getKey();
             int close = pair.getValue();
@@ -193,6 +306,123 @@ public final class SqlScopeAwareOwnerRewriter {
         }
         sortScopes(root);
         return root;
+    }
+
+    private static void collectOracleBlockScopes(Scope root, List<Token> tokens) {
+        Deque<Integer> declarations = new ArrayDeque<>();
+        List<int[]> blocks = new ArrayList<>();
+        for (int index = 0; index < tokens.size(); index++) {
+            if (tokens.get(index).keyword("DECLARE")) {
+                declarations.push(index);
+            } else if (tokens.get(index).keyword("END") && !declarations.isEmpty()
+                    && !keyword(tokens, index + 1, "IF")
+                    && !keyword(tokens, index + 1, "LOOP")
+                    && !keyword(tokens, index + 1, "CASE")) {
+                blocks.add(new int[]{declarations.pop(), index + 1});
+            }
+        }
+        if (!declarations.isEmpty()) throw new IllegalArgumentException();
+        blocks.sort(Comparator.<int[]>comparingInt(block -> block[0])
+                .thenComparing((left, right) -> Integer.compare(right[1], left[1])));
+        for (int[] block : blocks) {
+            Scope parent = innermost(root, block[0]);
+            Scope child = new Scope(block[0], block[1], parent);
+            child.declarationStart = block[0] + 1;
+            parent.children.add(child);
+        }
+    }
+
+    private static void collectOraclePlSqlBindings(
+            Scope root, List<Token> tokens, Map<Integer, Integer> parentheses,
+            String source, Dialect dialect, Set<Integer> proven) {
+        int routine = routineNoun(tokens);
+        if (routine < 0) return;
+        int name = routine + 1;
+        if (name + 2 < tokens.size() && symbol(tokens, name + 1, ".")) name += 2;
+        if (symbol(tokens, name + 1, "(")) {
+            Integer close = parentheses.get(name + 1);
+            if (close == null) throw new IllegalArgumentException();
+            collectOracleParameters(root, tokens, name + 2, close, dialect);
+        }
+        int boundary = routineBodyBoundary(tokens);
+        if (boundary < 0) throw new IllegalArgumentException();
+        root.declarationStart = boundary + 1;
+        collectOracleDeclarations(root, tokens, source, dialect, proven);
+    }
+
+    private static int routineNoun(List<Token> tokens) {
+        for (int index = 0; index < tokens.size(); index++) {
+            if (!tokens.get(index).keyword("CREATE")) continue;
+            int cursor = index + 1;
+            if (keyword(tokens, cursor, "OR") && keyword(tokens, cursor + 1, "REPLACE")) cursor += 2;
+            if (keyword(tokens, cursor, "EDITIONABLE")
+                    || keyword(tokens, cursor, "NONEDITIONABLE")) cursor++;
+            return keyword(tokens, cursor, "FUNCTION") || keyword(tokens, cursor, "PROCEDURE")
+                    ? cursor : -1;
+        }
+        return -1;
+    }
+
+    private static void collectOracleParameters(
+            Scope scope, List<Token> tokens, int start, int end, Dialect dialect) {
+        int segment = start;
+        int depth = 0;
+        for (int index = start; index <= end; index++) {
+            if (index < end && symbol(tokens, index, "(")) depth++;
+            else if (index < end && symbol(tokens, index, ")")) depth--;
+            if (index == end || depth == 0 && symbol(tokens, index, ",")) {
+                if (segment < index && tokens.get(segment).identifier()) {
+                    scope.bindings.add(identity(tokens.get(segment), dialect));
+                }
+                segment = index + 1;
+            }
+        }
+        if (depth != 0) throw new IllegalArgumentException();
+    }
+
+    private static void collectOracleDeclarations(
+            Scope scope, List<Token> tokens, String source,
+            Dialect dialect, Set<Integer> proven) {
+        if (scope.declarationStart >= 0) {
+            int end = oracleDeclarationEnd(scope, tokens);
+            int segment = scope.declarationStart;
+            for (int index = segment; index <= end; index++) {
+                if (index == end || symbol(tokens, index, ";")) {
+                    collectOracleDeclaration(scope, tokens, segment, index,
+                            source, dialect, proven);
+                    segment = index + 1;
+                }
+            }
+        }
+        for (Scope child : scope.children) {
+            collectOracleDeclarations(child, tokens, source, dialect, proven);
+        }
+    }
+
+    private static int oracleDeclarationEnd(Scope scope, List<Token> tokens) {
+        for (int index = scope.declarationStart; index < scope.end; index++) {
+            if (innermost(scope, index) == scope && keyword(tokens, index, "BEGIN")) return index;
+        }
+        throw new IllegalArgumentException();
+    }
+
+    private static void collectOracleDeclaration(
+            Scope scope, List<Token> tokens, int start, int end,
+            String source, Dialect dialect, Set<Integer> proven) {
+        while (start < end && symbol(tokens, start, ";")) start++;
+        if (start >= end || !tokens.get(start).identifier()) return;
+        int name = start;
+        if (keyword(tokens, start, "CURSOR") || keyword(tokens, start, "TYPE")
+                || keyword(tokens, start, "SUBTYPE")) name++;
+        if (name >= end || !tokens.get(name).identifier()) return;
+        scope.bindings.add(identity(tokens.get(name), dialect));
+        int typeStart = name + 1;
+        if (keyword(tokens, typeStart, "CONSTANT")) typeStart++;
+        if (typeStart + 2 < end && matches(tokens.get(typeStart), source, dialect)
+                && symbol(tokens, typeStart + 1, ".")
+                && tokens.get(typeStart + 2).identifier()) {
+            proven.add(typeStart);
+        }
     }
 
     private static void sortScopes(Scope scope) {
@@ -557,6 +787,7 @@ public final class SqlScopeAwareOwnerRewriter {
         private final Scope parent;
         private final List<Scope> children = new ArrayList<>();
         private final Set<String> bindings = new HashSet<>();
+        private int declarationStart = -1;
 
         private Scope(int start, int end, Scope parent) {
             this.start = start;
@@ -575,6 +806,12 @@ public final class SqlScopeAwareOwnerRewriter {
         private boolean symbol(String expected) { return symbol && value.equals(expected); }
         private String keyword() { return quoted || symbol ? "" : value.toUpperCase(Locale.ROOT); }
         private boolean keyword(String expected) { return keyword().equals(expected); }
+    }
+
+    private record ParsedIdentifier(String raw, String value, boolean quoted, int end) {
+    }
+
+    private record RegclassName(ParsedIdentifier schema, ParsedIdentifier object) {
     }
 
     private record Replacement(int start, int end, String value) {
