@@ -487,6 +487,53 @@ class OracleSchemaChangeRendererTest {
     }
 
     @Test
+    void proceduralIntoTargetsStayBoundWhileInsertMergeAndFromRelationsRetarget() {
+        String ddl = """
+                CREATE FUNCTION "Source"."INTO_SCOPE" RETURN NUMBER AS
+                BEGIN
+                  <<"Source">>
+                  DECLARE orders "Source"."ORDER_REC";
+                  BEGIN
+                    SELECT VALUE INTO "Source".orders.value FROM "Source".orders;
+                    WITH picked AS (SELECT VALUE FROM "Source".orders)
+                      SELECT VALUE INTO "Source".orders.value FROM picked;
+                    SELECT VALUE BULK COLLECT INTO "Source".orders.values
+                      FROM "Source".orders;
+                    UPDATE "Source".orders SET VALUE = 1
+                      RETURNING VALUE INTO "Source".orders.value;
+                    INSERT INTO "Source".orders(VALUE) VALUES (1)
+                      RETURNING VALUE INTO "Source".orders.value;
+                    MERGE INTO "Source".orders target
+                      USING "Source".incoming source ON (target.ID = source.ID)
+                      WHEN MATCHED THEN UPDATE SET target.VALUE = source.VALUE;
+                  END "Source";
+                  RETURN 1;
+                END;
+                /
+                """;
+
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+
+        assertTrue(projected.contains(
+                "SELECT VALUE INTO \"Source\".orders.value FROM"), projected);
+        assertEquals(2, countOccurrences(projected,
+                "SELECT VALUE INTO \"Source\".orders.value FROM"), projected);
+        assertEquals(2, countOccurrences(projected,
+                "RETURNING VALUE INTO \"Source\".orders.value"), projected);
+        assertTrue(projected.contains(
+                "BULK COLLECT INTO \"Source\".orders.values"), projected);
+        assertEquals(3, countOccurrences(projected,
+                "FROM \0oracle-self-owner\0.orders"), projected);
+        assertTrue(projected.contains("UPDATE \0oracle-self-owner\0.orders"), projected);
+        assertTrue(projected.contains(
+                "INSERT INTO \0oracle-self-owner\0.orders"), projected);
+        assertTrue(projected.contains(
+                "MERGE INTO \0oracle-self-owner\0.orders"), projected);
+        assertTrue(projected.contains(
+                "USING \0oracle-self-owner\0.incoming"), projected);
+    }
+
+    @Test
     void oracleFormalTypesExcludeDefaultExpressionsFromOwnerProof() {
         String safe = """
                 CREATE FUNCTION "Source"."FORMALS"(

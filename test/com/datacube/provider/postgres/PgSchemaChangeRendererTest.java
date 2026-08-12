@@ -756,6 +756,40 @@ class PgSchemaChangeRendererTest {
     }
 
     @Test
+    void proceduralIntoTargetsStayBoundWhileInsertMergeAndFromRelationsRetarget() {
+        String routine = """
+                CREATE FUNCTION "Source".into_scope() RETURNS integer LANGUAGE plpgsql AS $body$
+                <<"Source">>
+                DECLARE orders record;
+                BEGIN
+                  SELECT value INTO "Source".orders.value FROM "Source".orders;
+                  WITH picked AS (SELECT value FROM "Source".orders)
+                    SELECT value INTO "Source".orders.value FROM picked;
+                  UPDATE "Source".orders SET value = 1
+                    RETURNING value INTO "Source".orders.value;
+                  INSERT INTO "Source".orders(value) VALUES (1)
+                    RETURNING value INTO "Source".orders.value;
+                  MERGE INTO "Source".orders target
+                    USING "Source".incoming source ON target.id = source.id
+                    WHEN MATCHED THEN UPDATE SET value = source.value;
+                  RETURN 1;
+                END "Source"
+                $body$
+                """;
+
+        String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                routine, ObjectType.FUNCTION, "Source");
+
+        assertEquals(4, countOccurrences(projected,
+                "INTO \"Source\".orders.value"), projected);
+        assertTrue(projected.contains("FROM \0pg-self-owner\0.orders"), projected);
+        assertTrue(projected.contains("UPDATE \0pg-self-owner\0.orders"), projected);
+        assertTrue(projected.contains("INSERT INTO \0pg-self-owner\0.orders"), projected);
+        assertTrue(projected.contains("MERGE INTO \0pg-self-owner\0.orders"), projected);
+        assertTrue(projected.contains("USING \0pg-self-owner\0.incoming"), projected);
+    }
+
+    @Test
     void labeledPlpgsqlCaseExpressionsAndStatementsDoNotCloseTheirBlock() {
         String routine = """
                 CREATE FUNCTION "Source".case_scope(value integer) RETURNS integer LANGUAGE plpgsql AS $body$

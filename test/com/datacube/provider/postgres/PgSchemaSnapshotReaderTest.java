@@ -435,11 +435,19 @@ class PgSchemaSnapshotReaderTest {
                 + "CASE WHEN true THEN rec.value := 1; ELSE rec.value := 0; END CASE; "
                 + "PERFORM \"Source\".orders, \"Source\".value "
                 + "FROM \"Source\".orders AS \"Source\"; "
+                + "SELECT value INTO \"Source\".rec.value FROM \"Source\".orders; "
+                + "INSERT INTO \"Source\".orders(value) VALUES (1) "
+                + "RETURNING value INTO \"Source\".rec.value; "
+                + "MERGE INTO \"Source\".orders target USING \"Source\".incoming source "
+                + "ON target.id = source.id WHEN MATCHED THEN UPDATE SET value = source.value; "
                 + "PERFORM \"Source\".helper(); RETURN 1; "
                 + "END \"Source\" $body$";
         String targetDefinition = sourceDefinition.replace("\"Source\".labeled",
                         "\"Target\".labeled")
                 .replace("FROM \"Source\".orders", "FROM \"Target\".orders")
+                .replace("INSERT INTO \"Source\".orders", "INSERT INTO \"Target\".orders")
+                .replace("MERGE INTO \"Source\".orders", "MERGE INTO \"Target\".orders")
+                .replace("USING \"Source\".incoming", "USING \"Target\".incoming")
                 .replace("PERFORM \"Source\".helper()", "PERFORM \"Target\".helper()");
         SchemaSnapshot source = new PgSchemaSnapshotReader(new SnapshotJdbc("Source")
                 .rows("routines", row("object_oid", 80L, "object_name", "labeled",
@@ -459,7 +467,11 @@ class PgSchemaSnapshotReaderTest {
                         emptyTarget.schema(), false)).getFirst().sql();
         assertTrue(sql.contains("PERFORM \"Source\".rec.value"), sql);
         assertTrue(sql.contains("PERFORM \"Source\".orders, \"Source\".value"), sql);
+        assertEquals(2, sql.split("INTO \"Source\".rec.value", -1).length - 1, sql);
         assertTrue(sql.contains("FROM \"Target\".orders AS \"Source\""), sql);
+        assertTrue(sql.contains("INSERT INTO \"Target\".orders"), sql);
+        assertTrue(sql.contains("MERGE INTO \"Target\".orders"), sql);
+        assertTrue(sql.contains("USING \"Target\".incoming"), sql);
         assertTrue(sql.contains("PERFORM \"Target\".helper()"), sql);
         assertFalse(sql.contains("PERFORM \"Source\".helper()"), sql);
 

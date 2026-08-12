@@ -1228,10 +1228,13 @@ public final class SqlScopeAwareOwnerRewriter {
         for (int index = scope.start; index < scope.end; index++) {
             if (innermost(scope, index) != scope) continue;
             String keyword = tokens.get(index).keyword();
-            boolean relation = Set.of("FROM", "JOIN", "UPDATE", "INTO", "USING")
+            boolean relation = Set.of("FROM", "JOIN", "UPDATE", "USING")
                     .contains(keyword);
             if (keyword.equals("ON") && definitionKind(tokens, "TRIGGER")) relation = true;
             if (keyword.equals("DELETE") && keyword(tokens, index + 1, "FROM")) {
+                index++;
+                relation = true;
+            } else if (keyword.equals("INSERT") && keyword(tokens, index + 1, "INTO")) {
                 index++;
                 relation = true;
             } else if (keyword.equals("MERGE") && keyword(tokens, index + 1, "INTO")) {
