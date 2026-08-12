@@ -435,6 +435,12 @@ class PgSchemaSnapshotReaderTest {
                 + "CASE WHEN true THEN rec.value := 1; ELSE rec.value := 0; END CASE; "
                 + "PERFORM \"Source\".orders, \"Source\".value "
                 + "FROM \"Source\".orders AS \"Source\"; "
+                + "rec.value := EXTRACT(YEAR FROM \"Source\".rec.value); "
+                + "EXECUTE 'SELECT 1' USING \"Source\".rec.value; "
+                + "PERFORM selected.id FROM \"Source\".orders selected "
+                + "JOIN \"Source\".incoming incoming USING (\"Source\".rec); "
+                + "DELETE FROM \"Source\".archive archived "
+                + "USING \"Source\".incoming incoming WHERE archived.id = incoming.id; "
                 + "SELECT value INTO \"Source\".rec.value FROM \"Source\".orders; "
                 + "INSERT INTO \"Source\".orders(value) VALUES (1) "
                 + "RETURNING value INTO \"Source\".rec.value; "
@@ -445,6 +451,8 @@ class PgSchemaSnapshotReaderTest {
         String targetDefinition = sourceDefinition.replace("\"Source\".labeled",
                         "\"Target\".labeled")
                 .replace("FROM \"Source\".orders", "FROM \"Target\".orders")
+                .replace("JOIN \"Source\".incoming", "JOIN \"Target\".incoming")
+                .replace("DELETE FROM \"Source\".archive", "DELETE FROM \"Target\".archive")
                 .replace("INSERT INTO \"Source\".orders", "INSERT INTO \"Target\".orders")
                 .replace("MERGE INTO \"Source\".orders", "MERGE INTO \"Target\".orders")
                 .replace("USING \"Source\".incoming", "USING \"Target\".incoming")
@@ -461,6 +469,10 @@ class PgSchemaSnapshotReaderTest {
         PgSchemaDiffCapability capability = new PgSchemaDiffCapability();
         SchemaChangePlan plan = new SchemaChangePlanner().plan(new SchemaDiffEngine().compare(
                 source, emptyTarget, capability.comparisonProjector()));
+        DefinitionObject routine = source.objects().values().stream()
+                .filter(DefinitionObject.class::isInstance).map(DefinitionObject.class::cast)
+                .findFirst().orElseThrow();
+        assertEquals(DefinitionConfidence.HIGH, routine.confidence());
 
         String sql = capability.changeRenderer().render(plan.changes().getFirst(),
                 new RenderContext(DbType.POSTGRESQL, source.schema(),
@@ -468,7 +480,13 @@ class PgSchemaSnapshotReaderTest {
         assertTrue(sql.contains("PERFORM \"Source\".rec.value"), sql);
         assertTrue(sql.contains("PERFORM \"Source\".orders, \"Source\".value"), sql);
         assertEquals(2, sql.split("INTO \"Source\".rec.value", -1).length - 1, sql);
+        assertTrue(sql.contains("EXTRACT(YEAR FROM \"Source\".rec.value)"), sql);
+        assertTrue(sql.contains("EXECUTE 'SELECT 1' USING \"Source\".rec.value"), sql);
         assertTrue(sql.contains("FROM \"Target\".orders AS \"Source\""), sql);
+        assertTrue(sql.contains("JOIN \"Target\".incoming incoming "
+                + "USING (\"Source\".rec)"), sql);
+        assertTrue(sql.contains("DELETE FROM \"Target\".archive archived "
+                + "USING \"Target\".incoming incoming"), sql);
         assertTrue(sql.contains("INSERT INTO \"Target\".orders"), sql);
         assertTrue(sql.contains("MERGE INTO \"Target\".orders"), sql);
         assertTrue(sql.contains("USING \"Target\".incoming"), sql);
@@ -562,6 +580,37 @@ class PgSchemaSnapshotReaderTest {
                                 new RenderContext(DbType.POSTGRESQL,
                                         source.schema(), source.schema(), false))).getMessage());
         assertFalse((routine + diff.toString() + plan + plan.digest()).contains("pg-manual-definition"));
+    }
+
+    @Test
+    void ambiguousFromGrammarFlowsAsLowManualInsteadOfGuessingRelationOwnership() throws Exception {
+        String definition = "CREATE FUNCTION app.ambiguous_from() RETURNS integer LANGUAGE plpgsql "
+                + "AS $body$ BEGIN PERFORM app.rec.value FROM app.orders; RETURN 1; END $body$";
+        SnapshotJdbc jdbc = new SnapshotJdbc("app").rows("routines",
+                row("object_oid", 86L, "object_name", "ambiguous_from", "routine_kind", "f",
+                        "identity_arguments", "", "definition", definition));
+        SchemaSnapshot source = new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "source", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot target = new SchemaSnapshot(DbType.POSTGRESQL, "target", source.schema(),
+                Instant.EPOCH, new SnapshotCompleteness(true, new TreeMap<>()),
+                new TreeMap<>(), "empty");
+
+        DefinitionObject routine = definition(
+                source, ObjectType.FUNCTION, "app", "ambiguous_from", "");
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, target, new PgSchemaDiffCapability().comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+
+        assertEquals(DefinitionConfidence.LOW, routine.confidence());
+        assertEquals(AutomationLevel.MANUAL_ONLY, diff.differences().getFirst().automation());
+        assertEquals(ChangeKind.MANUAL, plan.changes().getFirst().kind());
+        assertTrue(plan.selectedChangeIds().isEmpty());
+        assertEquals(PgSchemaChangeRenderer.MANUAL_CHANGE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> new PgSchemaChangeRenderer().render(plan.changes().getFirst(),
+                                new RenderContext(DbType.POSTGRESQL,
+                                        source.schema(), source.schema(), false))).getMessage());
     }
 
     @Test

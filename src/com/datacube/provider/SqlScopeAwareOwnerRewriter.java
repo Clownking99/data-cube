@@ -118,6 +118,7 @@ public final class SqlScopeAwareOwnerRewriter {
                 || text.indexOf('\n') >= 0)) throw new IllegalArgumentException();
         List<Token> tokens = tokenize(text, dialect);
         Map<Integer, Integer> parentheses = matchingParentheses(tokens);
+        int[] nestingDepth = nestingDepth(tokens);
         Scope root = scopes(tokens, parentheses, dialect, routineBody);
         Map<Integer, Scope> scopeByToken = mapScopes(root, tokens.size());
         Set<Integer> provenOwners = new HashSet<>();
@@ -130,7 +131,7 @@ public final class SqlScopeAwareOwnerRewriter {
         if (dialect == Dialect.POSTGRESQL && routineBody) {
             collectPostgresRoutineBindings(root, tokens, dialect);
         }
-        collectBindings(root, tokens, parentheses, sourceOwner, dialect,
+        collectBindings(root, tokens, parentheses, nestingDepth, sourceOwner, dialect,
                 provenOwners, relationOwners);
 
         List<Replacement> replacements = dialect == Dialect.POSTGRESQL
@@ -1222,15 +1223,22 @@ public final class SqlScopeAwareOwnerRewriter {
 
     private static void collectBindings(
             Scope scope, List<Token> tokens, Map<Integer, Integer> parentheses,
-            String source, Dialect dialect, Set<Integer> proven,
+            int[] nestingDepth, String source, Dialect dialect, Set<Integer> proven,
             Set<Integer> relationOwners) {
         collectCtes(scope, tokens, parentheses, dialect);
+        int triggerOn = triggerHeaderOn(tokens, nestingDepth);
         for (int index = scope.start; index < scope.end; index++) {
             if (innermost(scope, index) != scope) continue;
             String keyword = tokens.get(index).keyword();
-            boolean relation = Set.of("FROM", "JOIN", "UPDATE", "USING")
-                    .contains(keyword);
-            if (keyword.equals("ON") && definitionKind(tokens, "TRIGGER")) relation = true;
+            boolean query = queryAtDepthBefore(tokens, nestingDepth, index);
+            boolean relation = keyword.equals("FROM") && query
+                    || keyword.equals("JOIN") && query
+                    || keyword.equals("UPDATE") && statementKeywordAt(
+                            tokens, nestingDepth, index, "UPDATE")
+                    || keyword.equals("USING") && (statementKeywordAt(
+                            tokens, nestingDepth, index, "MERGE")
+                            || statementKeywordAt(tokens, nestingDepth, index, "DELETE"))
+                    || index == triggerOn;
             if (keyword.equals("DELETE") && keyword(tokens, index + 1, "FROM")) {
                 index++;
                 relation = true;
@@ -1251,9 +1259,74 @@ public final class SqlScopeAwareOwnerRewriter {
             if (next > index) index = next - 1;
         }
         for (Scope child : scope.children) {
-            collectBindings(child, tokens, parentheses, source, dialect,
+            collectBindings(child, tokens, parentheses, nestingDepth, source, dialect,
                     proven, relationOwners);
         }
+    }
+
+    private static boolean queryAtDepthBefore(
+            List<Token> tokens, int[] nestingDepth, int index) {
+        int depth = nestingDepth[index];
+        for (int cursor = index - 1; cursor >= 0; cursor--) {
+            if (nestingDepth[cursor] != depth) continue;
+            if (symbol(tokens, cursor, ";")) return false;
+            if (keyword(tokens, cursor, "SELECT") || keyword(tokens, cursor, "PERFORM")
+                    || keyword(tokens, cursor, "UPDATE") || keyword(tokens, cursor, "DELETE")
+                    || keyword(tokens, cursor, "MERGE")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean statementKeywordAt(
+            List<Token> tokens, int[] nestingDepth, int index, String expected) {
+        int depth = nestingDepth[index];
+        for (int cursor = index; cursor >= 0; cursor--) {
+            if (nestingDepth[cursor] != depth) continue;
+            if (symbol(tokens, cursor, ";")) return false;
+            if (keyword(tokens, cursor, expected)) return true;
+            if (Set.of("SELECT", "PERFORM", "INSERT", "UPDATE", "DELETE", "MERGE",
+                    "EXECUTE").contains(tokens.get(cursor).keyword())) return false;
+        }
+        return false;
+    }
+
+    private static int triggerHeaderOn(List<Token> tokens, int[] nestingDepth) {
+        int trigger = definitionNoun(tokens, "TRIGGER");
+        if (trigger < 0) return -1;
+        int name = trigger + 1;
+        if (name + 2 < tokens.size() && symbol(tokens, name + 1, ".")) name += 2;
+        if (name >= tokens.size() || !tokens.get(name).identifier()) {
+            throw new IllegalArgumentException();
+        }
+        int depth = nestingDepth[trigger];
+        int found = -1;
+        for (int index = name + 1; index < tokens.size(); index++) {
+            if (nestingDepth[index] != depth) continue;
+            if (keyword(tokens, index, "DECLARE") || keyword(tokens, index, "BEGIN")
+                    || keyword(tokens, index, "EXECUTE")) break;
+            if (!keyword(tokens, index, "ON")) continue;
+            if (found >= 0) throw new IllegalArgumentException();
+            found = index;
+        }
+        if (found < 0) throw new IllegalArgumentException();
+        return found;
+    }
+
+    private static int definitionNoun(List<Token> tokens, String noun) {
+        for (int index = 0; index < tokens.size(); index++) {
+            if (!keyword(tokens, index, "CREATE")) continue;
+            int cursor = index + 1;
+            if (keyword(tokens, cursor, "OR") && keyword(tokens, cursor + 1, "REPLACE")) {
+                cursor += 2;
+            }
+            if (keyword(tokens, cursor, "EDITIONABLE")
+                    || keyword(tokens, cursor, "NONEDITIONABLE")) cursor++;
+            if (noun.equals("TRIGGER") && keyword(tokens, cursor, "CONSTRAINT")) cursor++;
+            return keyword(tokens, cursor, noun) ? cursor : -1;
+        }
+        return -1;
     }
 
     private static void collectCtes(
@@ -1290,13 +1363,6 @@ public final class SqlScopeAwareOwnerRewriter {
             }
             return;
         }
-    }
-
-    private static boolean definitionKind(List<Token> tokens, String kind) {
-        for (int index = 0; index < Math.min(tokens.size(), 8); index++) {
-            if (tokens.get(index).keyword(kind)) return true;
-        }
-        return false;
     }
 
     private static int parseRelation(
@@ -1432,6 +1498,19 @@ public final class SqlScopeAwareOwnerRewriter {
         }
         if (!opens.isEmpty()) throw new IllegalArgumentException();
         return pairs;
+    }
+
+    private static int[] nestingDepth(List<Token> tokens) {
+        int[] depths = new int[tokens.size()];
+        int depth = 0;
+        for (int index = 0; index < tokens.size(); index++) {
+            if (symbol(tokens, index, ")")) depth--;
+            if (depth < 0) throw new IllegalArgumentException();
+            depths[index] = depth;
+            if (symbol(tokens, index, "(")) depth++;
+        }
+        if (depth != 0) throw new IllegalArgumentException();
+        return depths;
     }
 
     private static List<Token> tokenize(String text, Dialect dialect) {

@@ -790,6 +790,49 @@ class PgSchemaChangeRendererTest {
     }
 
     @Test
+    void proceduralFromAndUsingTokensDoNotBecomeRelationSources() {
+        String routine = """
+                CREATE FUNCTION "Source".clause_scope() RETURNS integer LANGUAGE plpgsql AS $body$
+                <<"Source">>
+                DECLARE rec record; bind_rec record;
+                BEGIN
+                  rec.value := EXTRACT(YEAR FROM "Source".rec.value);
+                  EXECUTE 'SELECT 1' USING "Source".bind_rec.value;
+                  PERFORM selected.id
+                    FROM "Source".orders selected
+                    JOIN "Source".incoming incoming
+                    USING ("Source".rec);
+                  WITH picked AS (SELECT id FROM "Source".cte_orders)
+                    SELECT lateral_row.id INTO rec.value
+                    FROM LATERAL (SELECT id FROM "Source".lateral_orders) lateral_row;
+                  DELETE FROM "Source".archive WHERE id = rec.value;
+                  RETURN 1;
+                END "Source"
+                $body$
+                """;
+
+        String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                routine, ObjectType.FUNCTION, "Source");
+
+        assertTrue(projected.contains(
+                "EXTRACT(YEAR FROM \"Source\".rec.value)"), projected);
+        assertTrue(projected.contains(
+                "EXECUTE 'SELECT 1' USING \"Source\".bind_rec.value"), projected);
+        assertTrue(projected.contains(
+                "USING (\"Source\".rec)"), projected);
+        assertTrue(projected.contains(
+                "FROM \0pg-self-owner\0.orders selected"), projected);
+        assertTrue(projected.contains(
+                "JOIN \0pg-self-owner\0.incoming incoming"), projected);
+        assertTrue(projected.contains(
+                "FROM \0pg-self-owner\0.cte_orders"), projected);
+        assertTrue(projected.contains(
+                "FROM LATERAL (SELECT id FROM \0pg-self-owner\0.lateral_orders)"), projected);
+        assertTrue(projected.contains(
+                "DELETE FROM \0pg-self-owner\0.archive"), projected);
+    }
+
+    @Test
     void labeledPlpgsqlCaseExpressionsAndStatementsDoNotCloseTheirBlock() {
         String routine = """
                 CREATE FUNCTION "Source".case_scope(value integer) RETURNS integer LANGUAGE plpgsql AS $body$

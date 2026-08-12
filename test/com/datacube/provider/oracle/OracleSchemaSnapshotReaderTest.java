@@ -230,6 +230,38 @@ class OracleSchemaSnapshotReaderTest {
     }
 
     @Test
+    void ambiguousFromGrammarReadsAsLowManualInsteadOfGuessingRelationOwnership()
+            throws Exception {
+        String ddl = "CREATE FUNCTION \"Sales\".\"AMBIGUOUS_FROM\" RETURN NUMBER AS BEGIN "
+                + "RETURN EXTRACT(YEAR FROM \"Sales\".missing.value); END; /";
+        SchemaSnapshot source = new OracleSchemaSnapshotReader(new SnapshotJdbc("Sales")
+                .rows("definitions", definitionRow(
+                        "AMBIGUOUS_FROM", "FUNCTION", 906, 1, null))
+                .ddl("FUNCTION", "AMBIGUOUS_FROM", ddl).connection()).read(
+                "source", OracleSchemaIdentifierNormalizer.schema("Sales"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot target = new SchemaSnapshot(DbType.ORACLE, "target", source.schema(),
+                Instant.EPOCH, new SnapshotCompleteness(true, new TreeMap<>()),
+                new TreeMap<>(), "empty");
+
+        DefinitionObject routine = definition(source, ObjectType.FUNCTION,
+                "Sales", "AMBIGUOUS_FROM", "oracle-routine-signature-v1\0");
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, target, new OracleSchemaDiffCapability().comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+
+        assertEquals(DefinitionConfidence.LOW, routine.confidence());
+        assertEquals(AutomationLevel.MANUAL_ONLY, diff.differences().getFirst().automation());
+        assertEquals(ChangeKind.MANUAL, plan.changes().getFirst().kind());
+        assertTrue(plan.selectedChangeIds().isEmpty());
+        assertEquals(OracleSchemaChangeRenderer.MANUAL_CHANGE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> new OracleSchemaChangeRenderer().render(plan.changes().getFirst(),
+                                new RenderContext(DbType.ORACLE,
+                                        source.schema(), source.schema(), false))).getMessage());
+    }
+
+    @Test
     void packageSpecReaderProjectionRenderAndRereadConvergeWhileUnknownSpecStaysLocalManual()
             throws Exception {
         String sourceSpec = "CREATE PACKAGE \"Source\".\"API\" AS "
@@ -314,6 +346,11 @@ class OracleSchemaSnapshotReaderTest {
                 + "INTO rec.value FROM \"Source\".orders \"Source\"; "
                 + "SELECT VALUE BULK COLLECT INTO \"Source\".rec.values "
                 + "FROM \"Source\".orders; "
+                + "\"Source\".rec.value := EXTRACT(YEAR FROM \"Source\".rec.value); "
+                + "EXECUTE IMMEDIATE 'SELECT 1 FROM DUAL' USING \"Source\".rec.value; "
+                + "SELECT selected.ID INTO rec.value FROM \"Source\".orders selected "
+                + "JOIN \"Source\".incoming incoming USING (\"Source\".rec); "
+                + "DELETE FROM \"Source\".archive WHERE ID = rec.value; "
                 + "INSERT INTO \"Source\".orders(VALUE) VALUES (1) "
                 + "RETURNING VALUE INTO \"Source\".rec.value; "
                 + "MERGE INTO \"Source\".orders target USING \"Source\".incoming source "
@@ -324,6 +361,8 @@ class OracleSchemaSnapshotReaderTest {
                 .replace("rec \"Source\".\"ORDER_REC\"",
                         "rec \"Target\".\"ORDER_REC\"")
                 .replace("FROM \"Source\".orders", "FROM \"Target\".orders")
+                .replace("JOIN \"Source\".incoming", "JOIN \"Target\".incoming")
+                .replace("DELETE FROM \"Source\".archive", "DELETE FROM \"Target\".archive")
                 .replace("INSERT INTO \"Source\".orders", "INSERT INTO \"Target\".orders")
                 .replace("MERGE INTO \"Source\".orders", "MERGE INTO \"Target\".orders")
                 .replace("USING \"Source\".incoming", "USING \"Target\".incoming");
@@ -361,10 +400,13 @@ class OracleSchemaSnapshotReaderTest {
         SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
         DefinitionObject safeType = definition(source, ObjectType.TYPE,
                 "Source", "ORDER_T", "SPEC");
+        DefinitionObject safeRoutine = definition(source, ObjectType.FUNCTION,
+                "Source", "LABEL_RELATION", "oracle-routine-signature-v1\0");
         DefinitionObject unsafe = definition(source, ObjectType.TYPE,
                 "Source", "UNSAFE_T", "SPEC");
 
         assertEquals(DefinitionConfidence.HIGH, safeType.confidence());
+        assertEquals(DefinitionConfidence.HIGH, safeRoutine.confidence());
         assertEquals(DefinitionConfidence.LOW, unsafe.confidence());
         var routineChange = plan.changes().stream()
                 .filter(value -> value.object().type() == ObjectType.FUNCTION)
@@ -384,7 +426,14 @@ class OracleSchemaSnapshotReaderTest {
                 "BULK COLLECT INTO \"Source\".rec.values"), routineSql);
         assertTrue(routineSql.contains(
                 "RETURNING VALUE INTO \"Source\".rec.value"), routineSql);
+        assertTrue(routineSql.contains(
+                "EXTRACT(YEAR FROM \"Source\".rec.value)"), routineSql);
+        assertTrue(routineSql.contains(
+                "USING \"Source\".rec.value"), routineSql);
         assertTrue(routineSql.contains("FROM \"Target\".orders"), routineSql);
+        assertTrue(routineSql.contains(
+                "JOIN \"Target\".incoming incoming USING (\"Source\".rec)"), routineSql);
+        assertTrue(routineSql.contains("DELETE FROM \"Target\".archive"), routineSql);
         assertTrue(routineSql.contains("INSERT INTO \"Target\".orders"), routineSql);
         assertTrue(routineSql.contains("MERGE INTO \"Target\".orders"), routineSql);
         assertTrue(routineSql.contains("USING \"Target\".incoming"), routineSql);

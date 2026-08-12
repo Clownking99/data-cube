@@ -534,6 +534,88 @@ class OracleSchemaChangeRendererTest {
     }
 
     @Test
+    void proceduralFromAndUsingTokensDoNotBecomeRelationSources() {
+        String ddl = """
+                CREATE FUNCTION "Source"."CLAUSE_SCOPE" RETURN NUMBER AS
+                BEGIN
+                  <<"Source">>
+                  DECLARE
+                    rec "Source"."ORDER_REC";
+                    bind_rec "Source"."ORDER_REC";
+                  BEGIN
+                    rec.value := EXTRACT(YEAR FROM "Source".rec.value);
+                    EXECUTE IMMEDIATE 'SELECT 1 FROM DUAL'
+                      USING "Source".bind_rec.value;
+                    SELECT selected.ID INTO rec.value
+                      FROM "Source".orders selected
+                      JOIN "Source".incoming incoming
+                      USING ("Source".rec);
+                    WITH picked AS (SELECT ID FROM "Source".cte_orders)
+                      SELECT lateral_row.ID INTO rec.value
+                      FROM LATERAL (SELECT ID FROM "Source".lateral_orders) lateral_row;
+                    DELETE FROM "Source".archive WHERE ID = rec.value;
+                  END "Source";
+                  RETURN 1;
+                END;
+                /
+                """;
+
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+
+        assertTrue(projected.contains(
+                "EXTRACT(YEAR FROM \"Source\".rec.value)"), projected);
+        assertTrue(projected.contains(
+                "USING \"Source\".bind_rec.value"), projected);
+        assertTrue(projected.contains(
+                "USING (\"Source\".rec)"), projected);
+        assertTrue(projected.contains(
+                "FROM \0oracle-self-owner\0.orders selected"), projected);
+        assertTrue(projected.contains(
+                "JOIN \0oracle-self-owner\0.incoming incoming"), projected);
+        assertTrue(projected.contains(
+                "FROM \0oracle-self-owner\0.cte_orders"), projected);
+        assertTrue(projected.contains(
+                "FROM LATERAL (SELECT ID FROM \0oracle-self-owner\0.lateral_orders)"), projected);
+        assertTrue(projected.contains(
+                "DELETE FROM \0oracle-self-owner\0.archive"), projected);
+    }
+
+    @Test
+    void triggerBodyOnPredicateDoesNotBecomeItsRelationSource() {
+        String ddl = """
+                CREATE TRIGGER "Source"."CLAUSE_TRG"
+                  BEFORE INSERT ON "Source".orders
+                DECLARE
+                  "Source" "Source"."ORDER_REC";
+                BEGIN
+                  INSERT INTO "Source".audit_log(ID)
+                  SELECT selected.ID
+                    FROM "Source".orders selected
+                    JOIN "Source".incoming incoming
+                      ON "Source".value = incoming.ID
+                    JOIN "Source".archive archived
+                      USING ("Source".value);
+                END;
+                /
+                """;
+
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+
+        assertTrue(projected.contains(
+                "INSERT ON \0oracle-self-owner\0.orders"), projected);
+        assertTrue(projected.contains(
+                "INSERT INTO \0oracle-self-owner\0.audit_log"), projected);
+        assertTrue(projected.contains(
+                "FROM \0oracle-self-owner\0.orders selected"), projected);
+        assertTrue(projected.contains(
+                "JOIN \0oracle-self-owner\0.incoming incoming"), projected);
+        assertTrue(projected.contains(
+                "ON \"Source\".value = incoming.ID"), projected);
+        assertTrue(projected.contains(
+                "USING (\"Source\".value)"), projected);
+    }
+
+    @Test
     void oracleFormalTypesExcludeDefaultExpressionsFromOwnerProof() {
         String safe = """
                 CREATE FUNCTION "Source"."FORMALS"(
