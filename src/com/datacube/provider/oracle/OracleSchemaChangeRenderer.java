@@ -1,5 +1,6 @@
 package com.datacube.provider.oracle;
 
+import com.datacube.provider.SqlScopeAwareOwnerRewriter;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.schemadiff.AutomationLevel;
 import com.datacube.spi.schemadiff.ChangeKind;
@@ -174,7 +175,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     private static String canonicalRoutineIdentityType(String type, String selfOwner) {
-        if (type.startsWith("\"")) return comparisonFragment(type, selfOwner);
+        if (type.startsWith("\"")) return comparisonTypeFragment(type, selfOwner);
         String selfPrefix = selfOwner + '.';
         if (!type.startsWith(selfPrefix)) return type;
         if (type.length() == selfPrefix.length()) {
@@ -783,65 +784,38 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         String source = schemaPart(context.sourceSchema());
         String target = schemaPart(context.targetSchema());
         return rewriteDefinitionOwner(text, source,
-                OracleSchemaIdentifierNormalizer.quote(target));
+                OracleSchemaIdentifierNormalizer.quote(target), false);
     }
 
     static String comparisonDefinition(String text, String sourceOwner) {
-        return rewriteDefinitionOwner(text, sourceOwner, "\0oracle-self-owner\0");
+        return rewriteDefinitionOwner(text, sourceOwner, "\0oracle-self-owner\0", false);
     }
 
     static String comparisonFragment(String text, String sourceOwner) {
-        return rewriteDefinitionOwner(text, sourceOwner, "\0oracle-self-owner\0");
+        return rewriteDefinitionOwner(text, sourceOwner, "\0oracle-self-owner\0", true);
+    }
+
+    static String comparisonTypeFragment(String text, String sourceOwner) {
+        try {
+            return SqlScopeAwareOwnerRewriter.rewriteStructuredIdentifierFragment(
+                    text, sourceOwner, "\0oracle-self-owner\0",
+                    SqlScopeAwareOwnerRewriter.Dialect.ORACLE);
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        }
     }
 
     private static String rewriteDefinitionOwner(
-            String text, String source, String replacement) {
-        StringBuilder output = new StringBuilder(text.length() + replacement.length());
-        int index = 0;
-        while (index < text.length()) {
-            char current = text.charAt(index);
-            if (alternativeQuoteAt(text, index)) {
-                int end = alternativeQuoteEnd(text, index);
-                output.append(text, index, end);
-                index = end;
-                continue;
-            }
-            if (current == '\'') {
-                int end = singleQuotedEnd(text, index);
-                output.append(text, index, end);
-                index = end;
-                continue;
-            }
-            if (current == '-' && charAt(text, index + 1) == '-') {
-                int end = lineCommentEnd(text, index);
-                output.append(text, index, end);
-                index = end;
-                continue;
-            }
-            if (current == '/' && charAt(text, index + 1) == '*') {
-                int end = blockCommentEnd(text, index);
-                output.append(text, index, end);
-                index = end;
-                continue;
-            }
-            SqlIdentifier identifier = sqlIdentifierAt(text, index);
-            if (identifier != null) {
-                boolean retarget = identifierMatches(identifier, source, true)
-                        && qualifiedDotAt(text, identifier.end());
-                output.append(retarget
-                        ? replacement
-                        : text.substring(index, identifier.end()));
-                index = identifier.end();
-                continue;
-            }
-            if (current == '\0' || Character.isISOControl(current)
-                    && current != '\r' && current != '\n' && current != '\t') {
-                throw new IllegalArgumentException(UNSAFE_DEFINITION);
-            }
-            output.append(current);
-            index++;
+            String text, String source, String replacement, boolean fragment) {
+        try {
+            return fragment
+                    ? SqlScopeAwareOwnerRewriter.rewriteFragment(text, source, replacement,
+                            SqlScopeAwareOwnerRewriter.Dialect.ORACLE)
+                    : SqlScopeAwareOwnerRewriter.rewriteDefinition(text, source, replacement,
+                            SqlScopeAwareOwnerRewriter.Dialect.ORACLE);
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException(UNSAFE_DEFINITION);
         }
-        return output.toString();
     }
 
     private static int keywordEnd(String text, int start, String keyword) {
@@ -976,7 +950,7 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
             }
             clause.append(' ').append(prefix)
                     .append(renderFragment(defaultValue.substring(prefix.length()), context));
-        } else if (defaultValue != null && !defaultValue.isBlank()) {
+        } else if (column.hasDefault()) {
             if (defaultValue.stripLeading().startsWith("GENERATED ")
                     || defaultValue.stripLeading().startsWith("DEFAULT ")) {
                 throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
@@ -1378,7 +1352,16 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         validateColumnExtensions(type.providerExtensions());
         if (type.arrayDimensions() != 0) throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         String formatted = type.providerExtensions().get("formattedType");
-        if (formatted != null) return renderFragment(formatted, context);
+        if (formatted != null) {
+            try {
+                return SqlScopeAwareOwnerRewriter.rewriteStructuredIdentifierFragment(
+                        formatted.strip(), schemaPart(context.sourceSchema()),
+                        OracleSchemaIdentifierNormalizer.quote(schemaPart(context.targetSchema())),
+                        SqlScopeAwareOwnerRewriter.Dialect.ORACLE);
+            } catch (IllegalArgumentException failure) {
+                throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+            }
+        }
         String base = type.baseType();
         String result;
         if ("NUMBER".equals(base)) {
@@ -1418,7 +1401,10 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }
         try {
-            return retargetSimpleFragment(fragment.strip(), context);
+            return SqlScopeAwareOwnerRewriter.rewriteFragment(fragment.strip(),
+                    schemaPart(context.sourceSchema()),
+                    OracleSchemaIdentifierNormalizer.quote(schemaPart(context.targetSchema())),
+                    SqlScopeAwareOwnerRewriter.Dialect.ORACLE);
         } catch (IllegalArgumentException failure) {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }

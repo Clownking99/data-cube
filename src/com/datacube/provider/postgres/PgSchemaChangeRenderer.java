@@ -1,5 +1,6 @@
 package com.datacube.provider.postgres;
 
+import com.datacube.provider.SqlScopeAwareOwnerRewriter;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.schemadiff.AutomationLevel;
 import com.datacube.spi.schemadiff.ChangeKind;
@@ -156,7 +157,11 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
         if (!owner.equals(source) && !owner.equals(target)) {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }
-        return comparisonFragment(key.signature(), owner);
+        try {
+            return comparisonTypeFragment(key.signature(), owner);
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
     }
 
     private static void validateContextOwners(SchemaChange change, RenderContext context) {
@@ -807,63 +812,30 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
                 sourceOwner, "\0pg-self-owner\0");
     }
 
+    static String comparisonTypeFragment(String fragment, String sourceOwner) {
+        try {
+            return SqlScopeAwareOwnerRewriter.rewriteStructuredIdentifierFragment(
+                    fragment, sourceOwner, "\0pg-self-owner\0",
+                    SqlScopeAwareOwnerRewriter.Dialect.POSTGRESQL);
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException(UNSAFE_DEFINITION);
+        }
+    }
+
     private static String rewriteDefinitionOwner(
             String definition, ObjectType type, String source, String replacement) {
-        StringBuilder output = new StringBuilder(definition.length());
-        int index = 0;
-        while (index < definition.length()) {
-            char current = definition.charAt(index);
-            if (current == '\'') {
-                index = copySingleQuoted(definition, index, output);
-            } else if (current == '"') {
-                QuotedIdentifier identifier = quotedIdentifierAt(definition, index);
-                if (identifier == null) throw new IllegalArgumentException(UNSAFE_DEFINITION);
-                if (sqlIdentifierMatches(
-                        new SqlIdentifier(identifier.value(), true, identifier.end()), source, true)
-                        && qualifiedDotAt(definition, identifier.end())) {
-                    output.append(replacement);
-                } else {
-                    output.append(definition, index, identifier.end());
-                }
-                index = identifier.end();
-            } else if (current == '-' && charAt(definition, index + 1) == '-') {
-                index = copyLineComment(definition, index, output);
-            } else if (current == '/' && charAt(definition, index + 1) == '*') {
-                index = copyBlockComment(definition, index, output);
-            } else if (current == '$') {
-                String tag = dollarTagAt(definition, index);
-                if (tag == null) {
-                    output.append(current);
-                    index++;
-                } else {
-                    int end = definition.indexOf(tag, index + tag.length());
-                    if (end < 0) throw new IllegalArgumentException(UNSAFE_DEFINITION);
-                    String body = definition.substring(index + tag.length(), end);
-                    if ((type == ObjectType.FUNCTION || type == ObjectType.PROCEDURE)
-                            && containsQualifiedIdentifier(body, source)) {
-                        throw new IllegalArgumentException(UNSAFE_DEFINITION);
-                    }
-                    int after = end + tag.length();
-                    output.append(definition, index, after);
-                    index = after;
-                }
-            } else if (identifierStart(current)) {
-                int end = index + 1;
-                while (end < definition.length() && identifierPart(definition.charAt(end))) end++;
-                String identifier = definition.substring(index, end);
-                if (sqlIdentifierMatches(new SqlIdentifier(identifier, false, end), source, true)
-                        && qualifiedDotAt(definition, end)) {
-                    output.append(replacement);
-                } else {
-                    output.append(identifier);
-                }
-                index = end;
-            } else {
-                output.append(current);
-                index++;
-            }
+        try {
+            return type == ObjectType.FUNCTION || type == ObjectType.PROCEDURE
+                    ? SqlScopeAwareOwnerRewriter.rewritePostgresRoutineDefinition(
+                            definition, source, replacement)
+                    : type == ObjectType.TABLE
+                    ? SqlScopeAwareOwnerRewriter.rewriteFragment(definition, source, replacement,
+                            SqlScopeAwareOwnerRewriter.Dialect.POSTGRESQL)
+                    : SqlScopeAwareOwnerRewriter.rewriteDefinition(definition, source, replacement,
+                            SqlScopeAwareOwnerRewriter.Dialect.POSTGRESQL);
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException(UNSAFE_DEFINITION);
         }
-        return output.toString();
     }
 
     private static boolean containsQualifiedIdentifier(String text, String schema) {
@@ -1066,7 +1038,7 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
         String type = formattedType(column, context);
         StringBuilder clause = new StringBuilder(childName(column.name())).append(' ').append(type);
         String defaultValue = column.normalizedDefault();
-        if (defaultValue != null && !defaultValue.isBlank()) {
+        if (column.hasDefault()) {
             defaultValue = renderFragment(defaultValue, context);
             if (defaultValue.stripLeading().startsWith("GENERATED ")) {
                 clause.append(' ').append(defaultValue.strip());
@@ -1304,7 +1276,14 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
     private static String formattedType(ColumnDefinition column, RenderContext context) {
         String type = column.dataType().providerExtensions().get("formattedType");
         if (type == null || type.isBlank()) throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
-        return renderFragment(type, context);
+        try {
+            return SqlScopeAwareOwnerRewriter.rewriteStructuredIdentifierFragment(type.strip(),
+                    schemaPart(context.sourceSchema()),
+                    PgSchemaIdentifierNormalizer.quote(schemaPart(context.targetSchema())),
+                    SqlScopeAwareOwnerRewriter.Dialect.POSTGRESQL);
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
     }
 
     private static String renderFragment(String fragment, RenderContext context) {
@@ -1513,7 +1492,14 @@ public final class PgSchemaChangeRenderer implements SchemaChangeRenderer {
             throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
         }
         if (signature.isBlank()) return "";
-        return renderFragment(signature, context);
+        try {
+            return SqlScopeAwareOwnerRewriter.rewriteStructuredIdentifierFragment(signature,
+                    schemaPart(context.sourceSchema()),
+                    PgSchemaIdentifierNormalizer.quote(schemaPart(context.targetSchema())),
+                    SqlScopeAwareOwnerRewriter.Dialect.POSTGRESQL);
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException(UNSUPPORTED_SHAPE);
+        }
     }
 
     private static boolean safeRoutineSignature(String signature) {

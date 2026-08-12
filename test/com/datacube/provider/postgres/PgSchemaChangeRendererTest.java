@@ -442,6 +442,66 @@ class PgSchemaChangeRendererTest {
     }
 
     @Test
+    void definitionOwnerRetargetingDistinguishesScopedAliasesCtesAndRealRelations() {
+        ObjectKey viewKey = key(ObjectType.VIEW, "Source", "Scoped", "");
+        String ddl = """
+                CREATE VIEW "Source"."Scoped" AS
+                WITH "Source" AS (SELECT 1 AS id)
+                SELECT "Source".id, nested.id, '"Source"."literal"' AS label
+                FROM "Source"."Orders" AS "Source"
+                JOIN (SELECT "Source".id
+                      FROM "Source"."Nested" AS "Source") AS nested ON true
+                JOIN "Source"."Real" AS real ON real.id = nested.id
+                /* "Source"."comment" */
+                """;
+        SchemaChange create = change("chg:scoped-owner", ChangeKind.CREATE, viewKey,
+                definition(viewKey, ddl), null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+
+        String rendered = renderer.render(create, context(DbType.POSTGRESQL, false))
+                .getFirst().sql();
+        String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                PgSchemaDefinitionNormalizer.normalize(ddl), ObjectType.VIEW, "Source");
+
+        assertTrue(rendered.startsWith("CREATE VIEW \"Target\".\"Scoped\""));
+        assertTrue(rendered.contains("FROM \"Target\".\"Orders\" AS \"Source\""));
+        assertTrue(rendered.contains("FROM \"Target\".\"Nested\" AS \"Source\""));
+        assertTrue(rendered.contains("JOIN \"Target\".\"Real\" AS real"));
+        assertEquals(2, countOccurrences(rendered, "SELECT \"Source\".id"));
+        assertTrue(rendered.contains("'\"Source\".\"literal\"'"));
+        assertTrue(rendered.contains("/* \"Source\".\"comment\" */"));
+        assertEquals(2, countOccurrences(projected, "SELECT \"Source\".id"));
+        assertEquals(4, countOccurrences(projected, "\0pg-self-owner\0"));
+    }
+
+    @Test
+    void commaSeparatedRelationAliasesAreNeverTreatedAsSchemaQualifiers() {
+        String ddl = "CREATE VIEW \"Source\".\"CommaAlias\" AS "
+                + "SELECT \"Source\".id FROM external_table, other_table AS \"Source\"";
+
+        String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                ddl, ObjectType.VIEW, "Source");
+
+        assertTrue(projected.contains("SELECT \"Source\".id"));
+        assertEquals(1, countOccurrences(projected, "\0pg-self-owner\0"));
+        assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> PgSchemaChangeRenderer.comparisonFragment(
+                                "\"Source\".id", "Source")).getMessage());
+    }
+
+    @Test
+    void nestedAliasDoesNotShadowAnOuterSchemaQualifier() {
+        String ddl = "CREATE VIEW \"Source\".\"Shadow\" AS SELECT \"Source\".fn(), "
+                + "(SELECT \"Source\".id FROM nested_table AS \"Source\") FROM outer_table";
+
+        String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                ddl, ObjectType.VIEW, "Source");
+
+        assertTrue(projected.contains("SELECT \0pg-self-owner\0.fn()"));
+        assertTrue(projected.contains("SELECT \"Source\".id FROM nested_table"));
+    }
+
+    @Test
     void replaceUsesTheWholeHighConfidenceDefinitionAndOnlyForSupportedObjectTypes() {
         for (ObjectType type : List.of(ObjectType.VIEW, ObjectType.FUNCTION, ObjectType.PROCEDURE)) {
             ObjectKey objectKey = key(type, "Source", "ReplaceMe", "");
@@ -482,7 +542,7 @@ class PgSchemaChangeRendererTest {
     }
 
     @Test
-    void lexicalRetargetChangesOnlyQualifiedIdentifierTokensAndRejectsUnsafeDollarBodies() {
+    void lexicalRetargetChangesOnlyQualifiedIdentifierTokensAndSafelyRewritesKnownDollarBodies() {
         ObjectKey key = key(ObjectType.VIEW, "Source", "Lexical", "");
         String definition = "CREATE VIEW \"Source\".\"Lexical\" AS\n"
                 + "SELECT '\"Source\".\"Table\"' AS literal -- \"Source\".\"LineComment\"\n"
@@ -498,15 +558,20 @@ class PgSchemaChangeRendererTest {
                 + "FROM \"Target\".\"RealTable\" /* \"Source\".\"BlockComment\" */;", rendered);
 
         ObjectKey functionKey = key(ObjectType.FUNCTION, "Source", "Unsafe", "");
-        String unsafe = "CREATE FUNCTION \"Source\".\"Unsafe\"() RETURNS integer LANGUAGE plpgsql "
-                + "AS $body$ BEGIN PERFORM \"Source\".\"SecretTable\"; RETURN 1; END $body$";
-        SchemaChange unsafeCreate = change("chg:unsafe", ChangeKind.CREATE, functionKey,
-                definition(functionKey, unsafe), null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
+        String routine = "CREATE FUNCTION \"Source\".\"Unsafe\"() RETURNS integer LANGUAGE plpgsql "
+                + "AS $body$ BEGIN PERFORM value FROM \"Source\".\"SecretTable\" AS \"Source\" "
+                + "JOIN \"External\".\"Shared\" ext ON true; "
+                + "PERFORM $inner$\"Source\".\"NestedLiteral\"$inner$; "
+                + "RETURN \"Source\".value; END $body$";
+        SchemaChange routineCreate = change("chg:routine", ChangeKind.CREATE, functionKey,
+                definition(functionKey, routine), null, AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
 
-        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> renderer.render(unsafeCreate, context(DbType.POSTGRESQL, false)));
-        assertEquals("Schema definition cannot be retargeted safely", failure.getMessage());
-        assertFalse(failure.getMessage().contains("SecretTable"));
+        String routineSql = renderer.render(routineCreate, context(DbType.POSTGRESQL, false))
+                .getFirst().sql();
+        assertTrue(routineSql.contains("FROM \"Target\".\"SecretTable\" AS \"Source\""));
+        assertTrue(routineSql.contains("RETURN \"Source\".value"));
+        assertTrue(routineSql.contains("JOIN \"External\".\"Shared\" ext"));
+        assertTrue(routineSql.contains("$inner$\"Source\".\"NestedLiteral\"$inner$"));
 
         String textOnly = "CREATE FUNCTION \"Source\".\"Unsafe\"() RETURNS integer LANGUAGE plpgsql "
                 + "AS $body$ BEGIN RAISE NOTICE '\"Source\".\"TextOnly\"'; "
@@ -518,6 +583,14 @@ class PgSchemaChangeRendererTest {
                         + "-- \"Source\".\"CommentOnly\"\nRETURN 1; END $body$;",
                 renderer.render(textOnlyCreate,
                         context(DbType.POSTGRESQL, false)).getFirst().sql());
+
+        String ambiguousRecord = "CREATE FUNCTION \"Source\".\"Unsafe\"() RETURNS integer "
+                + "LANGUAGE plpgsql AS $body$ DECLARE \"Source\" record; BEGIN "
+                + "RETURN \"Source\".value; END $body$";
+        assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> PgSchemaChangeRenderer.comparisonDefinition(
+                                ambiguousRecord, ObjectType.FUNCTION, "Source")).getMessage());
     }
 
     @Test
@@ -680,8 +753,9 @@ class PgSchemaChangeRendererTest {
         SchemaChange unsafeRoutine = change("chg:folded-dollar-body", ChangeKind.CREATE,
                 routineKey, definition(routineKey, routine), null,
                 AutomationLevel.SAFE_AUTOMATIC, RiskLevel.LOW);
-        assertSafeFailure("Schema definition cannot be retargeted safely", "secret",
-                () -> renderer.render(unsafeRoutine, lowerContext));
+        assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> renderer.render(unsafeRoutine, lowerContext)).getMessage());
     }
 
     @Test
@@ -1161,5 +1235,9 @@ class PgSchemaChangeRendererTest {
         assertTrue(sql.endsWith(";"));
         assertFalse(sql.endsWith(";;"));
         assertFalse(sql.substring(0, sql.length() - 1).stripTrailing().endsWith(";"));
+    }
+
+    private static int countOccurrences(String value, String needle) {
+        return value.split(java.util.regex.Pattern.quote(needle), -1).length - 1;
     }
 }

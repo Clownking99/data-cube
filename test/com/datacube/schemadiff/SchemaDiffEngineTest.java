@@ -150,6 +150,34 @@ class SchemaDiffEngineTest {
     }
 
     @Test
+    void blankDefaultUsesTheSameNoDefaultSemanticsAsNull() {
+        ObjectKey tableKey = key(ObjectType.TABLE, "orders");
+        for (String noDefault : java.util.Arrays.asList(null, "", "   \t")) {
+            TableDefinition source = table(tableKey,
+                    List.of(column("note", type("varchar"), true, noDefault, 1)),
+                    List.of(), List.of(), Set.of());
+            TableDefinition target = table(tableKey, List.of(), List.of(), List.of(), Set.of());
+
+            SchemaDifference difference = only(engine.compare(
+                    snapshot(DbType.POSTGRESQL, complete(), source),
+                    snapshot(DbType.POSTGRESQL, complete(), target)).differences());
+
+            assertEquals(RiskLevel.LOW, difference.risk());
+            assertEquals(AutomationLevel.SAFE_AUTOMATIC, difference.automation());
+        }
+
+        TableDefinition source = table(tableKey,
+                List.of(column("note", type("varchar"), true, "0", 1)),
+                List.of(), List.of(), Set.of());
+        SchemaDifference withDefault = only(engine.compare(
+                snapshot(DbType.POSTGRESQL, complete(), source),
+                snapshot(DbType.POSTGRESQL, complete(),
+                        table(tableKey, List.of(), List.of(), List.of(), Set.of()))).differences());
+        assertEquals(RiskLevel.HIGH, withDefault.risk());
+        assertEquals(AutomationLevel.DESTRUCTIVE_OPT_IN, withDefault.automation());
+    }
+
+    @Test
     void targetOnlyNullableColumnIsDestructiveRemoval() {
         ObjectKey tableKey = key(ObjectType.TABLE, "orders");
         TableDefinition source = table(tableKey,

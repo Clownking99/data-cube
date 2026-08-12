@@ -87,7 +87,7 @@ final class OracleSchemaComparisonProjector implements SchemaComparisonProjector
                     || formatted == null) throw invalid();
             extensions.put("oracle.typeOwner", "\0oracle-self-owner\0");
             extensions.put("formattedType",
-                    OracleSchemaChangeRenderer.comparisonFragment(formatted, selfOwner));
+                    OracleSchemaChangeRenderer.comparisonTypeFragment(formatted, selfOwner));
             return new CanonicalDataType("\0oracle-self-owner\0."
                     + type.baseType().substring(prefix.length()), type.length(), type.precision(),
                     type.scale(), type.withTimeZone(), type.arrayDimensions(), extensions);
@@ -157,7 +157,7 @@ final class OracleSchemaComparisonProjector implements SchemaComparisonProjector
             appendField(projected, mode.value());
             String prefix = selfOwner + ".";
             String projectedType = type.value().startsWith("\"")
-                    ? OracleSchemaChangeRenderer.comparisonFragment(type.value(), selfOwner)
+                    ? OracleSchemaChangeRenderer.comparisonTypeFragment(type.value(), selfOwner)
                     : type.value().startsWith(prefix) && type.value().length() > prefix.length()
                     ? "\0oracle-self-type\0." + type.value().substring(prefix.length())
                     : type.value();

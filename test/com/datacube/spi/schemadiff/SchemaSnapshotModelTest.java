@@ -19,6 +19,18 @@ import static org.junit.jupiter.api.Assertions.*;
 class SchemaSnapshotModelTest {
 
     @Test
+    void columnDefaultPresenceTreatsNullAndBlankAsNoDefault() {
+        CanonicalDataType type = new CanonicalDataType("text", null, null, null,
+                false, 0, new java.util.TreeMap<>());
+        for (String value : java.util.Arrays.asList(null, "", " \t")) {
+            assertFalse(new ColumnDefinition(new QualifiedName("c", "c", false), type,
+                    true, value, 1, null).hasDefault());
+        }
+        assertTrue(new ColumnDefinition(new QualifiedName("c", "c", false), type,
+                true, "0", 1, null).hasDefault());
+    }
+
+    @Test
     void publicModelSummariesNeverRenderConnectionSchemaObjectDdlPlsqlOrDefaults() {
         String connectionSecret = "production-admin:password-secret@database";
         QualifiedName schema = new QualifiedName(

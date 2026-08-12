@@ -373,6 +373,24 @@ class PgSchemaSnapshotReaderTest {
     }
 
     @Test
+    void unknownRoutineLanguageFromRealFunctionDefShapeIsRetainedAsLowConfidence() throws Exception {
+        String definition = "CREATE FUNCTION app.opaque() RETURNS integer "
+                + "LANGUAGE python AS $body$ return 1 $body$";
+        SnapshotJdbc jdbc = new SnapshotJdbc("app").rows("routines",
+                row("object_oid", 77L, "object_name", "opaque", "routine_kind", "f",
+                        "identity_arguments", "", "definition", definition));
+
+        SchemaSnapshot snapshot = new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "connection-id", PgSchemaIdentifierNormalizer.schema("app"),
+                new SqlExecutionOptions(0, 5, new SqlExecutionControl()));
+
+        DefinitionObject opaque = definition(snapshot, ObjectType.FUNCTION, "app", "opaque", "");
+        assertEquals(DefinitionConfidence.LOW, opaque.confidence());
+        assertEquals(definition, opaque.originalDefinition());
+        assertTrue(snapshot.objects().containsKey(opaque.key()));
+    }
+
+    @Test
     void timeoutAndPostgresCancellationRemainTerminalAndDoNotExposeDriverDetails() {
         SQLTimeoutException driverTimeout = new SQLTimeoutException(
                 "SELECT secret FROM app.t jdbc:postgresql://host/db password=secret", "57000");

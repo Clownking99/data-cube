@@ -135,6 +135,14 @@ public final class SchemaDiffEngine {
         Comparison projected = compareObjects(sourceComparison, targetComparison);
         List<PropertyDifference> properties = rehydrateProperties(
                 projected.properties(), sourceComparison, targetComparison, source, target);
+        if (properties.isEmpty() && !projected.reliable()
+                && source instanceof DefinitionObject sourceDefinition
+                && target instanceof DefinitionObject targetDefinition) {
+            properties = List.of(new PropertyDifference("normalizedDefinition",
+                    definitionDigest(sourceDefinition.normalizedDefinition()),
+                    definitionDigest(targetDefinition.normalizedDefinition()),
+                    "Definition normalization is unavailable; manual review is required"));
+        }
         if (properties.isEmpty() && projected.reliable()) {
             return new SchemaDifference(DifferenceKind.EQUIVALENT, key, source, target, List.of(),
                     RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC, dependencies(source, target),
@@ -229,7 +237,7 @@ public final class SchemaDiffEngine {
                 && property.sourceValue() instanceof ColumnDefinition column
                 && property.targetValue() == null
                 && column.nullable()
-                && column.normalizedDefault() == null;
+                && !column.hasDefault();
     }
 
     private static Comparison compareObjects(SchemaObject source, SchemaObject target) {
@@ -331,7 +339,9 @@ public final class SchemaDiffEngine {
                     definitionDigest(target.normalizedDefinition())));
         }
         addIfDifferent(properties, "dependencies", source.dependencies(), target.dependencies());
-        return new Comparison(properties, true);
+        return new Comparison(properties,
+                source.confidence() == DefinitionConfidence.HIGH
+                        && target.confidence() == DefinitionConfidence.HIGH);
     }
 
     private static String definitionDigest(String definition) {

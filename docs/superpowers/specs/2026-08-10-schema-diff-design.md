@@ -108,6 +108,17 @@ public record QualifiedName(String original, String comparisonKey, boolean quote
 - 不用统一 `toLowerCase()` 或 `equalsIgnoreCase()` 代替数据库规则。
 - 函数、过程和重载对象的 key 包含规范参数签名。
 
+### 6.2.1 Provider comparison projection contract
+
+- Core 两参 `SchemaDiffEngine.compare(source, target)` 保持 exact/identity 语义；只有 capability/service 路径或显式 projector overload 执行 provider-aware 投影。
+- `SchemaDiffCapability.comparisonProjector()` 的默认实现必须是 identity，以保持未 opt-in 的现有及第三方 provider 行为。
+- PostgreSQL/Oracle projector 仅将所选 schema 的 self owner 投影为 schema-relative comparison identity；外部 owner、外部类型与外部依赖必须保持精确。
+- 投影必须覆盖顶层/嵌套 key、routine signature、definition/fragment 与 same-schema dependency，并为每个 projected key 保存一一对应、可逆的 original source/target key 映射。
+- collision、缺映射、malformed provider key 或 owner 不一致必须以固定、脱敏错误 fail closed；不得猜测或降级为全局字符串替换。
+- engine 完成 comparison 后必须把 difference object、property value、rename suggestion、dependencies 与 canonical paths 精确 rehydrate 为原 source/target 对象后再交给 planner、renderer、UI 与 digest。
+- comparison placeholder/manual marker 仅能存在于 comparison snapshot；不得进入 renderer SQL、UI definition、deployment digest 或公共 `toString()`。
+- provider definition owner 重写必须识别 SQL scope/alias/CTE；只有可证明为 self schema qualifier 的 token 才允许 retarget，alias.column、字符串、注释与外部 owner 保持原样，未知或歧义语法 fail closed。
+
 ### 6.3 对象范围
 
 `ObjectType` 包含：

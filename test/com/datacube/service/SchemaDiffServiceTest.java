@@ -6,6 +6,19 @@ import com.datacube.spi.DatabaseProvider;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.schemadiff.QualifiedName;
+import com.datacube.provider.postgres.PgSchemaDiffCapability;
+import com.datacube.provider.postgres.PgSchemaIdentifierNormalizer;
+import com.datacube.schemadiff.DifferenceKind;
+import com.datacube.schemadiff.SchemaDiffResult;
+import com.datacube.spi.schemadiff.AutomationLevel;
+import com.datacube.spi.schemadiff.DefinitionConfidence;
+import com.datacube.spi.schemadiff.DefinitionObject;
+import com.datacube.spi.schemadiff.ObjectKey;
+import com.datacube.spi.schemadiff.ObjectType;
+import com.datacube.spi.schemadiff.SchemaChangeRenderer;
+import com.datacube.spi.schemadiff.SchemaSnapshot;
+import com.datacube.spi.schemadiff.SequenceDefinition;
+import com.datacube.spi.schemadiff.SnapshotCompleteness;
 import com.datacube.spi.schemadiff.SchemaDiffCapability;
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +28,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.time.Instant;
 import java.util.concurrent.CompletionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,6 +39,52 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 class SchemaDiffServiceTest {
+
+    @Test
+    void providerAwareCompareReturnsOtherObjectsWhenOneRoutineRequiresManualReview() {
+        CredentialCipher cipher = new CredentialCipher();
+        RecordingConnectionFactory factory = new RecordingConnectionFactory();
+        SchemaDiffCapability capability = new SchemaDiffCapability() {
+            @Override
+            public com.datacube.spi.schemadiff.SchemaSnapshotReader snapshotReader(Connection connection) {
+                return (connectionId, schema, options) -> partialSnapshot(connectionId,
+                        schema.original());
+            }
+
+            @Override
+            public SchemaChangeRenderer changeRenderer() {
+                return new PgSchemaDiffCapability().changeRenderer();
+            }
+
+            @Override
+            public com.datacube.spi.schemadiff.SchemaComparisonProjector comparisonProjector() {
+                return new PgSchemaDiffCapability().comparisonProjector();
+            }
+
+            @Override
+            public Set<ObjectType> supportedObjectTypes() {
+                return Set.of(ObjectType.FUNCTION, ObjectType.SEQUENCE);
+            }
+        };
+        ConnectionManager manager = new ConnectionManager(cipher,
+                type -> provider(type, factory, Optional.of(capability)));
+        SchemaDiffService service = new SchemaDiffService(manager);
+        ConnConfig source = config(cipher, "source", DbType.POSTGRESQL, "source-host", "source-secret");
+        ConnConfig target = config(cipher, "target", DbType.POSTGRESQL, "target-host", "target-secret");
+
+        SchemaDiffResult result = service.compare(request(source, target),
+                new SchemaDeploymentControl()).toCompletableFuture().join();
+
+        assertEquals(DifferenceKind.MODIFIED, result.differences().stream()
+                .filter(difference -> difference.object().type() == ObjectType.FUNCTION)
+                .findFirst().orElseThrow().kind());
+        assertEquals(AutomationLevel.MANUAL_ONLY, result.differences().stream()
+                .filter(difference -> difference.object().type() == ObjectType.FUNCTION)
+                .findFirst().orElseThrow().automation());
+        assertEquals(DifferenceKind.EQUIVALENT, result.differences().stream()
+                .filter(difference -> difference.object().type() == ObjectType.SEQUENCE)
+                .findFirst().orElseThrow().kind());
+    }
 
     @Test
     void redisDifferentTypesAndMissingCapabilityFailBeforeAnyConnectionOpens() {
@@ -102,7 +165,26 @@ class SchemaDiffServiceTest {
     }
 
     private static QualifiedName name(String value) {
-        return new QualifiedName(value, value, false);
+        return PgSchemaIdentifierNormalizer.schema(value);
+    }
+
+    private static SchemaSnapshot partialSnapshot(String connectionId, String owner) {
+        ObjectKey routineKey = new ObjectKey(ObjectType.FUNCTION,
+                PgSchemaIdentifierNormalizer.object(owner, "opaque"), "");
+        String definition = "CREATE FUNCTION \"" + owner + "\".\"opaque\"() RETURNS integer "
+                + "LANGUAGE python AS $body$ SELECT \"" + owner + "\".value $body$";
+        DefinitionObject routine = new DefinitionObject(routineKey, definition, definition,
+                Set.of(), DefinitionConfidence.LOW);
+        ObjectKey sequenceKey = new ObjectKey(ObjectType.SEQUENCE,
+                PgSchemaIdentifierNormalizer.object(owner, "stable"), "");
+        SequenceDefinition sequence = new SequenceDefinition(sequenceKey,
+                "1", "1", "1", "9", false, 1, Set.of());
+        SortedMap<ObjectKey, com.datacube.spi.schemadiff.SchemaObject> objects = new TreeMap<>();
+        objects.put(routine.key(), routine);
+        objects.put(sequence.key(), sequence);
+        return new SchemaSnapshot(DbType.POSTGRESQL, connectionId,
+                PgSchemaIdentifierNormalizer.schema(owner), Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), objects, connectionId);
     }
 
     private static Throwable failure(java.util.concurrent.CompletionStage<?> stage) {

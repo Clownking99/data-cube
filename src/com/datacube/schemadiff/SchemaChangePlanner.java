@@ -207,7 +207,7 @@ public final class SchemaChangePlanner {
                 || !column.nullable()) {
             return false;
         }
-        return column.normalizedDefault() == null || column.normalizedDefault().isBlank();
+        return !column.hasDefault();
     }
 
     private static boolean isIsolatable(

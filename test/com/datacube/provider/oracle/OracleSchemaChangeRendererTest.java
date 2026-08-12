@@ -38,6 +38,63 @@ class OracleSchemaChangeRendererTest {
             new OracleSchemaChangeRenderer();
 
     @Test
+    void definitionOwnerRetargetingDistinguishesScopedAliasesCtesAndRealRelations() {
+        ObjectKey viewKey = key(ObjectType.VIEW, "Source", "SCOPED", "");
+        String ddl = """
+                CREATE VIEW "Source"."SCOPED" AS
+                WITH "Source" AS (SELECT 1 AS ID FROM DUAL)
+                SELECT "Source".ID, NESTED.ID, '"Source"."LITERAL"' AS LABEL
+                FROM "Source"."ORDERS" "Source"
+                JOIN (SELECT "Source".ID
+                      FROM "Source"."NESTED" AS "Source") NESTED ON 1 = 1
+                JOIN "Source"."REAL" REAL ON REAL.ID = NESTED.ID
+                /* "Source"."COMMENT" */
+                ;
+                """;
+        SchemaChange create = change(ChangeKind.CREATE, viewKey, definition(viewKey, ddl),
+                null, null, AutomationLevel.SAFE_AUTOMATIC);
+
+        String rendered = RENDERER.render(create, context(DbType.ORACLE, false)).getFirst().sql();
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+
+        assertTrue(rendered.startsWith("CREATE VIEW \"Target\"\"Owner\".\"SCOPED\""));
+        assertTrue(rendered.contains("FROM \"Target\"\"Owner\".\"ORDERS\" \"Source\""));
+        assertTrue(rendered.contains("FROM \"Target\"\"Owner\".\"NESTED\" AS \"Source\""));
+        assertTrue(rendered.contains("JOIN \"Target\"\"Owner\".\"REAL\" REAL"));
+        assertEquals(2, countOccurrences(rendered, "SELECT \"Source\".ID"));
+        assertTrue(rendered.contains("'\"Source\".\"LITERAL\"'"));
+        assertTrue(rendered.contains("/* \"Source\".\"COMMENT\" */"));
+        assertEquals(2, countOccurrences(projected, "SELECT \"Source\".ID"));
+        assertEquals(4, countOccurrences(projected, "\0oracle-self-owner\0"));
+    }
+
+    @Test
+    void commaSeparatedRelationAliasesAreNeverTreatedAsSchemaQualifiers() {
+        String ddl = "CREATE VIEW \"Source\".\"COMMA_ALIAS\" AS "
+                + "SELECT \"Source\".ID FROM EXTERNAL_TABLE, OTHER_TABLE AS \"Source\";";
+
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+
+        assertTrue(projected.contains("SELECT \"Source\".ID"));
+        assertEquals(1, countOccurrences(projected, "\0oracle-self-owner\0"));
+        assertEquals(OracleSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> OracleSchemaChangeRenderer.comparisonFragment(
+                                "\"Source\".ID", "Source")).getMessage());
+    }
+
+    @Test
+    void nestedAliasDoesNotShadowAnOuterSchemaQualifier() {
+        String ddl = "CREATE VIEW \"Source\".\"SHADOW\" AS SELECT \"Source\".FN(), "
+                + "(SELECT \"Source\".ID FROM NESTED_TABLE AS \"Source\") FROM OUTER_TABLE;";
+
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+
+        assertTrue(projected.contains("SELECT \0oracle-self-owner\0.FN()"));
+        assertTrue(projected.contains("SELECT \"Source\".ID FROM NESTED_TABLE"));
+    }
+
+    @Test
     void enforcesDatabaseManualShapeAndDerivedDestructiveSafetyWithFixedWarnings() {
         ObjectKey tableKey = key(ObjectType.TABLE, "Source", "Order\"Line", "");
         TableDefinition table = table(tableKey, List.of());
@@ -1465,6 +1522,10 @@ class OracleSchemaChangeRendererTest {
             values.put(entries[index], entries[index + 1]);
         }
         return values;
+    }
+
+    private static int countOccurrences(String value, String needle) {
+        return value.split(java.util.regex.Pattern.quote(needle), -1).length - 1;
     }
 
     private static RenderContext context(DbType type, boolean destructiveApproved) {

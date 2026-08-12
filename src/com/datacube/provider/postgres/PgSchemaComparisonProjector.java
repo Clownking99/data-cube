@@ -4,6 +4,7 @@ import com.datacube.spi.schemadiff.CanonicalDataType;
 import com.datacube.spi.schemadiff.ColumnDefinition;
 import com.datacube.spi.schemadiff.ConstraintDefinition;
 import com.datacube.spi.schemadiff.DefinitionObject;
+import com.datacube.spi.schemadiff.DefinitionConfidence;
 import com.datacube.spi.schemadiff.IndexDefinition;
 import com.datacube.spi.schemadiff.ObjectKey;
 import com.datacube.spi.schemadiff.ObjectType;
@@ -21,6 +22,9 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 /** PostgreSQL owner-relative comparison projection with exact reversible originals. */
 final class PgSchemaComparisonProjector implements SchemaComparisonProjector {
@@ -66,11 +70,23 @@ final class PgSchemaComparisonProjector implements SchemaComparisonProjector {
         }
         if (object instanceof DefinitionObject definition) {
             String normalized = definition.normalizedDefinition();
+            String projected = normalized;
+            DefinitionConfidence confidence = definition.confidence();
+            if (normalized != null) {
+                try {
+                    projected = PgSchemaChangeRenderer.comparisonDefinition(
+                            normalized, definition.key().type(), selfOwner);
+                } catch (IllegalArgumentException failure) {
+                    if (definition.key().type() != ObjectType.FUNCTION
+                            && definition.key().type() != ObjectType.PROCEDURE) throw failure;
+                    projected = manualDefinitionMarker(normalized);
+                    confidence = DefinitionConfidence.LOW;
+                }
+            }
             return new DefinitionObject(projectKey(definition.key(), selfOwner),
-                    normalized == null ? null : PgSchemaChangeRenderer.comparisonDefinition(
-                            normalized, definition.key().type(), selfOwner),
+                    projected,
                     definition.originalDefinition(), projectKeys(definition.dependencies(), selfOwner),
-                    definition.confidence());
+                    confidence);
         }
         throw invalid();
     }
@@ -89,7 +105,7 @@ final class PgSchemaComparisonProjector implements SchemaComparisonProjector {
             if (formatted == null) throw invalid();
             extensions.put("typeSchema", "\0pg-self-owner\0");
             extensions.put("formattedType",
-                    PgSchemaChangeRenderer.comparisonFragment(formatted, selfOwner));
+                    PgSchemaChangeRenderer.comparisonTypeFragment(formatted, selfOwner));
         }
         return new CanonicalDataType(type.baseType(), type.length(), type.precision(), type.scale(),
                 type.withTimeZone(), type.arrayDimensions(), extensions);
@@ -136,7 +152,7 @@ final class PgSchemaComparisonProjector implements SchemaComparisonProjector {
                 : key.name();
         String signature = key.signature();
         if (key.type() == ObjectType.FUNCTION || key.type() == ObjectType.PROCEDURE) {
-            signature = PgSchemaChangeRenderer.comparisonFragment(signature, selfOwner);
+            signature = PgSchemaChangeRenderer.comparisonTypeFragment(signature, selfOwner);
         } else if (signature.startsWith(OBJECT_DOMAIN)) {
             signature = projectEncodedObjectKey(signature, selfOwner);
         }
@@ -173,6 +189,18 @@ final class PgSchemaComparisonProjector implements SchemaComparisonProjector {
 
     private static IllegalArgumentException invalid() {
         return new IllegalArgumentException(INVALID);
+    }
+
+    private static String manualDefinitionMarker(String definition) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256")
+                    .digest(definition.getBytes(StandardCharsets.UTF_8));
+            StringBuilder marker = new StringBuilder("pg-manual-definition-v1:");
+            for (byte value : hash) marker.append(String.format("%02x", value));
+            return marker.toString();
+        } catch (NoSuchAlgorithmException failure) {
+            throw new IllegalStateException("Definition digest is unavailable", failure);
+        }
     }
 
     private record NameParts(String owner, String object) {

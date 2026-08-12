@@ -62,6 +62,53 @@ class SchemaCrossOwnerComparisonTest {
     }
 
     @Test
+    void postgresUnknownRoutineLanguagesRemainLocalManualDifferencesWithoutFalseEquivalence() {
+        PgSchemaDiffCapability capability = new PgSchemaDiffCapability();
+        for (String[] definitions : List.of(
+                new String[]{unqualifiedUnknownRoutine("SELECT 1"),
+                        unqualifiedUnknownRoutine("SELECT 1")},
+                new String[]{unknownRoutine("Source", "SELECT * FROM \"Source\".\"Orders\""),
+                        unknownRoutine("Target", "SELECT * FROM \"Target\".\"Orders\"")},
+                new String[]{unknownRoutine("Source", "SELECT 1"),
+                        unknownRoutine("Target", "SELECT 2")})) {
+            DefinitionObject sourceRoutine = routine("Source", definitions[0]);
+            DefinitionObject targetRoutine = routine("Target", definitions[1]);
+            SequenceDefinition sourceSequence = sequence("Source");
+            SequenceDefinition targetSequence = sequence("Target");
+
+            SchemaDiffResult result = new SchemaDiffEngine().compare(
+                    snapshot(DbType.POSTGRESQL, "source", "Source",
+                            PgSchemaIdentifierNormalizer::schema, sourceRoutine, sourceSequence),
+                    snapshot(DbType.POSTGRESQL, "target", "Target",
+                            PgSchemaIdentifierNormalizer::schema, targetRoutine, targetSequence),
+                    capability.comparisonProjector());
+
+            SchemaDifference routineDifference = result.differences().stream()
+                    .filter(difference -> difference.object().type() == ObjectType.FUNCTION)
+                    .findFirst().orElseThrow();
+            assertEquals(DifferenceKind.MODIFIED, routineDifference.kind());
+            assertEquals(com.datacube.spi.schemadiff.AutomationLevel.MANUAL_ONLY,
+                    routineDifference.automation());
+            assertEquals(DefinitionConfidence.HIGH,
+                    ((DefinitionObject) routineDifference.source()).confidence());
+            assertSame(sourceRoutine, routineDifference.source());
+            assertSame(targetRoutine, routineDifference.target());
+            assertFalse(routineDifference.properties().isEmpty());
+            assertTrue(routineDifference.properties().stream().allMatch(property ->
+                    property.sourceValue() == null
+                            || property.sourceValue().toString().startsWith("sha256:")));
+            assertEquals(DifferenceKind.EQUIVALENT, result.differences().stream()
+                    .filter(difference -> difference.object().type() == ObjectType.SEQUENCE)
+                    .findFirst().orElseThrow().kind());
+            SchemaChangePlan plan = new SchemaChangePlanner().plan(result);
+            assertEquals(com.datacube.spi.schemadiff.ChangeKind.MANUAL,
+                    plan.changes().stream()
+                            .filter(change -> change.object().type() == ObjectType.FUNCTION)
+                            .findFirst().orElseThrow().kind());
+        }
+    }
+
+    @Test
     void malformedProviderIdentityFailsClosedWithFixedDiagnostics() {
         QualifiedName pgSchema = PgSchemaIdentifierNormalizer.schema("owner");
         ObjectKey malformedPgKey = new ObjectKey(ObjectType.TABLE,
@@ -142,7 +189,7 @@ class SchemaCrossOwnerComparisonTest {
         SchemaDiffResult diff = new SchemaDiffEngine().compare(
                 source, targetBefore, capability.comparisonProjector());
 
-        assertEquals(1, diff.differences().stream()
+        assertEquals(2, diff.differences().stream()
                 .filter(difference -> difference.kind() != DifferenceKind.EQUIVALENT).count());
         assertTrue(diff.renameSuggestions().isEmpty());
         SchemaDifference tableDifference = diff.differences().stream()
@@ -154,18 +201,22 @@ class SchemaCrossOwnerComparisonTest {
                 .anyMatch(key -> key.name().original().contains(externalOwner)));
 
         SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
-        assertEquals(1, plan.changes().size());
-        List<RenderedStatement> statements = capability.changeRenderer().render(
-                plan.changes().getFirst(), new RenderContext(type,
-                        schemaName.normalize(sourceOwner), schemaName.normalize(targetOwner), true));
+        assertEquals(2, plan.changes().size());
+        RenderContext context = new RenderContext(type,
+                schemaName.normalize(sourceOwner), schemaName.normalize(targetOwner), true);
+        List<RenderedStatement> statements = plan.changes().stream()
+                .flatMap(change -> capability.changeRenderer().render(change, context).stream())
+                .toList();
         assertFalse(statements.isEmpty());
         assertTrue(statements.stream().allMatch(
                 statement -> statement.sql().contains(quote(type, targetOwner))));
-        assertTrue(statements.stream().noneMatch(
-                statement -> statement.sql().contains(quote(type, sourceOwner))));
         assertTrue(statements.stream().noneMatch(statement -> statement.sql().contains("\0")
                 || statement.sql().contains("comparison-object")
                 || statement.sql().contains("self-owner")));
+        assertTrue(statements.stream().anyMatch(statement ->
+                statement.sql().contains(quote(type, sourceOwner) + ".\"Id\"")));
+        assertTrue(statements.stream().anyMatch(statement ->
+                statement.sql().contains(quote(type, targetOwner) + ".\"Id\"")));
         if (type == DbType.POSTGRESQL) {
             assertTrue(statements.stream().anyMatch(statement -> statement.sql().equals(
                     "COMMENT ON COLUMN \"Target\"\"Owner\".\"Order\"\"Line\".\"Note\" "
@@ -221,9 +272,16 @@ class SchemaCrossOwnerComparisonTest {
                 : new SequenceDefinition(sequenceKey, "1", "1", "1", "999", false, 20, Set.of());
 
         ObjectKey viewKey = key(ObjectType.VIEW, owner, "View\"Orders", "", objectName);
-        String viewDefinition = "CREATE VIEW " + qualified(type, owner, "View\"Orders")
-                + " AS SELECT * FROM " + qualified(type, owner, "Order\"Line")
-                + " JOIN " + qualified(type, externalOwner, "Audit.Table") + " ON 1 = 1";
+        String sourceAlias = quote(type, "Source\"Owner");
+        String targetAlias = quote(type, "Target\"Owner");
+        String selectedColumn = includeAddedColumn ? "Note" : "Id";
+        String viewDefinition = "CREATE OR REPLACE VIEW " + qualified(type, owner, "View\"Orders")
+                + " AS SELECT " + sourceAlias + ".\"" + selectedColumn + "\", "
+                + targetAlias + ".\"Id\" FROM " + qualified(type, owner, "Order\"Line")
+                + " AS " + sourceAlias + " JOIN " + qualified(type, owner, "Order\"Line")
+                + " AS " + targetAlias + " ON " + sourceAlias + ".\"Id\" = "
+                + targetAlias + ".\"Id\" JOIN " + qualified(type, externalOwner, "Audit.Table")
+                + " ON 1 = 1" + (type == DbType.ORACLE ? ";" : "");
         DefinitionObject view = new DefinitionObject(viewKey, viewDefinition, viewDefinition,
                 Set.of(tableKey, externalType), DefinitionConfidence.HIGH);
 
@@ -285,6 +343,28 @@ class SchemaCrossOwnerComparisonTest {
     private static CanonicalDataType scalarType() {
         return new CanonicalDataType("integer", null, null, null,
                 false, 0, new TreeMap<>());
+    }
+
+    private static String unknownRoutine(String owner, String body) {
+        return "CREATE FUNCTION \"" + owner + "\".\"opaque\"() RETURNS integer "
+                + "LANGUAGE python AS $body$ " + body + " $body$";
+    }
+
+    private static String unqualifiedUnknownRoutine(String body) {
+        return "CREATE FUNCTION opaque() RETURNS integer LANGUAGE python AS $body$ "
+                + body + " $body$";
+    }
+
+    private static DefinitionObject routine(String owner, String definition) {
+        ObjectKey key = new ObjectKey(ObjectType.FUNCTION,
+                PgSchemaIdentifierNormalizer.object(owner, "opaque"), "");
+        return new DefinitionObject(key, definition, definition, Set.of(), DefinitionConfidence.HIGH);
+    }
+
+    private static SequenceDefinition sequence(String owner) {
+        return new SequenceDefinition(new ObjectKey(ObjectType.SEQUENCE,
+                PgSchemaIdentifierNormalizer.object(owner, "stable"), ""),
+                "1", "1", "1", "9", false, 1, Set.of());
     }
 
     private static QualifiedName child(DbType type, String name) {

@@ -8,6 +8,23 @@
 - 未连接 PostgreSQL/Oracle/Redis live DB，未读取 saved connection，未输出凭据、endpoint 或 driver 原始错误。
 - `.testagent/` 仍为 pre-existing untracked 用户目录；未读取、修改、暂存或提交。
 
+## 第二次累计复审 follow-up（2026-08-12）
+
+- PostgreSQL/Oracle definition owner retarget 已统一为 provider-aware、scope-aware 的保守 scanner：识别 FROM/JOIN/UPDATE/INTO/DELETE/MERGE/trigger relation source、逗号 relation、quoted/unquoted alias、CTE 与嵌套 SELECT scope；alias.column、字符串、nested dollar/alternative quote、行/块注释及外部 owner 保持原样。
+- renderer 与 comparison projector 共用同一 scanner。只有 DDL header、已解析 relation self owner，以及可证明的 routine/type/function qualifier 才 retarget；歧义或畸形输入 fail closed，不回退到同名 token 全局替换。PG/Oracle 跨 owner compare→plan→render→second-diff 覆盖 source-owner alias、target-owner alias 与 external owner，并保持收敛。
+- PostgreSQL `pg_get_functiondef` 对 `sql`/`plpgsql` dollar body 执行同一安全 scanner；nested dollar/string/comment/alias/self/external 均有 focused 覆盖。未证明的 `record.field`/裸 `owner.field` 不改写，renderer 拒绝执行。
+- reader 对未知语言或不可安全投影的 routine 保留 original/normalized definition 并降为 LOW。projector 仅在 comparison snapshot 内使用原定义 SHA-256 manual marker；engine rehydrate 后以原定义摘要产生对象级 MANUAL difference，marker 不进入 renderer、UI、plan/deployment digest 或公共 `toString()`。两端同文未知语言、自 owner 不同限定、真实 body 不同三种 case 均无假等价，且同 snapshot 的其他对象继续比较。
+- `ColumnDefinition.hasDefault()` 统一 null/blank no-default predicate，engine、planner、PG/Oracle renderer 与 `toString()` 共用；null/blank/nonblank 风险及渲染均有测试。
+- spec/plan 已同步 projector contract：provider opt-in、default identity、schema-relative self owner、external exact、reversible rehydrate、collision/missing mapping fail closed、placeholder 隔离。
+- 未新增第二个 SPI seam；沿用已批准的 `SchemaComparisonProjector` 显式 overload/capability 边界，二参 `SchemaDiffEngine.compare()` 语义不变。
+
+### Follow-up TDD RED → GREEN
+
+1. C RED：source/target owner 同名 alias、CTE/nested scope、quoted embedded quote、逗号 relation 与字符串/注释 fixture 暴露旧 global rewrite。GREEN：scope tree + binding table + proven relation source scanner，renderer/projector 同语义；提交前额外 RED 证明 PL/pgSQL `record.field` 会被误写，收紧为未证明 qualifier fail closed 后 GREEN。
+2. I RED：未知 routine 使 projector 终止 whole-schema compare；同文 unknown case 又暴露 MANUAL difference 属性为空。GREEN：reader LOW + per-routine comparison marker + rehydrated original digest/manual property；三个 unknown case 与 service partial-result test 通过。
+3. M1 RED：blank default 被 engine/planner/render 视为不一致状态。GREEN：共享 `hasDefault()` 后 null/blank/nonblank matrix 通过。
+4. M2 RED：spec/plan 缺少 projector 隔离与可逆合同。GREEN：合同已同步并由 default identity/collision/placeholder/re-hydration tests 固化。
+
 ## 实施范围
 
 ### Finding 1 — cross-schema identity / rebase / convergence
@@ -60,6 +77,15 @@
 所有中间回归都先保留失败证据再修复：首次 12-suite focused 暴露 5 个 PG renderer 旧 fixture/owner gate 回归，恢复 destructive gate 顺序与 canonical fixture 后 184/184；首次 Task 1–10 matrix 暴露 1 个过时的 ViewModel misclassified-destructive 期望，改为证明 service admission fail closed 后 GREEN。
 
 ## Fresh verification
+
+第二次累计复审 follow-up 的最终一次 fresh 证据如下（下方首轮六-finding 数字保留为历史证据）：
+
+- Focused follow-up：9 suites / 149 tests / 0 failures / 0 errors / 0 skips。
+- Task 1–10 matrix：35 suites / 307 tests / 0 failures / 0 errors / 2 skips；仅 PG/Oracle relational live write tests。
+- Explicit no-credential live gate：1 suite / 6 tests / 0 failures / 0 errors / 2 skips；显式移除 allow-write 与 PG/Oracle provider 环境变量，未尝试连接。
+- Clean full + image：`clean test jlink --warning-mode fail --rerun-tasks` BUILD SUCCESSFUL；111 suites / 732 tests / 0 failures / 0 errors / 3 documented live skips。
+- Image launcher 存在且含 `-Xms16m -Xmx256m -XX:+UseG1GC`。
+- CodeGraph：370 files / 10,180 nodes / 32,109 edges；index up to date。`git diff --check` 通过；`gradlew` mode `100755`。
 
 ### Focused six-finding gate
 

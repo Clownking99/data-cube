@@ -79,6 +79,11 @@ Tests must assert:
 - fingerprint is independent of insertion order and `capturedAt`/`connectionId`;
 - any property change alters the fingerprint;
 - partial completeness includes exact failed object types but never exception messages containing secrets.
+- provider-aware schema comparison is opt-in through `SchemaComparisonProjector`; the default projector is exact identity for legacy/third-party providers;
+- PG/Oracle projections are schema-relative only for the selected self owner, preserve external owners exactly, and maintain a bijective reversible mapping to original source/target objects;
+- projection collision, missing reverse mapping and malformed provider identities fail closed; comparison placeholders/manual markers never reach renderer, UI, deployment digest or public summaries;
+- after comparison, objects/properties/renames/dependencies/canonical paths are rehydrated before planning or rendering;
+- definition/fragment retargeting uses the same provider-aware scope/alias/CTE semantics in renderer and projector, never global same-token replacement.
 
 Run:
 

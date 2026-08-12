@@ -18,6 +18,7 @@ import com.datacube.spi.schemadiff.RenderedStatement;
 import com.datacube.spi.schemadiff.RiskLevel;
 import com.datacube.spi.schemadiff.SchemaChange;
 import com.datacube.spi.schemadiff.SchemaDiffCapability;
+import com.datacube.spi.schemadiff.SchemaComparisonProjection;
 import com.datacube.spi.schemadiff.SchemaSnapshot;
 import com.datacube.spi.schemadiff.SnapshotCompleteness;
 import org.junit.jupiter.api.Test;
@@ -74,6 +75,9 @@ class SchemaDiffCapabilityContractTest {
         assertEquals(expected, capability.snapshotReader(null).read(
                 "connection-secret", name("public"), SqlExecutionOptions.defaults(10)));
         assertTrue(capability.changeRenderer().render(null, null).isEmpty());
+        SchemaComparisonProjection identity = capability.comparisonProjector().project(expected);
+        assertEquals(expected.objects(), identity.comparisonObjects());
+        assertEquals(expected.objects().keySet(), Set.copyOf(identity.originalKeys().values()));
     }
 
     @Test

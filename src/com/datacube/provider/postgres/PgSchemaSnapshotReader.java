@@ -1,5 +1,6 @@
 package com.datacube.provider.postgres;
 
+import com.datacube.provider.SqlScopeAwareOwnerRewriter;
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.model.DbType;
@@ -677,7 +678,11 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             String signature = rows.getString("identity_arguments");
             ObjectKey key = state.key(type, rows.getString("object_name"),
                     signature == null ? "" : signature);
-            state.addDefinition(key, rows.getString("definition"), DefinitionConfidence.HIGH);
+            String definition = rows.getString("definition");
+            DefinitionConfidence confidence = definition != null
+                    && SqlScopeAwareOwnerRewriter.supportsPostgresRoutineDefinition(definition)
+                    ? DefinitionConfidence.HIGH : DefinitionConfidence.LOW;
+            state.addDefinition(key, definition, confidence);
             state.mapOid("pg_proc", oid, key);
         }
     }
