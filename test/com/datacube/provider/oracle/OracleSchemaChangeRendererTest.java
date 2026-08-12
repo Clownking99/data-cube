@@ -440,6 +440,7 @@ class OracleSchemaChangeRendererTest {
                   "Source" CONSTANT "Source"."OBJ_T" := NULL;
                   same_name NUMBER := "Source".value;
                   TYPE rec_t IS RECORD (value "Source"."OBJ_T");
+                  public_record rec_t := "Source".orders;
                   FUNCTION make(value IN "Source"."OBJ_T") RETURN "Source"."OBJ_T";
                   PROCEDURE forward(value IN "External"."OBJ_T");
                 END API;
@@ -450,6 +451,7 @@ class OracleSchemaChangeRendererTest {
         String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
         assertEquals(5, countOccurrences(projected, "\0oracle-self-owner\0"), projected);
         assertTrue(projected.contains("same_name NUMBER := \"Source\".value"), projected);
+        assertTrue(projected.contains("public_record rec_t := \"Source\".orders"), projected);
         assertTrue(projected.contains("\"External\".\"OBJ_T\""), projected);
 
         String unknown = ddl.replace("TYPE rec_t IS RECORD (value \"Source\".\"OBJ_T\");",
@@ -460,6 +462,80 @@ class OracleSchemaChangeRendererTest {
                 assertThrows(IllegalArgumentException.class,
                         () -> OracleSchemaChangeRenderer.comparisonDefinition(
                                 unknown, "Source")).getMessage());
+    }
+
+    @Test
+    void labelOwnedDeclarationWinsForOrdinaryChainButRelationSourceStillRetargets() {
+        String ddl = """
+                CREATE FUNCTION "Source"."LABEL_RELATION" RETURN NUMBER AS
+                BEGIN
+                  <<"Source">>
+                  DECLARE orders "Source"."ORDER_REC";
+                  BEGIN
+                    "Source".orders.value := 1;
+                    SELECT ID INTO orders.value FROM "Source".orders;
+                  END "Source";
+                  RETURN 1;
+                END;
+                /
+                """;
+
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+        assertTrue(projected.contains("\"Source\".orders.value := 1"), projected);
+        assertTrue(projected.contains("FROM \0oracle-self-owner\0.orders"), projected);
+    }
+
+    @Test
+    void oracleFormalTypesExcludeDefaultExpressionsFromOwnerProof() {
+        String safe = """
+                CREATE FUNCTION "Source"."FORMALS"(
+                  value IN "Source"."ARG_T" DEFAULT NULL,
+                  copied IN "Source".source_table.column_name%TYPE,
+                  row_value IN "Source".source_table%ROWTYPE)
+                RETURN "Source"."RESULT_T" AS
+                BEGIN RETURN NULL; END;
+                /
+                """;
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(safe, "Source");
+        assertTrue(projected.contains("IN \0oracle-self-owner\0.\"ARG_T\" DEFAULT"), projected);
+        assertTrue(projected.contains("RETURN \0oracle-self-owner\0.\"RESULT_T\""), projected);
+        assertTrue(projected.contains(
+                "\0oracle-self-owner\0.source_table.column_name%TYPE"), projected);
+        assertTrue(projected.contains(
+                "\0oracle-self-owner\0.source_table%ROWTYPE"), projected);
+
+        String ambiguousDefault = safe.replace("DEFAULT NULL",
+                "DEFAULT \"Source\".unknown.field");
+        assertFalse(OracleSchemaChangeRenderer.supportsAutomaticPlSqlDefinition(
+                ambiguousDefault, "Source"));
+    }
+
+    @Test
+    void oracleTypeSpecProjectsOnlyAttributeAndMethodTypePositions() {
+        String ddl = """
+                CREATE TYPE "Source"."ORDER_T" AS OBJECT (
+                  id "Source"."ID_T",
+                  external_value "External"."VALUE_T",
+                  MEMBER FUNCTION current_value RETURN "Source"."RESULT_T",
+                  MEMBER FUNCTION convert(value IN "Source"."ARG_T")
+                    RETURN "Source"."RESULT_T"
+                );
+                """;
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+        assertEquals(5, countOccurrences(projected, "\0oracle-self-owner\0"), projected);
+        assertTrue(projected.contains("\"External\".\"VALUE_T\""), projected);
+
+        String unknown = ddl.replace("id \"Source\".\"ID_T\",",
+                "MYSTERY id \"Source\".\"ID_T\",");
+        assertFalse(OracleSchemaChangeRenderer.supportsAutomaticPlSqlDefinition(
+                unknown, "Source"));
+
+        for (String unsupported : List.of(
+                "CREATE TYPE \"Source\".\"LIST_T\" AS VARRAY(10) OF \"Source\".\"ID_T\";",
+                "CREATE TYPE \"Source\".\"TABLE_T\" AS TABLE OF \"Source\".\"ID_T\";")) {
+            assertFalse(OracleSchemaChangeRenderer.supportsAutomaticPlSqlDefinition(
+                    unsupported, "Source"));
+        }
     }
 
     @Test

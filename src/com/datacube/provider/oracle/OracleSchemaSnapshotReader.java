@@ -557,7 +557,7 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
     private static boolean isPlSqlDefinition(ObjectKey key) {
         return switch (key.type()) {
             case FUNCTION, PROCEDURE, TRIGGER, PACKAGE_SPEC, PACKAGE_BODY -> true;
-            case TYPE -> key.signature().equals("BODY");
+            case TYPE -> key.signature().equals("SPEC") || key.signature().equals("BODY");
             default -> false;
         };
     }

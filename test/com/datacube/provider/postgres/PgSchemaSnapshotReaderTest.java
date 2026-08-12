@@ -429,8 +429,11 @@ class PgSchemaSnapshotReaderTest {
     void labelNamedLikeSchemaStillRetargetsFunctionAcrossReaderPlanRenderAndSecondDiff()
             throws Exception {
         String sourceDefinition = "CREATE FUNCTION \"Source\".labeled() RETURNS integer "
-                + "LANGUAGE plpgsql AS $body$ <<\"Source\">> DECLARE rec record; BEGIN "
+                + "LANGUAGE plpgsql AS $body$ <<\"Source\">> DECLARE rec record; orders record; BEGIN "
                 + "PERFORM \"Source\".rec.value; "
+                + "PERFORM \"Source\".orders.value; "
+                + "rec.value := CASE WHEN true THEN CASE 1 WHEN 1 THEN 2 END ELSE 3 END; "
+                + "CASE WHEN true THEN rec.value := 1; ELSE rec.value := 0; END CASE; "
                 + "PERFORM id FROM \"Source\".orders AS \"Source\"; "
                 + "PERFORM \"Source\".helper(); RETURN 1; "
                 + "END \"Source\" $body$";
@@ -455,6 +458,7 @@ class PgSchemaSnapshotReaderTest {
                 new RenderContext(DbType.POSTGRESQL, source.schema(),
                         emptyTarget.schema(), false)).getFirst().sql();
         assertTrue(sql.contains("PERFORM \"Source\".rec.value"), sql);
+        assertTrue(sql.contains("PERFORM \"Source\".orders.value"), sql);
         assertTrue(sql.contains("FROM \"Target\".orders AS \"Source\""), sql);
         assertTrue(sql.contains("PERFORM \"Target\".helper()"), sql);
         assertFalse(sql.contains("PERFORM \"Source\".helper()"), sql);

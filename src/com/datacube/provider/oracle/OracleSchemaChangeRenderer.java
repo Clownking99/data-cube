@@ -645,6 +645,10 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         }
         if (!plsqlEndsWithEnd(key)) {
             if (semicolons.size() != 1) throw new IllegalArgumentException(UNSAFE_DEFINITION);
+            if (key.type() == ObjectType.TYPE && key.signature().equals("SPEC")
+                    && !supportsAutomaticPlSqlDefinition(definition, objectOwner(key))) {
+                throw new IllegalArgumentException(UNSAFE_DEFINITION);
+            }
             return;
         }
         List<SqlIdentifier> identifiers = definitionIdentifiers(

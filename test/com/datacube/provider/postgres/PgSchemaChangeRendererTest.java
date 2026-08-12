@@ -708,10 +708,9 @@ class PgSchemaChangeRendererTest {
 
         String ambiguousRelation = safe.replace("PERFORM \"Source\".own_record.value;",
                 "PERFORM \"Source\".orders.value FROM \"Source\".orders AS \"Source\";");
-        assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
-                assertThrows(IllegalArgumentException.class,
-                        () -> PgSchemaChangeRenderer.comparisonDefinition(
-                                ambiguousRelation, ObjectType.FUNCTION, "Source")).getMessage());
+        assertTrue(PgSchemaChangeRenderer.comparisonDefinition(
+                        ambiguousRelation, ObjectType.FUNCTION, "Source")
+                .contains("PERFORM \0pg-self-owner\0.orders.value"));
     }
 
     @Test
@@ -731,6 +730,50 @@ class PgSchemaChangeRendererTest {
                             () -> PgSchemaChangeRenderer.comparisonDefinition(
                                     invalid, ObjectType.FUNCTION, "Source")).getMessage());
         }
+    }
+
+    @Test
+    void labelOwnedDeclarationWinsForOrdinaryChainButRelationSourceStillRetargets() {
+        String routine = """
+                CREATE FUNCTION "Source".label_relation() RETURNS integer LANGUAGE plpgsql AS $body$
+                <<"Source">>
+                DECLARE orders record;
+                BEGIN
+                  PERFORM "Source".orders.value;
+                  PERFORM id FROM "Source".orders AS selected_orders;
+                  RETURN 1;
+                END "Source"
+                $body$
+                """;
+
+        String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                routine, ObjectType.FUNCTION, "Source");
+        assertTrue(projected.contains("PERFORM \"Source\".orders.value"), projected);
+        assertTrue(projected.contains("FROM \0pg-self-owner\0.orders"), projected);
+    }
+
+    @Test
+    void labeledPlpgsqlCaseExpressionsAndStatementsDoNotCloseTheirBlock() {
+        String routine = """
+                CREATE FUNCTION "Source".case_scope(value integer) RETURNS integer LANGUAGE plpgsql AS $body$
+                <<"Source">>
+                DECLARE rec record;
+                BEGIN
+                  rec.value := CASE value WHEN 1 THEN CASE WHEN true THEN 2 ELSE 3 END ELSE 4 END;
+                  CASE WHEN value > 0 THEN
+                    BEGIN rec.value := CASE WHEN true THEN 1 ELSE 2 END; END;
+                  ELSE rec.value := 0; END CASE;
+                  PERFORM "Source".rec.value;
+                  PERFORM id FROM "Source".orders;
+                  RETURN rec.value;
+                END "Source"
+                $body$
+                """;
+
+        String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                routine, ObjectType.FUNCTION, "Source");
+        assertTrue(projected.contains("PERFORM \"Source\".rec.value"), projected);
+        assertTrue(projected.contains("FROM \0pg-self-owner\0.orders"), projected);
     }
 
     @Test

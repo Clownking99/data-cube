@@ -121,6 +121,7 @@ public final class SqlScopeAwareOwnerRewriter {
         Scope root = scopes(tokens, parentheses, dialect, routineBody);
         Map<Integer, Scope> scopeByToken = mapScopes(root, tokens.size());
         Set<Integer> provenOwners = new HashSet<>();
+        Set<Integer> relationOwners = new HashSet<>();
         collectHeaderOwner(tokens, sourceOwner, dialect, provenOwners);
         if (dialect == Dialect.ORACLE && !routineBody) {
             collectOraclePlSqlBindings(root, tokens, parentheses,
@@ -129,7 +130,8 @@ public final class SqlScopeAwareOwnerRewriter {
         if (dialect == Dialect.POSTGRESQL && routineBody) {
             collectPostgresRoutineBindings(root, tokens, dialect);
         }
-        collectBindings(root, tokens, parentheses, sourceOwner, dialect, provenOwners);
+        collectBindings(root, tokens, parentheses, sourceOwner, dialect,
+                provenOwners, relationOwners);
 
         List<Replacement> replacements = dialect == Dialect.POSTGRESQL
                 ? new ArrayList<>(postgresRegclassReplacements(
@@ -141,19 +143,23 @@ public final class SqlScopeAwareOwnerRewriter {
                     || !tokens.get(index + 2).identifier()) {
                 continue;
             }
-            if (provenOwners.contains(index)) {
+            if (relationOwners.contains(index)) {
                 replacements.add(new Replacement(owner.start(), owner.end(), replacement));
                 continue;
             }
             Scope scope = scopeByToken.getOrDefault(index, root);
-            if (visibleRelation(scope, tokens.get(index + 2), dialect)) {
-                if (visibleBinding(scope, owner, dialect)) throw new IllegalArgumentException();
+            Scope labelScope = visibleLabelScope(scope, owner, dialect);
+            if (labelScope != null && labelDeclaredChain(
+                    labelScope, tokens, index, dialect)) continue;
+            if (provenOwners.contains(index)) {
                 replacements.add(new Replacement(owner.start(), owner.end(), replacement));
                 continue;
             }
-            Scope labelScope = visibleLabelScope(scope, owner, dialect);
+            if (visibleRelation(scope, tokens.get(index + 2), dialect)) {
+                replacements.add(new Replacement(owner.start(), owner.end(), replacement));
+                continue;
+            }
             if (labelScope != null) {
-                if (labelDeclaredChain(labelScope, tokens, index, dialect)) continue;
                 if (dialect == Dialect.POSTGRESQL
                         && schemaFunctionCall(tokens, index, dialect, routineBody)
                         || dialect == Dialect.ORACLE && oraclePackageCall(tokens, index)) {
@@ -327,7 +333,8 @@ public final class SqlScopeAwareOwnerRewriter {
                 && tokens.get(objectIndex + 1).symbol(".")
                 && tokens.get(objectIndex + 2).identifier()) return true;
         int routineBoundary = routineBodyBoundary(tokens);
-        if (routineBoundary >= 0 && ownerIndex < routineBoundary) return true;
+        if (dialect == Dialect.POSTGRESQL
+                && routineBoundary >= 0 && ownerIndex < routineBoundary) return true;
         return dialect == Dialect.POSTGRESQL && objectIndex + 1 < tokens.size()
                 && tokens.get(objectIndex + 1).symbol("(");
     }
@@ -377,6 +384,7 @@ public final class SqlScopeAwareOwnerRewriter {
         Set<Integer> awaitingDeclarationBody = new HashSet<>();
         Map<Integer, Token> openingLabels = new HashMap<>();
         List<int[]> blocks = new ArrayList<>();
+        Deque<String> constructs = new ArrayDeque<>();
         boolean pendingLabel = false;
         for (int index = 0; index < tokens.size(); index++) {
             if (labelAt(tokens, index) != null) {
@@ -395,10 +403,27 @@ public final class SqlScopeAwareOwnerRewriter {
                         && awaitingDeclarationBody.remove(starts.peek())) {
                     // BEGIN opens the body of the current DECLARE scope.
                 } else starts.push(index);
+                constructs.push("BLOCK");
+            } else if (keyword(tokens, index, "CASE")) {
+                constructs.push("CASE");
+            } else if (keyword(tokens, index, "END") && keyword(tokens, index + 1, "CASE")) {
+                if (constructs.isEmpty() || !constructs.peek().equals("CASE")) {
+                    throw new IllegalArgumentException();
+                }
+                constructs.pop();
+                index++;
+            } else if (keyword(tokens, index, "END") && !constructs.isEmpty()
+                    && constructs.peek().equals("CASE")
+                    && !keyword(tokens, index + 1, "IF")
+                    && !keyword(tokens, index + 1, "LOOP")) {
+                constructs.pop();
             } else if (keyword(tokens, index, "END") && !starts.isEmpty()
                     && !keyword(tokens, index + 1, "IF")
-                    && !keyword(tokens, index + 1, "LOOP")
-                    && !keyword(tokens, index + 1, "CASE")) {
+                    && !keyword(tokens, index + 1, "LOOP")) {
+                if (constructs.isEmpty() || !constructs.peek().equals("BLOCK")) {
+                    throw new IllegalArgumentException();
+                }
+                constructs.pop();
                 int start = starts.pop();
                 awaitingDeclarationBody.remove(start);
                 int after = index + 1;
@@ -415,7 +440,8 @@ public final class SqlScopeAwareOwnerRewriter {
                 pendingLabel = false;
             }
         }
-        if (!starts.isEmpty() || pendingLabel || !awaitingDeclarationBody.isEmpty()) {
+        if (!starts.isEmpty() || pendingLabel || !awaitingDeclarationBody.isEmpty()
+                || !constructs.isEmpty()) {
             throw new IllegalArgumentException();
         }
         blocks.sort(Comparator.<int[]>comparingInt(block -> block[0])
@@ -491,6 +517,11 @@ public final class SqlScopeAwareOwnerRewriter {
             parseOraclePackageSpecScope(root, tokens, parentheses, packageSpec, tokens.size());
             return;
         }
+        int typeSpec = oracleTypeSpecNoun(tokens);
+        if (typeSpec >= 0) {
+            parseOracleTypeSpecScope(root, tokens, parentheses, typeSpec, tokens.size());
+            return;
+        }
         int trigger = oracleDefinitionNoun(tokens, "TRIGGER");
         if (trigger >= 0) {
             parseOracleTriggerScope(root, tokens, parentheses, trigger, tokens.size());
@@ -509,6 +540,74 @@ public final class SqlScopeAwareOwnerRewriter {
     private static int oraclePackageSpecNoun(List<Token> tokens) {
         int noun = oracleDefinitionNoun(tokens, "PACKAGE");
         return noun >= 0 && !keyword(tokens, noun + 1, "BODY") ? noun : -1;
+    }
+
+    private static int oracleTypeSpecNoun(List<Token> tokens) {
+        int noun = oracleDefinitionNoun(tokens, "TYPE");
+        return noun >= 0 && !keyword(tokens, noun + 1, "BODY") ? noun : -1;
+    }
+
+    private static void parseOracleTypeSpecScope(
+            Scope root, List<Token> tokens, Map<Integer, Integer> parentheses,
+            int noun, int limit) {
+        int name = noun + 1;
+        if (name + 2 < limit && symbol(tokens, name + 1, ".")) name += 2;
+        if (name >= limit || !tokens.get(name).identifier()) throw new IllegalArgumentException();
+        int boundary = oracleRoutineBoundary(tokens, name + 1, limit, parentheses);
+        if (boundary < 0 || !keyword(tokens, boundary + 1, "OBJECT")
+                || !symbol(tokens, boundary + 2, "(")) throw new IllegalArgumentException();
+        Integer close = parentheses.get(boundary + 2);
+        if (close == null || !symbol(tokens, close + 1, ";") || close + 2 != limit) {
+            throw new IllegalArgumentException();
+        }
+        root.typeSpecStart = boundary + 3;
+        root.typeSpecEnd = close;
+        int segment = root.typeSpecStart;
+        int depth = 0;
+        for (int index = segment; index <= close; index++) {
+            if (index < close && symbol(tokens, index, "(")) depth++;
+            else if (index < close && symbol(tokens, index, ")")) depth--;
+            if (index == close || depth == 0 && symbol(tokens, index, ",")) {
+                validateOracleTypeSpecMember(tokens, parentheses, segment, index);
+                segment = index + 1;
+            }
+        }
+        if (depth != 0) throw new IllegalArgumentException();
+    }
+
+    private static void validateOracleTypeSpecMember(
+            List<Token> tokens, Map<Integer, Integer> parentheses, int start, int end) {
+        if (start >= end || !tokens.get(start).identifier()) throw new IllegalArgumentException();
+        int cursor = start;
+        if (keyword(tokens, cursor, "MEMBER") || keyword(tokens, cursor, "STATIC")
+                || keyword(tokens, cursor, "MAP") || keyword(tokens, cursor, "ORDER")) cursor++;
+        if (keyword(tokens, cursor, "FUNCTION") || keyword(tokens, cursor, "PROCEDURE")) {
+            int name = cursor + 1;
+            if (name >= end || !tokens.get(name).identifier()) throw new IllegalArgumentException();
+            int tail = name + 1;
+            if (symbol(tokens, tail, "(")) {
+                Integer close = parentheses.get(tail);
+                if (close == null || close >= end) throw new IllegalArgumentException();
+                tail = close + 1;
+            }
+            if (keyword(tokens, cursor, "FUNCTION")) {
+                if (!keyword(tokens, tail, "RETURN") || tail + 1 >= end) {
+                    throw new IllegalArgumentException();
+                }
+            } else if (tail != end) throw new IllegalArgumentException();
+            return;
+        }
+        if (cursor + 1 >= end || !tokens.get(cursor).identifier()
+                || !tokens.get(cursor + 1).identifier()) throw new IllegalArgumentException();
+        int tail = cursor + 2;
+        if (symbol(tokens, tail, ".")) {
+            if (tail + 1 >= end || !tokens.get(tail + 1).identifier()) {
+                throw new IllegalArgumentException();
+            }
+            tail += 2;
+        }
+        if (tail < end && !symbol(tokens, tail, "(")
+                && !keyword(tokens, tail, "NOT")) throw new IllegalArgumentException();
     }
 
     private static void parseOraclePackageSpecScope(
@@ -880,8 +979,13 @@ public final class SqlScopeAwareOwnerRewriter {
         int routine = routineNoun(tokens);
         if (routine < 0 && oracleContainerNoun(tokens) < 0
                 && oraclePackageSpecNoun(tokens) < 0
+                && oracleTypeSpecNoun(tokens) < 0
                 && oracleDefinitionNoun(tokens, "TRIGGER") < 0) return;
         collectOracleParameterTypes(tokens, parentheses, source, dialect, proven);
+        collectOracleReturnTypes(tokens, parentheses, source, dialect, proven);
+        if (root.typeSpecStart >= 0) {
+            collectOracleTypeSpecTypes(root, tokens, parentheses, source, dialect, proven);
+        }
         collectOracleDeclarations(root, tokens, source, dialect, proven);
     }
 
@@ -897,12 +1001,95 @@ public final class SqlScopeAwareOwnerRewriter {
             if (!symbol(tokens, name + 1, "(")) continue;
             Integer close = parentheses.get(name + 1);
             if (close == null) throw new IllegalArgumentException();
-            for (int token = name + 2; token + 2 < close; token++) {
-                if (matches(tokens.get(token), source, dialect)
-                        && symbol(tokens, token + 1, ".")
-                        && tokens.get(token + 2).identifier()) proven.add(token);
-            }
+            collectOracleFormalTypes(tokens, name + 2, close, source, dialect, proven);
             index = close;
+        }
+    }
+
+    private static void collectOracleFormalTypes(
+            List<Token> tokens, int start, int end, String source,
+            Dialect dialect, Set<Integer> proven) {
+        int segment = start;
+        int depth = 0;
+        for (int index = start; index <= end; index++) {
+            if (index < end && symbol(tokens, index, "(")) depth++;
+            else if (index < end && symbol(tokens, index, ")")) depth--;
+            if (index == end || depth == 0 && symbol(tokens, index, ",")) {
+                int type = segment + 1;
+                if (keyword(tokens, type, "IN")) {
+                    type++;
+                    if (keyword(tokens, type, "OUT")) type++;
+                } else if (keyword(tokens, type, "OUT")
+                        || keyword(tokens, type, "INOUT")) type++;
+                if (type + 2 < index && matches(tokens.get(type), source, dialect)
+                        && symbol(tokens, type + 1, ".")
+                        && tokens.get(type + 2).identifier()) proven.add(type);
+                segment = index + 1;
+            }
+        }
+        if (depth != 0) throw new IllegalArgumentException();
+    }
+
+    private static void collectOracleReturnTypes(
+            List<Token> tokens, Map<Integer, Integer> parentheses,
+            String source, Dialect dialect, Set<Integer> proven) {
+        for (int index = 0; index + 3 < tokens.size(); index++) {
+            if (!keyword(tokens, index, "FUNCTION")) continue;
+            int name = index + 1;
+            if (name + 2 < tokens.size() && symbol(tokens, name + 1, ".")) name += 2;
+            int cursor = name + 1;
+            if (symbol(tokens, cursor, "(")) {
+                Integer close = parentheses.get(cursor);
+                if (close == null) throw new IllegalArgumentException();
+                cursor = close + 1;
+            }
+            if (keyword(tokens, cursor, "RETURN")
+                    && matches(tokens.get(cursor + 1), source, dialect)
+                    && symbol(tokens, cursor + 2, ".")
+                    && tokens.get(cursor + 3).identifier()) proven.add(cursor + 1);
+        }
+    }
+
+    private static void collectOracleTypeSpecTypes(
+            Scope root, List<Token> tokens, Map<Integer, Integer> parentheses,
+            String source, Dialect dialect, Set<Integer> proven) {
+        int segment = root.typeSpecStart;
+        int depth = 0;
+        for (int index = segment; index <= root.typeSpecEnd; index++) {
+            if (index < root.typeSpecEnd && symbol(tokens, index, "(")) depth++;
+            else if (index < root.typeSpecEnd && symbol(tokens, index, ")")) depth--;
+            if (index == root.typeSpecEnd || depth == 0 && symbol(tokens, index, ",")) {
+                int cursor = segment;
+                if (keyword(tokens, cursor, "MEMBER") || keyword(tokens, cursor, "STATIC")
+                        || keyword(tokens, cursor, "MAP") || keyword(tokens, cursor, "ORDER")) cursor++;
+                if (keyword(tokens, cursor, "FUNCTION") || keyword(tokens, cursor, "PROCEDURE")) {
+                    int name = cursor + 1;
+                    int open = name + 1;
+                    if (symbol(tokens, open, "(")) {
+                        Integer close = parentheses.get(open);
+                        if (close == null || close >= index) throw new IllegalArgumentException();
+                        collectOracleFormalTypes(tokens, open + 1, close,
+                                source, dialect, proven);
+                        if (keyword(tokens, close + 1, "RETURN")
+                                && matches(tokens.get(close + 2), source, dialect)
+                                && symbol(tokens, close + 3, ".")
+                                && close + 4 < index && tokens.get(close + 4).identifier()) {
+                            proven.add(close + 2);
+                        }
+                    } else if (keyword(tokens, open, "RETURN")
+                            && matches(tokens.get(open + 1), source, dialect)
+                            && symbol(tokens, open + 2, ".")
+                            && open + 3 < index && tokens.get(open + 3).identifier()) {
+                        proven.add(open + 1);
+                    }
+                } else {
+                    int type = cursor + 1;
+                    if (type + 2 < index && matches(tokens.get(type), source, dialect)
+                            && symbol(tokens, type + 1, ".")
+                            && tokens.get(type + 2).identifier()) proven.add(type);
+                }
+                segment = index + 1;
+            }
         }
     }
 
@@ -1035,7 +1222,8 @@ public final class SqlScopeAwareOwnerRewriter {
 
     private static void collectBindings(
             Scope scope, List<Token> tokens, Map<Integer, Integer> parentheses,
-            String source, Dialect dialect, Set<Integer> proven) {
+            String source, Dialect dialect, Set<Integer> proven,
+            Set<Integer> relationOwners) {
         collectCtes(scope, tokens, parentheses, dialect);
         for (int index = scope.start; index < scope.end; index++) {
             if (innermost(scope, index) != scope) continue;
@@ -1052,15 +1240,16 @@ public final class SqlScopeAwareOwnerRewriter {
             }
             if (!relation) continue;
             int next = parseRelation(scope, tokens, parentheses, index + 1,
-                    source, dialect, proven);
+                    source, dialect, proven, relationOwners);
             while (symbol(tokens, next, ",")) {
                 next = parseRelation(scope, tokens, parentheses, next + 1,
-                        source, dialect, proven);
+                        source, dialect, proven, relationOwners);
             }
             if (next > index) index = next - 1;
         }
         for (Scope child : scope.children) {
-            collectBindings(child, tokens, parentheses, source, dialect, proven);
+            collectBindings(child, tokens, parentheses, source, dialect,
+                    proven, relationOwners);
         }
     }
 
@@ -1109,7 +1298,8 @@ public final class SqlScopeAwareOwnerRewriter {
 
     private static int parseRelation(
             Scope scope, List<Token> tokens, Map<Integer, Integer> parentheses, int start,
-            String source, Dialect dialect, Set<Integer> proven) {
+            String source, Dialect dialect, Set<Integer> proven,
+            Set<Integer> relationOwners) {
         int cursor = start;
         while (keyword(tokens, cursor, "ONLY") || keyword(tokens, cursor, "LATERAL")) cursor++;
         Token implicitAlias = null;
@@ -1126,6 +1316,7 @@ public final class SqlScopeAwareOwnerRewriter {
                 }
                 if (matches(first, source, dialect)) {
                     proven.add(cursor);
+                    relationOwners.add(cursor);
                     scope.relationObjects.add(identity(tokens.get(cursor + 2), dialect));
                 }
                 implicitAlias = tokens.get(cursor + 2);
@@ -1432,6 +1623,8 @@ public final class SqlScopeAwareOwnerRewriter {
         private Token openingLabel;
         private int declarationStart = -1;
         private boolean packageSpec;
+        private int typeSpecStart = -1;
+        private int typeSpecEnd = -1;
 
         private Scope(int start, int end, Scope parent) {
             this.start = start;

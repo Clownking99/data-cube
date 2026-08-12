@@ -236,6 +236,7 @@ class OracleSchemaSnapshotReaderTest {
                 + "\"Source\" CONSTANT \"Source\".\"OBJ_T\" := NULL; "
                 + "same_name NUMBER := \"Source\".value; "
                 + "TYPE rec_t IS RECORD (value \"Source\".\"OBJ_T\"); "
+                + "public_record rec_t := \"Source\".orders; "
                 + "FUNCTION make(value IN \"Source\".\"OBJ_T\") RETURN \"Source\".\"OBJ_T\"; "
                 + "PROCEDURE forward(value IN \"External\".\"OBJ_T\"); END API;\n/";
         String targetSpec = sourceSpec.replace("\"Source\".\"API\"", "\"Target\".\"API\"")
@@ -300,6 +301,100 @@ class OracleSchemaSnapshotReaderTest {
         assertTrue(converged.differences().stream()
                 .noneMatch(value -> value.object().type() == ObjectType.PACKAGE_SPEC
                         && value.object().name().original().equals("API")
+                        && value.kind() != DifferenceKind.EQUIVALENT));
+        assertFalse((diff + plan.toString() + plan.digest()).contains("oracle-manual-definition"));
+    }
+
+    @Test
+    void labelRelationCollisionAndTypeSpecsFlowThroughReaderProjectionPlanAndReread()
+            throws Exception {
+        String sourceRoutine = "CREATE FUNCTION \"Source\".\"LABEL_RELATION\" RETURN NUMBER AS "
+                + "BEGIN <<\"Source\">> DECLARE orders \"Source\".\"ORDER_REC\"; BEGIN "
+                + "\"Source\".orders.value := 1; SELECT ID INTO orders.value FROM \"Source\".orders; "
+                + "END \"Source\"; RETURN 1; END;\n/";
+        String targetRoutine = sourceRoutine.replace("\"Source\".\"LABEL_RELATION\"",
+                        "\"Target\".\"LABEL_RELATION\"")
+                .replace("orders \"Source\".\"ORDER_REC\"",
+                        "orders \"Target\".\"ORDER_REC\"")
+                .replace("FROM \"Source\".orders", "FROM \"Target\".orders");
+        String sourceType = "CREATE TYPE \"Source\".\"ORDER_T\" AS OBJECT ("
+                + "id \"Source\".\"ID_T\", external_value \"External\".\"VALUE_T\", "
+                + "MEMBER FUNCTION current_value RETURN \"Source\".\"RESULT_T\", "
+                + "MEMBER FUNCTION convert(value IN \"Source\".\"ARG_T\") "
+                + "RETURN \"Source\".\"RESULT_T\");";
+        String targetType = sourceType.replace("\"Source\".\"ORDER_T\"",
+                        "\"Target\".\"ORDER_T\"")
+                .replace("\"Source\".\"ID_T\"", "\"Target\".\"ID_T\"")
+                .replace("\"Source\".\"ARG_T\"", "\"Target\".\"ARG_T\"")
+                .replace("\"Source\".\"RESULT_T\"", "\"Target\".\"RESULT_T\"");
+        String unsafeType = "CREATE TYPE \"Source\".\"UNSAFE_T\" AS "
+                + "VARRAY(10) OF \"Source\".\"ID_T\";";
+        SchemaSnapshot source = new OracleSchemaSnapshotReader(new SnapshotJdbc("Source")
+                .rows("definitions",
+                        definitionRow("LABEL_RELATION", "FUNCTION", 920, 1, null),
+                        definitionRow("ORDER_T", "TYPE", 921, 0, null),
+                        definitionRow("UNSAFE_T", "TYPE", 922, 0, null))
+                .ddl("FUNCTION", "LABEL_RELATION", sourceRoutine)
+                .ddl("TYPE_SPEC", "ORDER_T", sourceType)
+                .ddl("TYPE_SPEC", "UNSAFE_T", unsafeType)
+                .rows("sequences", row("sequence_name", "STABLE", "min_value", "1",
+                        "max_value", "99", "increment_by", "1", "cycle_flag", "N",
+                        "cache_size", 20, "order_flag", "N")).connection()).read(
+                "source", OracleSchemaIdentifierNormalizer.schema("Source"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot empty = new SchemaSnapshot(DbType.ORACLE, "empty",
+                OracleSchemaIdentifierNormalizer.schema("Target"), Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), new TreeMap<>(), "empty");
+        OracleSchemaDiffCapability capability = new OracleSchemaDiffCapability();
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, empty, capability.comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+        DefinitionObject safeType = definition(source, ObjectType.TYPE,
+                "Source", "ORDER_T", "SPEC");
+        DefinitionObject unsafe = definition(source, ObjectType.TYPE,
+                "Source", "UNSAFE_T", "SPEC");
+
+        assertEquals(DefinitionConfidence.HIGH, safeType.confidence());
+        assertEquals(DefinitionConfidence.LOW, unsafe.confidence());
+        var routineChange = plan.changes().stream()
+                .filter(value -> value.object().type() == ObjectType.FUNCTION)
+                .findFirst().orElseThrow();
+        var typeChange = plan.changes().stream()
+                .filter(value -> value.object().equals(safeType.key())).findFirst().orElseThrow();
+        String routineSql = capability.changeRenderer().render(routineChange,
+                new RenderContext(DbType.ORACLE, source.schema(), empty.schema(), false))
+                .getFirst().sql();
+        String typeSql = capability.changeRenderer().render(typeChange,
+                new RenderContext(DbType.ORACLE, source.schema(), empty.schema(), false))
+                .getFirst().sql();
+        assertTrue(routineSql.contains("\"Source\".orders.value := 1"), routineSql);
+        assertTrue(routineSql.contains("FROM \"Target\".orders"), routineSql);
+        assertTrue(typeSql.contains("id \"Target\".\"ID_T\""), typeSql);
+        assertTrue(typeSql.contains("\"External\".\"VALUE_T\""), typeSql);
+        var unsafeChange = plan.changes().stream()
+                .filter(value -> value.object().equals(unsafe.key())).findFirst().orElseThrow();
+        assertEquals(ChangeKind.MANUAL, unsafeChange.kind());
+        assertFalse(plan.selectedChangeIds().contains(unsafeChange.id()));
+        assertTrue(diff.differences().stream()
+                .anyMatch(value -> value.object().type() == ObjectType.SEQUENCE));
+
+        SchemaSnapshot target = new OracleSchemaSnapshotReader(new SnapshotJdbc("Target")
+                .rows("definitions",
+                        definitionRow("LABEL_RELATION", "FUNCTION", 923, 1, null),
+                        definitionRow("ORDER_T", "TYPE", 924, 0, null))
+                .ddl("FUNCTION", "LABEL_RELATION", targetRoutine)
+                .ddl("TYPE_SPEC", "ORDER_T", targetType)
+                .rows("sequences", row("sequence_name", "STABLE", "min_value", "1",
+                        "max_value", "99", "increment_by", "1", "cycle_flag", "N",
+                        "cache_size", 20, "order_flag", "N")).connection()).read(
+                "target", OracleSchemaIdentifierNormalizer.schema("Target"),
+                SqlExecutionOptions.defaults(0));
+        SchemaDiffResult converged = new SchemaDiffEngine().compare(
+                source, target, capability.comparisonProjector());
+        assertTrue(converged.differences().stream().noneMatch(value ->
+                (value.object().type() == ObjectType.FUNCTION
+                        || value.object().type() == ObjectType.TYPE
+                        && value.object().name().original().equals("ORDER_T"))
                         && value.kind() != DifferenceKind.EQUIVALENT));
         assertFalse((diff + plan.toString() + plan.digest()).contains("oracle-manual-definition"));
     }
