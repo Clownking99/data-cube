@@ -309,13 +309,14 @@ class OracleSchemaSnapshotReaderTest {
     void labelRelationCollisionAndTypeSpecsFlowThroughReaderProjectionPlanAndReread()
             throws Exception {
         String sourceRoutine = "CREATE FUNCTION \"Source\".\"LABEL_RELATION\" RETURN NUMBER AS "
-                + "BEGIN <<\"Source\">> DECLARE orders \"Source\".\"ORDER_REC\"; BEGIN "
-                + "\"Source\".orders.value := 1; SELECT ID INTO orders.value FROM \"Source\".orders; "
+                + "BEGIN <<\"Source\">> DECLARE rec \"Source\".\"ORDER_REC\"; BEGIN "
+                + "\"Source\".rec.value := 1; SELECT \"Source\".orders, \"Source\".value "
+                + "INTO rec.value FROM \"Source\".orders \"Source\"; "
                 + "END \"Source\"; RETURN 1; END;\n/";
         String targetRoutine = sourceRoutine.replace("\"Source\".\"LABEL_RELATION\"",
                         "\"Target\".\"LABEL_RELATION\"")
-                .replace("orders \"Source\".\"ORDER_REC\"",
-                        "orders \"Target\".\"ORDER_REC\"")
+                .replace("rec \"Source\".\"ORDER_REC\"",
+                        "rec \"Target\".\"ORDER_REC\"")
                 .replace("FROM \"Source\".orders", "FROM \"Target\".orders");
         String sourceType = "CREATE TYPE \"Source\".\"ORDER_T\" AS OBJECT ("
                 + "id \"Source\".\"ID_T\", external_value \"External\".\"VALUE_T\", "
@@ -367,7 +368,9 @@ class OracleSchemaSnapshotReaderTest {
         String typeSql = capability.changeRenderer().render(typeChange,
                 new RenderContext(DbType.ORACLE, source.schema(), empty.schema(), false))
                 .getFirst().sql();
-        assertTrue(routineSql.contains("\"Source\".orders.value := 1"), routineSql);
+        assertTrue(routineSql.contains("\"Source\".rec.value := 1"), routineSql);
+        assertTrue(routineSql.contains(
+                "SELECT \"Source\".orders, \"Source\".value"), routineSql);
         assertTrue(routineSql.contains("FROM \"Target\".orders"), routineSql);
         assertTrue(typeSql.contains("id \"Target\".\"ID_T\""), typeSql);
         assertTrue(typeSql.contains("\"External\".\"VALUE_T\""), typeSql);

@@ -155,6 +155,8 @@ public final class SqlScopeAwareOwnerRewriter {
                 replacements.add(new Replacement(owner.start(), owner.end(), replacement));
                 continue;
             }
+            if (visibleBinding(scope, owner, dialect)
+                    && !schemaFunctionCall(tokens, index, dialect, routineBody)) continue;
             if (visibleRelation(scope, tokens.get(index + 2), dialect)) {
                 replacements.add(new Replacement(owner.start(), owner.end(), replacement));
                 continue;
@@ -168,8 +170,6 @@ public final class SqlScopeAwareOwnerRewriter {
                 }
                 throw new IllegalArgumentException();
             }
-            if (visibleBinding(scope, owner, dialect)
-                    && !schemaFunctionCall(tokens, index, dialect, routineBody)) continue;
             if (dialect == Dialect.ORACLE && oraclePackageCall(tokens, index)) {
                 replacements.add(new Replacement(owner.start(), owner.end(), replacement));
                 continue;
@@ -1315,7 +1315,6 @@ public final class SqlScopeAwareOwnerRewriter {
                     throw new IllegalArgumentException();
                 }
                 if (matches(first, source, dialect)) {
-                    proven.add(cursor);
                     relationOwners.add(cursor);
                     scope.relationObjects.add(identity(tokens.get(cursor + 2), dialect));
                 }

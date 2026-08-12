@@ -447,7 +447,8 @@ class PgSchemaChangeRendererTest {
         String ddl = """
                 CREATE VIEW "Source"."Scoped" AS
                 WITH "Source" AS (SELECT 1 AS id)
-                SELECT "Source".id, nested.id, '"Source"."literal"' AS label
+                SELECT "Source".id, "Source"."Orders", "Source".value,
+                       nested.id, '"Source"."literal"' AS label
                 FROM "Source"."Orders" AS "Source"
                 JOIN (SELECT "Source".id
                       FROM "Source"."Nested" AS "Source") AS nested ON true
@@ -464,12 +465,16 @@ class PgSchemaChangeRendererTest {
 
         assertTrue(rendered.startsWith("CREATE VIEW \"Target\".\"Scoped\""));
         assertTrue(rendered.contains("FROM \"Target\".\"Orders\" AS \"Source\""));
+        assertTrue(rendered.contains(
+                "SELECT \"Source\".id, \"Source\".\"Orders\", \"Source\".value"), rendered);
         assertTrue(rendered.contains("FROM \"Target\".\"Nested\" AS \"Source\""));
         assertTrue(rendered.contains("JOIN \"Target\".\"Real\" AS real"));
         assertEquals(2, countOccurrences(rendered, "SELECT \"Source\".id"));
         assertTrue(rendered.contains("'\"Source\".\"literal\"'"));
         assertTrue(rendered.contains("/* \"Source\".\"comment\" */"));
         assertEquals(2, countOccurrences(projected, "SELECT \"Source\".id"));
+        assertTrue(projected.contains(
+                "SELECT \"Source\".id, \"Source\".\"Orders\", \"Source\".value"), projected);
         assertEquals(4, countOccurrences(projected, "\0pg-self-owner\0"));
     }
 
@@ -694,23 +699,21 @@ class PgSchemaChangeRendererTest {
 
         String outerBinding = safe.replace("\"Source\".own_record.value",
                 "\"Source\".outer_record.value");
-        assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
-                assertThrows(IllegalArgumentException.class,
-                        () -> PgSchemaChangeRenderer.comparisonDefinition(
-                                outerBinding, ObjectType.FUNCTION, "Source")).getMessage());
+        assertTrue(PgSchemaChangeRenderer.comparisonDefinition(
+                        outerBinding, ObjectType.FUNCTION, "Source")
+                .contains("\"Source\".outer_record.value"));
 
         String sqlAlias = safe.replace("PERFORM \"Source\".own_record.value;",
                 "PERFORM \"Source\".id.value FROM orders AS \"Source\";");
-        assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
-                assertThrows(IllegalArgumentException.class,
-                        () -> PgSchemaChangeRenderer.comparisonDefinition(
-                                sqlAlias, ObjectType.FUNCTION, "Source")).getMessage());
+        assertTrue(PgSchemaChangeRenderer.comparisonDefinition(
+                        sqlAlias, ObjectType.FUNCTION, "Source")
+                .contains("PERFORM \"Source\".id.value"));
 
         String ambiguousRelation = safe.replace("PERFORM \"Source\".own_record.value;",
                 "PERFORM \"Source\".orders.value FROM \"Source\".orders AS \"Source\";");
         assertTrue(PgSchemaChangeRenderer.comparisonDefinition(
                         ambiguousRelation, ObjectType.FUNCTION, "Source")
-                .contains("PERFORM \0pg-self-owner\0.orders.value"));
+                .contains("PERFORM \"Source\".orders.value"));
     }
 
     @Test

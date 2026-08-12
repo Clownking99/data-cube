@@ -44,7 +44,8 @@ class OracleSchemaChangeRendererTest {
         String ddl = """
                 CREATE VIEW "Source"."SCOPED" AS
                 WITH "Source" AS (SELECT 1 AS ID FROM DUAL)
-                SELECT "Source".ID, NESTED.ID, '"Source"."LITERAL"' AS LABEL
+                SELECT "Source".ID, "Source"."ORDERS", "Source".VALUE,
+                       NESTED.ID, '"Source"."LITERAL"' AS LABEL
                 FROM "Source"."ORDERS" "Source"
                 JOIN (SELECT "Source".ID
                       FROM "Source"."NESTED" AS "Source") NESTED ON 1 = 1
@@ -60,12 +61,16 @@ class OracleSchemaChangeRendererTest {
 
         assertTrue(rendered.startsWith("CREATE VIEW \"Target\"\"Owner\".\"SCOPED\""));
         assertTrue(rendered.contains("FROM \"Target\"\"Owner\".\"ORDERS\" \"Source\""));
+        assertTrue(rendered.contains(
+                "SELECT \"Source\".ID, \"Source\".\"ORDERS\", \"Source\".VALUE"), rendered);
         assertTrue(rendered.contains("FROM \"Target\"\"Owner\".\"NESTED\" AS \"Source\""));
         assertTrue(rendered.contains("JOIN \"Target\"\"Owner\".\"REAL\" REAL"));
         assertEquals(2, countOccurrences(rendered, "SELECT \"Source\".ID"));
         assertTrue(rendered.contains("'\"Source\".\"LITERAL\"'"));
         assertTrue(rendered.contains("/* \"Source\".\"COMMENT\" */"));
         assertEquals(2, countOccurrences(projected, "SELECT \"Source\".ID"));
+        assertTrue(projected.contains(
+                "SELECT \"Source\".ID, \"Source\".\"ORDERS\", \"Source\".VALUE"), projected);
         assertEquals(4, countOccurrences(projected, "\0oracle-self-owner\0"));
     }
 
@@ -402,18 +407,14 @@ class OracleSchemaChangeRendererTest {
         assertTrue(projected.contains("\"Source\".own_record.value"), projected);
         assertTrue(projected.contains("FROM \0oracle-self-owner\0.\"ORDERS\""), projected);
 
-        for (String ambiguous : List.of(
-                safe.replace("\"Source\".own_record.value := 1",
-                        "\"Source\".outer_record.value := 1"),
-                safe.replace("\"Source\".own_record.value := 1",
-                        "\"Source\".ID.value := 1"))) {
-            assertFalse(OracleSchemaChangeRenderer.supportsAutomaticPlSqlDefinition(
-                    ambiguous, "Source"));
-            assertEquals(OracleSchemaChangeRenderer.UNSAFE_DEFINITION,
-                    assertThrows(IllegalArgumentException.class,
-                            () -> OracleSchemaChangeRenderer.comparisonDefinition(
-                                    ambiguous, "Source")).getMessage());
-        }
+        String outerBinding = safe.replace("\"Source\".own_record.value := 1",
+                "\"Source\".outer_record.value := 1");
+        assertTrue(OracleSchemaChangeRenderer.comparisonDefinition(outerBinding, "Source")
+                .contains("\"Source\".outer_record.value := 1"));
+        String sqlAlias = safe.replace("\"Source\".own_record.value := 1",
+                "\"Source\".ID.value := 1");
+        assertTrue(OracleSchemaChangeRenderer.comparisonDefinition(sqlAlias, "Source")
+                .contains("\"Source\".ID.value := 1"));
     }
 
     @Test
