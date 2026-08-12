@@ -660,6 +660,11 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         if (!identifierMatches(last, objectPart(key), false)) {
             throw new IllegalArgumentException(UNSAFE_DEFINITION);
         }
+        if (key.type() == ObjectType.PACKAGE_SPEC) {
+            if (!supportsAutomaticPlSqlDefinition(definition, objectOwner(key))) {
+                throw new IllegalArgumentException(UNSAFE_DEFINITION);
+            }
+        }
     }
 
     private static void validateDefinitionSegments(String definition) {

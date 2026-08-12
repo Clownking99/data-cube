@@ -381,6 +381,88 @@ class OracleSchemaChangeRendererTest {
     }
 
     @Test
+    void oracleLabelUsesOnlyItsExactOwningScopeDeclarations() {
+        String safe = """
+                CREATE FUNCTION "Source"."LABEL_SCOPE" RETURN NUMBER AS
+                  outer_record "Source"."OBJ_T";
+                BEGIN
+                  <<"Source">>
+                  DECLARE own_record "Source"."OBJ_T";
+                  BEGIN
+                    "Source".own_record.value := 1;
+                    SELECT ID INTO own_record.value
+                    FROM "Source"."ORDERS" "Source";
+                  END "Source";
+                  RETURN 1;
+                END;
+                /
+                """;
+
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(safe, "Source");
+        assertTrue(projected.contains("\"Source\".own_record.value"), projected);
+        assertTrue(projected.contains("FROM \0oracle-self-owner\0.\"ORDERS\""), projected);
+
+        for (String ambiguous : List.of(
+                safe.replace("\"Source\".own_record.value := 1",
+                        "\"Source\".outer_record.value := 1"),
+                safe.replace("\"Source\".own_record.value := 1",
+                        "\"Source\".ID.value := 1"))) {
+            assertFalse(OracleSchemaChangeRenderer.supportsAutomaticPlSqlDefinition(
+                    ambiguous, "Source"));
+            assertEquals(OracleSchemaChangeRenderer.UNSAFE_DEFINITION,
+                    assertThrows(IllegalArgumentException.class,
+                            () -> OracleSchemaChangeRenderer.comparisonDefinition(
+                                    ambiguous, "Source")).getMessage());
+        }
+    }
+
+    @Test
+    void oracleClosingLabelsMatchTheirOpeningScopeExactly() {
+        String quoted = "CREATE FUNCTION \"Source\".\"LABELS\" RETURN NUMBER AS BEGIN "
+                + "<<\"MiXeD\">> BEGIN <<inner>> BEGIN NULL; END inner; END \"MiXeD\"; "
+                + "RETURN 1; END; /";
+        assertTrue(OracleSchemaChangeRenderer.supportsAutomaticPlSqlDefinition(
+                quoted, "Source"));
+
+        for (String invalid : List.of(
+                quoted.replace("END \"MiXeD\"", "END mixed"),
+                quoted.replace("END inner", "END missing"),
+                quoted.replace("<<inner>> BEGIN NULL; END inner;", "BEGIN NULL; END orphan;"))) {
+            assertFalse(OracleSchemaChangeRenderer.supportsAutomaticPlSqlDefinition(
+                    invalid, "Source"));
+        }
+    }
+
+    @Test
+    void packageSpecDeclarationsAreScopedAndUnknownGrammarFailsClosed() {
+        String ddl = """
+                CREATE PACKAGE "Source"."API" AS
+                  "Source" CONSTANT "Source"."OBJ_T" := NULL;
+                  same_name NUMBER := "Source".value;
+                  TYPE rec_t IS RECORD (value "Source"."OBJ_T");
+                  FUNCTION make(value IN "Source"."OBJ_T") RETURN "Source"."OBJ_T";
+                  PROCEDURE forward(value IN "External"."OBJ_T");
+                END API;
+                /
+                """;
+
+        assertTrue(OracleSchemaChangeRenderer.supportsAutomaticPlSqlDefinition(ddl, "Source"));
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+        assertEquals(5, countOccurrences(projected, "\0oracle-self-owner\0"), projected);
+        assertTrue(projected.contains("same_name NUMBER := \"Source\".value"), projected);
+        assertTrue(projected.contains("\"External\".\"OBJ_T\""), projected);
+
+        String unknown = ddl.replace("TYPE rec_t IS RECORD (value \"Source\".\"OBJ_T\");",
+                "MYSTERY DECLARATION \"Source\".thing;");
+        assertFalse(OracleSchemaChangeRenderer.supportsAutomaticPlSqlDefinition(
+                unknown, "Source"));
+        assertEquals(OracleSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> OracleSchemaChangeRenderer.comparisonDefinition(
+                                unknown, "Source")).getMessage());
+    }
+
+    @Test
     void embeddedQuoteOwnerAndMixedCaseBindingAreProjectedConservatively() {
         String ddl = "CREATE FUNCTION \"Source\"\"Owner\".\"F\"(value IN "
                 + "\"Source\"\"Owner\".\"Self.Type\") RETURN NUMBER AS BEGIN DECLARE "

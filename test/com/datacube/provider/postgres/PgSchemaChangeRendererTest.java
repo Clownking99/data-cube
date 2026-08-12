@@ -599,18 +599,16 @@ class PgSchemaChangeRendererTest {
                 <<"Source">>
                 DECLARE
                   rec record;
-                  "Source" record;
                 BEGIN
                   PERFORM id FROM "Source"."orders";
                   PERFORM "Source".rec.value;
-                  PERFORM "Source".value;
                   PERFORM "Source"."helper"();
-                  <<nested_block>>
+                  <<"Source">>
                   DECLARE
-                    "Source" record;
+                    nested_value record;
                   BEGIN
                     PERFORM "Source".nested_value;
-                  END nested_block;
+                  END "Source";
                   RETURN 1;
                 END "Source"
                 $body$
@@ -621,8 +619,7 @@ class PgSchemaChangeRendererTest {
 
         assertTrue(projected.contains("FROM \0pg-self-owner\0.\"orders\""), projected);
         assertTrue(projected.contains("PERFORM \"Source\".rec.value"), projected);
-        assertTrue(projected.contains("PERFORM \"Source\".value"), projected);
-        assertEquals(3, countOccurrences(projected, "PERFORM \"Source\"."), projected);
+        assertEquals(2, countOccurrences(projected, "PERFORM \"Source\"."), projected);
         assertTrue(projected.contains("PERFORM \0pg-self-owner\0.\"helper\"()"), projected);
 
         String function = "CREATE FUNCTION \"Source\".call_helper() RETURNS integer "
@@ -671,6 +668,69 @@ class PgSchemaChangeRendererTest {
         assertTrue(projected.contains("PERFORM \"Source\".rec.value"), projected);
         assertEquals(2, countOccurrences(projected,
                 "PERFORM \0pg-self-owner\0.\"helper\"()"), projected);
+    }
+
+    @Test
+    void plpgsqlLabelOwnsOnlyItsOwnDeclarationsAndRelationProofWins() {
+        String safe = """
+                CREATE FUNCTION "Source".scoped_label() RETURNS integer LANGUAGE plpgsql AS $body$
+                DECLARE outer_record record;
+                BEGIN
+                  <<"Source">>
+                  DECLARE own_record record;
+                  BEGIN
+                    PERFORM "Source".own_record.value;
+                    PERFORM id FROM "Source".orders AS "Source";
+                  END "Source";
+                  RETURN 1;
+                END
+                $body$
+                """;
+
+        String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                safe, ObjectType.FUNCTION, "Source");
+        assertTrue(projected.contains("\"Source\".own_record.value"), projected);
+        assertTrue(projected.contains("FROM \0pg-self-owner\0.orders AS \"Source\""), projected);
+
+        String outerBinding = safe.replace("\"Source\".own_record.value",
+                "\"Source\".outer_record.value");
+        assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> PgSchemaChangeRenderer.comparisonDefinition(
+                                outerBinding, ObjectType.FUNCTION, "Source")).getMessage());
+
+        String sqlAlias = safe.replace("PERFORM \"Source\".own_record.value;",
+                "PERFORM \"Source\".id.value FROM orders AS \"Source\";");
+        assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> PgSchemaChangeRenderer.comparisonDefinition(
+                                sqlAlias, ObjectType.FUNCTION, "Source")).getMessage());
+
+        String ambiguousRelation = safe.replace("PERFORM \"Source\".own_record.value;",
+                "PERFORM \"Source\".orders.value FROM \"Source\".orders AS \"Source\";");
+        assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> PgSchemaChangeRenderer.comparisonDefinition(
+                                ambiguousRelation, ObjectType.FUNCTION, "Source")).getMessage());
+    }
+
+    @Test
+    void plpgsqlClosingLabelsMatchTheirOpeningScopeExactly() {
+        String quoted = "CREATE FUNCTION \"Source\".labels() RETURNS integer LANGUAGE plpgsql "
+                + "AS $body$ <<\"MiXeD\">> BEGIN <<inner>> BEGIN NULL; END inner; "
+                + "END \"MiXeD\" $body$";
+        assertTrue(PgSchemaChangeRenderer.comparisonDefinition(
+                quoted, ObjectType.FUNCTION, "Source").contains("\0pg-self-owner\0.labels"));
+
+        for (String invalid : List.of(
+                quoted.replace("END \"MiXeD\"", "END mixed"),
+                quoted.replace("END inner", "END missing"),
+                quoted.replace("BEGIN NULL; END inner", "BEGIN NULL; END orphan"))) {
+            assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
+                    assertThrows(IllegalArgumentException.class,
+                            () -> PgSchemaChangeRenderer.comparisonDefinition(
+                                    invalid, ObjectType.FUNCTION, "Source")).getMessage());
+        }
     }
 
     @Test

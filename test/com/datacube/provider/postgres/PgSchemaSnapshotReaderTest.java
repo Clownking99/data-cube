@@ -430,10 +430,13 @@ class PgSchemaSnapshotReaderTest {
             throws Exception {
         String sourceDefinition = "CREATE FUNCTION \"Source\".labeled() RETURNS integer "
                 + "LANGUAGE plpgsql AS $body$ <<\"Source\">> DECLARE rec record; BEGIN "
-                + "PERFORM \"Source\".rec.value; PERFORM \"Source\".helper(); RETURN 1; "
+                + "PERFORM \"Source\".rec.value; "
+                + "PERFORM id FROM \"Source\".orders AS \"Source\"; "
+                + "PERFORM \"Source\".helper(); RETURN 1; "
                 + "END \"Source\" $body$";
         String targetDefinition = sourceDefinition.replace("\"Source\".labeled",
                         "\"Target\".labeled")
+                .replace("FROM \"Source\".orders", "FROM \"Target\".orders")
                 .replace("PERFORM \"Source\".helper()", "PERFORM \"Target\".helper()");
         SchemaSnapshot source = new PgSchemaSnapshotReader(new SnapshotJdbc("Source")
                 .rows("routines", row("object_oid", 80L, "object_name", "labeled",
@@ -452,6 +455,7 @@ class PgSchemaSnapshotReaderTest {
                 new RenderContext(DbType.POSTGRESQL, source.schema(),
                         emptyTarget.schema(), false)).getFirst().sql();
         assertTrue(sql.contains("PERFORM \"Source\".rec.value"), sql);
+        assertTrue(sql.contains("FROM \"Target\".orders AS \"Source\""), sql);
         assertTrue(sql.contains("PERFORM \"Target\".helper()"), sql);
         assertFalse(sql.contains("PERFORM \"Source\".helper()"), sql);
 
@@ -464,6 +468,52 @@ class PgSchemaSnapshotReaderTest {
         assertTrue(new SchemaDiffEngine().compare(source, reread,
                         capability.comparisonProjector()).differences().stream()
                 .allMatch(value -> value.kind() == DifferenceKind.EQUIVALENT));
+    }
+
+    @Test
+    void outerLabelBindingAndMismatchedClosingLabelReadAsLowManualWithoutBlockingOthers()
+            throws Exception {
+        String outerBinding = "CREATE FUNCTION app.outer_binding() RETURNS integer LANGUAGE plpgsql "
+                + "AS $body$ DECLARE outer_record record; BEGIN <<app>> DECLARE own_record record; "
+                + "BEGIN RETURN app.outer_record.value; END app; END $body$";
+        String badClosing = "CREATE FUNCTION app.bad_closing() RETURNS integer LANGUAGE plpgsql "
+                + "AS $body$ <<mixed>> BEGIN RETURN 1; END other $body$";
+        SnapshotJdbc jdbc = new SnapshotJdbc("app")
+                .rows("routines",
+                        row("object_oid", 82L, "object_name", "outer_binding",
+                                "routine_kind", "f", "identity_arguments", "",
+                                "definition", outerBinding),
+                        row("object_oid", 83L, "object_name", "bad_closing",
+                                "routine_kind", "f", "identity_arguments", "",
+                                "definition", badClosing))
+                .rows("sequences", row("sequence_name", "stable", "start_value", "1",
+                        "object_oid", 84L, "object_name", "stable", "increment_by", "1",
+                        "minimum_value", "1", "maximum_value", "99",
+                        "cycle", false, "cache_size", 1));
+        SchemaSnapshot source = new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "source", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot target = new SchemaSnapshot(DbType.POSTGRESQL, "target", source.schema(),
+                Instant.EPOCH, new SnapshotCompleteness(true, new TreeMap<>()),
+                new TreeMap<>(), "empty");
+
+        assertEquals(2, source.objects().values().stream()
+                .filter(DefinitionObject.class::isInstance)
+                .map(DefinitionObject.class::cast)
+                .filter(value -> value.confidence() == DefinitionConfidence.LOW).count());
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, target, new PgSchemaDiffCapability().comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+        assertTrue(diff.differences().stream()
+                .filter(value -> value.object().type() == ObjectType.FUNCTION)
+                .allMatch(value -> value.automation() == AutomationLevel.MANUAL_ONLY));
+        assertTrue(plan.changes().stream()
+                .filter(value -> value.object().type() == ObjectType.FUNCTION)
+                .allMatch(value -> value.kind() == ChangeKind.MANUAL
+                        && !plan.selectedChangeIds().contains(value.id())));
+        assertTrue(diff.differences().stream()
+                .anyMatch(value -> value.object().type() == ObjectType.SEQUENCE));
+        assertFalse((diff + plan.toString() + plan.digest()).contains("pg-manual-definition"));
     }
 
     @Test

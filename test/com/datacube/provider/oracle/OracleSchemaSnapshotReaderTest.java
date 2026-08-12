@@ -184,12 +184,16 @@ class OracleSchemaSnapshotReaderTest {
                 + "<<\"Sales\">> DECLARE rec \"Sales\".\"OBJ_T\"; BEGIN "
                 + "\"Sales\".rec.value := 1; \"Sales\".\"PKG\".\"RUN\"(); END; "
                 + "\"Sales\".\"PKG\".\"RUN\"(); RETURN 1; END; /";
+        String badClosing = "CREATE FUNCTION \"Sales\".\"BAD_CLOSING\" RETURN NUMBER AS BEGIN "
+                + "<<mixed>> BEGIN NULL; END other; RETURN 1; END; /";
         SnapshotJdbc jdbc = new SnapshotJdbc("Sales")
                 .rows("definitions",
                         definitionRow("UNSAFE_LABEL", "FUNCTION", 901, 1, null),
-                        definitionRow("SAFE_LABEL", "FUNCTION", 902, 1, null))
+                        definitionRow("SAFE_LABEL", "FUNCTION", 902, 1, null),
+                        definitionRow("BAD_CLOSING", "FUNCTION", 903, 1, null))
                 .ddl("FUNCTION", "UNSAFE_LABEL", unsafe)
-                .ddl("FUNCTION", "SAFE_LABEL", safe);
+                .ddl("FUNCTION", "SAFE_LABEL", safe)
+                .ddl("FUNCTION", "BAD_CLOSING", badClosing);
         SchemaSnapshot source = new OracleSchemaSnapshotReader(jdbc.connection()).read(
                 "source", OracleSchemaIdentifierNormalizer.schema("Sales"),
                 SqlExecutionOptions.defaults(0));
@@ -201,8 +205,11 @@ class OracleSchemaSnapshotReaderTest {
                 "Sales", "UNSAFE_LABEL", "oracle-routine-signature-v1\0");
         DefinitionObject safeDefinition = definition(source, ObjectType.FUNCTION,
                 "Sales", "SAFE_LABEL", "oracle-routine-signature-v1\0");
+        DefinitionObject badClosingDefinition = definition(source, ObjectType.FUNCTION,
+                "Sales", "BAD_CLOSING", "oracle-routine-signature-v1\0");
         assertEquals(DefinitionConfidence.LOW, unsafeDefinition.confidence());
         assertEquals(DefinitionConfidence.HIGH, safeDefinition.confidence());
+        assertEquals(DefinitionConfidence.LOW, badClosingDefinition.confidence());
         SchemaDiffResult diff = new SchemaDiffEngine().compare(
                 source, target, new OracleSchemaDiffCapability().comparisonProjector());
         SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
@@ -212,10 +219,88 @@ class OracleSchemaSnapshotReaderTest {
         assertEquals(AutomationLevel.SAFE_AUTOMATIC, diff.differences().stream()
                 .filter(value -> value.object().equals(safeDefinition.key()))
                 .findFirst().orElseThrow().automation());
+        assertEquals(AutomationLevel.MANUAL_ONLY, diff.differences().stream()
+                .filter(value -> value.object().equals(badClosingDefinition.key()))
+                .findFirst().orElseThrow().automation());
         assertTrue(plan.changes().stream()
                 .filter(value -> value.object().equals(unsafeDefinition.key()))
                 .allMatch(value -> value.kind() == ChangeKind.MANUAL
                         && !plan.selectedChangeIds().contains(value.id())));
+        assertFalse((diff + plan.toString() + plan.digest()).contains("oracle-manual-definition"));
+    }
+
+    @Test
+    void packageSpecReaderProjectionRenderAndRereadConvergeWhileUnknownSpecStaysLocalManual()
+            throws Exception {
+        String sourceSpec = "CREATE PACKAGE \"Source\".\"API\" AS "
+                + "\"Source\" CONSTANT \"Source\".\"OBJ_T\" := NULL; "
+                + "same_name NUMBER := \"Source\".value; "
+                + "TYPE rec_t IS RECORD (value \"Source\".\"OBJ_T\"); "
+                + "FUNCTION make(value IN \"Source\".\"OBJ_T\") RETURN \"Source\".\"OBJ_T\"; "
+                + "PROCEDURE forward(value IN \"External\".\"OBJ_T\"); END API;\n/";
+        String targetSpec = sourceSpec.replace("\"Source\".\"API\"", "\"Target\".\"API\"")
+                .replace("CONSTANT \"Source\".\"OBJ_T\"", "CONSTANT \"Target\".\"OBJ_T\"")
+                .replace("(value \"Source\".\"OBJ_T\")", "(value \"Target\".\"OBJ_T\")")
+                .replace("IN \"Source\".\"OBJ_T\"", "IN \"Target\".\"OBJ_T\"")
+                .replace("RETURN \"Source\".\"OBJ_T\"", "RETURN \"Target\".\"OBJ_T\"");
+        String unknownSpec = "CREATE PACKAGE \"Source\".\"UNKNOWN_API\" AS "
+                + "MYSTERY DECLARATION \"Source\".thing; END UNKNOWN_API;\n/";
+        SchemaSnapshot source = new OracleSchemaSnapshotReader(new SnapshotJdbc("Source")
+                .rows("definitions",
+                        definitionRow("API", "PACKAGE", 910, 0, null),
+                        definitionRow("UNKNOWN_API", "PACKAGE", 911, 0, null))
+                .ddl("PACKAGE_SPEC", "API", sourceSpec)
+                .ddl("PACKAGE_SPEC", "UNKNOWN_API", unknownSpec)
+                .rows("sequences", row("sequence_name", "STABLE", "min_value", "1",
+                        "max_value", "99", "increment_by", "1", "cycle_flag", "N",
+                        "cache_size", 20, "order_flag", "N")).connection()).read(
+                "source", OracleSchemaIdentifierNormalizer.schema("Source"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot empty = new SchemaSnapshot(DbType.ORACLE, "empty",
+                OracleSchemaIdentifierNormalizer.schema("Target"), Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), new TreeMap<>(), "empty");
+        OracleSchemaDiffCapability capability = new OracleSchemaDiffCapability();
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, empty, capability.comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+        DefinitionObject safe = definition(source, ObjectType.PACKAGE_SPEC, "Source", "API", "");
+        DefinitionObject unknown = definition(
+                source, ObjectType.PACKAGE_SPEC, "Source", "UNKNOWN_API", "");
+
+        assertEquals(DefinitionConfidence.HIGH, safe.confidence());
+        assertEquals(DefinitionConfidence.LOW, unknown.confidence());
+        var safeChange = plan.changes().stream()
+                .filter(value -> value.object().equals(safe.key())).findFirst().orElseThrow();
+        var unknownChange = plan.changes().stream()
+                .filter(value -> value.object().equals(unknown.key())).findFirst().orElseThrow();
+        String sql = capability.changeRenderer().render(safeChange,
+                new RenderContext(DbType.ORACLE, source.schema(), empty.schema(), false))
+                .getFirst().sql();
+        assertTrue(sql.contains("CREATE PACKAGE \"Target\".\"API\""), sql);
+        assertTrue(sql.contains("same_name NUMBER := \"Source\".value"), sql);
+        assertFalse(sql.contains("\0oracle-"), sql);
+        assertEquals(ChangeKind.MANUAL, unknownChange.kind());
+        assertFalse(plan.selectedChangeIds().contains(unknownChange.id()));
+        assertEquals(OracleSchemaChangeRenderer.MANUAL_CHANGE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> capability.changeRenderer().render(unknownChange,
+                                new RenderContext(DbType.ORACLE, source.schema(),
+                                        empty.schema(), false))).getMessage());
+
+        SchemaSnapshot target = new OracleSchemaSnapshotReader(new SnapshotJdbc("Target")
+                .rows("definitions", definitionRow("API", "PACKAGE", 912, 0, null))
+                .ddl("PACKAGE_SPEC", "API", targetSpec)
+                .rows("sequences", row("sequence_name", "STABLE", "min_value", "1",
+                        "max_value", "99", "increment_by", "1", "cycle_flag", "N",
+                        "cache_size", 20, "order_flag", "N")).connection()).read(
+                "target", OracleSchemaIdentifierNormalizer.schema("Target"),
+                SqlExecutionOptions.defaults(0));
+        SchemaDiffResult converged = new SchemaDiffEngine().compare(
+                source, target, capability.comparisonProjector());
+        assertTrue(converged.differences().stream()
+                .noneMatch(value -> value.object().type() == ObjectType.PACKAGE_SPEC
+                        && value.object().name().original().equals("API")
+                        && value.kind() != DifferenceKind.EQUIVALENT));
         assertFalse((diff + plan.toString() + plan.digest()).contains("oracle-manual-definition"));
     }
 
