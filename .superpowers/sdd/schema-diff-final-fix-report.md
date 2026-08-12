@@ -1,5 +1,32 @@
 # Schema Diff 累计终审统一修复报告
 
+## 第七次累计复审 follow-up（2026-08-12）
+
+- 状态：第七轮代码与 fresh gates 已完成，等待新的独立累计 reviewer；本报告不自行标记 Ready。
+- PG/Oracle 普通 qualifier chain 现在先检查 exact label owning scope 自身 declaration，再检查当前 SQL scope 的 relation proof；只有 FROM/JOIN 等关系源位置的 owner token 保持语法优先。label 自有 `orders` variable/record chain 不再被 relation binding 吞掉，而真实 `Source.orders` 关系源仍跨 owner retarget。真实 reader → projector → planner → renderer → simulated reread second-diff 已覆盖两 provider 的同 label/变量/关系碰撞。
+- Oracle formal parameter parser 按逗号分隔的 formal 精确识别 parameter name、mode、datatype、`%TYPE`/`%ROWTYPE` 和 FUNCTION `RETURN` type；`DEFAULT` 后表达式不再进入 proven owner。PACKAGE_SPEC 的 public record variable default chain 保持原文，self datatype 仅在 type position retarget，external datatype 保持精确。
+- Oracle TYPE SPEC 进入保守 type-position parser：支持 `AS OBJECT` attribute 与 MEMBER/STATIC/MAP/ORDER FUNCTION/PROCEDURE signature 的 self/external type。VARRAY/TABLE/未知或未完整消费 grammar fail closed，reader 将该对象降 LOW，projector 使用对象特异 opaque/manual 投影，planner MANUAL/default-unselected，renderer 拒绝；其他 stable object 继续比较，marker 不进入 SQL/diff/plan digest/toString/result XML。
+- PostgreSQL labeled PL/pgSQL block 使用显式 BLOCK/CASE construct stack，区分 simple/searched CASE expression、CASE statement、nested CASE 与 nested BEGIN；`END CASE` 不再关闭 block，bare `END` 也不会在未关闭 CASE 时错误结束 routine。
+- 无新增 public SPI/model seam；继续沿用 provider comparison projector、对象级 `DefinitionConfidence` 与既有 manual admission。二参 `SchemaDiffEngine.compare()` 语义不变。
+
+### 第七次 follow-up TDD RED → GREEN
+
+1. C1 RED：relation proof 在 exact label declaration 前执行，普通 `label.orders.field` 被误当 schema/relation qualifier。GREEN：relation-source token 单独登记并仅在 source grammar 位优先；普通 chain 按 label-own declaration → visible relation 顺序分类，PG/Oracle 闭环收敛。
+2. C2 RED：Oracle formal 参数括号内所有 qualified chain（包括 DEFAULT expression）都进入 proven owner。GREEN：formal segment/type-position/RETURN parser，`%TYPE`/`%ROWTYPE` 正例与 ambiguous DEFAULT fail-closed 反例全绿；PACKAGE_SPEC public default chain 保持。
+3. C3 RED：TYPE SPEC 落 legacy three-part heuristic，unsupported grammar 仍可能自动改写。GREEN：保守 object type parser、reader LOW + 对象特异 manual fallback、safe type render/reread convergence 与 stable sequence partial comparison 全绿。
+4. I RED：PG scanner 只跳过 `END CASE`，未跟踪 CASE nesting，labeled block 会被 CASE 的 bare END 提前关闭。GREEN：BLOCK/CASE stack 与 simple/searched/nested CASE、CASE statement、nested BEGIN grammar variants 全绿。
+
+### 第七次 follow-up fresh verification
+
+- Implementation commit：`8453211698b7c9785cff76dd4c715e3532d3fbd9`；最终累计 review range 为 `3d8c40b..HEAD`，本报告/progress 提交后的实际 HEAD 由 handoff 回报并必须纳入 reviewer 范围。
+- Focused：PG/Oracle renderer+reader 与 cross-owner 5 suites / 132 tests / 0 failures / 0 errors / 0 skips，使用 `--rerun-tasks --no-build-cache`。
+- Task 1–10 matrix：35 suites / 343 tests / 0 failures / 0 errors / 2 documented relational live skips。
+- Clean full+jlink：111 suites / 768 tests / 0 failures / 0 errors / 3 documented live skips；`BUILD SUCCESSFUL`。
+- Explicit no-credential live gate：1 suite / 6 tests / 0 failures / 0 errors / 2 skips；显式移除 write gate 与 PG/Oracle provider env，未尝试连接。
+- Image：Windows/Unix launchers 与 runtime 存在；`DataCube.bat` 包含 `-Xms16m -Xmx256m -XX:+UseG1GC`。
+- CodeGraph：370 files / 10,302 nodes / 33,374 edges，index up to date；`git diff --check`/staged check 通过，`gradlew` mode `100755`。full XML 的 manual/opaque marker scan 为 0。
+- changed-file scan 的 5 个命中仅为既有测试环境变量键名引用，无 endpoint/credential value。未连接 live DB，未读取 saved connection；`.testagent/` 保持 pre-existing untracked，未读取、修改或暂存。未 amend/push/tag。
+
 ## 第六次累计复审 follow-up（2026-08-12）
 
 - 状态：第六轮代码与 fresh gates 已完成，等待新的独立累计 reviewer；本报告不自行标记 Ready。

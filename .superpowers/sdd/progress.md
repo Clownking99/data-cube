@@ -20,8 +20,8 @@
 
 ## Cumulative review
 
-- Status: sixth cumulative-review findings fixed locally; cumulative re-review pending, not self-declared Ready.
+- Status: seventh cumulative-review findings fixed locally; cumulative re-review pending, not self-declared Ready.
 - Fresh cumulative review range: `3d8c40b..HEAD`; use the actual HEAD reported after the report/progress commit so the range includes both implementation and verification evidence.
-- Findings closed by TDD: PG/Oracle exact label-owning declarations separated from generic/SQL bindings; relation/function/package proof kept independent with ambiguity fail closed; provider-precise opening/closing label identity; conservative Oracle PACKAGE_SPEC declaration scope with LOW/manual fallback outside supported grammar.
-- Sixth follow-up gates: focused 5 suites / 128 tests; Task 1-10 matrix 35 suites / 337 tests / 2 documented live skips; clean full+jlink 111 suites / 762 tests / 3 documented live skips; explicit no-credential live gate 6 tests / 2 skips; all zero failures/errors.
-- Implementation commit: `05944a499cef08d1f3d385245d2e46f1f0356e0f`; report commit will be recorded in the final handoff. No amend/push/tag/live DB.
+- Findings closed by TDD: label-own declaration versus relation-source precedence for PG/Oracle; exact Oracle formal datatype/`%TYPE`/`%ROWTYPE`/RETURN proof with DEFAULT exclusion; conservative Oracle TYPE SPEC type-position parsing with LOW/manual fallback; explicit PG labeled BLOCK/CASE nesting.
+- Seventh follow-up gates: focused 5 suites / 132 tests; Task 1-10 matrix 35 suites / 343 tests / 2 documented live skips; clean full+jlink 111 suites / 768 tests / 3 documented live skips; explicit no-credential live gate 6 tests / 2 skips; all zero failures/errors.
+- Implementation commit: `8453211698b7c9785cff76dd4c715e3532d3fbd9`; report commit will be recorded in the final handoff. No amend/push/tag/live DB.
