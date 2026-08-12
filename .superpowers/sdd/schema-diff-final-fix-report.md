@@ -9,6 +9,30 @@
 - Oracle destructive inference 统一调用 `ColumnDefinition.hasDefault()`；null、empty、blank 为 no-default，nonblank 为 default，和 engine/planner 语义一致。
 - spec/plan 的 `SchemaDiffCapability` 示例已加入 default identity `comparisonProjector()`，并明确 provider opt-in、schema-relative self owner、external exact、可逆 rehydrate、collision/缺映射 fail closed 与 placeholder 隔离。没有新增 public SPI seam，二参 engine API 语义不变。
 
+## 第四次累计复审 follow-up（2026-08-12）
+
+- PostgreSQL `plpgsql` routine body 不再用三段链自动推定 schema。scanner 登记 `<<label>>`、DECLARE variable/record 与有/无 label 的 nested block scope；`label.record.field` / `variable.field` 保持原样，binding 离开 block 后不泄漏。只有 relation owner、DDL header 与未被 binding shadow 的 function call 才可证明并 retarget；未绑定三段链 fail closed，并由真实 reader 降为 LOW 后贯通 missing diff → MANUAL_ONLY → planner MANUAL/default-unselected → renderer refusal。
+- Oracle PL/SQL scanner 为 nested local FUNCTION/PROCEDURE 建立独立参数、声明和 body scope，按 routine name 验证可选 END label；local BEGIN 不再提前截断 outer declaration。`<<LABEL>>`、mixed/quoted/embedded-quote parameter/local object/record chain 保留，真实 self package/type qualifier retarget；不能完整解析的 label/block/subprogram fail closed。renderer/projector 与跨 owner second-diff 使用相同语义并收敛。
+- Oracle Java/C call spec 由忽略字符串/注释的 token scanner 识别。reader 保留原 definition 但标 LOW，不把整个 FUNCTION/PROCEDURE scope 记为 unavailable；comparison projector 使用包含 self owner、对象 identity/signature 和 definition 的 SHA-256 对象特异 opaque marker。engine rehydrate 只暴露原对象；missing/modified difference 为 MANUAL_ONLY，planner 默认不选，renderer 拒绝。Java/C 跨 owner 不假等价，同 snapshot sequence 仍比较，marker 不进入 diff/plan/digest/toString/render SQL。
+- 未新增 public SPI seam；仍使用已批准的 capability `SchemaComparisonProjector`，默认 identity projector 与二参 engine API 均未改变。
+
+### 第四次 follow-up TDD RED → GREEN
+
+1. PG RED：routine-body 三段 `owner.record.field` 被 schema heuristic 改写，label/DECLARE binding 和无 label nested DECLARE scope 缺失。GREEN：routine-body 模式禁用三段推定、block scope/binding table、真实 relation/function 正例与 source-only manual chain 全绿。
+2. Oracle scope RED：nested local routine 的 BEGIN 提前结束 outer declaration，parameter/local/label qualifier 被 retarget。GREEN：递归 local routine/anonymous block scope、正确 END 边界及 quoted label/binding table；renderer/projector/cross-owner second-diff 全绿。
+3. Oracle call-spec RED：Java routine 让 projector 终止 whole-schema compare且 reader 错标 HIGH。GREEN：Java/C token classification、LOW partial-result reader、object-specific manual projection、missing/modified manual admission与 marker 隔离全绿；另加字符串/注释中的伪 `LANGUAGE JAVA/C` 反例。
+
+### 第四次 follow-up fresh verification
+
+- Implementation commit：`c61b6bf2448b28ae753a2fc51c37c9557b91878e`；review range 在 report commit 前为 `3d8c40b..c61b6bf`，最终累计 reviewer 必须把本 report commit 也纳入实际 HEAD。
+- Focused：PG/Oracle renderer+reader 与 cross-owner 5 suites / 112 tests / 0 failures / 0 errors / 0 skips，使用 `--rerun-tasks`。
+- Task 1-10 matrix：34 suites / 320 tests / 0 failures / 0 errors / 2 skips；仅 PostgreSQL/Oracle relational live write tests。
+- Clean full + image：`clean test jlink --warning-mode fail --rerun-tasks --no-daemon --console=plain` BUILD SUCCESSFUL；111 suites / 748 tests / 0 failures / 0 errors / 3 documented live skips。
+- Explicit no-credential live gate：显式移除 write gate 和 10 个 PG/Oracle provider env 后，1 suite / 6 tests / 0 failures / 0 errors / 2 skips；精确 skip 为 PostgreSQL/Oracle safe deployment convergence，未尝试连接。
+- Image：`build/image/bin/DataCube.bat` 存在，launcher 含 `-Xms16m -Xmx256m -XX:+UseG1GC`。
+- CodeGraph：370 files / 10,252 nodes / 32,763 edges，index up to date。`git diff --check` 和 staged check 通过；`gradlew` mode 保持 `100755`。
+- 未连接 live DB，未读取 saved connection；`.testagent/` 为 pre-existing untracked 且未读取、修改、暂存。未 amend、push、tag。
+
 ### 第三次 follow-up TDD RED → GREEN
 
 1. C RED：Oracle 参数/局部变量与 nested shadow 的 `owner.method()` 被当作 schema qualifier 改写。GREEN：PL/SQL declaration/scope binding table；embedded quote owner、renderer/projector 与跨 owner second-diff closure 通过。
