@@ -604,6 +604,7 @@ class PgSchemaChangeRendererTest {
                   PERFORM id FROM "Source"."orders";
                   PERFORM "Source".rec.value;
                   PERFORM "Source".value;
+                  PERFORM "Source"."helper"();
                   <<nested_block>>
                   DECLARE
                     "Source" record;
@@ -620,7 +621,9 @@ class PgSchemaChangeRendererTest {
 
         assertTrue(projected.contains("FROM \0pg-self-owner\0.\"orders\""), projected);
         assertTrue(projected.contains("PERFORM \"Source\".rec.value"), projected);
+        assertTrue(projected.contains("PERFORM \"Source\".value"), projected);
         assertEquals(3, countOccurrences(projected, "PERFORM \"Source\"."), projected);
+        assertTrue(projected.contains("PERFORM \0pg-self-owner\0.\"helper\"()"), projected);
 
         String function = "CREATE FUNCTION \"Source\".call_helper() RETURNS integer "
                 + "LANGUAGE plpgsql AS $body$ BEGIN PERFORM \"Source\".\"helper\"(); "
@@ -650,6 +653,7 @@ class PgSchemaChangeRendererTest {
                   DECLARE rec record;
                   BEGIN
                     PERFORM "Source".rec.value;
+                    PERFORM "Source"."helper"();
                   END;
                   DECLARE "Source" record;
                   BEGIN
@@ -665,7 +669,8 @@ class PgSchemaChangeRendererTest {
                 routine, ObjectType.FUNCTION, "Source");
 
         assertTrue(projected.contains("PERFORM \"Source\".rec.value"), projected);
-        assertTrue(projected.contains("PERFORM \0pg-self-owner\0.\"helper\"()"), projected);
+        assertEquals(2, countOccurrences(projected,
+                "PERFORM \0pg-self-owner\0.\"helper\"()"), projected);
     }
 
     @Test

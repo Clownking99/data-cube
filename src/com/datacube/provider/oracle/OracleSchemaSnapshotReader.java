@@ -525,13 +525,12 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
         for (DefinitionEntry entry : state.entries(oracleType)) {
             ObjectKey key = definitionKey(state, entry);
             String ddl = queryDdl(entry.ddlType(), entry.name(), owner, options);
-            boolean routine = key.type() == ObjectType.FUNCTION
-                    || key.type() == ObjectType.PROCEDURE;
-            boolean automaticRoutine = !routine
-                    || OracleSchemaChangeRenderer.supportsAutomaticRoutineDefinition(ddl, owner);
+            boolean plSql = isPlSqlDefinition(key);
+            boolean automaticPlSql = !plSql
+                    || OracleSchemaChangeRenderer.supportsAutomaticPlSqlDefinition(ddl, owner);
             DefinitionConfidence confidence = ddl == null || ddl.isBlank()
                     || OracleSchemaDefinitionNormalizer.containsProviderStorageClause(ddl)
-                    || !automaticRoutine
+                    || !automaticPlSql
                     ? DefinitionConfidence.LOW : DefinitionConfidence.HIGH;
             boolean incomplete = ddl == null || ddl.isBlank()
                     || OracleSchemaDefinitionNormalizer.containsProviderStorageClause(ddl);
@@ -553,6 +552,14 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
                 }
             }
         }
+    }
+
+    private static boolean isPlSqlDefinition(ObjectKey key) {
+        return switch (key.type()) {
+            case FUNCTION, PROCEDURE, TRIGGER, PACKAGE_SPEC, PACKAGE_BODY -> true;
+            case TYPE -> key.signature().equals("BODY");
+            default -> false;
+        };
     }
 
     private String queryDdl(String objectType, String objectName, String owner,

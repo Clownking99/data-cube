@@ -792,6 +792,10 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
     }
 
     static boolean supportsAutomaticRoutineDefinition(String text, String sourceOwner) {
+        return supportsAutomaticPlSqlDefinition(text, sourceOwner);
+    }
+
+    static boolean supportsAutomaticPlSqlDefinition(String text, String sourceOwner) {
         if (text == null || text.isBlank()) return false;
         if (SqlScopeAwareOwnerRewriter.containsOracleCallSpecLanguage(text)) return false;
         try {

@@ -111,6 +111,115 @@ class OracleSchemaSnapshotReaderTest {
     }
 
     @Test
+    void unprovablePackageTypeBodyAndTriggerReadAsLocalManualPartialResults() throws Exception {
+        String packageBody = "CREATE PACKAGE BODY \"Sales\".\"API\" AS FUNCTION broken "
+                + "RETURN NUMBER IS BEGIN RETURN 1; END wrong; END API; /";
+        String typeBody = "CREATE TYPE BODY \"Sales\".\"OBJ_T\" AS MEMBER FUNCTION broken "
+                + "RETURN NUMBER IS BEGIN RETURN 1; END wrong; END; /";
+        String trigger = "CREATE TRIGGER \"Sales\".\"ORDERS_TRG\" BEFORE INSERT ON "
+                + "\"Sales\".\"ORDERS\" BEGIN <<dangling>> NULL; END; /";
+        SnapshotJdbc jdbc = new SnapshotJdbc("Sales")
+                .rows("tables", row("table_name", "ORDERS"))
+                .rows("definitions", definitionRow("API", "PACKAGE", 801, 0, null),
+                        definitionRow("API", "PACKAGE BODY", 802, 0, null),
+                        definitionRow("OBJ_T", "TYPE", 803, 0, null),
+                        definitionRow("OBJ_T", "TYPE BODY", 804, 0, null),
+                        definitionRow("ORDERS_TRG", "TRIGGER", 805, 0, "ORDERS"))
+                .ddl("PACKAGE_SPEC", "API", "CREATE PACKAGE \"Sales\".\"API\" AS END API; /")
+                .ddl("PACKAGE_BODY", "API", packageBody)
+                .ddl("TYPE_SPEC", "OBJ_T", "CREATE TYPE \"Sales\".\"OBJ_T\" AS OBJECT (id NUMBER);")
+                .ddl("TYPE_BODY", "OBJ_T", typeBody)
+                .ddl("TRIGGER", "ORDERS_TRG", trigger)
+                .rows("sequences", row("sequence_name", "STABLE", "min_value", "1",
+                        "max_value", "99", "increment_by", "1", "cycle_flag", "N",
+                        "cache_size", 20, "order_flag", "N"));
+        SchemaSnapshot source = new OracleSchemaSnapshotReader(jdbc.connection()).read(
+                "source", OracleSchemaIdentifierNormalizer.schema("Sales"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot target = new SchemaSnapshot(DbType.ORACLE, "target", source.schema(),
+                Instant.EPOCH, new SnapshotCompleteness(true, new TreeMap<>()),
+                new TreeMap<>(), "empty");
+
+        for (DefinitionObject definition : source.objects().values().stream()
+                .filter(DefinitionObject.class::isInstance).map(DefinitionObject.class::cast)
+                .filter(value -> value.key().type() == ObjectType.PACKAGE_BODY
+                        || value.key().type() == ObjectType.TRIGGER
+                        || value.key().type() == ObjectType.TYPE
+                        && value.key().signature().equals("BODY")).toList()) {
+            assertEquals(DefinitionConfidence.LOW, definition.confidence(),
+                    definition.key().toString());
+        }
+        assertTrue(source.completeness().unavailableScopes().isEmpty());
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, target, new OracleSchemaDiffCapability().comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+        assertEquals(3, diff.differences().stream().filter(value ->
+                value.object().type() == ObjectType.PACKAGE_BODY
+                        || value.object().type() == ObjectType.TRIGGER
+                        || value.object().type() == ObjectType.TYPE
+                        && value.object().signature().equals("BODY")).count());
+        assertTrue(diff.differences().stream().filter(value ->
+                value.object().type() == ObjectType.PACKAGE_BODY
+                        || value.object().type() == ObjectType.TRIGGER
+                        || value.object().type() == ObjectType.TYPE
+                        && value.object().signature().equals("BODY"))
+                .allMatch(value -> value.automation() == AutomationLevel.MANUAL_ONLY));
+        assertTrue(plan.changes().stream().filter(value ->
+                value.object().type() == ObjectType.PACKAGE_BODY
+                        || value.object().type() == ObjectType.TRIGGER
+                        || value.object().type() == ObjectType.TYPE
+                        && value.object().signature().equals("BODY"))
+                .allMatch(value -> value.kind() == ChangeKind.MANUAL
+                        && !plan.selectedChangeIds().contains(value.id())));
+        assertFalse((diff + plan.toString() + plan.digest()).contains("oracle-manual-definition"));
+    }
+
+    @Test
+    void undeclaredLabelChainReadsAsLowManualWhileDeclaredChainAndPackageCallStayAutomatic()
+            throws Exception {
+        String unsafe = "CREATE FUNCTION \"Sales\".\"UNSAFE_LABEL\" RETURN NUMBER AS BEGIN "
+                + "<<\"Sales\">> DECLARE rec \"Sales\".\"OBJ_T\"; BEGIN "
+                + "\"Sales\".missing.value := 1; END; RETURN 1; END; /";
+        String safe = "CREATE FUNCTION \"Sales\".\"SAFE_LABEL\" RETURN NUMBER AS BEGIN "
+                + "<<\"Sales\">> DECLARE rec \"Sales\".\"OBJ_T\"; BEGIN "
+                + "\"Sales\".rec.value := 1; \"Sales\".\"PKG\".\"RUN\"(); END; "
+                + "\"Sales\".\"PKG\".\"RUN\"(); RETURN 1; END; /";
+        SnapshotJdbc jdbc = new SnapshotJdbc("Sales")
+                .rows("definitions",
+                        definitionRow("UNSAFE_LABEL", "FUNCTION", 901, 1, null),
+                        definitionRow("SAFE_LABEL", "FUNCTION", 902, 1, null))
+                .ddl("FUNCTION", "UNSAFE_LABEL", unsafe)
+                .ddl("FUNCTION", "SAFE_LABEL", safe);
+        SchemaSnapshot source = new OracleSchemaSnapshotReader(jdbc.connection()).read(
+                "source", OracleSchemaIdentifierNormalizer.schema("Sales"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot target = new SchemaSnapshot(DbType.ORACLE, "target", source.schema(),
+                Instant.EPOCH, new SnapshotCompleteness(true, new TreeMap<>()),
+                new TreeMap<>(), "empty");
+
+        DefinitionObject unsafeDefinition = definition(source, ObjectType.FUNCTION,
+                "Sales", "UNSAFE_LABEL", "oracle-routine-signature-v1\0");
+        DefinitionObject safeDefinition = definition(source, ObjectType.FUNCTION,
+                "Sales", "SAFE_LABEL", "oracle-routine-signature-v1\0");
+        assertEquals(DefinitionConfidence.LOW, unsafeDefinition.confidence());
+        assertEquals(DefinitionConfidence.HIGH, safeDefinition.confidence());
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, target, new OracleSchemaDiffCapability().comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+        assertEquals(AutomationLevel.MANUAL_ONLY, diff.differences().stream()
+                .filter(value -> value.object().equals(unsafeDefinition.key()))
+                .findFirst().orElseThrow().automation());
+        assertEquals(AutomationLevel.SAFE_AUTOMATIC, diff.differences().stream()
+                .filter(value -> value.object().equals(safeDefinition.key()))
+                .findFirst().orElseThrow().automation());
+        assertTrue(plan.changes().stream()
+                .filter(value -> value.object().equals(unsafeDefinition.key()))
+                .allMatch(value -> value.kind() == ChangeKind.MANUAL
+                        && !plan.selectedChangeIds().contains(value.id())));
+        assertFalse((diff + plan.toString() + plan.digest()).contains("oracle-manual-definition"));
+    }
+
+    @Test
     void jdbcProxySnapshotsWithDifferentOwnersCompareByProviderRelativeIdentity() throws Exception {
         SnapshotJdbc sourceJdbc = new SnapshotJdbc("Source\"Owner")
                 .rows("tables", row("table_name", "Order\"Line"))

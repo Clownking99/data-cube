@@ -70,14 +70,15 @@ final class OracleSchemaComparisonProjector implements SchemaComparisonProjector
             String projectedDefinition = normalized;
             DefinitionConfidence confidence = definition.confidence();
             if (normalized != null) {
-                if (confidence == DefinitionConfidence.LOW && isRoutine(definition.key())) {
+                if (confidence == DefinitionConfidence.LOW
+                        && isPlSqlDefinition(definition.key())) {
                     projectedDefinition = manualDefinitionMarker(definition, selfOwner);
                 } else {
                     try {
                         projectedDefinition = OracleSchemaChangeRenderer.comparisonDefinition(
                                 normalized, selfOwner);
                     } catch (IllegalArgumentException failure) {
-                        if (!isRoutine(definition.key())) throw failure;
+                        if (!isPlSqlDefinition(definition.key())) throw failure;
                         projectedDefinition = manualDefinitionMarker(definition, selfOwner);
                         confidence = DefinitionConfidence.LOW;
                     }
@@ -91,8 +92,12 @@ final class OracleSchemaComparisonProjector implements SchemaComparisonProjector
         throw invalid();
     }
 
-    private static boolean isRoutine(ObjectKey key) {
-        return key.type() == ObjectType.FUNCTION || key.type() == ObjectType.PROCEDURE;
+    private static boolean isPlSqlDefinition(ObjectKey key) {
+        return switch (key.type()) {
+            case FUNCTION, PROCEDURE, TRIGGER, PACKAGE_SPEC, PACKAGE_BODY -> true;
+            case TYPE -> key.signature().equals("BODY");
+            default -> false;
+        };
     }
 
     private static String manualDefinitionMarker(DefinitionObject definition, String selfOwner) {

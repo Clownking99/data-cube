@@ -146,7 +146,16 @@ public final class SqlScopeAwareOwnerRewriter {
                 continue;
             }
             Scope scope = scopeByToken.getOrDefault(index, root);
-            if (visibleBinding(scope, owner, dialect)) continue;
+            if (dialect == Dialect.ORACLE && visibleLabel(scope, owner, dialect)) {
+                if (oracleLabelDeclaredChain(scope, tokens, index, dialect)) continue;
+                if (oraclePackageCall(tokens, index)) {
+                    replacements.add(new Replacement(owner.start(), owner.end(), replacement));
+                    continue;
+                }
+                throw new IllegalArgumentException();
+            }
+            if (visibleBinding(scope, owner, dialect)
+                    && !schemaFunctionCall(tokens, index, dialect, routineBody)) continue;
             if (fragment || provableNonRelationQualifier(
                     tokens, index, dialect, routineBody)) {
                 replacements.add(new Replacement(owner.start(), owner.end(), replacement));
@@ -307,6 +316,14 @@ public final class SqlScopeAwareOwnerRewriter {
                 && tokens.get(objectIndex + 1).symbol("(");
     }
 
+    private static boolean schemaFunctionCall(
+            List<Token> tokens, int ownerIndex, Dialect dialect, boolean routineBody) {
+        int objectIndex = ownerIndex + 2;
+        return dialect == Dialect.POSTGRESQL && routineBody
+                && objectIndex + 1 < tokens.size()
+                && symbol(tokens, objectIndex + 1, "(");
+    }
+
     private static int routineBodyBoundary(List<Token> tokens) {
         boolean routine = false;
         for (int index = 0; index < tokens.size(); index++) {
@@ -436,7 +453,110 @@ public final class SqlScopeAwareOwnerRewriter {
             parseOracleRoutineScope(root, tokens, parentheses, routine, tokens.size(), true);
             return;
         }
+        int container = oracleContainerNoun(tokens);
+        if (container >= 0) {
+            parseOracleContainerScope(root, tokens, parentheses, container, tokens.size());
+            return;
+        }
+        int trigger = oracleDefinitionNoun(tokens, "TRIGGER");
+        if (trigger >= 0) {
+            parseOracleTriggerScope(root, tokens, parentheses, trigger, tokens.size());
+            return;
+        }
         collectLegacyOracleBlockScopes(root, tokens);
+    }
+
+    private static int oracleContainerNoun(List<Token> tokens) {
+        int packageNoun = oracleDefinitionNoun(tokens, "PACKAGE");
+        if (packageNoun >= 0 && keyword(tokens, packageNoun + 1, "BODY")) return packageNoun;
+        int typeNoun = oracleDefinitionNoun(tokens, "TYPE");
+        return typeNoun >= 0 && keyword(tokens, typeNoun + 1, "BODY") ? typeNoun : -1;
+    }
+
+    private static int oracleDefinitionNoun(List<Token> tokens, String noun) {
+        for (int index = 0; index < tokens.size(); index++) {
+            if (!keyword(tokens, index, "CREATE")) continue;
+            int cursor = index + 1;
+            if (keyword(tokens, cursor, "OR") && keyword(tokens, cursor + 1, "REPLACE")) cursor += 2;
+            if (keyword(tokens, cursor, "EDITIONABLE")
+                    || keyword(tokens, cursor, "NONEDITIONABLE")) cursor++;
+            return keyword(tokens, cursor, noun) ? cursor : -1;
+        }
+        return -1;
+    }
+
+    private static void parseOracleContainerScope(
+            Scope root, List<Token> tokens, Map<Integer, Integer> parentheses,
+            int noun, int limit) {
+        int name = noun + 1;
+        if (keyword(tokens, name, "BODY")) name++;
+        if (name + 2 < limit && symbol(tokens, name + 1, ".")) name += 2;
+        if (name >= limit || !tokens.get(name).identifier()) throw new IllegalArgumentException();
+        Token containerName = tokens.get(name);
+        int boundary = oracleRoutineBoundary(tokens, name + 1, limit, parentheses);
+        if (boundary < 0) throw new IllegalArgumentException();
+        root.declarationStart = boundary + 1;
+        int segment = root.declarationStart;
+        for (int index = segment; index < limit; index++) {
+            int routine = oracleDeclaredRoutineAt(tokens, segment, index);
+            if (index == segment && routine >= 0) {
+                Scope child = new Scope(segment, limit, root);
+                root.children.add(child);
+                int after = parseOracleRoutineScope(
+                        child, tokens, parentheses, routine, limit, false);
+                index = after - 1;
+                segment = after;
+            } else if (keyword(tokens, index, "BEGIN")) {
+                int end = oracleBlockEnd(tokens, index, limit);
+                int after = oracleEndAfter(tokens, end, limit, containerName);
+                requireOracleDefinitionEnd(tokens, after, limit);
+                collectOracleBodyScopes(root, tokens, parentheses, index + 1, end);
+                return;
+            } else if (index == segment && keyword(tokens, index, "END")) {
+                int after = oracleEndAfter(tokens, index, limit, containerName);
+                requireOracleDefinitionEnd(tokens, after, limit);
+                return;
+            } else if (symbol(tokens, index, ";")) {
+                segment = index + 1;
+            }
+        }
+        throw new IllegalArgumentException();
+    }
+
+    private static int oracleDeclaredRoutineAt(
+            List<Token> tokens, int segment, int cursor) {
+        if (cursor != segment) return -1;
+        int index = segment;
+        if (keyword(tokens, index, "MEMBER") || keyword(tokens, index, "STATIC")
+                || keyword(tokens, index, "MAP") || keyword(tokens, index, "ORDER")) index++;
+        return keyword(tokens, index, "FUNCTION") || keyword(tokens, index, "PROCEDURE")
+                ? index : -1;
+    }
+
+    private static void parseOracleTriggerScope(
+            Scope root, List<Token> tokens, Map<Integer, Integer> parentheses,
+            int trigger, int limit) {
+        int name = trigger + 1;
+        if (name + 2 < limit && symbol(tokens, name + 1, ".")) name += 2;
+        if (name >= limit || !tokens.get(name).identifier()) throw new IllegalArgumentException();
+        Token triggerName = tokens.get(name);
+        int construct = -1;
+        for (int index = name + 1; index < limit; index++) {
+            if (keyword(tokens, index, "DECLARE") || keyword(tokens, index, "BEGIN")) {
+                construct = index;
+                break;
+            }
+        }
+        if (construct < 0) throw new IllegalArgumentException();
+        int begin;
+        if (keyword(tokens, construct, "DECLARE")) {
+            root.declarationStart = construct + 1;
+            begin = oracleDeclarationBegin(root, tokens, parentheses, limit);
+        } else begin = construct;
+        int end = oracleBlockEnd(tokens, begin, limit);
+        int after = oracleEndAfter(tokens, end, limit, triggerName);
+        requireOracleDefinitionEnd(tokens, after, limit);
+        collectOracleBodyScopes(root, tokens, parentheses, begin + 1, end);
     }
 
     private static void collectLegacyOracleBlockScopes(Scope root, List<Token> tokens) {
@@ -485,7 +605,8 @@ public final class SqlScopeAwareOwnerRewriter {
         int begin = oracleDeclarationBegin(scope, tokens, parentheses, limit);
         int end = oracleBlockEnd(tokens, begin, limit);
         int after = oracleEndAfter(tokens, end, limit, routineName);
-        if (!root) scope.end = after;
+        if (root) requireOracleDefinitionEnd(tokens, after, limit);
+        else scope.end = after;
         collectOracleBodyScopes(scope, tokens, parentheses, begin + 1, end);
         return after;
     }
@@ -510,12 +631,12 @@ public final class SqlScopeAwareOwnerRewriter {
             Scope scope, List<Token> tokens, Map<Integer, Integer> parentheses, int limit) {
         int segment = scope.declarationStart;
         for (int index = segment; index < limit; index++) {
-            if (index == segment && (keyword(tokens, index, "FUNCTION")
-                    || keyword(tokens, index, "PROCEDURE"))) {
-                Scope child = new Scope(index, limit, scope);
+            int routine = oracleDeclaredRoutineAt(tokens, segment, index);
+            if (routine >= 0) {
+                Scope child = new Scope(segment, limit, scope);
                 scope.children.add(child);
                 int after = parseOracleRoutineScope(
-                        child, tokens, parentheses, index, limit, false);
+                        child, tokens, parentheses, routine, limit, false);
                 index = after - 1;
                 segment = after;
             } else if (keyword(tokens, index, "BEGIN")) {
@@ -528,18 +649,35 @@ public final class SqlScopeAwareOwnerRewriter {
     }
 
     private static int oracleBlockEnd(List<Token> tokens, int begin, int limit) {
-        int depth = 1;
+        Deque<String> constructs = new ArrayDeque<>();
+        constructs.push("BLOCK");
         for (int index = begin + 1; index < limit; index++) {
             if (keyword(tokens, index, "BEGIN")) {
-                depth++;
+                constructs.push("BLOCK");
+            } else if (keyword(tokens, index, "CASE")) {
+                constructs.push("CASE");
             } else if (keyword(tokens, index, "END")
                     && !keyword(tokens, index + 1, "IF")
-                    && !keyword(tokens, index + 1, "LOOP")
-                    && !keyword(tokens, index + 1, "CASE")) {
-                if (--depth == 0) return index;
+                    && !keyword(tokens, index + 1, "LOOP")) {
+                if (constructs.isEmpty()) throw new IllegalArgumentException();
+                if (keyword(tokens, index + 1, "CASE")) {
+                    if (!constructs.peek().equals("CASE")) throw new IllegalArgumentException();
+                    constructs.pop();
+                    index++;
+                } else {
+                    constructs.pop();
+                    if (constructs.isEmpty()) return index;
+                }
             }
         }
         throw new IllegalArgumentException();
+    }
+
+    private static void requireOracleDefinitionEnd(
+            List<Token> tokens, int after, int limit) {
+        int cursor = after;
+        if (symbol(tokens, cursor, "/")) cursor++;
+        if (cursor != limit) throw new IllegalArgumentException();
     }
 
     private static int oracleEndAfter(
@@ -574,7 +712,11 @@ public final class SqlScopeAwareOwnerRewriter {
             if (construct >= end) throw new IllegalArgumentException();
             if (keyword(tokens, construct, "DECLARE") || keyword(tokens, construct, "BEGIN")) {
                 Scope child = new Scope(index, end, scope);
-                if (label != null) child.bindings.add(identity(label, Dialect.ORACLE));
+                if (label != null) {
+                    String labelIdentity = identity(label, Dialect.ORACLE);
+                    child.bindings.add(labelIdentity);
+                    child.labels.add(labelIdentity);
+                }
                 scope.children.add(child);
                 int after = parseOracleAnonymousScope(
                         child, tokens, parentheses, construct, end);
@@ -610,7 +752,8 @@ public final class SqlScopeAwareOwnerRewriter {
             Scope root, List<Token> tokens, Map<Integer, Integer> parentheses,
             String source, Dialect dialect, Set<Integer> proven) {
         int routine = routineNoun(tokens);
-        if (routine < 0) return;
+        if (routine < 0 && oracleContainerNoun(tokens) < 0
+                && oracleDefinitionNoun(tokens, "TRIGGER") < 0) return;
         collectOracleParameterTypes(tokens, parentheses, source, dialect, proven);
         collectOracleDeclarations(root, tokens, source, dialect, proven);
     }
@@ -694,6 +837,7 @@ public final class SqlScopeAwareOwnerRewriter {
     private static int oracleDeclarationEnd(Scope scope, List<Token> tokens) {
         for (int index = scope.declarationStart; index < scope.end; index++) {
             if (innermost(scope, index) == scope && keyword(tokens, index, "BEGIN")) return index;
+            if (innermost(scope, index) == scope && keyword(tokens, index, "END")) return index;
         }
         throw new IllegalArgumentException();
     }
@@ -861,6 +1005,31 @@ public final class SqlScopeAwareOwnerRewriter {
             if (current.bindings.contains(identity)) return true;
         }
         return false;
+    }
+
+    private static boolean visibleLabel(Scope scope, Token token, Dialect dialect) {
+        String identity = identity(token, dialect);
+        for (Scope current = scope; current != null; current = current.parent) {
+            if (current.labels.contains(identity)) return true;
+        }
+        return false;
+    }
+
+    private static boolean oracleLabelDeclaredChain(
+            Scope scope, List<Token> tokens, int ownerIndex, Dialect dialect) {
+        int bindingIndex = ownerIndex + 2;
+        if (bindingIndex >= tokens.size() || !tokens.get(bindingIndex).identifier()) return false;
+        String binding = identity(tokens.get(bindingIndex), dialect);
+        for (Scope current = scope; current != null; current = current.parent) {
+            if (current.bindings.contains(binding) && !current.labels.contains(binding)) return true;
+        }
+        return false;
+    }
+
+    private static boolean oraclePackageCall(List<Token> tokens, int ownerIndex) {
+        int member = ownerIndex + 4;
+        return member + 1 < tokens.size() && tokens.get(member).identifier()
+                && symbol(tokens, member + 1, "(");
     }
 
     private static String identity(Token token, Dialect dialect) {
@@ -1079,6 +1248,7 @@ public final class SqlScopeAwareOwnerRewriter {
         private final Scope parent;
         private final List<Scope> children = new ArrayList<>();
         private final Set<String> bindings = new HashSet<>();
+        private final Set<String> labels = new HashSet<>();
         private int declarationStart = -1;
 
         private Scope(int start, int end, Scope parent) {

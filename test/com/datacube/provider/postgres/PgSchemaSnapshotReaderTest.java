@@ -426,6 +426,47 @@ class PgSchemaSnapshotReaderTest {
     }
 
     @Test
+    void labelNamedLikeSchemaStillRetargetsFunctionAcrossReaderPlanRenderAndSecondDiff()
+            throws Exception {
+        String sourceDefinition = "CREATE FUNCTION \"Source\".labeled() RETURNS integer "
+                + "LANGUAGE plpgsql AS $body$ <<\"Source\">> DECLARE rec record; BEGIN "
+                + "PERFORM \"Source\".rec.value; PERFORM \"Source\".helper(); RETURN 1; "
+                + "END \"Source\" $body$";
+        String targetDefinition = sourceDefinition.replace("\"Source\".labeled",
+                        "\"Target\".labeled")
+                .replace("PERFORM \"Source\".helper()", "PERFORM \"Target\".helper()");
+        SchemaSnapshot source = new PgSchemaSnapshotReader(new SnapshotJdbc("Source")
+                .rows("routines", row("object_oid", 80L, "object_name", "labeled",
+                        "routine_kind", "f", "identity_arguments", "",
+                        "definition", sourceDefinition)).connection()).read(
+                "source", PgSchemaIdentifierNormalizer.schema("Source"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot emptyTarget = new SchemaSnapshot(DbType.POSTGRESQL, "empty",
+                PgSchemaIdentifierNormalizer.schema("Target"), Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), new TreeMap<>(), "empty");
+        PgSchemaDiffCapability capability = new PgSchemaDiffCapability();
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(new SchemaDiffEngine().compare(
+                source, emptyTarget, capability.comparisonProjector()));
+
+        String sql = capability.changeRenderer().render(plan.changes().getFirst(),
+                new RenderContext(DbType.POSTGRESQL, source.schema(),
+                        emptyTarget.schema(), false)).getFirst().sql();
+        assertTrue(sql.contains("PERFORM \"Source\".rec.value"), sql);
+        assertTrue(sql.contains("PERFORM \"Target\".helper()"), sql);
+        assertFalse(sql.contains("PERFORM \"Source\".helper()"), sql);
+
+        SchemaSnapshot reread = new PgSchemaSnapshotReader(new SnapshotJdbc("Target")
+                .rows("routines", row("object_oid", 81L, "object_name", "labeled",
+                        "routine_kind", "f", "identity_arguments", "",
+                        "definition", targetDefinition)).connection()).read(
+                "target", PgSchemaIdentifierNormalizer.schema("Target"),
+                SqlExecutionOptions.defaults(0));
+        assertTrue(new SchemaDiffEngine().compare(source, reread,
+                        capability.comparisonProjector()).differences().stream()
+                .allMatch(value -> value.kind() == DifferenceKind.EQUIVALENT));
+    }
+
+    @Test
     void unboundThreePartPlpgsqlQualifierFlowsAsLowManualMissingWithoutMarkerLeakage() throws Exception {
         String definition = "CREATE FUNCTION app.three_part() RETURNS integer LANGUAGE plpgsql "
                 + "AS $body$ BEGIN RETURN app.record_field.value; END $body$";

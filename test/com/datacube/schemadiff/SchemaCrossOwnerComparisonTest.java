@@ -204,6 +204,65 @@ class SchemaCrossOwnerComparisonTest {
     }
 
     @Test
+    void oracleUnprovablePlSqlDefinitionsRemainObjectSpecificManualDifferences() {
+        OracleSchemaDiffCapability capability = new OracleSchemaDiffCapability();
+        for (Object[] definitionCase : List.of(
+                new Object[]{ObjectType.PACKAGE_BODY, "API", "",
+                        "CREATE PACKAGE BODY \"Source\".\"API\" AS FUNCTION broken RETURN NUMBER IS BEGIN RETURN 1; END wrong; END API; /",
+                        "CREATE PACKAGE BODY \"Target\".\"API\" AS FUNCTION broken RETURN NUMBER IS BEGIN RETURN 1; END wrong; END API; /"},
+                new Object[]{ObjectType.TYPE, "OBJ_T", "BODY",
+                        "CREATE TYPE BODY \"Source\".\"OBJ_T\" AS MEMBER FUNCTION broken RETURN NUMBER IS BEGIN CASE WHEN 1=1 THEN NULL; END; END broken; END; /",
+                        "CREATE TYPE BODY \"Target\".\"OBJ_T\" AS MEMBER FUNCTION broken RETURN NUMBER IS BEGIN CASE WHEN 1=1 THEN NULL; END; END broken; END; /"},
+                new Object[]{ObjectType.TRIGGER, "ORDERS_TRG", "",
+                        "CREATE TRIGGER \"Source\".\"ORDERS_TRG\" BEFORE INSERT ON \"Source\".\"ORDERS\" BEGIN <<dangling>> NULL; END; /",
+                        "CREATE TRIGGER \"Target\".\"ORDERS_TRG\" BEFORE INSERT ON \"Target\".\"ORDERS\" BEGIN <<dangling>> NULL; END; /"})) {
+            ObjectType type = (ObjectType) definitionCase[0];
+            String name = (String) definitionCase[1];
+            String signature = (String) definitionCase[2];
+            ObjectKey sourceKey = key(type, "Source", name, signature,
+                    OracleSchemaIdentifierNormalizer::object);
+            ObjectKey targetKey = key(type, "Target", name, signature,
+                    OracleSchemaIdentifierNormalizer::object);
+            DefinitionObject sourceDefinition = new DefinitionObject(sourceKey,
+                    (String) definitionCase[3], (String) definitionCase[3], Set.of(),
+                    DefinitionConfidence.LOW);
+            DefinitionObject targetDefinition = new DefinitionObject(targetKey,
+                    (String) definitionCase[4], (String) definitionCase[4], Set.of(),
+                    DefinitionConfidence.LOW);
+            SequenceDefinition stableSource = new SequenceDefinition(key(ObjectType.SEQUENCE,
+                    "Source", "STABLE", "", OracleSchemaIdentifierNormalizer::object),
+                    "1", "1", "1", "9", false, 1, Set.of());
+            SequenceDefinition stableTarget = new SequenceDefinition(key(ObjectType.SEQUENCE,
+                    "Target", "STABLE", "", OracleSchemaIdentifierNormalizer::object),
+                    "1", "1", "1", "9", false, 1, Set.of());
+
+            SchemaDiffResult result = new SchemaDiffEngine().compare(
+                    snapshot(DbType.ORACLE, "source", "Source",
+                            OracleSchemaIdentifierNormalizer::schema,
+                            sourceDefinition, stableSource),
+                    snapshot(DbType.ORACLE, "target", "Target",
+                            OracleSchemaIdentifierNormalizer::schema,
+                            targetDefinition, stableTarget),
+                    capability.comparisonProjector());
+            SchemaDifference difference = result.differences().stream()
+                    .filter(value -> value.object().type() == type).findFirst().orElseThrow();
+            SchemaChangePlan plan = new SchemaChangePlanner().plan(result);
+
+            assertEquals(DifferenceKind.MODIFIED, difference.kind());
+            assertEquals(com.datacube.spi.schemadiff.AutomationLevel.MANUAL_ONLY,
+                    difference.automation());
+            assertSame(sourceDefinition, difference.source());
+            assertSame(targetDefinition, difference.target());
+            assertEquals(DifferenceKind.EQUIVALENT, result.differences().stream()
+                    .filter(value -> value.object().type() == ObjectType.SEQUENCE)
+                    .findFirst().orElseThrow().kind());
+            assertTrue(plan.selectedChangeIds().isEmpty());
+            assertFalse((difference + plan.toString() + plan.digest())
+                    .contains("oracle-manual-definition"));
+        }
+    }
+
+    @Test
     void malformedProviderIdentityFailsClosedWithFixedDiagnostics() {
         QualifiedName pgSchema = PgSchemaIdentifierNormalizer.schema("owner");
         ObjectKey malformedPgKey = new ObjectKey(ObjectType.TABLE,

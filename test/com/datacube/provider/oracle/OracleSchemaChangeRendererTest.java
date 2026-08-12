@@ -225,6 +225,162 @@ class OracleSchemaChangeRendererTest {
     }
 
     @Test
+    void plSqlCaseExpressionsStatementsAndFollowingNestedScopesKeepRoutineBoundaries() {
+        ObjectKey functionKey = key(ObjectType.FUNCTION, "Source", "CASE_FN",
+                oracleSignature());
+        String ddl = """
+                CREATE FUNCTION "Source"."CASE_FN" RETURN NUMBER AS
+                  FUNCTION local_fn(value IN NUMBER) RETURN NUMBER IS
+                  BEGIN
+                    RETURN CASE WHEN value > 0 THEN value ELSE 0 END;
+                  END local_fn;
+                BEGIN
+                  CASE local_fn(1)
+                    WHEN 1 THEN NULL;
+                    ELSE NULL;
+                  END CASE;
+                  <<after_case>>
+                  DECLARE
+                    "Source" "Source"."OBJ_T";
+                  BEGIN
+                    "Source".value := CASE WHEN 1 = 1 THEN 1 ELSE 0 END;
+                  END;
+                  "Source"."PKG"."RUN"();
+                  RETURN local_fn(1);
+                END;
+                /
+                """;
+
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+        String rendered = RENDERER.render(change(ChangeKind.CREATE, functionKey,
+                        definition(functionKey, ddl), null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst().sql();
+
+        assertTrue(projected.contains("\"Source\".value := CASE"), projected);
+        assertTrue(projected.contains("\0oracle-self-owner\0.\"PKG\".\"RUN\"()"), projected);
+        assertTrue(rendered.contains("\"Source\".value := CASE"), rendered);
+        assertTrue(rendered.contains("\"Target\"\"Owner\".\"PKG\".\"RUN\"()"), rendered);
+
+        String trailingGarbage = ddl + " unexpected_token";
+        assertFalse(OracleSchemaChangeRenderer.supportsAutomaticRoutineDefinition(
+                trailingGarbage, "Source"));
+        assertEquals(OracleSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> OracleSchemaChangeRenderer.comparisonDefinition(
+                                trailingGarbage, "Source")).getMessage());
+    }
+
+    @Test
+    void packageTypeBodyAndTriggerUseRecursiveMemberLocalLabelAndCaseScopes() {
+        ObjectKey packageKey = key(ObjectType.PACKAGE_BODY, "Source", "API", "");
+        ObjectKey packageSpec = key(ObjectType.PACKAGE_SPEC, "Source", "API", "");
+        String packageDdl = """
+                CREATE PACKAGE BODY "Source"."API" AS
+                  FUNCTION member_fn(value IN NUMBER) RETURN NUMBER IS
+                    PROCEDURE local_proc("Source" IN NUMBER) IS
+                    BEGIN
+                      CASE WHEN "Source" > 0 THEN NULL; ELSE NULL; END CASE;
+                    END local_proc;
+                  BEGIN
+                    <<"Source">>
+                    DECLARE rec "Source"."OBJ_T";
+                    BEGIN "Source".rec.value := 1; END;
+                    "Source"."HELPERS"."RUN"();
+                    RETURN CASE WHEN value > 0 THEN value ELSE 0 END;
+                  END member_fn;
+                BEGIN
+                  NULL;
+                END API;
+                /
+                """;
+        ObjectKey typeKey = key(ObjectType.TYPE, "Source", "OBJ_T", "BODY");
+        ObjectKey typeSpec = key(ObjectType.TYPE, "Source", "OBJ_T", "SPEC");
+        String typeDdl = """
+                CREATE TYPE BODY "Source"."OBJ_T" AS
+                  MEMBER FUNCTION value RETURN NUMBER IS
+                  BEGIN
+                    RETURN CASE WHEN 1 = 1 THEN 1 ELSE 0 END;
+                  END value;
+                END;
+                /
+                """;
+        ObjectKey tableKey = key(ObjectType.TABLE, "Source", "ORDERS", "");
+        ObjectKey triggerKey = key(ObjectType.TRIGGER, "Source", "ORDERS_TRG", "");
+        String triggerDdl = """
+                CREATE TRIGGER "Source"."ORDERS_TRG" BEFORE INSERT ON "Source"."ORDERS"
+                DECLARE
+                  PROCEDURE local_proc("Source" IN NUMBER) IS
+                  BEGIN "Source".value := 1; END local_proc;
+                BEGIN
+                  CASE WHEN INSERTING THEN NULL; ELSE NULL; END CASE;
+                  "Source"."AUDIT"."RUN"();
+                END;
+                /
+                """;
+        assertDoesNotThrow(() -> OracleSchemaChangeRenderer.comparisonDefinition(
+                packageDdl, "Source"), "package body");
+        assertDoesNotThrow(() -> OracleSchemaChangeRenderer.comparisonDefinition(
+                typeDdl, "Source"), "type body");
+        assertDoesNotThrow(() -> OracleSchemaChangeRenderer.comparisonDefinition(
+                triggerDdl, "Source"), "trigger");
+
+        for (DefinitionCase definitionCase : List.of(
+                new DefinitionCase(packageKey, packageDdl, Set.of(packageSpec), true),
+                new DefinitionCase(typeKey, typeDdl, Set.of(typeSpec), true),
+                new DefinitionCase(triggerKey, triggerDdl, Set.of(tableKey), true))) {
+            String projected = OracleSchemaChangeRenderer.comparisonDefinition(
+                    definitionCase.ddl(), "Source");
+            String rendered = RENDERER.render(change(ChangeKind.CREATE, definitionCase.key(),
+                            definition(definitionCase.key(), definitionCase.ddl(),
+                                    definitionCase.dependencies()), null, null,
+                            AutomationLevel.SAFE_AUTOMATIC),
+                    context(DbType.ORACLE, false)).getFirst().sql();
+
+            assertTrue(projected.contains("\0oracle-self-owner\0"), projected);
+            assertTrue(rendered.contains("\"Target\"\"Owner\""), rendered);
+            assertFalse(rendered.contains("\0oracle-"), rendered);
+        }
+        String projectedPackage = OracleSchemaChangeRenderer.comparisonDefinition(
+                packageDdl, "Source");
+        assertTrue(projectedPackage.contains("\"Source\".rec.value"), projectedPackage);
+        assertTrue(projectedPackage.contains(
+                "\0oracle-self-owner\0.\"HELPERS\".\"RUN\"()"), projectedPackage);
+    }
+
+    @Test
+    void oracleLabelThreePartChainsRequireDeclaredBindingOrProvablePackageCall() {
+        String safe = """
+                CREATE FUNCTION "Source"."LABEL_FN" RETURN NUMBER AS
+                BEGIN
+                  <<"Source">>
+                  DECLARE
+                    rec "Source"."OBJ_T";
+                  BEGIN
+                    "Source".rec.value := 1;
+                    "Source"."PKG"."RUN"();
+                  END;
+                  "Source"."PKG"."RUN"();
+                  RETURN 1;
+                END;
+                /
+                """;
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(safe, "Source");
+        assertTrue(projected.contains("\"Source\".rec.value"), projected);
+        assertEquals(2, countOccurrences(projected,
+                "\0oracle-self-owner\0.\"PKG\".\"RUN\"()"), projected);
+
+        String undeclared = safe.replace("\"Source\".rec.value := 1;",
+                "\"Source\".missing.value := 1;");
+        assertFalse(OracleSchemaChangeRenderer.supportsAutomaticPlSqlDefinition(
+                undeclared, "Source"));
+        assertEquals(OracleSchemaChangeRenderer.UNSAFE_DEFINITION,
+                assertThrows(IllegalArgumentException.class,
+                        () -> OracleSchemaChangeRenderer.comparisonDefinition(
+                                undeclared, "Source")).getMessage());
+    }
+
+    @Test
     void embeddedQuoteOwnerAndMixedCaseBindingAreProjectedConservatively() {
         String ddl = "CREATE FUNCTION \"Source\"\"Owner\".\"F\"(value IN "
                 + "\"Source\"\"Owner\".\"Self.Type\") RETURN NUMBER AS BEGIN DECLARE "
