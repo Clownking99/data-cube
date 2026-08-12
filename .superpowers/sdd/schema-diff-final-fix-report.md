@@ -24,14 +24,14 @@
 - Clean full + image：`clean test jlink --warning-mode fail --rerun-tasks --no-daemon --console=plain` BUILD SUCCESSFUL；111 suites / 740 tests / 0 failures / 0 errors / 3 documented live skips。
 - Explicit no-credential live gate：1 suite / 6 tests / 0 failures / 0 errors / 2 skips；精确为 PostgreSQL/Oracle safe deployment convergence tests，未尝试连接。
 - Image：`build/image/bin/DataCube.bat` 存在，包含 `-Xms16m -Xmx256m -XX:+UseG1GC`。
-- CodeGraph：370 files / 10,209 nodes / 32,415 edges，index up to date。`git diff --check` 通过；`gradlew` mode `100755`。
+- CodeGraph：370 files / 10,210 nodes / 32,453 edges，index up to date。`git diff --check` 通过；`gradlew` mode `100755`。
 - Changed-file credential/endpoint scan only matched pre-existing synthetic redaction fixtures; no real endpoint or credential value was added. Fresh live XML contains no NUL/comparison marker.
 - 未连接 live DB，未读取 saved connection；`.testagent/` 保持 pre-existing untracked 且未读取、修改、暂存。
 
 ### 第三次 follow-up residuals
 
 - PostgreSQL/Oracle 真实 server 执行仍未验证，因为未提供且未授权 disposable endpoint。
-- 未 push、tag 或触发 GitHub workflow；提交 SHA 在独立 commit 完成后记录于本节。
+- 实现提交：`ddd6c188dec6d124292197831859dcf1d80057e0`；本报告 SHA 回填另作独立文档 commit。未 amend、push、tag 或触发 GitHub workflow。
 
 ## 结果
 
