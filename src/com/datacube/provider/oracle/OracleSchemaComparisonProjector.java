@@ -3,6 +3,7 @@ package com.datacube.provider.oracle;
 import com.datacube.spi.schemadiff.CanonicalDataType;
 import com.datacube.spi.schemadiff.ColumnDefinition;
 import com.datacube.spi.schemadiff.ConstraintDefinition;
+import com.datacube.spi.schemadiff.DefinitionConfidence;
 import com.datacube.spi.schemadiff.DefinitionObject;
 import com.datacube.spi.schemadiff.IndexDefinition;
 import com.datacube.spi.schemadiff.ObjectKey;
@@ -15,6 +16,9 @@ import com.datacube.spi.schemadiff.SchemaSnapshot;
 import com.datacube.spi.schemadiff.SequenceDefinition;
 import com.datacube.spi.schemadiff.TableDefinition;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -42,7 +46,7 @@ final class OracleSchemaComparisonProjector implements SchemaComparisonProjector
             }
             return new SchemaComparisonProjection(snapshot, objects, originals);
         } catch (IllegalArgumentException failure) {
-            throw invalid();
+            throw new IllegalArgumentException(INVALID, failure);
         }
     }
 
@@ -63,13 +67,45 @@ final class OracleSchemaComparisonProjector implements SchemaComparisonProjector
         }
         if (object instanceof DefinitionObject definition) {
             String normalized = definition.normalizedDefinition();
+            String projectedDefinition = normalized;
+            DefinitionConfidence confidence = definition.confidence();
+            if (normalized != null) {
+                if (confidence == DefinitionConfidence.LOW && isRoutine(definition.key())) {
+                    projectedDefinition = manualDefinitionMarker(definition, selfOwner);
+                } else {
+                    try {
+                        projectedDefinition = OracleSchemaChangeRenderer.comparisonDefinition(
+                                normalized, selfOwner);
+                    } catch (IllegalArgumentException failure) {
+                        if (!isRoutine(definition.key())) throw failure;
+                        projectedDefinition = manualDefinitionMarker(definition, selfOwner);
+                        confidence = DefinitionConfidence.LOW;
+                    }
+                }
+            }
             return new DefinitionObject(projectKey(definition.key(), selfOwner),
-                    normalized == null ? null
-                            : OracleSchemaChangeRenderer.comparisonDefinition(normalized, selfOwner),
+                    projectedDefinition,
                     definition.originalDefinition(), projectKeys(definition.dependencies(), selfOwner),
-                    definition.confidence());
+                    confidence);
         }
         throw invalid();
+    }
+
+    private static boolean isRoutine(ObjectKey key) {
+        return key.type() == ObjectType.FUNCTION || key.type() == ObjectType.PROCEDURE;
+    }
+
+    private static String manualDefinitionMarker(DefinitionObject definition, String selfOwner) {
+        String value = selfOwner + '\0' + definition.key().type() + '\0'
+                + definition.key().name().comparisonKey() + '\0' + definition.key().signature()
+                + '\0' + String.valueOf(definition.normalizedDefinition());
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
+            return "\0oracle-manual-definition-v1\0" + java.util.HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException failure) {
+            throw new IllegalStateException(failure);
+        }
     }
 
     private static ColumnDefinition projectColumn(ColumnDefinition column, String selfOwner) {

@@ -3,6 +3,8 @@ package com.datacube.provider.oracle;
 import com.datacube.schemadiff.DifferenceKind;
 import com.datacube.schemadiff.SchemaDiffEngine;
 import com.datacube.schemadiff.SchemaDiffResult;
+import com.datacube.schemadiff.SchemaChangePlan;
+import com.datacube.schemadiff.SchemaChangePlanner;
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.schemadiff.CanonicalDataType;
@@ -18,6 +20,10 @@ import com.datacube.spi.schemadiff.SchemaSnapshot;
 import com.datacube.spi.schemadiff.SequenceDefinition;
 import com.datacube.spi.schemadiff.SnapshotCompleteness;
 import com.datacube.spi.schemadiff.TableDefinition;
+import com.datacube.spi.model.DbType;
+import com.datacube.spi.schemadiff.AutomationLevel;
+import com.datacube.spi.schemadiff.ChangeKind;
+import com.datacube.spi.schemadiff.RenderContext;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
@@ -26,11 +32,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLTimeoutException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,6 +50,66 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OracleSchemaSnapshotReaderTest {
+    @Test
+    void javaAndCCallSpecsAreLowManualMissingWithoutBlockingOtherObjectsOrLeakingMarker() throws Exception {
+        String definition = "CREATE FUNCTION \"Sales\".\"JAVA_FN\" RETURN NUMBER "
+                + "AS LANGUAGE JAVA NAME 'example.Owner.call() return int';";
+        String cDefinition = "CREATE PROCEDURE \"Sales\".\"C_PROC\" AS LANGUAGE C "
+                + "LIBRARY \"Sales\".\"NATIVE_LIB\" NAME \"native_call\";";
+        SnapshotJdbc jdbc = new SnapshotJdbc("Sales")
+                .rows("definitions", definitionRow("JAVA_FN", "FUNCTION", 701, 1, null),
+                        definitionRow("C_PROC", "PROCEDURE", 702, 1, null))
+                .ddl("FUNCTION", "JAVA_FN", definition)
+                .ddl("PROCEDURE", "C_PROC", cDefinition)
+                .rows("sequences", row("sequence_name", "STABLE", "min_value", "1",
+                        "max_value", "99", "increment_by", "1", "cycle_flag", "N",
+                        "cache_size", 20, "order_flag", "N"));
+        SchemaSnapshot source = new OracleSchemaSnapshotReader(jdbc.connection()).read(
+                "source", OracleSchemaIdentifierNormalizer.schema("Sales"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot target = new SchemaSnapshot(DbType.ORACLE, "target", source.schema(),
+                Instant.EPOCH, new SnapshotCompleteness(true, new TreeMap<>()),
+                new TreeMap<>(), "empty");
+
+        DefinitionObject routine = definition(source, ObjectType.FUNCTION,
+                "Sales", "JAVA_FN", "oracle-routine-signature-v1\0");
+        DefinitionObject cRoutine = definition(source, ObjectType.PROCEDURE,
+                "Sales", "C_PROC", "oracle-routine-signature-v1\0");
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, target, new OracleSchemaDiffCapability().comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+        var routineDifference = diff.differences().stream()
+                .filter(value -> value.object().type() == ObjectType.FUNCTION)
+                .findFirst().orElseThrow();
+        var routineChange = plan.changes().stream()
+                .filter(value -> value.object().type() == ObjectType.FUNCTION)
+                .findFirst().orElseThrow();
+
+        assertEquals(DefinitionConfidence.LOW, routine.confidence());
+        assertEquals(DefinitionConfidence.LOW, cRoutine.confidence());
+        assertTrue(source.completeness().unavailableScopes().isEmpty());
+        assertEquals(DifferenceKind.MISSING_IN_TARGET, routineDifference.kind());
+        assertEquals(AutomationLevel.MANUAL_ONLY, routineDifference.automation());
+        assertEquals(ChangeKind.MANUAL, routineChange.kind());
+        assertFalse(plan.selectedChangeIds().contains(routineChange.id()));
+        assertEquals(OracleSchemaChangeRenderer.MANUAL_CHANGE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> new OracleSchemaChangeRenderer().render(routineChange,
+                                new RenderContext(DbType.ORACLE, source.schema(),
+                                        source.schema(), false))).getMessage());
+        assertTrue(diff.differences().stream().anyMatch(value ->
+                value.object().type() == ObjectType.SEQUENCE));
+        assertEquals(2, diff.differences().stream().filter(value ->
+                value.object().type() == ObjectType.FUNCTION
+                        || value.object().type() == ObjectType.PROCEDURE).count());
+        assertTrue(diff.differences().stream().filter(value ->
+                value.object().type() == ObjectType.FUNCTION
+                        || value.object().type() == ObjectType.PROCEDURE)
+                .allMatch(value -> value.automation() == AutomationLevel.MANUAL_ONLY));
+        assertFalse((routine + cRoutine.toString() + diff.toString() + plan + plan.digest())
+                .contains("oracle-manual-definition"));
+    }
+
     @Test
     void jdbcProxySnapshotsWithDifferentOwnersCompareByProviderRelativeIdentity() throws Exception {
         SnapshotJdbc sourceJdbc = new SnapshotJdbc("Source\"Owner")

@@ -525,10 +525,17 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
         for (DefinitionEntry entry : state.entries(oracleType)) {
             ObjectKey key = definitionKey(state, entry);
             String ddl = queryDdl(entry.ddlType(), entry.name(), owner, options);
+            boolean routine = key.type() == ObjectType.FUNCTION
+                    || key.type() == ObjectType.PROCEDURE;
+            boolean automaticRoutine = !routine
+                    || OracleSchemaChangeRenderer.supportsAutomaticRoutineDefinition(ddl, owner);
             DefinitionConfidence confidence = ddl == null || ddl.isBlank()
                     || OracleSchemaDefinitionNormalizer.containsProviderStorageClause(ddl)
+                    || !automaticRoutine
                     ? DefinitionConfidence.LOW : DefinitionConfidence.HIGH;
-            state.addDefinition(key, ddl, confidence);
+            boolean incomplete = ddl == null || ddl.isBlank()
+                    || OracleSchemaDefinitionNormalizer.containsProviderStorageClause(ddl);
+            state.addDefinition(key, ddl, confidence, incomplete);
             state.register(entry.oracleType(), entry.name(), key);
             if (entry.oracleType().equals("PACKAGE BODY")) {
                 state.addDependency(key, state.key(ObjectType.PACKAGE_SPEC, entry.name(), ""));
@@ -898,10 +905,12 @@ public final class OracleSchemaSnapshotReader implements SchemaSnapshotReader {
                     .filter(entry -> entry.oracleType().equals(oracleType)).toList();
         }
 
-        private void addDefinition(ObjectKey key, String original, DefinitionConfidence confidence) {
+        private void addDefinition(
+                ObjectKey key, String original, DefinitionConfidence confidence,
+                boolean incomplete) {
             DefinitionConfidence actual = original == null || original.isBlank()
                     ? DefinitionConfidence.LOW : confidence;
-            if (actual == DefinitionConfidence.LOW) {
+            if (incomplete) {
                 diagnostic(key.type(), SnapshotCompleteness.DEFINITION_UNAVAILABLE);
             }
             definitions.put(key, new DefinitionObject(key,

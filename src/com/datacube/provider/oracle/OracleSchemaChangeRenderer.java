@@ -791,6 +791,17 @@ public final class OracleSchemaChangeRenderer implements SchemaChangeRenderer {
         return rewriteDefinitionOwner(text, sourceOwner, "\0oracle-self-owner\0", false);
     }
 
+    static boolean supportsAutomaticRoutineDefinition(String text, String sourceOwner) {
+        if (text == null || text.isBlank()) return false;
+        if (SqlScopeAwareOwnerRewriter.containsOracleCallSpecLanguage(text)) return false;
+        try {
+            comparisonDefinition(text, sourceOwner);
+            return true;
+        } catch (IllegalArgumentException failure) {
+            return false;
+        }
+    }
+
     static String comparisonFragment(String text, String sourceOwner) {
         return rewriteDefinitionOwner(text, sourceOwner, "\0oracle-self-owner\0", true);
     }

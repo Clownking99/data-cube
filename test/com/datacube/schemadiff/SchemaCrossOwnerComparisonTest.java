@@ -72,13 +72,24 @@ class SchemaCrossOwnerComparisonTest {
         SchemaSnapshot emptyTarget = snapshot(DbType.ORACLE, "empty", targetOwner,
                 OracleSchemaIdentifierNormalizer::schema);
         OracleSchemaDiffCapability capability = new OracleSchemaDiffCapability();
+        DefinitionObject projectedSource = (DefinitionObject) capability.comparisonProjector()
+                .project(source).comparisonObjects().values().iterator().next();
+        DefinitionObject projectedTarget = (DefinitionObject) capability.comparisonProjector()
+                .project(snapshot(DbType.ORACLE, "projected-target", targetOwner,
+                        OracleSchemaIdentifierNormalizer::schema, targetRoutine))
+                .comparisonObjects().values().iterator().next();
+        assertEquals(projectedSource.normalizedDefinition(),
+                projectedTarget.normalizedDefinition());
         SchemaChangePlan plan = new SchemaChangePlanner().plan(new SchemaDiffEngine().compare(
                 source, emptyTarget, capability.comparisonProjector()));
 
         String rendered = capability.changeRenderer().render(plan.changes().getFirst(),
                 new RenderContext(DbType.ORACLE, source.schema(), emptyTarget.schema(), false))
                 .getFirst().sql();
-        assertTrue(rendered.contains(quote(DbType.ORACLE, sourceOwner) + ".RUN()"), rendered);
+        assertTrue(rendered.contains(quote(DbType.ORACLE, sourceOwner)
+                + ".local_record.field"), rendered);
+        assertTrue(rendered.contains(quote(DbType.ORACLE, sourceOwner)
+                + ".label_record.field"), rendered);
         assertTrue(rendered.contains(qualified(DbType.ORACLE, targetOwner, "PKG") + ".RUN()"),
                 rendered);
         assertTrue(new SchemaDiffEngine().compare(source,
@@ -140,6 +151,55 @@ class SchemaCrossOwnerComparisonTest {
                     plan.changes().stream()
                             .filter(change -> change.object().type() == ObjectType.FUNCTION)
                             .findFirst().orElseThrow().kind());
+        }
+    }
+
+    @Test
+    void oracleJavaAndCCallSpecsRemainObjectSpecificManualDifferences() {
+        OracleSchemaDiffCapability capability = new OracleSchemaDiffCapability();
+        for (Object[] definitionCase : List.of(
+                new Object[]{ObjectType.FUNCTION, "JAVA_FN",
+                        "CREATE FUNCTION \"Source\".\"JAVA_FN\" RETURN NUMBER AS LANGUAGE JAVA "
+                                + "NAME 'example.Owner.call() return int';",
+                        "CREATE FUNCTION \"Target\".\"JAVA_FN\" RETURN NUMBER AS LANGUAGE JAVA "
+                                + "NAME 'example.Owner.call() return int';"},
+                new Object[]{ObjectType.PROCEDURE, "C_PROC",
+                        "CREATE PROCEDURE \"Source\".\"C_PROC\" AS LANGUAGE C LIBRARY "
+                                + "\"Source\".\"NATIVE_LIB\" NAME \"native_call\";",
+                        "CREATE PROCEDURE \"Target\".\"C_PROC\" AS LANGUAGE C LIBRARY "
+                                + "\"Target\".\"NATIVE_LIB\" NAME \"native_call\";"})) {
+            ObjectType type = (ObjectType) definitionCase[0];
+            String name = (String) definitionCase[1];
+            ObjectKey sourceKey = key(type, "Source", name, oracleSignature(),
+                    OracleSchemaIdentifierNormalizer::object);
+            ObjectKey targetKey = key(type, "Target", name, oracleSignature(),
+                    OracleSchemaIdentifierNormalizer::object);
+            DefinitionObject sourceRoutine = new DefinitionObject(sourceKey,
+                    (String) definitionCase[2], (String) definitionCase[2], Set.of(),
+                    DefinitionConfidence.LOW);
+            DefinitionObject targetRoutine = new DefinitionObject(targetKey,
+                    (String) definitionCase[3], (String) definitionCase[3], Set.of(),
+                    DefinitionConfidence.LOW);
+
+            SchemaDiffResult result = new SchemaDiffEngine().compare(
+                    snapshot(DbType.ORACLE, "source", "Source",
+                            OracleSchemaIdentifierNormalizer::schema, sourceRoutine),
+                    snapshot(DbType.ORACLE, "target", "Target",
+                            OracleSchemaIdentifierNormalizer::schema, targetRoutine),
+                    capability.comparisonProjector());
+            SchemaDifference difference = result.differences().getFirst();
+            SchemaChangePlan plan = new SchemaChangePlanner().plan(result);
+
+            assertEquals(DifferenceKind.MODIFIED, difference.kind());
+            assertEquals(com.datacube.spi.schemadiff.AutomationLevel.MANUAL_ONLY,
+                    difference.automation());
+            assertSame(sourceRoutine, difference.source());
+            assertSame(targetRoutine, difference.target());
+            assertEquals(com.datacube.spi.schemadiff.ChangeKind.MANUAL,
+                    plan.changes().getFirst().kind());
+            assertTrue(plan.selectedChangeIds().isEmpty());
+            assertFalse((difference + plan.toString() + plan.digest())
+                    .contains("oracle-manual-definition"));
         }
     }
 
@@ -425,10 +485,18 @@ class SchemaCrossOwnerComparisonTest {
 
     private static String oracleScopedRoutine(String owner, String stableBinding) {
         return "CREATE FUNCTION " + qualified(DbType.ORACLE, owner, "Scoped")
-                + " RETURN NUMBER AS BEGIN DECLARE " + quote(DbType.ORACLE, stableBinding)
-                + " " + qualified(DbType.ORACLE, owner, "Self.Type") + "; BEGIN "
-                + quote(DbType.ORACLE, stableBinding) + ".RUN(); END; "
-                + qualified(DbType.ORACLE, owner, "PKG") + ".RUN(); RETURN 1; END;";
+                + " RETURN NUMBER AS FUNCTION local_fn("
+                + quote(DbType.ORACLE, stableBinding) + " IN "
+                + qualified(DbType.ORACLE, owner, "Self.Type")
+                + ") RETURN NUMBER IS local_record "
+                + qualified(DbType.ORACLE, owner, "Self.Type") + "; BEGIN "
+                + quote(DbType.ORACLE, stableBinding) + ".local_record.field := 1; RETURN 1; "
+                + "END local_fn; BEGIN <<" + quote(DbType.ORACLE, stableBinding)
+                + ">> DECLARE label_record "
+                + qualified(DbType.ORACLE, owner, "Self.Type") + "; BEGIN "
+                + quote(DbType.ORACLE, stableBinding) + ".label_record.field := 2; END; "
+                + qualified(DbType.ORACLE, owner, "PKG")
+                + ".RUN(); RETURN local_fn(NULL); END;";
     }
 
     private static String quote(DbType type, String name) {

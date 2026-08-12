@@ -587,10 +587,85 @@ class PgSchemaChangeRendererTest {
         String ambiguousRecord = "CREATE FUNCTION \"Source\".\"Unsafe\"() RETURNS integer "
                 + "LANGUAGE plpgsql AS $body$ DECLARE \"Source\" record; BEGIN "
                 + "RETURN \"Source\".value; END $body$";
+        assertTrue(PgSchemaChangeRenderer.comparisonDefinition(
+                        ambiguousRecord, ObjectType.FUNCTION, "Source")
+                .contains("RETURN \"Source\".value"));
+    }
+
+    @Test
+    void plpgsqlLabelsAndDeclaredRecordsShadowThreePartOwnerChainsButRelationsAndFunctionsRetarget() {
+        String routine = """
+                CREATE FUNCTION "Source"."Scoped"() RETURNS integer LANGUAGE plpgsql AS $body$
+                <<"Source">>
+                DECLARE
+                  rec record;
+                  "Source" record;
+                BEGIN
+                  PERFORM id FROM "Source"."orders";
+                  PERFORM "Source".rec.value;
+                  PERFORM "Source".value;
+                  <<nested_block>>
+                  DECLARE
+                    "Source" record;
+                  BEGIN
+                    PERFORM "Source".nested_value;
+                  END nested_block;
+                  RETURN 1;
+                END "Source"
+                $body$
+                """;
+
+        String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                routine, ObjectType.FUNCTION, "Source");
+
+        assertTrue(projected.contains("FROM \0pg-self-owner\0.\"orders\""), projected);
+        assertTrue(projected.contains("PERFORM \"Source\".rec.value"), projected);
+        assertEquals(3, countOccurrences(projected, "PERFORM \"Source\"."), projected);
+
+        String function = "CREATE FUNCTION \"Source\".call_helper() RETURNS integer "
+                + "LANGUAGE plpgsql AS $body$ BEGIN PERFORM \"Source\".\"helper\"(); "
+                + "RETURN 1; END $body$";
+        assertTrue(PgSchemaChangeRenderer.comparisonDefinition(
+                        function, ObjectType.FUNCTION, "Source")
+                .contains("PERFORM \0pg-self-owner\0.\"helper\"()"));
+    }
+
+    @Test
+    void unboundThreePartPlpgsqlQualifierFailsClosedInsteadOfAssumingSchema() {
+        String routine = "CREATE FUNCTION \"Source\".ambiguous() RETURNS integer LANGUAGE plpgsql "
+                + "AS $body$ BEGIN RETURN \"Source\".record_field.value; END $body$";
+
         assertEquals(PgSchemaChangeRenderer.UNSAFE_DEFINITION,
                 assertThrows(IllegalArgumentException.class,
                         () -> PgSchemaChangeRenderer.comparisonDefinition(
-                                ambiguousRecord, ObjectType.FUNCTION, "Source")).getMessage());
+                                routine, ObjectType.FUNCTION, "Source")).getMessage());
+    }
+
+    @Test
+    void nestedPlpgsqlBindingsDoNotLeakPastTheirBlocks() {
+        String routine = """
+                CREATE FUNCTION "Source".scoped() RETURNS integer LANGUAGE plpgsql AS $body$
+                BEGIN
+                  <<"Source">>
+                  DECLARE rec record;
+                  BEGIN
+                    PERFORM "Source".rec.value;
+                  END;
+                  DECLARE "Source" record;
+                  BEGIN
+                    PERFORM "Source".value;
+                  END;
+                  PERFORM "Source"."helper"();
+                  RETURN 1;
+                END
+                $body$
+                """;
+
+        String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                routine, ObjectType.FUNCTION, "Source");
+
+        assertTrue(projected.contains("PERFORM \"Source\".rec.value"), projected);
+        assertTrue(projected.contains("PERFORM \0pg-self-owner\0.\"helper\"()"), projected);
     }
 
     @Test

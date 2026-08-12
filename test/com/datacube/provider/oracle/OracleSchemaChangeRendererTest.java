@@ -29,6 +29,7 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -150,6 +151,77 @@ class OracleSchemaChangeRendererTest {
                 "\"Target\"\"Owner\".\"PKG\".\"RUN\"()"), renderedUnshadowed);
         assertTrue(OracleSchemaChangeRenderer.comparisonDefinition(unshadowed, "Source")
                 .contains("\0oracle-self-owner\0.\"PKG\".\"RUN\"()"));
+    }
+
+    @Test
+    void plSqlLabelsAndNestedLocalRoutinesKeepIndependentBindingsAndRetargetRealPackages() {
+        ObjectKey functionKey = key(ObjectType.FUNCTION, "Source", "NESTED_FN",
+                oracleSignature());
+        String ddl = """
+                CREATE FUNCTION "Source"."NESTED_FN" RETURN NUMBER AS
+                  outer_value "Source"."OBJ_T";
+                  FUNCTION local_fn("Source" IN "Source"."OBJ_T") RETURN NUMBER IS
+                    local_record "Source"."OBJ_T";
+                    PROCEDURE nested_proc("Source" IN NUMBER) IS
+                      nested_record "Source"."OBJ_T";
+                    BEGIN
+                      "Source".nested_record.field := 1;
+                    END nested_proc;
+                  BEGIN
+                    "Source".local_record.field := 2;
+                    RETURN 1;
+                  END local_fn;
+                BEGIN
+                  <<"Source">>
+                  DECLARE
+                    label_record "Source"."OBJ_T";
+                  BEGIN
+                    "Source".label_record.field := 3;
+                  END;
+                  "Source"."PKG"."RUN"();
+                  RETURN local_fn(outer_value);
+                END;
+                /
+                """;
+
+        String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+        String rendered = RENDERER.render(change(ChangeKind.CREATE, functionKey,
+                        definition(functionKey, ddl), null, null,
+                        AutomationLevel.SAFE_AUTOMATIC),
+                context(DbType.ORACLE, false)).getFirst().sql();
+
+        assertTrue(projected.contains("\"Source\".nested_record.field"), projected);
+        assertTrue(projected.contains("\"Source\".local_record.field"), projected);
+        assertTrue(projected.contains("\"Source\".label_record.field"), projected);
+        assertTrue(projected.contains("\0oracle-self-owner\0.\"PKG\".\"RUN\"()"), projected);
+        assertTrue(rendered.contains("\"Source\".nested_record.field"), rendered);
+        assertTrue(rendered.contains("\"Source\".local_record.field"), rendered);
+        assertTrue(rendered.contains("\"Source\".label_record.field"), rendered);
+        assertTrue(rendered.contains("\"Target\"\"Owner\".\"PKG\".\"RUN\"()"), rendered);
+
+        String targetDdl = ddl.replace("\"Source\".\"NESTED_FN\"",
+                        "\"Target\"\"Owner\".\"NESTED_FN\"")
+                .replace("\"Source\".\"OBJ_T\"", "\"Target\"\"Owner\".\"OBJ_T\"")
+                .replace("\"Source\".\"PKG\"", "\"Target\"\"Owner\".\"PKG\"");
+        assertDoesNotThrow(() -> OracleSchemaChangeRenderer.comparisonDefinition(
+                targetDdl, "Target\"Owner"));
+    }
+
+    @Test
+    void callSpecClassificationIgnoresLanguageTokensInStringsAndComments() {
+        String plSql = "CREATE FUNCTION \"Source\".\"SAFE_F\" RETURN VARCHAR2 IS "
+                + "BEGIN /* LANGUAGE C */ RETURN 'LANGUAGE JAVA'; END;";
+        String javaCallSpec = "CREATE FUNCTION \"Source\".\"JAVA_F\" RETURN NUMBER "
+                + "AS LANGUAGE JAVA NAME 'example.Owner.call() return int';";
+        String cCallSpec = "CREATE PROCEDURE \"Source\".\"C_P\" AS LANGUAGE C "
+                + "LIBRARY \"Source\".\"NATIVE_LIB\" NAME \"native_call\";";
+
+        assertTrue(OracleSchemaChangeRenderer.supportsAutomaticRoutineDefinition(
+                plSql, "Source"));
+        assertFalse(OracleSchemaChangeRenderer.supportsAutomaticRoutineDefinition(
+                javaCallSpec, "Source"));
+        assertFalse(OracleSchemaChangeRenderer.supportsAutomaticRoutineDefinition(
+                cCallSpec, "Source"));
     }
 
     @Test

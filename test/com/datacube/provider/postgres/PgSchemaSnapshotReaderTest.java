@@ -394,7 +394,7 @@ class PgSchemaSnapshotReaderTest {
     }
 
     @Test
-    void ambiguousSourceOnlyRoutineFlowsFromJdbcReaderToManualUnselectedMissingChange() throws Exception {
+    void declaredRecordSourceOnlyRoutineFlowsAsSafeSelectedMissingChange() throws Exception {
         String definition = "CREATE FUNCTION app.ambiguous() RETURNS integer LANGUAGE plpgsql "
                 + "AS $body$ DECLARE app record; BEGIN RETURN app.value; END $body$";
         SnapshotJdbc jdbc = new SnapshotJdbc("app").rows("routines",
@@ -412,20 +412,49 @@ class PgSchemaSnapshotReaderTest {
                 source, target, new PgSchemaDiffCapability().comparisonProjector());
         SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
 
-        assertEquals(DefinitionConfidence.LOW, original.confidence());
+        assertEquals(DefinitionConfidence.HIGH, original.confidence());
         assertEquals(1, diff.differences().size());
         assertEquals(DifferenceKind.MISSING_IN_TARGET, diff.differences().getFirst().kind());
-        assertEquals(AutomationLevel.MANUAL_ONLY, diff.differences().getFirst().automation());
+        assertEquals(AutomationLevel.SAFE_AUTOMATIC, diff.differences().getFirst().automation());
         assertEquals(1, plan.changes().size());
+        assertEquals(ChangeKind.CREATE, plan.changes().getFirst().kind());
+        assertEquals(AutomationLevel.SAFE_AUTOMATIC, plan.changes().getFirst().automation());
+        assertEquals(Set.of(plan.changes().getFirst().id()), plan.selectedChangeIds());
+        assertFalse(new PgSchemaChangeRenderer().render(plan.changes().getFirst(),
+                new RenderContext(DbType.POSTGRESQL, source.schema(), source.schema(), false)).isEmpty());
+        assertFalse((diff.toString() + plan + plan.digest()).contains("\0pg-"));
+    }
+
+    @Test
+    void unboundThreePartPlpgsqlQualifierFlowsAsLowManualMissingWithoutMarkerLeakage() throws Exception {
+        String definition = "CREATE FUNCTION app.three_part() RETURNS integer LANGUAGE plpgsql "
+                + "AS $body$ BEGIN RETURN app.record_field.value; END $body$";
+        SnapshotJdbc jdbc = new SnapshotJdbc("app").rows("routines",
+                row("object_oid", 79L, "object_name", "three_part", "routine_kind", "f",
+                        "identity_arguments", "", "definition", definition));
+        SchemaSnapshot source = new PgSchemaSnapshotReader(jdbc.connection()).read(
+                "source", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot target = new SchemaSnapshot(DbType.POSTGRESQL, "target", source.schema(),
+                Instant.EPOCH, new SnapshotCompleteness(true, new TreeMap<>()),
+                new TreeMap<>(), "empty");
+
+        DefinitionObject routine = definition(source, ObjectType.FUNCTION, "app", "three_part", "");
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, target, new PgSchemaDiffCapability().comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+
+        assertEquals(DefinitionConfidence.LOW, routine.confidence());
+        assertEquals(DifferenceKind.MISSING_IN_TARGET, diff.differences().getFirst().kind());
+        assertEquals(AutomationLevel.MANUAL_ONLY, diff.differences().getFirst().automation());
         assertEquals(ChangeKind.MANUAL, plan.changes().getFirst().kind());
-        assertEquals(AutomationLevel.MANUAL_ONLY, plan.changes().getFirst().automation());
         assertTrue(plan.selectedChangeIds().isEmpty());
         assertEquals(PgSchemaChangeRenderer.MANUAL_CHANGE,
                 assertThrows(IllegalArgumentException.class,
                         () -> new PgSchemaChangeRenderer().render(plan.changes().getFirst(),
-                                new RenderContext(DbType.POSTGRESQL, source.schema(), source.schema(), false)))
-                        .getMessage());
-        assertFalse((diff.toString() + plan + plan.digest()).contains("\0pg-"));
+                                new RenderContext(DbType.POSTGRESQL,
+                                        source.schema(), source.schema(), false))).getMessage());
+        assertFalse((routine + diff.toString() + plan + plan.digest()).contains("pg-manual-definition"));
     }
 
     @Test
