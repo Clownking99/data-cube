@@ -33,6 +33,33 @@
 - CodeGraph：370 files / 10,252 nodes / 32,763 edges，index up to date。`git diff --check` 和 staged check 通过；`gradlew` mode 保持 `100755`。
 - 未连接 live DB，未读取 saved connection；`.testagent/` 为 pre-existing untracked 且未读取、修改、暂存。未 amend、push、tag。
 
+## 第五次累计复审 follow-up（2026-08-12）
+
+- PostgreSQL routine-body qualifier 分类改为 function-call 语法优先：即使 block label 与 source schema 同名，`owner.fn(` 仍按 schema-qualified function retarget；`label.variable` / `label.record.field` 无括号链仍保留。真实 JDBC reader → projection → missing plan → target render → simulated reread second-diff 收敛，目标 SQL 不含 source function owner。
+- Oracle PL/SQL block parser 使用显式 construct stack 区分 BLOCK 与 simple/searched CASE statement/expression；`END CASE` 只关闭 CASE，不再提前关闭 routine。root definition 消费正确 named END 后只接受可选 `/`，任何剩余 token fail closed。
+- PACKAGE BODY / TYPE BODY / TRIGGER 进入统一递归 parser：member/local FUNCTION/PROCEDURE 拥有独立参数、声明、body、named END、label、CASE 和 nested block scope。reader capability 检查扩至全部 PL/SQL definition；不可证明时仅对象 confidence 降为 LOW，不把 whole object-type scope 标为 unavailable。
+- Oracle projector 的对象特异 opaque/manual fallback 扩至 FUNCTION/PROCEDURE/TRIGGER/PACKAGE SPEC/BODY/TYPE BODY。跨 owner 不假等价，原 definition 精确 rehydrate；missing/modified difference 为 MANUAL_ONLY、planner 默认不选、renderer 拒绝，其他对象继续比较，marker 不进入 renderer/UI/digest/toString。
+- Oracle label 独立登记 scope declaration：只有 `label.declaredBinding...` 保留；`label.PKG.member()` 可由调用语法证明并 retarget，nested scope unwind 后仍按真实 schema package 处理；无声明且不能证明 package 的三段链 fail closed，经 reader 降 LOW/manual。
+- 未新增 public SPI seam；沿用 capability projector 与对象级 DefinitionConfidence/AutomationLevel 边界。
+
+### 第五次 follow-up TDD RED → GREEN
+
+1. C1 RED：PG 同名 label 吞掉真实 schema function qualifier。GREEN：function-call syntax precedence；direct renderer 与真实 reader→plan→render→second-diff 全绿。
+2. C2 RED：Oracle CASE 的裸 END 被当作 routine END，routine 后垃圾 token 又被忽略。GREEN：BLOCK/CASE stack 与严格 tail consumption。
+3. C3 RED：PACKAGE BODY/TYPE BODY/TRIGGER 无递归 member/local scope且不可证明 definition 终止 whole compare。GREEN：统一递归 container/trigger parser、reader LOW partial result、对象特异 manual fallback。
+4. I RED：同名 label 的任意三段链均被保留，真实 package call也被吞。GREEN：label declaration/binding lookup；declared chain 保留、provable package retarget、undeclared ambiguous LOW/manual。
+
+### 第五次 follow-up fresh verification
+
+- Implementation commit：`df35190813f7cd28d5848bd60ad8d4ed5cea10e2`；report commit 前 review range 为 `3d8c40b..df35190`，最终 reviewer 必须包含本 report commit 的实际 HEAD。
+- Focused：PG/Oracle renderer+reader 与 cross-owner 5 suites / 119 tests / 0 failures / 0 errors / 0 skips，使用 `--rerun-tasks`。
+- Task 1-10 matrix：34 suites / 327 tests / 0 failures / 0 errors / 2 documented relational live skips。
+- Clean full+jlink：111 suites / 755 tests / 0 failures / 0 errors / 3 documented live skips；`BUILD SUCCESSFUL`。
+- Explicit no-credential live gate：1 suite / 6 tests / 0 failures / 0 errors / 2 skips；显式移除 write gate 与 PG/Oracle provider env，未尝试连接。
+- Image：`build/image/bin/DataCube.bat` 存在，含 `-Xms16m -Xmx256m -XX:+UseG1GC`。
+- CodeGraph：370 files / 10,272 nodes / 33,027 edges，index up to date。`git diff --check` / staged check 通过，`gradlew` mode `100755`。
+- 未连接 live DB，未读取 saved connection；`.testagent/` 保持 pre-existing untracked，未读取、修改、暂存。未 amend/push/tag。
+
 ### 第三次 follow-up TDD RED → GREEN
 
 1. C RED：Oracle 参数/局部变量与 nested shadow 的 `owner.method()` 被当作 schema qualifier 改写。GREEN：PL/SQL declaration/scope binding table；embedded quote owner、renderer/projector 与跨 owner second-diff closure 通过。
