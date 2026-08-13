@@ -18,4 +18,16 @@ class ConnectionTreePaneLifecycleTest {
                 ConnectionStore.class, ConnectionManager.class, ObjectTreeService.class,
                 SessionContext.class, ConnectionTreePane.Actions.class, FxTaskRunner.class));
     }
+
+    @Test
+    void transientRowsNeverMasqueradeAsActionableConnectionRows() {
+        ConnectionTreePane.NodeData parent = new ConnectionTreePane.NodeData(
+                ConnectionTreePane.Kind.CONNECTION, "saved", null, "connection-id", null, null);
+
+        ConnectionTreePane.NodeData loading = ConnectionTreePane.statusData(parent, "加载中...");
+
+        org.junit.jupiter.api.Assertions.assertEquals(ConnectionTreePane.Kind.STATUS, loading.kind());
+        org.junit.jupiter.api.Assertions.assertEquals("connection-id", loading.connId());
+        org.junit.jupiter.api.Assertions.assertFalse(ConnectionTreePane.hasContextActions(loading));
+    }
 }

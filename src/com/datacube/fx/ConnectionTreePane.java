@@ -58,7 +58,7 @@ public final class ConnectionTreePane implements AutoCloseable {
         void openRedisConsole(ConnConfig conn);
     }
 
-    enum Kind { CONNECTION, REDIS_DB, SCHEMA, TABLES, VIEWS, ROUTINES, PACKAGES, TRIGGERS, TYPES, SEQUENCES, TABLE, VIEW, ROUTINE, PACKAGE, TRIGGER, TYPE, SEQUENCE }
+    enum Kind { CONNECTION, STATUS, REDIS_DB, SCHEMA, TABLES, VIEWS, ROUTINES, PACKAGES, TRIGGERS, TYPES, SEQUENCES, TABLE, VIEW, ROUTINE, PACKAGE, TRIGGER, TYPE, SEQUENCE }
 
     /** 树节点数据。 */
     public static final class NodeData {
@@ -383,8 +383,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     /** 构造懒加载节点：首次展开时在受管虚拟线程中加载子节点。 */
     private TreeItem<NodeData> lazyItem(NodeData data, Callable<List<TreeItem<NodeData>>> loader) {
         TreeItem<NodeData> item = new TreeItem<>(data);
-        TreeItem<NodeData> placeholder = new TreeItem<>(
-                new NodeData(data.kind, "加载中...", null, data.connId, data.schema, null));
+        TreeItem<NodeData> placeholder = new TreeItem<>(statusData(data, "加载中..."));
         item.getChildren().add(placeholder);
         final boolean[] loaded = {false};
         item.expandedProperty().addListener((obs, was, is) -> {
@@ -400,8 +399,15 @@ public final class ConnectionTreePane implements AutoCloseable {
         tasks.submit(loader,
                 children -> item.getChildren().setAll(children),
                 failure -> item.getChildren().setAll(List.of(new TreeItem<>(
-                        new NodeData(item.getValue().kind, "错误: " + message(failure),
-                                null, null, null, null)))));
+                        statusData(item.getValue(), "错误: " + message(failure))))));
+    }
+
+    static NodeData statusData(NodeData parent, String label) {
+        return new NodeData(Kind.STATUS, label, null, parent.connId, parent.schema, null);
+    }
+
+    static boolean hasContextActions(NodeData data) {
+        return data != null && data.kind != Kind.STATUS;
     }
 
     private static String message(Throwable failure) {
@@ -518,12 +524,15 @@ public final class ConnectionTreePane implements AutoCloseable {
             setText(item.label);
             setStyle(item.kind == Kind.REDIS_DB && item.label.endsWith("(0)")
                     ? "-fx-text-fill: -brand-fg-muted;" : "");
-            setContextMenu(buildMenu(item));
+            setContextMenu(hasContextActions(item) ? buildMenu(item) : null);
         }
 
         private ContextMenu buildMenu(NodeData d) {
             ContextMenu menu = new ContextMenu();
             switch (d.kind) {
+                case STATUS -> {
+                    return menu;
+                }
                 case CONNECTION -> {
                     MenuItem primary = new MenuItem(d.conn.type() == DbType.REDIS ? "打开命令行控制台" : "打开 SQL 编辑器");
                     primary.setOnAction(e -> {
