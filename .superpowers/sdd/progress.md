@@ -20,8 +20,8 @@
 
 ## Cumulative review
 
-- Status: tenth cumulative-review Critical fixed locally; cumulative re-review pending, not self-declared Ready.
+- Status: eleventh cumulative-review umbrella Critical fixed locally; cumulative re-review pending, not self-declared Ready.
 - Fresh cumulative review range: `3d8c40b..HEAD`; use the actual HEAD reported after the report/progress commit so the range includes both implementation and verification evidence.
-- Finding closed by TDD: FROM/USING/ON are now clause-aware instead of definition-wide lexical relation introducers; EXTRACT value, dynamic EXECUTE bind, JOIN USING columns and trigger-body JOIN ON predicates preserve exact procedural bindings, while proven relation sources still retarget and converge through PG/Oracle reader→projector→engine→planner→renderer→reread.
-- Tenth follow-up gates: focused 5 suites / 139 tests; Task 1-10 matrix 35 suites / 350 tests / 2 documented live skips; clean full+jlink 111 suites / 775 tests / 3 documented live skips; explicit no-credential live gate 6 tests / 2 skips; all zero failures/errors.
-- Implementation commit: `d28b5d5c942b7d521d9763c6c2a58b5d8bba0696`; report commit will be recorded in the final handoff. No amend/push/tag/live DB.
+- Finding closed by TDD: statement/clause consumption now distinguishes query relation `FROM` from `IS [NOT] DISTINCT FROM`; trigger headers consume event lists before the owning-table `ON`, and PostgreSQL constraint triggers consume their referenced-table `FROM`. Malformed definition objects fail closed to LOW/manual without aborting stable siblings.
+- Eleventh follow-up gates: focused 5 suites / 144 tests / 0 skips; Task 1-10 matrix 36 suites / 363 tests / 2 documented live skips; clean full+jlink 111 suites / 782 tests / 3 documented live skips; explicit no-credential live gate 6 tests / 2 skips; all zero failures/errors.
+- Implementation/report commits will be recorded by the main controller after independent commits. No amend/push/tag/live DB.

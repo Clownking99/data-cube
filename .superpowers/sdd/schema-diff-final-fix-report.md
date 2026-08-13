@@ -1,5 +1,30 @@
 # Schema Diff 累计终审统一修复报告
 
+## 第十一次累计复审 follow-up（2026-08-13）
+
+- 状态：第十一次累计 review 的唯一 umbrella Critical 已按 TDD 修复并完成 fresh gates，等待独立累计 reviewer；本报告不自行标记 Ready。
+- `SqlScopeAwareOwnerRewriter` 现在按同层 statement state 消费 query/DML relation clause；`IS [NOT] DISTINCT FROM` 作为 value grammar 整体跳过，不再把右操作数误认 relation。trigger header 从 `CREATE [OR REPLACE] [EDITIONABLE|NONEDITIONABLE] [CONSTRAINT] TRIGGER` 开始完整消费 timing、event list、`UPDATE OF`、`ON` target，以及 PostgreSQL constraint trigger 可选 `FROM` referenced table；event `UPDATE`/`DELETE` 不进入普通 DML state，重复非法 `FROM` fail closed。
+- PostgreSQL view/trigger reader 均实际执行 owner-aware comparison proof；无法证明的单一 definition object 保留原文并降 `DefinitionConfidence.LOW`，projector 生成对象特异 manual projection，planner 为 MANUAL/default-unselected，renderer 固定拒绝，且不会终止同一 snapshot 中其他稳定对象的比较。
+- PG/Oracle direct tests 与真实 JDBC reader → comparison projector → engine → planner → renderer → simulated reread 覆盖 DISTINCT/NOT DISTINCT、UPDATE/INSERT OR UPDATE trigger、PG constraint trigger referenced table；既有 EXTRACT、EXECUTE USING、JOIN USING/body ON、procedural INTO、INSERT/MERGE/DELETE、CTE/LATERAL 正例均保留。
+
+### 第十一次 follow-up TDD RED → GREEN
+
+1. RED：原实现将 `IS [NOT] DISTINCT FROM` 的 `FROM` 当 relation source；trigger event `UPDATE` 抢先进入 DML scanner并跳过真正 header `ON`；合法 PG constraint trigger `FROM referenced_table` 无法投影。新增 direct 与 JDBC 闭环测试在旧实现上见证这些错误。
+2. GREEN：引入按 parentheses depth 隔离的 `StatementState` 与完整 trigger-header consumer；DISTINCT predicate、header target 和 referenced table 按各自 grammar 消费，renderer/projector 继续共享同一 rewriter。
+3. Fail-closed follow-up：fresh focused 首轮 144 tests 中 1 个失败揭示 reader 把 malformed view `SELECT * FROM app.` 固定标为 HIGH。`readViews` 改为执行实际 comparison proof，异常降 LOW；窄单测 fresh 1/1 GREEN，随后五类 focused 144/144 GREEN。
+4. Coverage：PG constraint trigger direct/reader 闭环断言 `ON`、`FROM`、function owner retarget 与 second diff 全 EQUIVALENT；两 provider DISTINCT value owner保持、relation owner替换；歧义 fixture 断言 LOW、MANUAL_ONLY、MANUAL、默认不选择、固定 renderer refusal及稳定对象继续比较。
+
+### 第十一次 follow-up fresh verification
+
+- Implementation/report commits：由主控在提交完成后记录；最终累计 review range 必须为 `3d8c40b..HEAD` 并包含实现与本报告/progress。
+- Focused：PG/Oracle renderer+reader 与 cross-owner 5 suites / 144 tests / 0 failures / 0 errors / 0 skips，使用 `--rerun-tasks --no-build-cache`。
+- Task 1–10 matrix：36 suites / 363 tests / 0 failures / 0 errors / 2 documented relational live skips。
+- Clean full+jlink：111 suites / 782 tests / 0 failures / 0 errors / 3 documented live skips；`BUILD SUCCESSFUL`。
+- Explicit no-credential live gate：1 suite / 6 tests / 0 failures / 0 errors / 2 exact skips；显式移除 write gate 与 PG/Oracle provider env，未尝试连接。
+- Image：Windows/Unix launchers 与 runtime 存在；`DataCube.bat` 包含 `-Xms16m -Xmx256m -XX:+UseG1GC`。
+- CodeGraph：370 files / 10,353 nodes / 33,693 edges，index current；`git diff --check`/staged check 通过，`gradlew` mode `100755`。
+- Added-line sensitive scan 的 3 个命中均为预期私有 manual marker/隔离断言，无 endpoint/credential。未连接 live DB，未读取 saved connection；`.testagent/` 保持 pre-existing untracked，未读取、修改或暂存。未 amend/push/tag。
+
 ## 第十次累计复审 follow-up（2026-08-13）
 
 - 状态：第十轮唯一 Critical 已按 TDD 窄修并完成 fresh gates，等待独立累计 reviewer；本报告不自行标记 Ready。

@@ -8,7 +8,7 @@
 
 **Tech Stack:** JDK 25、Java records/sealed interfaces、JDBC、JavaFX 25、Gradle、JUnit 5、JDK 虚拟线程、现有 `FxTaskRunner` / `JdbcEditorSession` / `ContentTabPane` 生命周期框架。
 
-## 实施状态与证据（2026-08-12）
+## 实施状态与证据（2026-08-13）
 
 - [x] Task 1：不可变 snapshot 模型与稳定 fingerprint 已实施；最终 focused 11 tests，完整证据见 `.superpowers/sdd/schema-diff-task-1-report.md`。
 - [x] Task 2：语义 diff、完整性降级、稳定 rename suggestion 与安全摘要已实施；最终 focused 34 tests，证据见 Task 2 report。
@@ -20,12 +20,13 @@
 - [x] Task 8：并行 dedicated snapshot、fresh fingerprint 门禁、稳定确认 token、逐项 fail-fast 部署与取消终态已实施；最终 focused 37 tests，证据见 Task 8 report。
 - [x] Task 9：JavaFX 入口、筛选/选择/确认/导出/部署、失败审查上下文与受管关闭已实施；最终 focused 52 tests，证据见 Task 9 report。
 - [x] Task 10：README/设计状态、opt-in live gate、精确 disposable cleanup、手动 provider workflow 与本地发布门禁已实施；fresh `clean test jlink --warning-mode fail` 为 110 suites / 704 tests / 0 failures / 3 documented skips，Windows linked image 与 G1/16MB/256MB launcher 已验证。
+- [x] 第十一次累计审查修复：statement/clause consumer 已区分 `IS [NOT] DISTINCT FROM` 与 relation `FROM`，完整消费 trigger event/`ON` 及 PostgreSQL constraint trigger referenced-table `FROM`；无法证明的 view/trigger 对象级降 LOW/manual。Fresh focused 5 suites / 144 tests、Task 1–10 matrix 36 suites / 363 tests、clean full+jlink 111 suites / 782 tests，均 0 failures/errors；累计独立 re-review 尚待执行。
 
 未执行且不得误报为完成的外部发布步骤：
 
 - [ ] PostgreSQL/Oracle 真实关系库 live smoke：未提供已授权的一次性端点；本地两个 provider 用例均为真实 JUnit skip，保留为 release residual。
 - [ ] GitHub Actions 手动 Schema Diff workflow：未触发。
-- [ ] 累计分支审查：由 Task 10 提交后的 controller 执行。
+- [ ] 第十一次修复后的累计分支 re-review：由 controller 在实现与报告提交后执行。
 - [ ] push、tag 或 release publication：未执行，等待用户授权。
 
 ## Global Constraints
