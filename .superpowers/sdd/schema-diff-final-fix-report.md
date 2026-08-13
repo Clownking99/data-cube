@@ -2,7 +2,7 @@
 
 ## 第十一次累计复审 follow-up（2026-08-13）
 
-- 状态：第十一次累计 review 的唯一 umbrella Critical 已按 TDD 修复并完成 fresh gates，等待独立累计 reviewer；本报告不自行标记 Ready。
+- 状态：第十一次累计 review 的唯一 umbrella Critical 已按 TDD 修复并完成 fresh gates；第十二次 fresh 独立累计终审为 0 Critical / 0 Important / 0 Minor，Spec PASS、Quality APPROVED、Ready Yes。
 - `SqlScopeAwareOwnerRewriter` 现在按同层 statement state 消费 query/DML relation clause；`IS [NOT] DISTINCT FROM` 作为 value grammar 整体跳过，不再把右操作数误认 relation。trigger header 从 `CREATE [OR REPLACE] [EDITIONABLE|NONEDITIONABLE] [CONSTRAINT] TRIGGER` 开始完整消费 timing、event list、`UPDATE OF`、`ON` target，以及 PostgreSQL constraint trigger 可选 `FROM` referenced table；event `UPDATE`/`DELETE` 不进入普通 DML state，重复非法 `FROM` fail closed。
 - PostgreSQL view/trigger reader 均实际执行 owner-aware comparison proof；无法证明的单一 definition object 保留原文并降 `DefinitionConfidence.LOW`，projector 生成对象特异 manual projection，planner 为 MANUAL/default-unselected，renderer 固定拒绝，且不会终止同一 snapshot 中其他稳定对象的比较。
 - PG/Oracle direct tests 与真实 JDBC reader → comparison projector → engine → planner → renderer → simulated reread 覆盖 DISTINCT/NOT DISTINCT、UPDATE/INSERT OR UPDATE trigger、PG constraint trigger referenced table；既有 EXTRACT、EXECUTE USING、JOIN USING/body ON、procedural INTO、INSERT/MERGE/DELETE、CTE/LATERAL 正例均保留。
@@ -16,7 +16,7 @@
 
 ### 第十一次 follow-up fresh verification
 
-- Implementation/report commits：由主控在提交完成后记录；最终累计 review range 必须为 `3d8c40b..HEAD` 并包含实现与本报告/progress。
+- Implementation/report commits：实现 `e73d839`，报告/计划 `d14b9fd`；第十二次累计 review range 为 `3d8c40b..d14b9fd`。
 - Focused：PG/Oracle renderer+reader 与 cross-owner 5 suites / 144 tests / 0 failures / 0 errors / 0 skips，使用 `--rerun-tasks --no-build-cache`。
 - Task 1–10 matrix：36 suites / 363 tests / 0 failures / 0 errors / 2 documented relational live skips。
 - Clean full+jlink：111 suites / 782 tests / 0 failures / 0 errors / 3 documented live skips；`BUILD SUCCESSFUL`。

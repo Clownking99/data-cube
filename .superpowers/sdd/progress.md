@@ -20,8 +20,8 @@
 
 ## Cumulative review
 
-- Status: eleventh cumulative-review umbrella Critical fixed locally; cumulative re-review pending, not self-declared Ready.
+- Status: complete; twelfth fresh cumulative review found 0 Critical / 0 Important / 0 Minor; Spec PASS, Quality APPROVED, Ready Yes.
 - Fresh cumulative review range: `3d8c40b..HEAD`; use the actual HEAD reported after the report/progress commit so the range includes both implementation and verification evidence.
 - Finding closed by TDD: statement/clause consumption now distinguishes query relation `FROM` from `IS [NOT] DISTINCT FROM`; trigger headers consume event lists before the owning-table `ON`, and PostgreSQL constraint triggers consume their referenced-table `FROM`. Malformed definition objects fail closed to LOW/manual without aborting stable siblings.
 - Eleventh follow-up gates: focused 5 suites / 144 tests / 0 skips; Task 1-10 matrix 36 suites / 363 tests / 2 documented live skips; clean full+jlink 111 suites / 782 tests / 3 documented live skips; explicit no-credential live gate 6 tests / 2 skips; all zero failures/errors.
-- Implementation/report commits will be recorded by the main controller after independent commits. No amend/push/tag/live DB.
+- Eleventh follow-up commits: implementation `e73d839`, report/plan `d14b9fd`. No amend/push/tag/live DB.
