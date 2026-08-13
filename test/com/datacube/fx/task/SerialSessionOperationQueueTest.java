@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -159,6 +160,43 @@ class SerialSessionOperationQueueTest {
             assertTrue(callback.await(2, TimeUnit.SECONDS));
             queue.reopen();
             assertEquals("visible-result", visibleResult.get());
+        }
+    }
+
+    @Test
+    void failedCurrentOperationSettlesIdleBeforePublishingTerminalCallback() throws Exception {
+        CountDownLatch operationStarted = new CountDownLatch(1);
+        CountDownLatch releaseOperation = new CountDownLatch(1);
+        CountDownLatch callbackDispatchStarted = new CountDownLatch(1);
+        CountDownLatch releaseCallbackDispatch = new CountDownLatch(1);
+
+        try (FxTaskRunner runner = new FxTaskRunner();
+             SerialSessionOperationQueue queue = new SerialSessionOperationQueue(runner, callback -> {
+                 callbackDispatchStarted.countDown();
+                 try {
+                     releaseCallbackDispatch.await();
+                 } catch (InterruptedException interrupted) {
+                     Thread.currentThread().interrupt();
+                 }
+             })) {
+            var execute = queue.submit(SerialSessionOperationQueue.OperationKind.EXECUTE, () -> {
+                operationStarted.countDown();
+                releaseOperation.await();
+                throw new IllegalStateException("closing");
+            }, ignored -> {}, ignored -> {});
+            assertTrue(operationStarted.await(2, TimeUnit.SECONDS));
+
+            var idle = queue.stopAcceptingAndCancelQueued().toCompletableFuture();
+            releaseOperation.countDown();
+
+            assertThrows(ExecutionException.class, () -> execute.get(2, TimeUnit.SECONDS));
+            assertTrue(callbackDispatchStarted.await(2, TimeUnit.SECONDS));
+            try {
+                assertTrue(idle.isDone(),
+                        "worker completion must not depend on terminal callback publication");
+            } finally {
+                releaseCallbackDispatch.countDown();
+            }
         }
     }
 

@@ -14,9 +14,10 @@ import javafx.application.Platform;
 import javafx.scene.control.CheckBoxTreeItem;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
+import java.awt.GraphicsEnvironment;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,6 +26,8 @@ import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -32,15 +35,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SchemaDiffPaneContractTest {
 
-    @BeforeAll
-    static void startFxToolkit() throws Exception {
+    @Test
+    void headlessAdmissionNeverInvokesFxToolkitStartup() throws Exception {
+        AtomicInteger startupCalls = new AtomicInteger();
+
+        boolean initialized = startFxToolkitIfDisplayAvailable(
+                () -> false,
+                ready -> {
+                    startupCalls.incrementAndGet();
+                    ready.run();
+                });
+
+        assertFalse(initialized);
+        assertEquals(0, startupCalls.get());
+    }
+
+    private static void requireFxToolkit() throws Exception {
+        boolean initialized = startFxToolkitIfDisplayAvailable(
+                () -> !GraphicsEnvironment.isHeadless(), Platform::startup);
+        Assumptions.assumeTrue(initialized,
+                "JavaFX control contract requires an available display");
+    }
+
+    private static boolean startFxToolkitIfDisplayAvailable(
+            BooleanSupplier displayAvailable, FxToolkitStarter starter) throws Exception {
+        if (!displayAvailable.getAsBoolean()) return false;
         CountDownLatch started = new CountDownLatch(1);
         try {
-            Platform.startup(started::countDown);
+            starter.start(started::countDown);
         } catch (IllegalStateException alreadyStarted) {
             started.countDown();
         }
-        assertTrue(started.await(5, TimeUnit.SECONDS));
+        return started.await(5, TimeUnit.SECONDS);
+    }
+
+    @FunctionalInterface
+    private interface FxToolkitStarter {
+        void start(Runnable ready);
     }
 
     @Test
@@ -129,7 +160,8 @@ class SchemaDiffPaneContractTest {
     }
 
     @Test
-    void terminalTreeRefreshRestoresTheSelectedReviewRowForDetailsAndDiagnostics() {
+    void terminalTreeRefreshRestoresTheSelectedReviewRowForDetailsAndDiagnostics() throws Exception {
+        requireFxToolkit();
         SchemaChange change = new SchemaChange(
                 "chg:" + "f".repeat(64), ChangeKind.CREATE,
                 new ObjectKey(ObjectType.TABLE,

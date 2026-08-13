@@ -126,6 +126,13 @@ public final class SerialSessionOperationQueue implements AutoCloseable {
         scheduleNext();
     }
 
+    private synchronized boolean finishBeforeCallbackIfStopped(QueuedOperation<?> operation) {
+        if (accepting || current != operation) return false;
+        current = null;
+        scheduleNext();
+        return true;
+    }
+
     private void dispatch(Runnable callback) {
         synchronized (this) {
             if (!callbacksEnabled) return;
@@ -171,15 +178,23 @@ public final class SerialSessionOperationQueue implements AutoCloseable {
         }
 
         private void run() {
+            Runnable terminalCallback = null;
+            boolean finishedBeforeCallback = false;
             try {
-                if (completion.isCancelled()) return;
-                T value = operation.call();
-                if (completion.complete(value)) dispatch(() -> success.accept(value));
-            } catch (Throwable error) {
-                if (error instanceof InterruptedException) Thread.currentThread().interrupt();
-                if (completion.completeExceptionally(error)) dispatch(() -> failure.accept(error));
+                try {
+                    if (completion.isCancelled()) return;
+                    T value = operation.call();
+                    if (completion.complete(value)) terminalCallback = () -> success.accept(value);
+                } catch (Throwable error) {
+                    if (error instanceof InterruptedException) Thread.currentThread().interrupt();
+                    if (completion.completeExceptionally(error)) {
+                        terminalCallback = () -> failure.accept(error);
+                    }
+                }
+                finishedBeforeCallback = finishBeforeCallbackIfStopped(this);
+                if (terminalCallback != null) dispatch(terminalCallback);
             } finally {
-                finished(this);
+                if (!finishedBeforeCallback) finished(this);
             }
         }
     }
