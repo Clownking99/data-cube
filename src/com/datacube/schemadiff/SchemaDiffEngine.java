@@ -75,10 +75,10 @@ public final class SchemaDiffEngine {
             if (isUnavailable(source, resultKey) || isUnavailable(target, resultKey)) {
                 differences.add(unsupported(resultKey, sourceObject, targetObject));
             } else if (sourceComparison == null) {
-                differences.add(extra(resultKey, targetObject));
+                differences.add(extra(resultKey, targetComparison, targetObject));
                 extra.add(new ProjectedObject(targetComparison, targetObject));
             } else if (targetComparison == null) {
-                differences.add(missing(resultKey, sourceObject));
+                differences.add(missing(resultKey, sourceComparison, sourceObject));
                 missing.add(new ProjectedObject(sourceComparison, sourceObject));
             } else {
                 differences.add(compareMatched(resultKey, sourceComparison, targetComparison,
@@ -110,16 +110,18 @@ public final class SchemaDiffEngine {
                 "Metadata for this object type is unavailable in at least one snapshot");
     }
 
-    private static SchemaDifference missing(ObjectKey key, SchemaObject source) {
-        boolean highConfidence = isHighConfidence(source);
+    private static SchemaDifference missing(
+            ObjectKey key, SchemaObject sourceComparison, SchemaObject source) {
+        boolean highConfidence = isHighConfidence(sourceComparison) && isHighConfidence(source);
         return new SchemaDifference(DifferenceKind.MISSING_IN_TARGET, key, source, null, List.of(),
                 highConfidence ? RiskLevel.LOW : RiskLevel.HIGH,
                 highConfidence ? AutomationLevel.SAFE_AUTOMATIC : AutomationLevel.MANUAL_ONLY,
                 source.dependencies(), "Object is missing from the target snapshot");
     }
 
-    private static SchemaDifference extra(ObjectKey key, SchemaObject target) {
-        boolean highConfidence = isHighConfidence(target);
+    private static SchemaDifference extra(
+            ObjectKey key, SchemaObject targetComparison, SchemaObject target) {
+        boolean highConfidence = isHighConfidence(targetComparison) && isHighConfidence(target);
         return new SchemaDifference(DifferenceKind.EXTRA_IN_TARGET, key, null, target, List.of(),
                 highConfidence ? RiskLevel.CRITICAL : RiskLevel.HIGH,
                 highConfidence ? AutomationLevel.DESTRUCTIVE_OPT_IN : AutomationLevel.MANUAL_ONLY,

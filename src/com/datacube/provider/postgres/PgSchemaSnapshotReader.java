@@ -664,7 +664,14 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
             String original = body == null || body.isBlank() ? null : "CREATE "
                     + (type == ObjectType.MATERIALIZED_VIEW ? "MATERIALIZED VIEW " : "VIEW ")
                     + key.name().original() + " AS\n" + body;
-            state.addDefinition(key, original, DefinitionConfidence.HIGH);
+            DefinitionConfidence confidence;
+            try {
+                PgSchemaChangeRenderer.comparisonDefinition(original, type, state.schema);
+                confidence = DefinitionConfidence.HIGH;
+            } catch (IllegalArgumentException failure) {
+                confidence = DefinitionConfidence.LOW;
+            }
+            state.addDefinition(key, original, confidence);
             state.mapOid("pg_class", oid, key);
             mapTypeAliases(rows, state, key);
         }
@@ -698,7 +705,16 @@ public final class PgSchemaSnapshotReader implements SchemaSnapshotReader {
                     ? (parent == null ? "" : parent.name().comparisonKey())
                     : PgSchemaIdentifierNormalizer.object(state.schema, relationName).comparisonKey();
             ObjectKey key = state.key(ObjectType.TRIGGER, rows.getString("object_name"), signature);
-            state.addDefinition(key, rows.getString("definition"), DefinitionConfidence.HIGH);
+            String definition = rows.getString("definition");
+            DefinitionConfidence confidence;
+            try {
+                PgSchemaChangeRenderer.comparisonDefinition(
+                        definition, ObjectType.TRIGGER, state.schema);
+                confidence = DefinitionConfidence.HIGH;
+            } catch (IllegalArgumentException failure) {
+                confidence = DefinitionConfidence.LOW;
+            }
+            state.addDefinition(key, definition, confidence);
             state.mapOid("pg_trigger", oid, key);
             if (parent != null) state.addDependency(key, parent);
         }

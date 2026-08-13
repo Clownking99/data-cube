@@ -1226,31 +1226,84 @@ public final class SqlScopeAwareOwnerRewriter {
             int[] nestingDepth, String source, Dialect dialect, Set<Integer> proven,
             Set<Integer> relationOwners) {
         collectCtes(scope, tokens, parentheses, dialect);
-        int triggerOn = triggerHeaderOn(tokens, nestingDepth);
+        int triggerEnd = -1;
+        TriggerHeader trigger = scope.parent == null
+                ? triggerHeader(tokens, nestingDepth) : null;
+        if (trigger != null) {
+            triggerEnd = parseRelation(scope, tokens, parentheses, trigger.on() + 1,
+                    source, dialect, proven, relationOwners);
+            if (trigger.constraint() && dialect == Dialect.POSTGRESQL
+                    && keyword(tokens, triggerEnd, "FROM")) {
+                triggerEnd = parseRelation(scope, tokens, parentheses, triggerEnd + 1,
+                        source, dialect, proven, relationOwners);
+                if (keyword(tokens, triggerEnd, "FROM")) throw new IllegalArgumentException();
+            }
+        }
+        Map<Integer, StatementState> statements = new HashMap<>();
         for (int index = scope.start; index < scope.end; index++) {
             if (innermost(scope, index) != scope) continue;
-            String keyword = tokens.get(index).keyword();
-            boolean query = queryAtDepthBefore(tokens, nestingDepth, index);
-            boolean relation = keyword.equals("FROM") && query
-                    || keyword.equals("JOIN") && query
-                    || keyword.equals("UPDATE") && statementKeywordAt(
-                            tokens, nestingDepth, index, "UPDATE")
-                    || keyword.equals("USING") && (statementKeywordAt(
-                            tokens, nestingDepth, index, "MERGE")
-                            || statementKeywordAt(tokens, nestingDepth, index, "DELETE"))
-                    || index == triggerOn;
-            if (keyword.equals("DELETE") && keyword(tokens, index + 1, "FROM")) {
-                index++;
-                relation = true;
-            } else if (keyword.equals("INSERT") && keyword(tokens, index + 1, "INTO")) {
-                index++;
-                relation = true;
-            } else if (keyword.equals("MERGE") && keyword(tokens, index + 1, "INTO")) {
-                index++;
-                relation = true;
+            if (index < triggerEnd) continue;
+            int depth = nestingDepth[index];
+            StatementState statement = statements.computeIfAbsent(
+                    depth, ignored -> new StatementState());
+            if (symbol(tokens, index, ";")) {
+                statements.remove(depth);
+                continue;
             }
-            if (!relation) continue;
-            int next = parseRelation(scope, tokens, parentheses, index + 1,
+            int distinctFrom = distinctFrom(tokens, index);
+            if (distinctFrom >= 0) {
+                index = distinctFrom;
+                continue;
+            }
+            if (keyword(tokens, index, "SELECT") || keyword(tokens, index, "PERFORM")) {
+                statement.start(StatementKind.QUERY);
+                continue;
+            }
+            if (keyword(tokens, index, "EXECUTE")) {
+                statement.start(StatementKind.NONE);
+                continue;
+            }
+
+            int introducer = -1;
+            if (keyword(tokens, index, "INSERT") && keyword(tokens, index + 1, "INTO")) {
+                statement.start(StatementKind.INSERT);
+                introducer = ++index;
+            } else if (keyword(tokens, index, "MERGE")
+                    && keyword(tokens, index + 1, "INTO")) {
+                statement.start(StatementKind.MERGE);
+                introducer = ++index;
+            } else if (keyword(tokens, index, "DELETE")
+                    && keyword(tokens, index + 1, "FROM")) {
+                statement.start(StatementKind.DELETE);
+                introducer = ++index;
+            } else if (keyword(tokens, index, "UPDATE")
+                    && !keyword(tokens, index + 1, "SET")
+                    && !keyword(tokens, index + 1, "OF")
+                    && !keyword(tokens, index + 1, "ON")) {
+                statement.start(StatementKind.UPDATE);
+                introducer = index;
+            } else if (keyword(tokens, index, "FROM")
+                    && statement.kind == StatementKind.QUERY) {
+                introducer = index;
+            } else if (keyword(tokens, index, "JOIN")
+                    && statement.kind != StatementKind.NONE) {
+                introducer = index;
+                statement.join = true;
+            } else if (keyword(tokens, index, "USING")
+                    && statement.join) {
+                statement.join = false;
+                continue;
+            } else if (keyword(tokens, index, "USING")
+                    && !statement.sourceUsing
+                    && (statement.kind == StatementKind.DELETE
+                            || statement.kind == StatementKind.MERGE)) {
+                introducer = index;
+                statement.sourceUsing = true;
+            } else if (keyword(tokens, index, "ON") || keyword(tokens, index, "WHERE")) {
+                statement.join = false;
+            }
+            if (introducer < 0) continue;
+            int next = parseRelation(scope, tokens, parentheses, introducer + 1,
                     source, dialect, proven, relationOwners);
             while (symbol(tokens, next, ",")) {
                 next = parseRelation(scope, tokens, parentheses, next + 1,
@@ -1264,54 +1317,82 @@ public final class SqlScopeAwareOwnerRewriter {
         }
     }
 
-    private static boolean queryAtDepthBefore(
-            List<Token> tokens, int[] nestingDepth, int index) {
-        int depth = nestingDepth[index];
-        for (int cursor = index - 1; cursor >= 0; cursor--) {
-            if (nestingDepth[cursor] != depth) continue;
-            if (symbol(tokens, cursor, ";")) return false;
-            if (keyword(tokens, cursor, "SELECT") || keyword(tokens, cursor, "PERFORM")
-                    || keyword(tokens, cursor, "UPDATE") || keyword(tokens, cursor, "DELETE")
-                    || keyword(tokens, cursor, "MERGE")) {
-                return true;
-            }
-        }
-        return false;
+    private static int distinctFrom(List<Token> tokens, int index) {
+        if (!keyword(tokens, index, "IS")) return -1;
+        int cursor = index + 1;
+        if (keyword(tokens, cursor, "NOT")) cursor++;
+        return keyword(tokens, cursor, "DISTINCT") && keyword(tokens, cursor + 1, "FROM")
+                ? cursor + 1 : -1;
     }
 
-    private static boolean statementKeywordAt(
-            List<Token> tokens, int[] nestingDepth, int index, String expected) {
-        int depth = nestingDepth[index];
-        for (int cursor = index; cursor >= 0; cursor--) {
-            if (nestingDepth[cursor] != depth) continue;
-            if (symbol(tokens, cursor, ";")) return false;
-            if (keyword(tokens, cursor, expected)) return true;
-            if (Set.of("SELECT", "PERFORM", "INSERT", "UPDATE", "DELETE", "MERGE",
-                    "EXECUTE").contains(tokens.get(cursor).keyword())) return false;
-        }
-        return false;
-    }
-
-    private static int triggerHeaderOn(List<Token> tokens, int[] nestingDepth) {
+    private static TriggerHeader triggerHeader(List<Token> tokens, int[] nestingDepth) {
         int trigger = definitionNoun(tokens, "TRIGGER");
-        if (trigger < 0) return -1;
-        int name = trigger + 1;
-        if (name + 2 < tokens.size() && symbol(tokens, name + 1, ".")) name += 2;
-        if (name >= tokens.size() || !tokens.get(name).identifier()) {
+        if (trigger < 0) return null;
+        boolean constraint = keyword(tokens, trigger - 1, "CONSTRAINT");
+        int cursor = qualifiedIdentifierEnd(tokens, trigger + 1);
+        if (keyword(tokens, cursor, "BEFORE") || keyword(tokens, cursor, "AFTER")) cursor++;
+        else if (keyword(tokens, cursor, "INSTEAD") && keyword(tokens, cursor + 1, "OF")) cursor += 2;
+        else throw new IllegalArgumentException();
+        int depth = nestingDepth[trigger];
+        boolean event = false;
+        while (cursor < tokens.size() && nestingDepth[cursor] == depth) {
+            if (Set.of("INSERT", "DELETE", "TRUNCATE", "LOGON", "LOGOFF", "STARTUP",
+                    "SHUTDOWN", "SERVERERROR", "DDL").contains(tokens.get(cursor).keyword())) {
+                event = true;
+                cursor++;
+            } else if (keyword(tokens, cursor, "UPDATE")) {
+                event = true;
+                cursor++;
+                if (keyword(tokens, cursor, "OF")) {
+                    cursor++;
+                    if (cursor >= tokens.size() || !tokens.get(cursor).identifier()) {
+                        throw new IllegalArgumentException();
+                    }
+                    while (cursor < tokens.size() && tokens.get(cursor).identifier()) {
+                        cursor++;
+                        if (!symbol(tokens, cursor, ",")) break;
+                        cursor++;
+                    }
+                }
+            } else {
+                throw new IllegalArgumentException();
+            }
+            if (keyword(tokens, cursor, "ON")) {
+                if (!event) throw new IllegalArgumentException();
+                return new TriggerHeader(cursor, constraint);
+            }
+            if (!keyword(tokens, cursor, "OR")) throw new IllegalArgumentException();
+            cursor++;
+        }
+        throw new IllegalArgumentException();
+    }
+
+    private static int qualifiedIdentifierEnd(List<Token> tokens, int start) {
+        if (start >= tokens.size() || !tokens.get(start).identifier()) {
             throw new IllegalArgumentException();
         }
-        int depth = nestingDepth[trigger];
-        int found = -1;
-        for (int index = name + 1; index < tokens.size(); index++) {
-            if (nestingDepth[index] != depth) continue;
-            if (keyword(tokens, index, "DECLARE") || keyword(tokens, index, "BEGIN")
-                    || keyword(tokens, index, "EXECUTE")) break;
-            if (!keyword(tokens, index, "ON")) continue;
-            if (found >= 0) throw new IllegalArgumentException();
-            found = index;
+        if (!symbol(tokens, start + 1, ".")) return start + 1;
+        if (start + 2 >= tokens.size() || !tokens.get(start + 2).identifier()) {
+            throw new IllegalArgumentException();
         }
-        if (found < 0) throw new IllegalArgumentException();
-        return found;
+        return start + 3;
+    }
+
+    private enum StatementKind { NONE, QUERY, INSERT, UPDATE, DELETE, MERGE }
+
+    private static final class StatementState {
+        private StatementKind kind = StatementKind.NONE;
+        private boolean sourceUsing;
+        private boolean join;
+
+        private void start(StatementKind next) {
+            kind = next;
+            sourceUsing = false;
+            join = false;
+        }
+    }
+
+    private record TriggerHeader(int on, boolean constraint) {
     }
 
     private static int definitionNoun(List<Token> tokens, String noun) {

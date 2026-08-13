@@ -73,14 +73,16 @@ final class PgSchemaComparisonProjector implements SchemaComparisonProjector {
             String projected = normalized;
             DefinitionConfidence confidence = definition.confidence();
             if (normalized != null) {
-                try {
-                    projected = PgSchemaChangeRenderer.comparisonDefinition(
-                            normalized, definition.key().type(), selfOwner);
-                } catch (IllegalArgumentException failure) {
-                    if (definition.key().type() != ObjectType.FUNCTION
-                            && definition.key().type() != ObjectType.PROCEDURE) throw failure;
-                    projected = manualDefinitionMarker(normalized);
-                    confidence = DefinitionConfidence.LOW;
+                if (confidence == DefinitionConfidence.LOW) {
+                    projected = manualDefinitionMarker(definition, selfOwner);
+                } else {
+                    try {
+                        projected = PgSchemaChangeRenderer.comparisonDefinition(
+                                normalized, definition.key().type(), selfOwner);
+                    } catch (IllegalArgumentException failure) {
+                        projected = manualDefinitionMarker(definition, selfOwner);
+                        confidence = DefinitionConfidence.LOW;
+                    }
                 }
             }
             return new DefinitionObject(projectKey(definition.key(), selfOwner),
@@ -191,12 +193,15 @@ final class PgSchemaComparisonProjector implements SchemaComparisonProjector {
         return new IllegalArgumentException(INVALID);
     }
 
-    private static String manualDefinitionMarker(String definition) {
+    private static String manualDefinitionMarker(DefinitionObject definition, String selfOwner) {
         try {
+            String value = selfOwner + '\0' + definition.key().type() + '\0'
+                    + definition.key().name().comparisonKey() + '\0' + definition.key().signature()
+                    + '\0' + String.valueOf(definition.normalizedDefinition());
             byte[] hash = MessageDigest.getInstance("SHA-256")
-                    .digest(definition.getBytes(StandardCharsets.UTF_8));
+                    .digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder marker = new StringBuilder("pg-manual-definition-v1:");
-            for (byte value : hash) marker.append(String.format("%02x", value));
+            for (byte element : hash) marker.append(String.format("%02x", element));
             return marker.toString();
         } catch (NoSuchAlgorithmException failure) {
             throw new IllegalStateException("Definition digest is unavailable", failure);

@@ -797,6 +797,10 @@ class PgSchemaChangeRendererTest {
                 DECLARE rec record; bind_rec record;
                 BEGIN
                   rec.value := EXTRACT(YEAR FROM "Source".rec.value);
+                  PERFORM selected.id FROM "Source".orders selected
+                    WHERE selected.left_value IS DISTINCT FROM "Source".rec.right_value;
+                  PERFORM selected.id FROM "Source".orders selected
+                    WHERE selected.left_value IS NOT DISTINCT FROM "Source".rec.right_value;
                   EXECUTE 'SELECT 1' USING "Source".bind_rec.value;
                   PERFORM selected.id
                     FROM "Source".orders selected
@@ -817,6 +821,10 @@ class PgSchemaChangeRendererTest {
         assertTrue(projected.contains(
                 "EXTRACT(YEAR FROM \"Source\".rec.value)"), projected);
         assertTrue(projected.contains(
+                "selected.left_value IS DISTINCT FROM \"Source\".rec.right_value"), projected);
+        assertTrue(projected.contains(
+                "selected.left_value IS NOT DISTINCT FROM \"Source\".rec.right_value"), projected);
+        assertTrue(projected.contains(
                 "EXECUTE 'SELECT 1' USING \"Source\".bind_rec.value"), projected);
         assertTrue(projected.contains(
                 "USING (\"Source\".rec)"), projected);
@@ -830,6 +838,29 @@ class PgSchemaChangeRendererTest {
                 "FROM LATERAL (SELECT id FROM \0pg-self-owner\0.lateral_orders)"), projected);
         assertTrue(projected.contains(
                 "DELETE FROM \0pg-self-owner\0.archive"), projected);
+    }
+
+    @Test
+    void triggerHeaderConsumesEventsOnTargetAndConstraintReferencedTable() {
+        for (String ddl : List.of(
+                "CREATE TRIGGER update_trg AFTER UPDATE ON \"Source\".orders "
+                        + "EXECUTE FUNCTION \"Source\".audit_fn()",
+                "CREATE TRIGGER insert_update_trg AFTER INSERT OR UPDATE ON \"Source\".orders "
+                        + "EXECUTE FUNCTION \"Source\".audit_fn()")) {
+            String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                    ddl, ObjectType.TRIGGER, "Source");
+            assertTrue(projected.contains("ON \0pg-self-owner\0.orders"), projected);
+            assertTrue(projected.contains("FUNCTION \0pg-self-owner\0.audit_fn()"), projected);
+        }
+
+        String constraint = "CREATE CONSTRAINT TRIGGER parent_guard AFTER INSERT "
+                + "ON \"Source\".orders FROM \"Source\".parent DEFERRABLE INITIALLY DEFERRED "
+                + "FOR EACH ROW EXECUTE FUNCTION \"Source\".audit_fn()";
+        String projected = PgSchemaChangeRenderer.comparisonDefinition(
+                constraint, ObjectType.TRIGGER, "Source");
+        assertTrue(projected.contains("ON \0pg-self-owner\0.orders"), projected);
+        assertTrue(projected.contains("FROM \0pg-self-owner\0.parent"), projected);
+        assertTrue(projected.contains("FUNCTION \0pg-self-owner\0.audit_fn()"), projected);
     }
 
     @Test

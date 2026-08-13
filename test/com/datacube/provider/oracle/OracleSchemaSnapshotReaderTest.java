@@ -347,6 +347,10 @@ class OracleSchemaSnapshotReaderTest {
                 + "SELECT VALUE BULK COLLECT INTO \"Source\".rec.values "
                 + "FROM \"Source\".orders; "
                 + "\"Source\".rec.value := EXTRACT(YEAR FROM \"Source\".rec.value); "
+                + "SELECT selected.ID INTO rec.value FROM \"Source\".orders selected WHERE "
+                + "selected.left_value IS DISTINCT FROM \"Source\".rec.right_value; "
+                + "SELECT selected.ID INTO rec.value FROM \"Source\".orders selected WHERE "
+                + "selected.left_value IS NOT DISTINCT FROM \"Source\".rec.right_value; "
                 + "EXECUTE IMMEDIATE 'SELECT 1 FROM DUAL' USING \"Source\".rec.value; "
                 + "SELECT selected.ID INTO rec.value FROM \"Source\".orders selected "
                 + "JOIN \"Source\".incoming incoming USING (\"Source\".rec); "
@@ -428,6 +432,10 @@ class OracleSchemaSnapshotReaderTest {
                 "RETURNING VALUE INTO \"Source\".rec.value"), routineSql);
         assertTrue(routineSql.contains(
                 "EXTRACT(YEAR FROM \"Source\".rec.value)"), routineSql);
+        assertTrue(routineSql.contains("selected.left_value IS DISTINCT FROM "
+                + "\"Source\".rec.right_value"), routineSql);
+        assertTrue(routineSql.contains("selected.left_value IS NOT DISTINCT FROM "
+                + "\"Source\".rec.right_value"), routineSql);
         assertTrue(routineSql.contains(
                 "USING \"Source\".rec.value"), routineSql);
         assertTrue(routineSql.contains("FROM \"Target\".orders"), routineSql);
@@ -465,6 +473,48 @@ class OracleSchemaSnapshotReaderTest {
                         && value.object().name().original().equals("ORDER_T"))
                         && value.kind() != DifferenceKind.EQUIVALENT));
         assertFalse((diff + plan.toString() + plan.digest()).contains("oracle-manual-definition"));
+    }
+
+    @Test
+    void updateEventTriggerFlowsThroughReaderProjectionPlanRenderAndSecondDiff() throws Exception {
+        String sourceDdl = "CREATE TRIGGER \"Source\".\"ORDERS_UPDATE\" AFTER INSERT OR UPDATE "
+                + "ON \"Source\".\"ORDERS\" BEGIN \"Source\".\"AUDIT_PKG\".WRITE_ROW(); END;\n/";
+        String targetDdl = sourceDdl.replace("\"Source\"", "\"Target\"");
+        SchemaSnapshot source = new OracleSchemaSnapshotReader(new SnapshotJdbc("Source")
+                .rows("tables", row("table_name", "ORDERS"))
+                .rows("definitions", definitionRow("ORDERS_UPDATE", "TRIGGER", 925, 0,
+                        "Source", "TABLE", "ORDERS"))
+                .ddl("TRIGGER", "ORDERS_UPDATE", sourceDdl).connection()).read(
+                "source", OracleSchemaIdentifierNormalizer.schema("Source"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot empty = new SchemaSnapshot(DbType.ORACLE, "empty",
+                OracleSchemaIdentifierNormalizer.schema("Target"), Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), new TreeMap<>(), "empty");
+        OracleSchemaDiffCapability capability = new OracleSchemaDiffCapability();
+        DefinitionObject trigger = definition(source, ObjectType.TRIGGER,
+                "Source", "ORDERS_UPDATE", "");
+        assertEquals(DefinitionConfidence.HIGH, trigger.confidence());
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, empty, capability.comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+        var change = plan.changes().stream().filter(value -> value.object().type() == ObjectType.TRIGGER)
+                .findFirst().orElseThrow();
+        String sql = capability.changeRenderer().render(change,
+                new RenderContext(DbType.ORACLE, source.schema(), empty.schema(), false))
+                .getFirst().sql();
+        assertTrue(sql.contains("ON \"Target\".\"ORDERS\""), sql);
+        assertTrue(sql.contains("\"Target\".\"AUDIT_PKG\".WRITE_ROW()"), sql);
+
+        SchemaSnapshot target = new OracleSchemaSnapshotReader(new SnapshotJdbc("Target")
+                .rows("tables", row("table_name", "ORDERS"))
+                .rows("definitions", definitionRow("ORDERS_UPDATE", "TRIGGER", 926, 0,
+                        "Target", "TABLE", "ORDERS"))
+                .ddl("TRIGGER", "ORDERS_UPDATE", targetDdl).connection()).read(
+                "target", OracleSchemaIdentifierNormalizer.schema("Target"),
+                SqlExecutionOptions.defaults(0));
+        assertTrue(new SchemaDiffEngine().compare(source, target,
+                        capability.comparisonProjector()).differences().stream()
+                .allMatch(value -> value.kind() == DifferenceKind.EQUIVALENT));
     }
 
     @Test

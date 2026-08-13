@@ -2,6 +2,14 @@ package com.datacube.provider.postgres;
 
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.schemadiff.ObjectType;
+import com.datacube.spi.schemadiff.DefinitionConfidence;
+import com.datacube.spi.schemadiff.DefinitionObject;
+import com.datacube.spi.model.DbType;
+import com.datacube.spi.schemadiff.ObjectKey;
+import com.datacube.spi.schemadiff.SchemaSnapshot;
+import com.datacube.spi.schemadiff.SnapshotCompleteness;
+import com.datacube.spi.schemadiff.AutomationLevel;
+import com.datacube.schemadiff.SchemaDiffEngine;
 import com.datacube.spi.schemadiff.SchemaChangeRenderer;
 import com.datacube.spi.schemadiff.SchemaDiffCapability;
 import com.datacube.spi.schemadiff.SchemaSnapshotReader;
@@ -11,6 +19,9 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -79,6 +90,33 @@ class PgSchemaDiffCapabilityTest {
         assertTrue(provider.supports("jdbc:postgresql://localhost/example"));
         assertSame(provider.dialect(), provider.dialect());
         assertSame(provider.connectionFactory(), provider.connectionFactory());
+    }
+
+    @Test
+    void unprovableHighDefinitionIsProjectedAsObjectSpecificLowInsteadOfThrowing() {
+        ObjectKey key = new ObjectKey(ObjectType.VIEW,
+                PgSchemaIdentifierNormalizer.object("app", "broken"), "");
+        DefinitionObject broken = new DefinitionObject(key,
+                "CREATE VIEW app.broken AS SELECT * FROM app.",
+                "CREATE VIEW app.broken AS SELECT * FROM app.", Set.of(), DefinitionConfidence.HIGH);
+        SortedMap<ObjectKey, com.datacube.spi.schemadiff.SchemaObject> objects = new TreeMap<>();
+        objects.put(key, broken);
+        SchemaSnapshot snapshot = new SchemaSnapshot(DbType.POSTGRESQL, "source",
+                PgSchemaIdentifierNormalizer.schema("app"), Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), objects, "fingerprint");
+
+        DefinitionObject projected = (DefinitionObject) new PgSchemaDiffCapability()
+                .comparisonProjector().project(snapshot).comparisonObjects().values()
+                .iterator().next();
+
+        assertEquals(DefinitionConfidence.LOW, projected.confidence());
+        assertTrue(projected.normalizedDefinition().startsWith("pg-manual-definition-v1:"));
+        SchemaSnapshot empty = new SchemaSnapshot(DbType.POSTGRESQL, "target", snapshot.schema(),
+                Instant.EPOCH, new SnapshotCompleteness(true, new TreeMap<>()),
+                new TreeMap<>(), "empty");
+        assertEquals(AutomationLevel.MANUAL_ONLY, new SchemaDiffEngine().compare(
+                snapshot, empty, new PgSchemaDiffCapability().comparisonProjector())
+                .differences().getFirst().automation());
     }
 
     private static Connection rejectingConnection(AtomicInteger inspections) {

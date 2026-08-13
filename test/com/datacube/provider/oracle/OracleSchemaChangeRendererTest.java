@@ -544,6 +544,10 @@ class OracleSchemaChangeRendererTest {
                     bind_rec "Source"."ORDER_REC";
                   BEGIN
                     rec.value := EXTRACT(YEAR FROM "Source".rec.value);
+                    SELECT selected.ID INTO rec.value FROM "Source".orders selected
+                      WHERE selected.left_value IS DISTINCT FROM "Source".rec.right_value;
+                    SELECT selected.ID INTO rec.value FROM "Source".orders selected
+                      WHERE selected.left_value IS NOT DISTINCT FROM "Source".rec.right_value;
                     EXECUTE IMMEDIATE 'SELECT 1 FROM DUAL'
                       USING "Source".bind_rec.value;
                     SELECT selected.ID INTO rec.value
@@ -565,6 +569,10 @@ class OracleSchemaChangeRendererTest {
         assertTrue(projected.contains(
                 "EXTRACT(YEAR FROM \"Source\".rec.value)"), projected);
         assertTrue(projected.contains(
+                "selected.left_value IS DISTINCT FROM \"Source\".rec.right_value"), projected);
+        assertTrue(projected.contains(
+                "selected.left_value IS NOT DISTINCT FROM \"Source\".rec.right_value"), projected);
+        assertTrue(projected.contains(
                 "USING \"Source\".bind_rec.value"), projected);
         assertTrue(projected.contains(
                 "USING (\"Source\".rec)"), projected);
@@ -578,6 +586,19 @@ class OracleSchemaChangeRendererTest {
                 "FROM LATERAL (SELECT ID FROM \0oracle-self-owner\0.lateral_orders)"), projected);
         assertTrue(projected.contains(
                 "DELETE FROM \0oracle-self-owner\0.archive"), projected);
+    }
+
+    @Test
+    void triggerHeaderConsumesUpdateEventListBeforeOnTarget() {
+        for (String ddl : List.of(
+                "CREATE TRIGGER \"Source\".update_trg AFTER UPDATE ON \"Source\".orders "
+                        + "BEGIN \"Source\".audit_pkg.write_row(); END; /",
+                "CREATE TRIGGER \"Source\".insert_update_trg AFTER INSERT OR UPDATE "
+                        + "ON \"Source\".orders BEGIN \"Source\".audit_pkg.write_row(); END; /")) {
+            String projected = OracleSchemaChangeRenderer.comparisonDefinition(ddl, "Source");
+            assertTrue(projected.contains("ON \0oracle-self-owner\0.orders"), projected);
+            assertTrue(projected.contains("\0oracle-self-owner\0.audit_pkg.write_row()"), projected);
+        }
     }
 
     @Test

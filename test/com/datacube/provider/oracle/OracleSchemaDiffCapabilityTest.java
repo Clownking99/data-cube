@@ -2,6 +2,14 @@ package com.datacube.provider.oracle;
 
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.schemadiff.ObjectType;
+import com.datacube.spi.schemadiff.DefinitionConfidence;
+import com.datacube.spi.schemadiff.DefinitionObject;
+import com.datacube.spi.model.DbType;
+import com.datacube.spi.schemadiff.ObjectKey;
+import com.datacube.spi.schemadiff.SchemaSnapshot;
+import com.datacube.spi.schemadiff.SnapshotCompleteness;
+import com.datacube.spi.schemadiff.AutomationLevel;
+import com.datacube.schemadiff.SchemaDiffEngine;
 import com.datacube.spi.schemadiff.SchemaChangeRenderer;
 import com.datacube.spi.schemadiff.SchemaDiffCapability;
 import com.datacube.spi.schemadiff.SchemaSnapshotReader;
@@ -11,6 +19,9 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -85,6 +96,34 @@ class OracleSchemaDiffCapabilityTest {
         assertFalse(provider.supports("jdbc:postgresql://example.test/app"));
         assertSame(provider.dialect(), provider.dialect());
         assertSame(provider.connectionFactory(), provider.connectionFactory());
+    }
+
+    @Test
+    void unprovableHighDefinitionIsProjectedAsObjectSpecificLowInsteadOfThrowing() {
+        ObjectKey key = new ObjectKey(ObjectType.VIEW,
+                OracleSchemaIdentifierNormalizer.object("APP", "BROKEN"), "");
+        DefinitionObject broken = new DefinitionObject(key,
+                "CREATE VIEW \"APP\".\"BROKEN\" AS SELECT * FROM \"APP\".",
+                "CREATE VIEW \"APP\".\"BROKEN\" AS SELECT * FROM \"APP\".",
+                Set.of(), DefinitionConfidence.HIGH);
+        SortedMap<ObjectKey, com.datacube.spi.schemadiff.SchemaObject> objects = new TreeMap<>();
+        objects.put(key, broken);
+        SchemaSnapshot snapshot = new SchemaSnapshot(DbType.ORACLE, "source",
+                OracleSchemaIdentifierNormalizer.schema("APP"), Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), objects, "fingerprint");
+
+        DefinitionObject projected = (DefinitionObject) new OracleSchemaDiffCapability()
+                .comparisonProjector().project(snapshot).comparisonObjects().values()
+                .iterator().next();
+
+        assertEquals(DefinitionConfidence.LOW, projected.confidence());
+        assertTrue(projected.normalizedDefinition().startsWith("\0oracle-manual-definition-v1\0"));
+        SchemaSnapshot empty = new SchemaSnapshot(DbType.ORACLE, "target", snapshot.schema(),
+                Instant.EPOCH, new SnapshotCompleteness(true, new TreeMap<>()),
+                new TreeMap<>(), "empty");
+        assertEquals(AutomationLevel.MANUAL_ONLY, new SchemaDiffEngine().compare(
+                snapshot, empty, new OracleSchemaDiffCapability().comparisonProjector())
+                .differences().getFirst().automation());
     }
 
     private static Connection rejectingConnection(AtomicInteger prepares) {

@@ -436,6 +436,10 @@ class PgSchemaSnapshotReaderTest {
                 + "PERFORM \"Source\".orders, \"Source\".value "
                 + "FROM \"Source\".orders AS \"Source\"; "
                 + "rec.value := EXTRACT(YEAR FROM \"Source\".rec.value); "
+                + "PERFORM selected.id FROM \"Source\".orders selected WHERE "
+                + "selected.left_value IS DISTINCT FROM \"Source\".rec.right_value; "
+                + "PERFORM selected.id FROM \"Source\".orders selected WHERE "
+                + "selected.left_value IS NOT DISTINCT FROM \"Source\".rec.right_value; "
                 + "EXECUTE 'SELECT 1' USING \"Source\".rec.value; "
                 + "PERFORM selected.id FROM \"Source\".orders selected "
                 + "JOIN \"Source\".incoming incoming USING (\"Source\".rec); "
@@ -481,6 +485,10 @@ class PgSchemaSnapshotReaderTest {
         assertTrue(sql.contains("PERFORM \"Source\".orders, \"Source\".value"), sql);
         assertEquals(2, sql.split("INTO \"Source\".rec.value", -1).length - 1, sql);
         assertTrue(sql.contains("EXTRACT(YEAR FROM \"Source\".rec.value)"), sql);
+        assertTrue(sql.contains("selected.left_value IS DISTINCT FROM "
+                + "\"Source\".rec.right_value"), sql);
+        assertTrue(sql.contains("selected.left_value IS NOT DISTINCT FROM "
+                + "\"Source\".rec.right_value"), sql);
         assertTrue(sql.contains("EXECUTE 'SELECT 1' USING \"Source\".rec.value"), sql);
         assertTrue(sql.contains("FROM \"Target\".orders AS \"Source\""), sql);
         assertTrue(sql.contains("JOIN \"Target\".incoming incoming "
@@ -502,6 +510,105 @@ class PgSchemaSnapshotReaderTest {
         assertTrue(new SchemaDiffEngine().compare(source, reread,
                         capability.comparisonProjector()).differences().stream()
                 .allMatch(value -> value.kind() == DifferenceKind.EQUIVALENT));
+    }
+
+    @Test
+    void constraintTriggerFlowsThroughReaderProjectionPlanRenderAndSecondDiff() throws Exception {
+        String sourceDdl = "CREATE CONSTRAINT TRIGGER parent_guard AFTER UPDATE "
+                + "ON \"Source\".orders FROM \"Source\".parent DEFERRABLE INITIALLY DEFERRED "
+                + "FOR EACH ROW EXECUTE FUNCTION \"Source\".audit_fn()";
+        String targetDdl = sourceDdl.replace("\"Source\"", "\"Target\"");
+        SchemaSnapshot source = new PgSchemaSnapshotReader(new SnapshotJdbc("Source")
+                .rows("tables", row("object_oid", 90L, "object_name", "orders"),
+                        row("object_oid", 91L, "object_name", "parent"))
+                .rows("triggers", row("object_oid", 92L, "object_name", "parent_guard",
+                        "table_oid", 90L, "definition", sourceDdl)).connection()).read(
+                "source", PgSchemaIdentifierNormalizer.schema("Source"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot empty = new SchemaSnapshot(DbType.POSTGRESQL, "empty",
+                PgSchemaIdentifierNormalizer.schema("Target"), Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), new TreeMap<>(), "empty");
+        PgSchemaDiffCapability capability = new PgSchemaDiffCapability();
+        DefinitionObject trigger = source.objects().values().stream()
+                .filter(DefinitionObject.class::isInstance).map(DefinitionObject.class::cast)
+                .filter(value -> value.key().type() == ObjectType.TRIGGER).findFirst().orElseThrow();
+        assertEquals(DefinitionConfidence.HIGH, trigger.confidence());
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, empty, capability.comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+        var change = plan.changes().stream().filter(value -> value.object().type() == ObjectType.TRIGGER)
+                .findFirst().orElseThrow();
+        String sql = capability.changeRenderer().render(change,
+                new RenderContext(DbType.POSTGRESQL, source.schema(), empty.schema(), false))
+                .getFirst().sql();
+        assertTrue(sql.contains("ON \"Target\".orders"), sql);
+        assertTrue(sql.contains("FROM \"Target\".parent"), sql);
+        assertTrue(sql.contains("FUNCTION \"Target\".audit_fn()"), sql);
+
+        SchemaSnapshot target = new PgSchemaSnapshotReader(new SnapshotJdbc("Target")
+                .rows("tables", row("object_oid", 93L, "object_name", "orders"),
+                        row("object_oid", 94L, "object_name", "parent"))
+                .rows("triggers", row("object_oid", 95L, "object_name", "parent_guard",
+                        "table_oid", 93L, "definition", targetDdl)).connection()).read(
+                "target", PgSchemaIdentifierNormalizer.schema("Target"),
+                SqlExecutionOptions.defaults(0));
+        assertTrue(new SchemaDiffEngine().compare(source, target,
+                        capability.comparisonProjector()).differences().stream()
+                .allMatch(value -> value.kind() == DifferenceKind.EQUIVALENT));
+    }
+
+    @Test
+    void unprovableTriggerReadsLowManualWithoutBlockingOtherObjects() throws Exception {
+        String ddl = "CREATE CONSTRAINT TRIGGER unsafe_guard AFTER UPDATE ON app.orders "
+                + "FROM app.parent FROM app.unexpected FOR EACH ROW "
+                + "EXECUTE FUNCTION app.audit_fn()";
+        SchemaSnapshot source = new PgSchemaSnapshotReader(new SnapshotJdbc("app")
+                .rows("tables", row("object_oid", 96L, "object_name", "orders"),
+                        row("object_oid", 97L, "object_name", "parent"))
+                .rows("triggers", row("object_oid", 98L, "object_name", "unsafe_guard",
+                        "table_oid", 96L, "definition", ddl))
+                .rows("views", row("object_oid", 100L, "object_name", "broken_view",
+                        "relation_kind", "v", "definition", "SELECT * FROM app."))
+                .rows("sequences", row("object_oid", 99L, "object_name", "stable",
+                        "start_value", "1", "increment_by", "1", "minimum_value", "1",
+                        "maximum_value", "99", "cycle", false, "cache_size", 1))
+                .connection()).read("source", PgSchemaIdentifierNormalizer.schema("app"),
+                SqlExecutionOptions.defaults(0));
+        SchemaSnapshot empty = new SchemaSnapshot(DbType.POSTGRESQL, "empty", source.schema(),
+                Instant.EPOCH, new SnapshotCompleteness(true, new TreeMap<>()),
+                new TreeMap<>(), "empty");
+        DefinitionObject trigger = source.objects().values().stream()
+                .filter(DefinitionObject.class::isInstance).map(DefinitionObject.class::cast)
+                .filter(value -> value.key().type() == ObjectType.TRIGGER).findFirst().orElseThrow();
+        DefinitionObject view = source.objects().values().stream()
+                .filter(DefinitionObject.class::isInstance).map(DefinitionObject.class::cast)
+                .filter(value -> value.key().type() == ObjectType.VIEW).findFirst().orElseThrow();
+
+        SchemaDiffResult diff = new SchemaDiffEngine().compare(
+                source, empty, new PgSchemaDiffCapability().comparisonProjector());
+        SchemaChangePlan plan = new SchemaChangePlanner().plan(diff);
+        var difference = diff.differences().stream()
+                .filter(value -> value.object().equals(trigger.key())).findFirst().orElseThrow();
+        var change = plan.changes().stream()
+                .filter(value -> value.object().equals(trigger.key())).findFirst().orElseThrow();
+
+        assertEquals(DefinitionConfidence.LOW, trigger.confidence());
+        assertEquals(DefinitionConfidence.LOW, view.confidence());
+        assertEquals(AutomationLevel.MANUAL_ONLY, difference.automation());
+        assertEquals(ChangeKind.MANUAL, change.kind());
+        assertFalse(plan.selectedChangeIds().contains(change.id()));
+        assertTrue(diff.differences().stream().anyMatch(value ->
+                value.object().type() == ObjectType.SEQUENCE));
+        assertEquals(AutomationLevel.MANUAL_ONLY, diff.differences().stream()
+                .filter(value -> value.object().equals(view.key())).findFirst().orElseThrow()
+                .automation());
+        assertEquals(PgSchemaChangeRenderer.MANUAL_CHANGE,
+                assertThrows(IllegalArgumentException.class,
+                        () -> new PgSchemaChangeRenderer().render(change,
+                                new RenderContext(DbType.POSTGRESQL,
+                                        source.schema(), source.schema(), false))).getMessage());
+        assertFalse((trigger + diff.toString() + plan + plan.digest())
+                .contains("pg-manual-definition"));
     }
 
     @Test
