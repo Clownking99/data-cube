@@ -235,3 +235,12 @@ tag 上递增 patch。
 | BLOB / RAW | BYTEA |
 | SYSDATE | CURRENT_TIMESTAMP |
 | SYS_GUID() | gen_random_uuid() |
+
+## 开源许可
+
+DataCube 自有源码采用 [Apache License 2.0](LICENSE) 开源许可。
+
+Copyright 2026 Clownking99
+
+本仓库包含的 JavaFX、Oracle/PostgreSQL JDBC、RichTextFX 及其他第三方组件不因
+DataCube 的许可证而重新授权；它们继续遵循各自的许可证和分发条款。
