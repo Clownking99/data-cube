@@ -193,7 +193,16 @@ public final class ConnectionDialog {
         progress.setMaxSize(18, 18);
         progress.visibleProperty().bind(testing);
         progress.managedProperty().bind(testing);
-        HBox feedback = new HBox(8, progress, testStatus);
+        // Reserve the wrapped failure message's space before the window is shown.
+        // A later result must not push the dialog's action buttons out of view.
+        Label failureSpace = new Label(ConnectionTestController.Phase.FAILED.text());
+        failureSpace.setWrapText(true);
+        failureSpace.setVisible(false);
+        var statusArea = new javafx.scene.layout.StackPane(failureSpace, testStatus);
+        statusArea.setMaxWidth(360);
+        statusArea.setMinHeight(Region.USE_PREF_SIZE);
+        javafx.scene.layout.StackPane.setAlignment(testStatus, javafx.geometry.Pos.CENTER_LEFT);
+        HBox feedback = new HBox(8, progress, statusArea);
         feedback.setPadding(new Insets(0, 15, 12, 15));
         dialog.getDialogPane().setContent(new VBox(grid, feedback));
 

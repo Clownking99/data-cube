@@ -12,8 +12,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import javafx.application.Platform;
+import javafx.event.Event;
 import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.stage.Window;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -163,6 +166,36 @@ class ConnectionDialogTest {
         });
     }
 
+    @ParameterizedTest @EnumSource(DbType.class)
+    void tabTraversalFollowsVisibleFieldsAndReachesActions(DbType type) throws Exception {
+        FxUiTestSupport.call(() -> {
+            var pending = new ConnectionTestControllerTest.Pending();
+            try (var controller = new ConnectionTestController(pending, () -> {}, cfg -> null)) {
+                var dialog = ConnectionDialog.create(config(type), new CredentialCipher(), controller);
+                try {
+                    dialog.show();
+                    var pane = dialog.getDialogPane();
+                    pane.applyCss();
+                    pane.layout();
+                    pane.lookup("#connection-name").requestFocus();
+                    var fields = new java.util.ArrayList<>(List.of("host", "port", "database", "user", "password"));
+                    if (type != DbType.REDIS) fields.addAll(List.of("environment", "read-only", "timeout"));
+                    fields.addAll(List.of("test", "save"));
+                    for (String id : fields) {
+                        Event.fireEvent(pane.getScene().getFocusOwner(), new KeyEvent(KeyEvent.KEY_PRESSED,
+                                "", "", KeyCode.TAB, false, false, false, false));
+                        assertSame(pane.lookup("#connection-" + id), pane.getScene().getFocusOwner(), id);
+                    }
+                    Event.fireEvent(pane.getScene().getFocusOwner(), new KeyEvent(KeyEvent.KEY_PRESSED,
+                            "", "", KeyCode.TAB, false, false, false, false));
+                    assertSame(pane.lookupButton(ButtonType.CANCEL), pane.getScene().getFocusOwner());
+                    assertEquals(0, pending.calls);
+                } finally { dialog.close(); }
+            }
+            return null;
+        });
+    }
+
     @ParameterizedTest @ValueSource(strings = {"theme-dark.css", "theme-light.css"})
     void failureTextFitsAfterIdleToFailedTransition(String theme) throws Exception {
         FxUiTestSupport.call(() -> {
@@ -186,6 +219,12 @@ class ConnectionDialogTest {
                     assertTrue(status.localToScene(status.getBoundsInLocal()).getMaxY()
                             <= button(pane, "save").localToScene(button(pane, "save").getBoundsInLocal()).getMinY(),
                             "guidance must not overlap the action buttons");
+                    for (Node action : List.of(button(pane, "test"), button(pane, "save"),
+                            pane.lookupButton(ButtonType.CANCEL))) {
+                        var bounds = action.localToScene(action.getBoundsInLocal());
+                        assertTrue(bounds.getMinY() >= 0 && bounds.getMaxY() <= pane.getScene().getHeight(),
+                                "all action buttons must remain fully inside the window: " + bounds);
+                    }
                 } finally { dialog.close(); }
             }
             return null;
