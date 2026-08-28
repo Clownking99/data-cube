@@ -23,7 +23,9 @@
 - 以下相对路径均以 `D:\Projects\朝花夕拾` 为根。每个代码步骤使用 apply_patch。行号仅作导航，执行时先用 CodeGraph 读取相应符号。
 - 用户已选择在当前任务内顺序实施，不启动子代理。未勾选步骤及其代码块仍是待执行内容，不代表已实现或通过测试。
 
-**2026-08-28 进度：** 任务 1 的实现和验收完成，代码提交为 `707f71a`，验收记录提交为 `9b73c8e`，已推送 `codex/connection-onboarding`。任务 2 已实现并保存本地检查点；相关回归 49 项实际通过，最后布局调整后的全量运行因桌面不可访问增加了 UI 跳过，仍需补验后才能标记完成。任务 3 尚未开始。详见 `docs/superpowers/verification/2026-08-28-workspace-start.md` 与 `docs/superpowers/verification/2026-08-28-connection-test.md`。
+**2026-08-29 进度：** 任务 1 已完成并推送（`707f71a`、`9b73c8e`）。任务 2 本地检查点 `f3f5117` 已补验，并在 `e166ea1` 修复长反馈挤出按钮的边界；19 项对话框测试全部执行。任务 3 已实现，新增 6 项纯状态和 5 项真实控件测试。最终普通全量 116 套件、827 项、0 失败、0 错误、3 项外部集成跳过。当前增量仅本地提交。详见 `docs/superpowers/verification/2026-08-28-connection-onboarding.md`。
+
+本轮对计划样例的补充：固定连接后立即刷新名称和提示，不等待建连成功；没有改动准入或事务规则。布局验收增加按钮必须处于窗口内的断言。为保留本地截图，最终使用 `test --rerun-tasks --offline` 而非 `clean test`；普通全量不需额外图形参数。以下代码块保留设计时示例，最终实现以源码及验收记录为准。
 
 ---
 
@@ -722,7 +724,7 @@ warn("查询超时必须是 0-3600 的整数秒", timeoutField);
 
 校验分支共四个，包含必填、Redis 范围、端口和超时；不新增端口策略或改变 0 秒查询超时含义。保留 resultConverter 的保存行为，不增加测试成功门槛。
 
-- [ ] **Step 5: 验证真实 scope 不阻塞 FX，并验证隐藏清理。**
+- [x] **Step 5: 验证真实 scope 不阻塞 FX，并验证隐藏清理。**
 
 进度：真实 scope、关闭、保存和标签等原 14 项对话框测试已在显示环境可用时实际通过；布局调整后全量发现 16 项对话框均跳过。恢复桌面后需重跑并完成视觉检查，本步骤暂不勾选。
 
@@ -826,7 +828,7 @@ git commit -m 'feat: 为连接测试增加异步反馈和关闭保护'
 - Produces: `SqlConnectionGuidance.from(ConnConfig pinned, ConnConfig candidate): SqlConnectionGuidance`，record 字段 `hasConnection, text`，方法 `blocksExecution(boolean busy)`。
 - `SqlEditorPane` 新增私有 `guidance()`、`renderConnectionGuidance()`、`rejectMissingConnection()`，保持 public API 不变。
 
-- [ ] **Step 1: 先写纯状态矩阵测试。**
+- [x] **Step 1: 先写纯状态矩阵测试。**
 
 `SqlConnectionGuidanceTest.java` 完整内容：
 
@@ -885,7 +887,7 @@ class SqlConnectionGuidanceTest {
 .\gradlew.bat test --tests 'com.datacube.fx.SqlConnectionGuidanceTest' --no-daemon --console=plain
 ```
 
-- [ ] **Step 2: 实现纯投影，不能读取密码、存储或网络。**
+- [x] **Step 2: 实现纯投影，不能读取密码、存储或网络。**
 
 `SqlConnectionGuidance.java` 完整内容：
 
@@ -915,7 +917,7 @@ record SqlConnectionGuidance(boolean hasConnection, String text) {
 }
 ```
 
-- [ ] **Step 3: 写实际 SQL 页的失败测试。**
+- [x] **Step 3: 写实际 SQL 页的失败测试。**
 
 `SqlEditorConnectionGuidanceTest.java` 完整内容；未绑定页允许注入 null 连接服务，任何意外使用都会使测试失败。配置和历史均位于临时目录。
 
@@ -989,7 +991,7 @@ class SqlEditorConnectionGuidanceTest {
 .\gradlew.bat test --tests 'com.datacube.fx.SqlEditorConnectionGuidanceTest' --no-daemon --console=plain
 ```
 
-- [ ] **Step 4a: 添加提示控件及投影方法。**
+- [x] **Step 4a: 添加提示控件及投影方法。**
 
 `SqlEditorPane` 新增字段及方法：
 
@@ -1036,7 +1038,7 @@ return new VBox(4, primary, safety, connectionGuidance);
 
 在 `editor()` 的 `editorArea = new CodeArea()` 后添加 `editorArea.setId("sql-editor");`。不要更改现有快捷键注册和美化函数。
 
-- [ ] **Step 4b: 组合现有状态，不能用新提示改写执行准入。**
+- [x] **Step 4b: 组合现有状态，不能用新提示改写执行准入。**
 
 用以下完整方法替换 `setButtonsRunning`：
 
@@ -1078,7 +1080,7 @@ if (rejectMissingConnection()) return;
 
 必须保留之后 `admitCurrentConnection()` 的 try/catch、安全策略校验和 sessionOperations 提交路径。新守卫只解释“缺少连接”；关闭时的拒绝仍由现有准入机制负责，不能捕获后继续执行。
 
-- [ ] **Step 5: 新测试绿灯与既有绑定、事务、关闭竞态回归。**
+- [x] **Step 5: 新测试绿灯与既有绑定、事务、关闭竞态回归。**
 
 ```powershell
 .\gradlew.bat test --tests 'com.datacube.fx.SqlConnectionGuidanceTest' --tests 'com.datacube.fx.SqlEditor*' --tests 'com.datacube.fx.task.SerialSessionOperationQueueTest' --tests 'com.datacube.service.JdbcEditorSessionTest' --tests 'com.datacube.service.ConnectionManagerDedicatedSessionTest' --no-daemon --console=plain
@@ -1087,7 +1089,7 @@ git diff --check
 
 预期：纯投影矩阵、真实 SQL 空页和事务关闭保护均通过。固定连接 A 后选择 B 的证据是既有 `SqlEditorConnectionAdmissionTest.firstRelationalAdmissionPinsAndLaterActionsCannotSwitchConnection`；准入后关闭不得发布会话的证据是同类 `closeAfterExecuteAdmissionButBeforeSessionPublicationCannotCreateSession`。记录具体用例的结果，不以测试类名代替已通过的证据。
 
-- [ ] **Step 6: 审查并单独提交 SQL 引导增量。**
+- [x] **Step 6: 审查并单独提交 SQL 引导增量。**
 
 ```powershell
 git add -- src/com/datacube/fx/SqlConnectionGuidance.java src/com/datacube/fx/SqlEditorPane.java test/com/datacube/fx/SqlConnectionGuidanceTest.java test/com/datacube/fx/SqlEditorConnectionGuidanceTest.java
@@ -1098,7 +1100,7 @@ git commit -m 'feat: 明确 SQL 连接提示与执行可用状态'
 
 ## 最终回归与交付
 
-- [ ] 在 Windows 有显示环境运行全量测试并检查新增套件未被跳过：
+- [x] 在 Windows 有显示环境运行全量测试并检查新增套件未被跳过（实际使用上文记录的 rerun 命令，保留验收产物）：
 
 ```powershell
 .\gradlew.bat clean test --no-daemon --console=plain
@@ -1115,10 +1117,10 @@ Get-ChildItem -LiteralPath 'build/test-results/test' -Filter 'TEST-*.xml' |
 
 预期：没有失败或错误；新增控件测试在本机实际执行。Linux 无显示环境的跳过必须单独报告，不能把跳过算通过，也不通过改 CI、关测试或缩短断言来消除失败。
 
-- [ ] 依照 Computer Use 技能启动当前源码，验证启动、打开/关闭空 SQL、打开/取消新建连接、深浅主题下长提示不裁切及键盘焦点；不展开真实连接、不测试真实网络、不执行 SQL。保存本次截图到 `build/product-verification/2026-08-28/`，不能把实施前截图当成新功能证据。
-- [ ] 检查 scope 关闭、失败/成功提示和重复点击的确定性测试结果；对话框隐藏后不应出现新弹窗。不承诺实际驱动取消耗时。
-- [ ] 对照设计第 5 节逐项记录：通过、失败、跳过或未验证。产品验收记录写入 `docs/superpowers/verification/2026-08-28-connection-onboarding.md`，记录真实提交、命令、结果与截图路径；没有运行的数据不填数字。
-- [ ] 报告实际改动、测试结果、遗留风险及各任务提交。保持 `.testagent/` 原状，不自动推送、不打 tag。
+- [x] 依照 Computer Use 技能复验受影响的当前源码控件：连接表单三类型新建/编辑、深浅主题反馈、SQL 未绑定/三类型候选提示。键盘遍历由真实 FX 控件测试验证。启动/标签工作流沿用任务 1 已完成的桌面验收，并在本轮全量重跑其 7 项测试；没有把旧截图当成本轮截图。新截图保存到 `build/product-verification/connection-test/`。不展开真实连接、不测试真实网络、不执行真实 SQL。
+- [x] 检查 scope 关闭、失败/成功提示和重复点击的确定性测试结果；对话框隐藏后不应出现新弹窗。不承诺实际驱动取消耗时。
+- [x] 对照设计第 5 节逐项记录：通过、失败、跳过或未验证。产品验收记录写入 `docs/superpowers/verification/2026-08-28-connection-onboarding.md`，记录真实提交、命令、结果与截图路径；没有运行的数据不填数字。
+- [x] 报告实际改动、测试结果、遗留风险及各任务提交。保持 `.testagent/` 原状，不自动推送、不打 tag。
 
 ## 计划自审映射
 

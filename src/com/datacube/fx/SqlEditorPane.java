@@ -155,6 +155,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private Label environmentBadge;
     private Label readOnlyBadge;
     private Label connectionBadge;
+    private Label connectionGuidance;
     private Label transactionStatus;
     private boolean updatingTransactionMode;
 
@@ -261,6 +262,8 @@ public final class SqlEditorPane implements AutoCloseable {
     private ConnConfig admitCurrentConnection() {
         ConnConfig pinned = admission.admit(currentConn());
         editorConnection = pinned;
+        if (jdbcSession == null) connectionBadge.setText("🔗 " + pinned.name() + " · 未连接");
+        renderConnectionGuidance();
         return pinned;
     }
 
@@ -632,14 +635,17 @@ public final class SqlEditorPane implements AutoCloseable {
         schemaField.setPrefWidth(160);
 
         executeBtn = new Button("执行 (" + shortcuts.get(ShortcutAction.SQL_EXECUTE).getDisplayText() + ")");
+        executeBtn.setId("sql-execute");
         executeBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
         executeBtn.setOnAction(e -> onExecute());
 
         explainBtn = new Button("执行计划");
+        explainBtn.setId("sql-explain");
         explainBtn.setOnAction(e -> onExplain());
         analyzeCheck = new CheckBox("ANALYZE(实际执行)");
 
         formatBtn = new Button("美化 SQL");
+        formatBtn.setId("sql-format");
         formatBtn.setOnAction(e -> onFormat());
 
         clearBtn = new Button("清空");
@@ -672,8 +678,10 @@ public final class SqlEditorPane implements AutoCloseable {
                 analyzeCheck, formatBtn, exportResultBtn, copyInsertBtn, clearBtn);
 
         environmentBadge = new Label();
+        environmentBadge.setId("sql-environment");
         readOnlyBadge = new Label();
         connectionBadge = new Label();
+        connectionBadge.setId("sql-connection");
         transactionModeBox = new ComboBox<>(FXCollections.observableArrayList(
                 JdbcEditorSession.TransactionMode.values()));
         transactionModeBox.setPrefWidth(125);
@@ -693,7 +701,34 @@ public final class SqlEditorPane implements AutoCloseable {
                 commitBtn, rollbackBtn, cancelBtn, transactionStatus);
         safety.setAlignment(Pos.CENTER_LEFT);
         safety.setPadding(new Insets(2, 0, 0, 0));
-        return new VBox(4, primary, safety);
+        connectionGuidance = new Label();
+        connectionGuidance.setId("sql-connection-guidance");
+        connectionGuidance.setWrapText(true);
+        connectionGuidance.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
+        return new VBox(4, primary, safety, connectionGuidance);
+    }
+
+    private SqlConnectionGuidance guidance() {
+        return SqlConnectionGuidance.from(admission.pinned(), session.getActiveConnection());
+    }
+
+    private void renderConnectionGuidance() {
+        if (connectionGuidance == null) return;
+        SqlConnectionGuidance state = guidance();
+        connectionGuidance.setText(state.text());
+        connectionGuidance.setVisible(!state.text().isEmpty());
+        connectionGuidance.setManaged(!state.text().isEmpty());
+        environmentBadge.setVisible(state.hasConnection());
+        environmentBadge.setManaged(state.hasConnection());
+        readOnlyBadge.setVisible(state.hasConnection());
+        readOnlyBadge.setManaged(state.hasConnection());
+    }
+
+    private boolean rejectMissingConnection() {
+        if (guidance().hasConnection()) return false;
+        renderConnectionGuidance();
+        setButtonsRunning(false);
+        return true;
     }
 
     private void renderInitialSessionState() {
@@ -706,22 +741,28 @@ public final class SqlEditorPane implements AutoCloseable {
         if (connectionBadge == null) return;
         if (candidate == null || candidate.type() == DbType.REDIS) {
             connectionBadge.setText("🔌 未绑定连接");
-            environmentBadge.setText("开发");
+            environmentBadge.setText("");
             environmentBadge.setStyle("-fx-text-fill: -brand-fg-muted;");
             readOnlyBadge.setText("");
         } else {
             ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(candidate);
-            connectionBadge.setText("🔗 待绑定: " + candidate.name());
+            connectionBadge.setText(admission.pinned() == null
+                    ? "🔗 待绑定: " + candidate.name()
+                    : "🔗 " + candidate.name() + " · 未连接");
             renderSafetyBadges(safety);
         }
         updatingTransactionMode = true;
         transactionModeBox.setValue(JdbcEditorSession.TransactionMode.AUTO_COMMIT);
         updatingTransactionMode = false;
-        transactionModeBox.setDisable(candidate == null || candidate.type() == DbType.REDIS);
+        var operation = sessionOperations.snapshot();
+        transactionModeBox.setDisable(!guidance().hasConnection() || running
+                || !operation.accepting() || operation.pending());
         commitBtn.setDisable(true);
         rollbackBtn.setDisable(true);
         cancelBtn.setDisable(true);
         transactionStatus.setText("尚未创建专用会话");
+        renderConnectionGuidance();
+        setButtonsRunning(false);
     }
 
     private void renderSafetyBadges(ConnectionSafetyOptions safety) {
@@ -761,6 +802,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 ? "无超时限制" : snapshot.safety().queryTimeoutSeconds() + " 秒超时";
         if (!snapshot.timeoutSupported()) timeout += "（驱动不支持）";
         transactionStatus.setText(transactionStateText(snapshot) + " · " + timeout);
+        renderConnectionGuidance();
         setButtonsRunning(busy);
     }
 
@@ -786,6 +828,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private Node editor() {
         editorArea = new CodeArea();
+        editorArea.setId("sql-editor");
         editorArea.getStyleClass().add("code-area");
         editorArea.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 14px;");
         // 行号栏
@@ -905,6 +948,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void onExecute() {
         if (running || sessionOperations.snapshot().pending()) return;
+        if (rejectMissingConnection()) return;
         String sql = selectedOrAllSql();
         if (sql.trim().isEmpty()) {
             showAlert("请输入 SQL");
@@ -1279,6 +1323,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void onExplain() {
         if (running || sessionOperations.snapshot().pending()) return;
+        if (rejectMissingConnection()) return;
         String text = selectedOrAllSql();
         if (text.trim().isEmpty()) {
             showAlert("请输入 SQL");
@@ -1712,10 +1757,13 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void setButtonsRunning(boolean isRunning) {
-        executeBtn.setDisable(isRunning);
-        explainBtn.setDisable(isRunning);
-        formatBtn.setDisable(isRunning);
-        clearBtn.setDisable(isRunning);
+        var operation = sessionOperations.snapshot();
+        boolean busy = isRunning || running || !operation.accepting() || operation.pending();
+        boolean disabled = guidance().blocksExecution(busy);
+        executeBtn.setDisable(disabled);
+        explainBtn.setDisable(disabled);
+        formatBtn.setDisable(busy);
+        clearBtn.setDisable(busy);
     }
 
     // ---------- 自动补全：候选词 + 元数据预热 ----------

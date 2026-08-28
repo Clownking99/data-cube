@@ -2,7 +2,7 @@
 
 日期：2026-08-28
 
-状态：产品范围与书面设计均已获用户确认；任务 1 验收完成；任务 2 已实现，最后布局调整后的非跳过回归与桌面复验待完成；任务 3 尚未实施。见 `docs/superpowers/verification/2026-08-28-workspace-start.md` 与 `docs/superpowers/verification/2026-08-28-connection-test.md`。
+状态（2026-08-29）：任务 1 已验收；任务 2 已补齐非跳过回归、三类型表单与深浅主题复验，并修复反馈挤出底部按钮的问题；任务 3 已实现并完成状态、控件与桌面验收。普通全量 827 项、0 失败、3 项外部集成跳过。保留本地分支，不自动合并、推送或打标签；验收范围与未验证项见 `docs/superpowers/verification/2026-08-28-connection-onboarding.md`。
 
 ## 1. 目标与依据
 
