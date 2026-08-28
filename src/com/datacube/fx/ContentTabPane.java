@@ -1,6 +1,9 @@
 package com.datacube.fx;
 
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.BooleanBinding;
+import javafx.beans.value.ObservableBooleanValue;
 import javafx.collections.ListChangeListener;
 import javafx.scene.Node;
 import javafx.scene.control.Tab;
@@ -19,6 +22,7 @@ import java.util.function.Supplier;
 public final class ContentTabPane {
 
     private final TabPane tabPane = new TabPane();
+    private final BooleanBinding empty = Bindings.isEmpty(tabPane.getTabs());
     private final AsyncManagedTabRegistry<Tab> guardedTabs = new AsyncManagedTabRegistry<>();
     private MandatoryAbortTracker mandatoryAborts = new MandatoryAbortTracker();
     private final Object ownershipLock = new Object();
@@ -56,6 +60,11 @@ public final class ContentTabPane {
 
     public Node getNode() {
         return tabPane;
+    }
+
+    /** Presentation-only state; tab removal remains owned by the existing close guards. */
+    ObservableBooleanValue emptyProperty() {
+        return empty;
     }
 
     /** 添加不可关闭的常驻标签（如迁移功能）。 */

@@ -118,6 +118,11 @@ public final class ConnectionTreePane implements AutoCloseable {
         return root;
     }
 
+    /** Focus the existing tree without selecting, expanding, reloading or connecting. */
+    public void focusConnections() {
+        tree.requestFocus();
+    }
+
     @Override
     public void close() {
         tasks.close();

@@ -21,6 +21,7 @@ import com.datacube.spi.model.TableRef;
 import com.datacube.update.UpdateService;
 
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
@@ -35,6 +36,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionStage;
@@ -113,7 +115,9 @@ public final class AppShell {
         connectionTree = new ConnectionTreePane(store, connMgr, treeSvc, session, treeActions, tasks);
         root.setTop(topBar(connectionTree));
 
-        SplitPane split = new SplitPane(connectionTree.getNode(), contentTabs.getNode());
+        SplitPane split = new SplitPane(connectionTree.getNode(),
+                startWorkspace(contentTabs, connectionTree::newConnection,
+                        connectionTree::focusConnections));
         split.setDividerPositions(0.24);
         SplitPane.setResizableWithParent(connectionTree.getNode(), false);
         root.setCenter(split);
@@ -130,6 +134,17 @@ public final class AppShell {
                 });
             }
         });
+    }
+
+    static Node startWorkspace(ContentTabPane tabs, Runnable create, Runnable focus) {
+        WorkspaceStartPane start = new WorkspaceStartPane(create, focus);
+        start.visibleProperty().bind(tabs.emptyProperty());
+        start.managedProperty().bind(start.visibleProperty());
+        Node content = tabs.getNode();
+        var hasTabs = Bindings.not(tabs.emptyProperty());
+        content.visibleProperty().bind(hasTabs);
+        content.managedProperty().bind(hasTabs);
+        return new StackPane(content, start);
     }
 
     private HBox topBar(ConnectionTreePane treePane) {

@@ -21,7 +21,9 @@
 - 不显示原始连接异常、完整 JDBC URL、密码或配置对象；不新增敏感日志。
 - 测试用临时目录和假操作，不使用已保存的公司凭据；无显示环境只跳过依赖 JavaFX 控件的用例，纯状态用例必须运行。
 - 以下相对路径均以 `D:\Projects\朝花夕拾` 为根。每个代码步骤使用 apply_patch。行号仅作导航，执行时先用 CodeGraph 读取相应符号。
-- 本文的代码块是待执行内容，不代表已实现或通过测试。执行方式尚未选择，不因本文提及子代理而立即启动子代理。
+- 用户已选择在当前任务内顺序实施，不启动子代理。未勾选步骤及其代码块仍是待执行内容，不代表已实现或通过测试。
+
+**2026-08-28 进度：** 任务 1 的实现与自动化回归完成，在 `codex/connection-onboarding` 本地分支单独提交；任务 2、3 尚未开始。桌面截图全黑且激活窗口报访问拒绝，实际点击与亮暗主题验收待恢复桌面访问后完成。详见 `docs/superpowers/verification/2026-08-28-workspace-start.md`。
 
 ---
 
@@ -44,7 +46,7 @@
 
 ## 执行前基线
 
-- [ ] 核对分支、工作区和当前设计，若已有同路径改动先协调，不覆盖。
+- [x] 核对分支、工作区和当前设计，若已有同路径改动先协调，不覆盖。
 
 ```powershell
 git status --short
@@ -65,7 +67,7 @@ Get-Content -LiteralPath 'docs/superpowers/specs/2026-08-28-connection-onboardin
 - Produces: `ContentTabPane.emptyProperty(): ObservableBooleanValue`、`ConnectionTreePane.focusConnections(): void`、`WorkspaceStartPane(Runnable createConnection, Runnable focusConnections)`、`AppShell.startWorkspace(ContentTabPane, Runnable, Runnable): Node`。
 - Test support: `FxUiTestSupport.call(Callable<T>): T`，只在测试线程等待；不得用于生产。
 
-- [ ] **Step 1: 写真实控件的失败测试及本任务专用测试支持。**
+- [x] **Step 1: 写真实控件的失败测试及本任务专用测试支持。**
 
 `FxUiTestSupport.java` 完整内容：
 
@@ -178,7 +180,7 @@ class WorkspaceStartPaneTest {
 }
 ```
 
-- [ ] **Step 2: 运行并记录红灯。**
+- [x] **Step 2: 运行并记录红灯。**
 
 ```powershell
 .\gradlew.bat test --tests 'com.datacube.fx.WorkspaceStartPaneTest' --no-daemon --console=plain
@@ -186,7 +188,7 @@ class WorkspaceStartPaneTest {
 
 预期新增 API 不存在导致编译失败；补齐 API 后必须运行到行为断言，不能用“没有找到测试”或显示环境异常当成红灯。
 
-- [ ] **Step 3: 添加开始提示和只读空状态。**
+- [x] **Step 3: 添加开始提示和只读空状态。**
 
 `WorkspaceStartPane.java` 完整内容：
 
@@ -267,16 +269,16 @@ SplitPane split = new SplitPane(connectionTree.getNode(),
                 connectionTree::focusConnections));
 ```
 
-- [ ] **Step 4: 绿灯及关闭保护回归。**
+- [x] **Step 4: 绿灯及关闭保护回归。**
 
 ```powershell
 .\gradlew.bat test --tests 'com.datacube.fx.WorkspaceStartPaneTest' --tests 'com.datacube.fx.ContentTabPane*' --tests 'com.datacube.fx.Managed*' --no-daemon --console=plain
 git diff --check
 ```
 
-预期 Windows 显示环境中三个新增行为测试全部通过，既有受管标签测试无回归。人工确认空连接树的按钮仍能聚焦树，不能为了“看起来有效”自动选择第一条连接。
+预期 Windows 显示环境中三个新增行为测试全部通过，既有受管标签测试无回归。实际扩充为 7 项通过，并以真实控件验证空树和已保存连接树的聚焦行为。桌面访问受限，实际按钮点击和主题视觉检查尚未验收；不能为了“看起来有效”自动选择第一条连接。
 
-- [ ] **Step 5: 审查本任务 diff 并单独提交。**
+- [x] **Step 5: 审查本任务 diff 并单独提交。**
 
 ```powershell
 git add -- src/com/datacube/fx/WorkspaceStartPane.java src/com/datacube/fx/ContentTabPane.java src/com/datacube/fx/ConnectionTreePane.java src/com/datacube/fx/AppShell.java test/com/datacube/fx/FxUiTestSupport.java test/com/datacube/fx/WorkspaceStartPaneTest.java
