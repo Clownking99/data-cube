@@ -2,7 +2,7 @@
 
 日期：2026-08-28
 
-状态：产品范围与书面设计均已获用户确认；任务 1 实现、自动化回归及桌面交互/主题验收完成；任务 2、3 尚未实施。见 `docs/superpowers/verification/2026-08-28-workspace-start.md`。
+状态：产品范围与书面设计均已获用户确认；任务 1 验收完成；任务 2 已实现，最后布局调整后的非跳过回归与桌面复验待完成；任务 3 尚未实施。见 `docs/superpowers/verification/2026-08-28-workspace-start.md` 与 `docs/superpowers/verification/2026-08-28-connection-test.md`。
 
 ## 1. 目标与依据
 

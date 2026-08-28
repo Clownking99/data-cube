@@ -1,6 +1,8 @@
 package com.datacube.fx;
 
 import com.datacube.config.CredentialCipher;
+import com.datacube.fx.task.FxTaskRunner;
+import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.ConnectionManager;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.ConnectionEnvironment;
@@ -8,10 +10,18 @@ import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.DbType;
 
 import javafx.geometry.Insets;
+import javafx.beans.Observable;
+import javafx.beans.binding.Bindings;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
 
 import java.util.Map;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -32,7 +42,17 @@ public final class ConnectionDialog {
      * @return 用户确认返回新的 {@link ConnConfig}，取消返回空
      */
     public static Optional<ConnConfig> show(ConnConfig existing, CredentialCipher cipher,
-                                            ConnectionManager connMgr) {
+                                            ConnectionManager connMgr, FxTaskRunner runner) {
+        FxTaskScope scope = runner.scope();
+        try (ConnectionTestController tester = new ConnectionTestController(scope, connMgr::test)) {
+            return create(existing, cipher, tester).showAndWait();
+        } finally {
+            scope.close();
+        }
+    }
+
+    static Dialog<ConnConfig> create(ConnConfig existing, CredentialCipher cipher,
+                                     ConnectionTestController tester) {
         Dialog<ConnConfig> dialog = new Dialog<>();
         dialog.setTitle(existing == null ? "新建连接" : "编辑连接");
         dialog.setHeaderText(null);
@@ -141,31 +161,86 @@ public final class ConnectionDialog {
         grid.addRow(7, environmentLabel, environmentBox);
         grid.addRow(8, readOnlyLabel, readOnlyCheck);
         grid.addRow(9, timeoutLabel, timeoutField);
-        dialog.getDialogPane().setContent(grid);
+        typeBox.setId("connection-type");
+        nameField.setId("connection-name");
+        hostField.setId("connection-host");
+        portField.setId("connection-port");
+        dbField.setId("connection-database");
+        userField.setId("connection-user");
+        passField.setId("connection-password");
+        environmentBox.setId("connection-environment");
+        readOnlyCheck.setId("connection-read-only");
+        timeoutField.setId("connection-timeout");
+        linkFormLabels(grid);
 
-        // 测试连接：拦截 OTHER 按钮，不关闭对话框
-        final Button testBtn = (Button) dialog.getDialogPane().lookupButton(testType);
-        testBtn.addEventFilter(javafx.event.ActionEvent.ACTION, evt -> {
-            evt.consume();
-            ConnConfig probe = build(existing, cipher, typeBox.getValue(), nameField, hostField, portField,
+        Button testBtn = (Button) dialog.getDialogPane().lookupButton(testType);
+        Button saveBtn = (Button) dialog.getDialogPane().lookupButton(saveType);
+        testBtn.setId("connection-test");
+        saveBtn.setId("connection-save");
+        Label testStatus = new Label();
+        testStatus.setId("connection-test-status");
+        testStatus.setWrapText(true);
+        testStatus.setMaxWidth(360);
+        testStatus.setMinHeight(Region.USE_PREF_SIZE);
+        testStatus.textProperty().bind(Bindings.createStringBinding(
+                () -> tester.phase().text(), tester.phaseProperty()));
+        var testing = tester.phaseProperty().isEqualTo(ConnectionTestController.Phase.TESTING);
+        grid.disableProperty().bind(testing);
+        testBtn.disableProperty().bind(testing);
+        saveBtn.disableProperty().bind(testing);
+        ProgressIndicator progress = new ProgressIndicator();
+        progress.setId("connection-test-progress");
+        progress.setMaxSize(18, 18);
+        progress.visibleProperty().bind(testing);
+        progress.managedProperty().bind(testing);
+        HBox feedback = new HBox(8, progress, testStatus);
+        feedback.setPadding(new Insets(0, 15, 12, 15));
+        dialog.getDialogPane().setContent(new VBox(grid, feedback));
+
+        for (Observable value : List.<Observable>of(typeBox.valueProperty(), nameField.textProperty(),
+                hostField.textProperty(), portField.textProperty(), dbField.textProperty(),
+                userField.textProperty(), passField.textProperty(), environmentBox.valueProperty(),
+                readOnlyCheck.selectedProperty(), timeoutField.textProperty())) {
+            value.addListener(ignored -> tester.edited());
+        }
+        testBtn.addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            event.consume();
+            if (tester.phase() == ConnectionTestController.Phase.TESTING) return;
+            ConnConfig snapshot = build(existing, cipher, typeBox.getValue(), nameField, hostField, portField,
                     dbField, userField, passField, environmentBox, readOnlyCheck, timeoutField);
-            if (probe == null) return;
-            String err = connMgr.test(probe);
-            Alert alert = new Alert(err == null ? Alert.AlertType.INFORMATION : Alert.AlertType.ERROR,
-                    err == null ? "连接成功" : "连接失败: " + err, ButtonType.OK);
-            alert.setHeaderText(null);
-            alert.showAndWait();
+            if (snapshot != null) tester.start(snapshot);
         });
 
-        dialog.setResultConverter(bt -> {
-            if (bt == saveType) {
-                return build(existing, cipher, typeBox.getValue(), nameField, hostField, portField,
-                        dbField, userField, passField, environmentBox, readOnlyCheck, timeoutField);
+        dialog.setOnHidden(event -> tester.close());
+
+        // Returning null from a result converter still closes a Dialog. Validate before closing.
+        saveBtn.addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            event.consume();
+            if (tester.phase() == ConnectionTestController.Phase.TESTING) return;
+            ConnConfig result = build(existing, cipher, typeBox.getValue(), nameField, hostField, portField,
+                    dbField, userField, passField, environmentBox, readOnlyCheck, timeoutField);
+            if (result != null) {
+                dialog.setResult(result);
+                dialog.close();
             }
-            return null;
         });
+        dialog.setResultConverter(button -> null); // Cancel and window close never produce a configuration.
 
-        return dialog.showAndWait();
+        return dialog;
+    }
+
+    private static void linkFormLabels(GridPane grid) {
+        for (Node node : grid.getChildren()) {
+            if (!(node instanceof Label label)) continue;
+            for (Node candidate : grid.getChildren()) {
+                if (!(candidate instanceof Control control) || candidate == node) continue;
+                if (Objects.equals(GridPane.getRowIndex(node), GridPane.getRowIndex(candidate))
+                        && Integer.valueOf(1).equals(GridPane.getColumnIndex(candidate))) {
+                    label.setLabelFor(control);
+                    control.accessibleTextProperty().bind(label.textProperty());
+                }
+            }
+        }
     }
 
     private static ConnConfig build(
@@ -188,7 +263,8 @@ public final class ConnectionDialog {
         if (type == DbType.REDIS && db.isEmpty()) db = "0";
         if (name.isEmpty() || host.isEmpty()
                 || (type != DbType.REDIS && (db.isEmpty() || user.isEmpty()))) {
-            warn(type == DbType.REDIS ? "名称和主机不能为空" : "名称/主机/数据库/用户名均不能为空");
+            warn(type == DbType.REDIS ? "名称和主机不能为空" : "名称/主机/数据库/用户名均不能为空",
+                    name.isEmpty() ? nameField : host.isEmpty() ? hostField : db.isEmpty() ? dbField : userField);
             return null;
         }
         if (type == DbType.REDIS) {
@@ -196,7 +272,7 @@ public final class ConnectionDialog {
                 int index = Integer.parseInt(db);
                 if (index < 0 || index > 15) throw new NumberFormatException();
             } catch (NumberFormatException e) {
-                warn("Redis DB 索引必须是 0-15 的整数");
+                warn("Redis DB 索引必须是 0-15 的整数", dbField);
                 return null;
             }
         }
@@ -204,7 +280,7 @@ public final class ConnectionDialog {
         try {
             port = Integer.parseInt(portField.getText().trim());
         } catch (NumberFormatException e) {
-            warn("端口必须为数字");
+            warn("端口必须为数字", portField);
             return null;
         }
 
@@ -217,7 +293,7 @@ public final class ConnectionDialog {
                     throw new NumberFormatException();
                 }
             } catch (NumberFormatException e) {
-                warn("查询超时必须是 0-3600 的整数秒");
+                warn("查询超时必须是 0-3600 的整数秒", timeoutField);
                 return null;
             }
         }
@@ -238,9 +314,10 @@ public final class ConnectionDialog {
         return new ConnConfig(id, name, type, host, port, db, user, enc, props);
     }
 
-    private static void warn(String msg) {
+    private static void warn(String msg, Control field) {
         Alert alert = new Alert(Alert.AlertType.WARNING, msg, ButtonType.OK);
         alert.setHeaderText(null);
         alert.showAndWait();
+        field.requestFocus();
     }
 }

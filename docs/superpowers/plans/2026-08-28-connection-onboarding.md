@@ -23,7 +23,7 @@
 - 以下相对路径均以 `D:\Projects\朝花夕拾` 为根。每个代码步骤使用 apply_patch。行号仅作导航，执行时先用 CodeGraph 读取相应符号。
 - 用户已选择在当前任务内顺序实施，不启动子代理。未勾选步骤及其代码块仍是待执行内容，不代表已实现或通过测试。
 
-**2026-08-28 进度：** 任务 1 的实现与自动化回归完成，代码提交为 `707f71a`，位于 `codex/connection-onboarding` 本地分支。首次桌面访问受限后，同日已恢复并补验开始页按钮、键盘焦点、空 SQL 打开/关闭及亮暗主题。任务 2、3 尚未开始。详见 `docs/superpowers/verification/2026-08-28-workspace-start.md`。
+**2026-08-28 进度：** 任务 1 的实现和验收完成，代码提交为 `707f71a`，验收记录提交为 `9b73c8e`，已推送 `codex/connection-onboarding`。任务 2 已实现并保存本地检查点；相关回归 49 项实际通过，最后布局调整后的全量运行因桌面不可访问增加了 UI 跳过，仍需补验后才能标记完成。任务 3 尚未开始。详见 `docs/superpowers/verification/2026-08-28-workspace-start.md` 与 `docs/superpowers/verification/2026-08-28-connection-test.md`。
 
 ---
 
@@ -297,7 +297,7 @@ git commit -m 'feat: 增加空工作区开始引导'
 - Dialog API: `show(ConnConfig, CredentialCipher, ConnectionManager, FxTaskRunner): Optional<ConnConfig>`；包内 `create(ConnConfig, CredentialCipher, ConnectionTestController): Dialog<ConnConfig>` 供行为测试构造。
 - 不修改 FxTaskRunner/FxTaskScope 的公共契约、provider 或连接存储。
 
-- [ ] **Step 1: 先写不依赖显示环境的状态测试。**
+- [x] **Step 1: 先写不依赖显示环境的状态测试。**
 
 `ConnectionTestControllerTest.java` 完整内容；这里注入的 Submitter 是单线程可控队列，真实后台线程另在 Step 5 验证。
 
@@ -402,7 +402,7 @@ class ConnectionTestControllerTest {
 }
 ```
 
-- [ ] **Step 2: 红灯后实现状态控制器。**
+- [x] **Step 2: 红灯后实现状态控制器。**
 
 运行：
 
@@ -491,7 +491,7 @@ final class ConnectionTestController implements AutoCloseable {
 
 Scope 保证后台操作和 FX 回调分离，controller 再防止关闭后写状态。关闭不发布新的 UI 状态，不会向已隐藏窗口通知 CLOSED。运行相同命令，预期四个状态测试通过。
 
-- [ ] **Step 3: 写对话框行为失败测试。**
+- [x] **Step 3: 写对话框行为失败测试。**
 
 `ConnectionDialogTest.java` 完整内容，使用包内 create API 构造控件，不打开保存的连接存储。`CredentialCipher` 仅用于空密码新建/沿用已有假密文，不测试真实凭据。
 
@@ -587,7 +587,7 @@ class ConnectionDialogTest {
 .\gradlew.bat test --tests 'com.datacube.fx.ConnectionDialogTest' --no-daemon --console=plain
 ```
 
-- [ ] **Step 4a: 接入 runner 和受控的对话框构造。**
+- [x] **Step 4a: 接入 runner 和受控的对话框构造。**
 
 `ConnectionTreePane` 保存 constructor 参数 `runner`，仅新建/编辑对话框使用，不在 tree.close 中关闭它：
 
@@ -624,7 +624,9 @@ static Dialog<ConnConfig> create(ConnConfig existing, CredentialCipher cipher,
 
 最后一行是原 show 方法的替换签名；保留原方法闭合括号。create 返回的 Dialog 隐藏时也关闭 tester；公开 show 的 finally 兜底构建/显示失败，不在 FX 上调用 runner.close。
 
-- [ ] **Step 4b: 替换同步测试段，增加状态区与标签关联。**
+- [x] **Step 4b: 替换同步测试段，增加状态区与标签关联。**
+
+实施说明：为落实已确认的“校验不通过保留表单”，保存校验改为按钮事件拦截后再设置结果，未照搬下文 resultConverter 方案；该方案返回 null 仍会关闭 Dialog，已有失败测试复现。另为失败说明设置首选最小高度，深浅主题布局新增测试在修复后需补验。完整过程见任务 2 验证记录。
 
 删除原 `dialog.getDialogPane().setContent(grid)` 和原同步测试事件段。替换为下面代码，保留原 resultConverter，并在返回 dialog 前安装隐藏清理：
 
@@ -722,6 +724,8 @@ warn("查询超时必须是 0-3600 的整数秒", timeoutField);
 
 - [ ] **Step 5: 验证真实 scope 不阻塞 FX，并验证隐藏清理。**
 
+进度：真实 scope、关闭、保存和标签等原 14 项对话框测试已在显示环境可用时实际通过；布局调整后全量发现 16 项对话框均跳过。恢复桌面后需重跑并完成视觉检查，本步骤暂不勾选。
+
 把以下完整方法加到 `ConnectionDialogTest`，使用真实 runner 和 latch，不连接任何数据库：
 
 ```java
@@ -802,7 +806,9 @@ git diff --check
 
 预期全部相关测试通过。逐一人工检查新建/编辑 PG、Oracle、Redis 的字段显隐、标签名称和键盘顺序；用注入的失败操作观察反馈，不进行真实网络测试。provider 的 try-with-resources 和 Redis 的临时会话清理维持原实现；对照 diff 确认无 service/provider 改动，不声称验证了驱动立即停止。
 
-- [ ] **Step 6: 审查并单独提交连接测试增量。**
+- [x] **Step 6: 审查并单独提交连接测试增量。**
+
+本次仅为保留进展的本地代码检查点，不代表 Step 5 或任务 2 全部验收完成，不自动推送该新检查点。
 
 ```powershell
 git add -- src/com/datacube/fx/ConnectionTestController.java src/com/datacube/fx/ConnectionDialog.java src/com/datacube/fx/ConnectionTreePane.java test/com/datacube/fx/ConnectionTestControllerTest.java test/com/datacube/fx/ConnectionDialogTest.java test/com/datacube/service/ConnectionManagerDedicatedSessionTest.java

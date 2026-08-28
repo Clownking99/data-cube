@@ -92,6 +92,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     private final ObjectTreeService treeSvc;
     private final SessionContext session;
     private final Actions actions;
+    private final FxTaskRunner runner;
     private final FxTaskScope tasks;
 
     private final VBox root = new VBox(6);
@@ -110,6 +111,7 @@ public final class ConnectionTreePane implements AutoCloseable {
         this.treeSvc = treeSvc;
         this.session = session;
         this.actions = actions;
+        this.runner = runner;
         this.tasks = runner.scope();
         build();
     }
@@ -193,7 +195,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     }
 
     private void onAddConnection() {
-        ConnectionDialog.show(null, connMgr.cipher(), connMgr).ifPresent(cfg -> {
+        ConnectionDialog.show(null, connMgr.cipher(), connMgr, runner).ifPresent(cfg -> {
             List<ConnConfig> all = new ArrayList<>(store.loadAll());
             all.add(cfg);
             saveSnapshot(all);
@@ -203,7 +205,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     }
 
     private void onEditConnection(ConnConfig existing) {
-        ConnectionDialog.show(existing, connMgr.cipher(), connMgr).ifPresent(cfg -> {
+        ConnectionDialog.show(existing, connMgr.cipher(), connMgr, runner).ifPresent(cfg -> {
             List<ConnConfig> all = new ArrayList<>();
             for (ConnConfig c : store.loadAll()) {
                 all.add(c.id().equals(cfg.id()) ? cfg : c);

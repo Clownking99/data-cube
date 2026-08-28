@@ -26,6 +26,22 @@ import static org.junit.jupiter.api.Assertions.*;
 class ConnectionManagerDedicatedSessionTest {
 
     @Test
+    void probeUsesTestPathWithoutOpeningOrCachingASession() {
+        CredentialCipher cipher = new CredentialCipher();
+        RecordingConnectionFactory factory = new RecordingConnectionFactory();
+        ConnectionManager manager = new ConnectionManager(
+                cipher, type -> provider(factory, new RecordingRunner()));
+        ConnConfig original = config(cipher, "probe-secret");
+        manager.register(original);
+        assertNull(manager.test(original));
+        assertEquals(1, factory.tests.get());
+        assertTrue(factory.opens.isEmpty());
+        assertFalse(manager.isConnected("conn"));
+        assertEquals(original.encryptedPassword(), manager.config("conn").encryptedPassword());
+        assertFalse(manager.config("conn").props().containsKey("__plainPassword"));
+    }
+
+    @Test
     void editorSessionsOwnDistinctConnectionsWhileAcquireRemainsShared() throws Exception {
         CredentialCipher cipher = new CredentialCipher();
         RecordingConnectionFactory factory = new RecordingConnectionFactory();
