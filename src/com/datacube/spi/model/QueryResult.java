@@ -1,5 +1,6 @@
 package com.datacube.spi.model;
 
+import java.io.Reader;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -147,7 +148,8 @@ public final class QueryResult {
             throws SQLException {
         if (sqlType == Types.OTHER
                 && ("json".equalsIgnoreCase(typeName) || "jsonb".equalsIgnoreCase(typeName))) {
-            return rs.getString(idx);
+            Reader source = rs.getCharacterStream(idx);
+            return ImmutableResultValue.readBoundedText(source);
         }
         if (isTimestampWithLocalTimeZone(typeName)) {
             Object temporal = rs.getObject(idx, OffsetDateTime.class);

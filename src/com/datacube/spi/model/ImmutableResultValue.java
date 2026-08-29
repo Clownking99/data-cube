@@ -2,6 +2,7 @@ package com.datacube.spi.model;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Reader;
 import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -31,30 +32,34 @@ import java.util.UUID;
 
 /**
  * Provider-neutral immutable storage for JDBC values that cannot safely outlive a result set.
- * Scalar JDBC values remain their normal Java types; only binary, array, and structured values
- * need this container.
+ * Scalar JDBC values remain their normal Java types. Binary/aggregate values and oversized
+ * provider text use this container for bounded previews with full-content fingerprints.
  */
 public final class ImmutableResultValue {
     private static final int BINARY_PREVIEW_BYTES = 64;
+    private static final int TEXT_PREVIEW_CHARS = 500;
+    private static final int AGGREGATE_PREVIEW_ELEMENTS = 128;
     private static final int MAX_NESTING_DEPTH = 64;
     private static final Object MISSING = new Object();
 
-    private enum Kind { BINARY, ARRAY, STRUCT, REFERENCE }
+    private enum Kind { BINARY, TEXT, ARRAY, STRUCT, REFERENCE }
 
     private final Kind kind;
     private final byte[] bytes;
+    private final String text;
     private final byte[] fingerprint;
-    private final long binaryLength;
+    private final long contentLength;
     private final List<Object> values;
     private final String label;
 
     private ImmutableResultValue(
-            Kind kind, byte[] bytes, byte[] fingerprint,
-            long binaryLength, List<Object> values, String label) {
+            Kind kind, byte[] bytes, String text, byte[] fingerprint,
+            long contentLength, List<Object> values, String label) {
         this.kind = kind;
         this.bytes = bytes;
+        this.text = text;
         this.fingerprint = fingerprint;
-        this.binaryLength = binaryLength;
+        this.contentLength = contentLength;
         this.values = values;
         this.label = label;
     }
@@ -123,8 +128,9 @@ public final class ImmutableResultValue {
     /** Stable display text shared by tables, search, comparisons, and clipboard formatting. */
     public String displayText() {
         return switch (kind) {
-            case BINARY -> binaryText(bytes, binaryLength);
-            case ARRAY -> arrayText(values);
+            case BINARY -> binaryText(bytes, contentLength);
+            case TEXT -> textText(text, contentLength);
+            case ARRAY -> arrayText(values, contentLength);
             case STRUCT -> label + display(values.getFirst());
             case REFERENCE -> "REF " + label + "(" + display(values.getFirst()) + ")";
         };
@@ -145,7 +151,14 @@ public final class ImmutableResultValue {
             }
             int storedLengthComparison = Integer.compare(bytes.length, other.bytes.length);
             if (storedLengthComparison != 0) return storedLengthComparison;
-            int totalLengthComparison = Long.compare(binaryLength, other.binaryLength);
+            int totalLengthComparison = Long.compare(contentLength, other.contentLength);
+            return totalLengthComparison != 0
+                    ? totalLengthComparison : compareUnsigned(fingerprint, other.fingerprint);
+        }
+        if (kind == Kind.TEXT) {
+            int previewComparison = text.compareTo(other.text);
+            if (previewComparison != 0) return previewComparison;
+            int totalLengthComparison = Long.compare(contentLength, other.contentLength);
             return totalLengthComparison != 0
                     ? totalLengthComparison : compareUnsigned(fingerprint, other.fingerprint);
         }
@@ -154,7 +167,12 @@ public final class ImmutableResultValue {
             int comparison = compareElement(values.get(index), other.values.get(index));
             if (comparison != 0) return comparison;
         }
-        return Integer.compare(values.size(), other.values.size());
+        int previewSizeComparison = Integer.compare(values.size(), other.values.size());
+        if (previewSizeComparison != 0) return previewSizeComparison;
+        if (kind != Kind.ARRAY) return 0;
+        int totalLengthComparison = Long.compare(contentLength, other.contentLength);
+        return totalLengthComparison != 0
+                ? totalLengthComparison : compareUnsigned(fingerprint, other.fingerprint);
     }
 
     @Override
@@ -167,19 +185,28 @@ public final class ImmutableResultValue {
         if (this == other) return true;
         if (!(other instanceof ImmutableResultValue value) || kind != value.kind) return false;
         if (!Objects.equals(label, value.label)) return false;
-        return kind == Kind.BINARY
-                ? binaryLength == value.binaryLength
-                        && java.util.Arrays.equals(bytes, value.bytes)
-                        && java.util.Arrays.equals(fingerprint, value.fingerprint)
-                : values.equals(value.values);
+        if (contentLength != value.contentLength) return false;
+        return switch (kind) {
+            case BINARY -> java.util.Arrays.equals(bytes, value.bytes)
+                    && java.util.Arrays.equals(fingerprint, value.fingerprint);
+            case TEXT -> text.equals(value.text)
+                    && java.util.Arrays.equals(fingerprint, value.fingerprint);
+            case ARRAY -> values.equals(value.values)
+                    && java.util.Arrays.equals(fingerprint, value.fingerprint);
+            case STRUCT, REFERENCE -> values.equals(value.values);
+        };
     }
 
     @Override
     public int hashCode() {
-        int content = kind == Kind.BINARY
-                ? Objects.hash(java.util.Arrays.hashCode(bytes), java.util.Arrays.hashCode(fingerprint))
-                : values.hashCode();
-        return Objects.hash(kind, label, binaryLength, content);
+        int content = switch (kind) {
+            case BINARY -> Objects.hash(
+                    java.util.Arrays.hashCode(bytes), java.util.Arrays.hashCode(fingerprint));
+            case TEXT -> Objects.hash(text, java.util.Arrays.hashCode(fingerprint));
+            case ARRAY -> Objects.hash(values, java.util.Arrays.hashCode(fingerprint));
+            case STRUCT, REFERENCE -> values.hashCode();
+        };
+        return Objects.hash(kind, label, contentLength, content);
     }
 
     private static boolean isStandardImmutable(Object value) {
@@ -204,18 +231,56 @@ public final class ImmutableResultValue {
         byte[] copiedPreview = Objects.requireNonNull(preview, "binary preview").clone();
         byte[] copiedFingerprint = Objects.requireNonNull(fingerprint, "binary fingerprint").clone();
         return new ImmutableResultValue(
-                Kind.BINARY, copiedPreview, copiedFingerprint, totalLength, List.of(), null);
+                Kind.BINARY, copiedPreview, null, copiedFingerprint, totalLength, List.of(), null);
+    }
+
+    static Object readBoundedText(Reader source) throws SQLException {
+        if (source == null) return null;
+        try (Reader reader = source) {
+            MessageDigest digest = sha256();
+            StringBuilder preview = new StringBuilder(TEXT_PREVIEW_CHARS);
+            char[] buffer = new char[4096];
+            long totalLength = 0;
+            int count;
+            while ((count = reader.read(buffer)) != -1) {
+                if (count == 0) continue;
+                updateCharacters(digest, buffer, count);
+                int copied = Math.min(count, TEXT_PREVIEW_CHARS - preview.length());
+                if (copied > 0) preview.append(buffer, 0, copied);
+                totalLength = Math.addExact(totalLength, count);
+            }
+            if (totalLength <= TEXT_PREVIEW_CHARS) return preview.toString();
+            return text(preview.toString(), totalLength, digest.digest());
+        } catch (IOException failure) {
+            throw new SQLException("读取 JDBC 文本结果值失败", failure);
+        }
+    }
+
+    private static Object boundedText(CharSequence source) {
+        String value = source.toString();
+        if (value.length() <= TEXT_PREVIEW_CHARS) return value;
+        MessageDigest digest = sha256();
+        updateCharacters(digest, value);
+        return text(value.substring(0, TEXT_PREVIEW_CHARS), value.length(), digest.digest());
+    }
+
+    private static ImmutableResultValue text(
+            String preview, long totalLength, byte[] fingerprint) {
+        return new ImmutableResultValue(Kind.TEXT, null, preview,
+                fingerprint.clone(), totalLength, List.of(), null);
     }
 
     private static ImmutableResultValue freezeArray(
             Object array, FreezeContext context, int depth) throws SQLException {
         int length = Array.getLength(array);
-        List<Object> copied = new ArrayList<>(length);
+        List<Object> copied = new ArrayList<>(Math.min(length, AGGREGATE_PREVIEW_ELEMENTS));
+        MessageDigest digest = sha256();
         for (int index = 0; index < length; index++) {
-            copied.add(freezeJdbc(Array.get(array, index), context, depth + 1));
+            Object element = freezeAggregateElement(Array.get(array, index), context, depth + 1);
+            updateValueFingerprint(digest, element);
+            if (index < AGGREGATE_PREVIEW_ELEMENTS) copied.add(element);
         }
-        return new ImmutableResultValue(
-                Kind.ARRAY, null, null, 0, immutableNullableList(copied), null);
+        return array(copied, length, digest.digest());
     }
 
     private static ImmutableResultValue freezeStruct(
@@ -231,7 +296,7 @@ public final class ImmutableResultValue {
     }
 
     private static ImmutableResultValue labeled(Kind kind, String label, Object value) {
-        return new ImmutableResultValue(kind, null, null, 0,
+        return new ImmutableResultValue(kind, null, null, null, 0,
                 Collections.singletonList(value), label == null ? "" : label);
     }
 
@@ -256,19 +321,33 @@ public final class ImmutableResultValue {
 
     private static Object readAndFreeArray(
             java.sql.Array array, FreezeContext context, int depth) throws SQLException {
-        return readAndCleanup(
-                () -> freezeJdbc(array.getArray(), context, depth + 1), array::free);
+        return readAndCleanup(() -> {
+            try (java.sql.ResultSet elements = array.getResultSet()) {
+                if (elements == null) throw new SQLException("JDBC Array 未返回元素 ResultSet");
+                List<Object> preview = new ArrayList<>(AGGREGATE_PREVIEW_ELEMENTS);
+                MessageDigest digest = sha256();
+                long totalLength = 0;
+                while (elements.next()) {
+                    Object element = freezeAggregateElement(
+                            elements.getObject(2), context, depth + 1);
+                    updateValueFingerprint(digest, element);
+                    if (preview.size() < AGGREGATE_PREVIEW_ELEMENTS) preview.add(element);
+                    totalLength = Math.addExact(totalLength, 1);
+                }
+                return array(preview, totalLength, digest.digest());
+            }
+        }, array::free);
     }
 
     private static Object readAndFreeSqlXml(SQLXML xml) throws SQLException {
-        return readAndCleanup(xml::getString, xml::free);
+        return readAndCleanup(() -> readBoundedText(xml.getCharacterStream()), xml::free);
     }
 
     private static Object freezeKnownProviderValue(
             Object value, FreezeContext context, int depth) throws SQLException {
         if (extendsNamed(value.getClass(), "org.postgresql.util.PGobject")) {
             Object text = invokeNoArg(value, "getValue");
-            return text == null ? null : String.valueOf(text);
+            return text == null ? null : boundedText(String.valueOf(text));
         }
         if (extendsNamed(value.getClass(), "oracle.sql.BFILE")) {
             Object directory = invokeNoArg(value, "getDirAlias");
@@ -295,7 +374,7 @@ public final class ImmutableResultValue {
         for (String accessor : accessors) {
             Object candidate = invokeOptionalNoArg(value, accessor);
             if (candidate != MISSING && candidate != value) {
-                return freezeJdbc(candidate, context, depth + 1);
+                return freezeAggregateElement(candidate, context, depth + 1);
             }
         }
         return MISSING;
@@ -358,6 +437,10 @@ public final class ImmutableResultValue {
         return text.toString();
     }
 
+    private static String textText(String preview, long totalLength) {
+        return preview + "...(" + totalLength + " chars)";
+    }
+
     private static ImmutableResultValue binary(InputStream input) throws IOException {
         MessageDigest digest = sha256();
         byte[] preview = new byte[BINARY_PREVIEW_BYTES];
@@ -395,13 +478,74 @@ public final class ImmutableResultValue {
         return Integer.compare(left.length, right.length);
     }
 
-    private static String arrayText(List<Object> values) {
+    private static String arrayText(List<Object> values, long totalLength) {
         StringBuilder text = new StringBuilder("[");
         for (int index = 0; index < values.size(); index++) {
             if (index > 0) text.append(", ");
             text.append(display(values.get(index)));
         }
+        if (totalLength > values.size()) {
+            if (!values.isEmpty()) text.append(", ");
+            text.append("...(").append(totalLength).append(" elements)");
+        }
         return text.append(']').toString();
+    }
+
+    private static ImmutableResultValue array(
+            List<Object> preview, long totalLength, byte[] fingerprint) {
+        return new ImmutableResultValue(Kind.ARRAY, null, null, fingerprint.clone(),
+                totalLength, immutableNullableList(preview), null);
+    }
+
+    private static Object freezeAggregateElement(
+            Object value, FreezeContext context, int depth) throws SQLException {
+        if (value instanceof CharSequence textValue) return boundedText(textValue);
+        return freezeJdbc(value, context, depth);
+    }
+
+    private static void updateCharacters(MessageDigest digest, CharSequence value) {
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            digest.update((byte) (character >>> 8));
+            digest.update((byte) character);
+        }
+    }
+
+    private static void updateCharacters(MessageDigest digest, char[] value, int length) {
+        for (int index = 0; index < length; index++) {
+            char character = value[index];
+            digest.update((byte) (character >>> 8));
+            digest.update((byte) character);
+        }
+    }
+
+    private static void updateValueFingerprint(MessageDigest digest, Object value) {
+        if (value == null) {
+            digest.update((byte) 0);
+            return;
+        }
+        digest.update((byte) 1);
+        if (value instanceof ImmutableResultValue immutable) {
+            updateDigestText(digest, immutable.kind.name());
+            updateDigestText(digest, Objects.toString(immutable.label, ""));
+            updateDigestLong(digest, immutable.contentLength);
+            if (immutable.fingerprint != null) digest.update(immutable.fingerprint);
+            else for (Object nested : immutable.values) updateValueFingerprint(digest, nested);
+            return;
+        }
+        updateDigestText(digest, value.getClass().getName());
+        updateDigestText(digest, String.valueOf(value));
+    }
+
+    private static void updateDigestText(MessageDigest digest, String value) {
+        updateDigestLong(digest, value.length());
+        updateCharacters(digest, value);
+    }
+
+    private static void updateDigestLong(MessageDigest digest, long value) {
+        for (int shift = Long.SIZE - Byte.SIZE; shift >= 0; shift -= Byte.SIZE) {
+            digest.update((byte) (value >>> shift));
+        }
     }
 
     private static String display(Object value) {

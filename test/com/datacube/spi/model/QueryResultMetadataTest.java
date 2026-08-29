@@ -7,6 +7,7 @@ import com.datacube.sqleditor.result.FilterConnector;
 import com.datacube.sqleditor.result.FilterOperator;
 import com.datacube.sqleditor.result.LocalResultFilter;
 import com.datacube.sqleditor.result.ResultValueFormatter;
+import java.io.StringReader;
 import java.sql.Clob;
 import java.sql.SQLException;
 import java.sql.SQLXML;
@@ -35,6 +36,7 @@ import org.postgresql.core.TypeInfo;
 import org.postgresql.jdbc.PgArray;
 import org.postgresql.util.PGobject;
 import org.junit.jupiter.api.Test;
+import oracle.sql.LargeTextDatum;
 
 class QueryResultMetadataTest {
     @Test
@@ -122,7 +124,7 @@ class QueryResultMetadataTest {
                 "non-JSON OTHER values must preserve their JDBC object identity");
         assertEquals(0, jsonGetObjectCalls.get(),
                 "the driver PGobject must never enter immutable result state");
-        assertEquals(1, jsonGetStringCalls.get());
+        assertEquals(0, jsonGetStringCalls.get());
         assertEquals(1, uuidGetObjectCalls.get());
         assertEquals(0, uuidGetStringCalls.get());
     }
@@ -139,7 +141,7 @@ class QueryResultMetadataTest {
         assertEquals(driverJson.getValue(), result.rows.getFirst().getFirst());
         assertInstanceOf(String.class, result.rows.getFirst().getFirst());
         assertEquals(0, getObjectCalls.get());
-        assertEquals(1, getStringCalls.get());
+        assertEquals(0, getStringCalls.get());
     }
 
     @Test
@@ -165,21 +167,214 @@ class QueryResultMetadataTest {
     }
 
     @Test
-    void resultSetReaderMaterializesJdbcValuesAndFreesResourceBackedObjects() throws Exception {
-        AtomicBoolean arrayFreed = new AtomicBoolean();
-        AtomicBoolean xmlFreed = new AtomicBoolean();
-        java.sql.Array array = proxy(java.sql.Array.class, (method, args) -> switch (method.getName()) {
-            case "getArray" -> new Object[]{"alpha", new int[]{1, 2}};
-            case "getBaseTypeName" -> "INTEGER";
-            case "getBaseType" -> Types.INTEGER;
+    void oversizedProviderTextUsesBoundedPreviewAndFullContentFingerprint() throws Exception {
+        String sharedPrefix = "x".repeat(2_000);
+        String firstText = sharedPrefix + "A";
+        String secondText = sharedPrefix + "B";
+        AtomicInteger getObjectCalls = new AtomicInteger();
+        AtomicInteger getStringCalls = new AtomicInteger();
+        AtomicInteger getCharacterStreamCalls = new AtomicInteger();
+
+        QueryResult json = QueryResult.fromResultSet(singleOtherTypeResultSet(
+                "jsonb", null, firstText, getObjectCalls, getStringCalls,
+                getCharacterStreamCalls), 1, 0);
+        QueryResult differentJsonTail = QueryResult.fromResultSet(singleOtherTypeResultSet(
+                "jsonb", null, secondText, new AtomicInteger(), new AtomicInteger(),
+                new AtomicInteger()), 1, 0);
+        QueryResult pgObject = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "value", Types.OTHER, "jsonpath")),
+                List.of(List.of(pgObject("jsonpath", firstText))), 1, false);
+        QueryResult differentPgObjectTail = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "value", Types.OTHER, "jsonpath")),
+                List.of(List.of(pgObject("jsonpath", secondText))), 1, false);
+        QueryResult oracleAccessor = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "value", Types.OTHER, "LARGE_TEXT")),
+                List.of(List.of(new LargeTextDatum(firstText))), 1, false);
+        QueryResult differentOracleTail = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "value", Types.OTHER, "LARGE_TEXT")),
+                List.of(List.of(new LargeTextDatum(secondText))), 1, false);
+
+        Object jsonValue = json.rows.getFirst().getFirst();
+        assertBoundedTextSnapshot(jsonValue, firstText.length());
+        assertBoundedTextSnapshot(pgObject.rows.getFirst().getFirst(), firstText.length());
+        assertBoundedTextSnapshot(oracleAccessor.rows.getFirst().getFirst(), firstText.length());
+        assertNotEquals(jsonValue, differentJsonTail.rows.getFirst().getFirst(),
+                "same-length text with the same preview must retain distinct content fingerprints");
+        assertNotEquals(pgObject.rows.getFirst().getFirst(),
+                differentPgObjectTail.rows.getFirst().getFirst());
+        assertNotEquals(oracleAccessor.rows.getFirst().getFirst(),
+                differentOracleTail.rows.getFirst().getFirst());
+        assertEquals(0, getObjectCalls.get());
+        assertEquals(0, getStringCalls.get(), "oversized JSON must not be materialized with getString");
+        assertEquals(1, getCharacterStreamCalls.get());
+    }
+
+    @Test
+    void oversizedSqlXmlStreamsBoundedTextAndStillFreesTheLocator() throws Exception {
+        String xmlText = "<root>" + "z".repeat(2_000) + "</root>";
+        String differentTail = xmlText.substring(0, xmlText.length() - 1) + "!";
+        AtomicInteger getStringCalls = new AtomicInteger();
+        AtomicInteger getCharacterStreamCalls = new AtomicInteger();
+        AtomicBoolean freed = new AtomicBoolean();
+        SQLXML xml = proxy(SQLXML.class, (method, args) -> switch (method.getName()) {
+            case "getString" -> {
+                getStringCalls.incrementAndGet();
+                yield xmlText;
+            }
+            case "getCharacterStream" -> {
+                getCharacterStreamCalls.incrementAndGet();
+                yield new StringReader(xmlText);
+            }
             case "free" -> {
-                arrayFreed.set(true);
+                freed.set(true);
                 yield null;
             }
             default -> defaultValue(method.getReturnType());
         });
+
+        QueryResult result = QueryResult.fromResultSet(singleRowResultSet(List.of(
+                new JdbcCell("document", Types.SQLXML, "SQLXML", xml))), 1, 0);
+        QueryResult differentResult = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "document", Types.SQLXML, "SQLXML")),
+                List.of(List.of(sqlXml(differentTail))), 1, false);
+
+        assertTrue(freed.get());
+        assertEquals(0, getStringCalls.get());
+        assertEquals(1, getCharacterStreamCalls.get());
+        assertBoundedTextSnapshot(result.rows.getFirst().getFirst(), xmlText.length());
+        assertNotEquals(result.rows.getFirst().getFirst(), differentResult.rows.getFirst().getFirst());
+    }
+
+    @Test
+    void oversizedJdbcArraysAndStructsRetainBoundedFingerprintedSnapshots() throws Exception {
+        Object[] first = new Object[1_000];
+        Object[] second = new Object[1_000];
+        java.util.Arrays.fill(first, "same");
+        java.util.Arrays.fill(second, "same");
+        String nestedLargeText = "nested".repeat(500);
+        first[0] = nestedLargeText;
+        second[0] = nestedLargeText;
+        first[999] = "tail-A";
+        second[999] = "tail-B";
+        AtomicBoolean arrayResultSetClosed = new AtomicBoolean();
+        AtomicBoolean arrayFreed = new AtomicBoolean();
+        AtomicInteger getArrayCalls = new AtomicInteger();
+        java.sql.Array jdbcArray = streamingArray(first, arrayResultSetClosed, arrayFreed, getArrayCalls);
+
+        QueryResult arrays = QueryResult.fromResultSet(singleRowResultSet(List.of(
+                new JdbcCell("values", Types.ARRAY, "TEXT_ARRAY", jdbcArray))), 1, 0);
+        QueryResult differentTail = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "values", Types.ARRAY, "TEXT_ARRAY")),
+                List.of(List.of(second)), 1, false);
+        java.sql.Struct struct = proxy(java.sql.Struct.class, (method, args) -> switch (method.getName()) {
+            case "getSQLTypeName" -> "LARGE_STRUCT";
+            case "getAttributes" -> first;
+            default -> defaultValue(method.getReturnType());
+        });
+        QueryResult structs = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "value", Types.STRUCT, "LARGE_STRUCT")),
+                List.of(List.of(struct)), 1, false);
+        java.sql.Struct differentStructTail = proxy(java.sql.Struct.class, (method, args) -> switch (method.getName()) {
+            case "getSQLTypeName" -> "LARGE_STRUCT";
+            case "getAttributes" -> second;
+            default -> defaultValue(method.getReturnType());
+        });
+        QueryResult differentStructs = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "value", Types.STRUCT, "LARGE_STRUCT")),
+                List.of(List.of(differentStructTail)), 1, false);
+
+        Object arrayValue = arrays.rows.getFirst().getFirst();
+        assertBoundedAggregateSnapshot(arrayValue, 1_000);
+        assertBoundedTextSnapshot(aggregatePreview(arrayValue).getFirst(), nestedLargeText.length());
+        assertNotEquals(arrayValue, differentTail.rows.getFirst().getFirst(),
+                "same-prefix arrays must retain a fingerprint of omitted elements");
+        Object structValue = structs.rows.getFirst().getFirst();
+        assertTrue(ResultValueFormatter.format(structValue).startsWith("LARGE_STRUCT["));
+        assertTrue(ResultValueFormatter.format(structValue).contains("...(1000 elements)"));
+        assertNotEquals(structValue, differentStructs.rows.getFirst().getFirst());
+        assertTrue(arrayResultSetClosed.get(), "array element ResultSet must close before release");
+        assertTrue(arrayFreed.get(), "array locator must always be freed");
+        assertEquals(0, getArrayCalls.get(), "JDBC Array must never materialize through getArray");
+    }
+
+    @Test
+    void emptyProviderValuesKeepTheirOrdinaryRepresentations() throws Exception {
+        AtomicBoolean arrayResultSetClosed = new AtomicBoolean();
+        AtomicBoolean arrayFreed = new AtomicBoolean();
+        QueryResult json = QueryResult.fromResultSet(singleOtherTypeResultSet(
+                "json", null, "", new AtomicInteger(), new AtomicInteger(),
+                new AtomicInteger()), 1, 0);
+        QueryResult values = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "pg", Types.OTHER, "jsonpath"),
+                new ResultColumn(1, "xml", Types.SQLXML, "SQLXML"),
+                new ResultColumn(2, "oracle", Types.OTHER, "LARGE_TEXT"),
+                new ResultColumn(3, "struct", Types.STRUCT, "EMPTY_STRUCT")), List.of(List.of(
+                pgObject("jsonpath", ""), sqlXml(""), new LargeTextDatum(""),
+                proxy(java.sql.Struct.class, (method, args) -> switch (method.getName()) {
+                    case "getSQLTypeName" -> "EMPTY_STRUCT";
+                    case "getAttributes" -> new Object[0];
+                    default -> defaultValue(method.getReturnType());
+                }))), 1, false);
+        QueryResult array = QueryResult.fromResultSet(singleRowResultSet(List.of(
+                new JdbcCell("array", Types.ARRAY, "EMPTY_ARRAY", streamingArray(new Object[0],
+                        arrayResultSetClosed, arrayFreed, new AtomicInteger())))), 1, 0);
+
+        assertEquals("", json.rows.getFirst().getFirst());
+        assertEquals(List.of("", "", "", "EMPTY_STRUCT[]"),
+                values.rows.getFirst().stream().map(ResultValueFormatter::format).toList());
+        assertEquals("[]", ResultValueFormatter.format(array.rows.getFirst().getFirst()));
+        assertTrue(arrayResultSetClosed.get());
+        assertTrue(arrayFreed.get());
+    }
+
+    @Test
+    void providerValuesAtThePreviewLimitsRemainComplete() throws Exception {
+        String exactText = "t".repeat(500);
+        Object[] exactElements = new Object[128];
+        java.util.Arrays.fill(exactElements, "value");
+        AtomicBoolean arrayResultSetClosed = new AtomicBoolean();
+        AtomicBoolean arrayFreed = new AtomicBoolean();
+        QueryResult json = QueryResult.fromResultSet(singleOtherTypeResultSet(
+                "jsonb", null, exactText, new AtomicInteger(), new AtomicInteger(),
+                new AtomicInteger()), 1, 0);
+        QueryResult textProviders = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "pg", Types.OTHER, "jsonpath"),
+                new ResultColumn(1, "xml", Types.SQLXML, "SQLXML"),
+                new ResultColumn(2, "oracle", Types.OTHER, "LARGE_TEXT")), List.of(List.of(
+                pgObject("jsonpath", exactText), sqlXml(exactText),
+                new LargeTextDatum(exactText))), 1, false);
+        QueryResult array = QueryResult.fromResultSet(singleRowResultSet(List.of(
+                new JdbcCell("array", Types.ARRAY, "TEXT_ARRAY", streamingArray(exactElements,
+                        arrayResultSetClosed, arrayFreed, new AtomicInteger())))), 1, 0);
+        java.sql.Struct struct = proxy(java.sql.Struct.class, (method, args) -> switch (method.getName()) {
+            case "getSQLTypeName" -> "EXACT_STRUCT";
+            case "getAttributes" -> exactElements;
+            default -> defaultValue(method.getReturnType());
+        });
+        QueryResult structResult = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "value", Types.STRUCT, "EXACT_STRUCT")),
+                List.of(List.of(struct)), 1, false);
+
+        assertEquals(exactText, json.rows.getFirst().getFirst());
+        assertInstanceOf(String.class, json.rows.getFirst().getFirst());
+        assertEquals(List.of(exactText, exactText, exactText),
+                textProviders.rows.getFirst().stream().map(ResultValueFormatter::format).toList());
+        assertEquals(128, aggregatePreview(array.rows.getFirst().getFirst()).size());
+        assertFalse(ResultValueFormatter.format(array.rows.getFirst().getFirst()).contains("...("));
+        assertFalse(ResultValueFormatter.format(structResult.rows.getFirst().getFirst()).contains("...("));
+        assertTrue(arrayResultSetClosed.get());
+        assertTrue(arrayFreed.get());
+    }
+
+    @Test
+    void resultSetReaderMaterializesJdbcValuesAndFreesResourceBackedObjects() throws Exception {
+        AtomicBoolean arrayFreed = new AtomicBoolean();
+        AtomicBoolean arrayResultSetClosed = new AtomicBoolean();
+        AtomicBoolean xmlFreed = new AtomicBoolean();
+        java.sql.Array array = streamingArray(new Object[]{"alpha", new int[]{1, 2}},
+                arrayResultSetClosed, arrayFreed, new AtomicInteger());
         SQLXML xml = proxy(SQLXML.class, (method, args) -> switch (method.getName()) {
-            case "getString" -> "<root/>";
+            case "getCharacterStream" -> new StringReader("<root/>");
             case "free" -> {
                 xmlFreed.set(true);
                 yield null;
@@ -209,6 +404,7 @@ class QueryResultMetadataTest {
                 new JdbcCell("owner", Types.REF, "PERSON_T", ref))), 2, 0);
 
         assertTrue(arrayFreed.get());
+        assertTrue(arrayResultSetClosed.get());
         assertTrue(xmlFreed.get());
         assertEquals(List.of("[alpha, [1, 2]]", "<root/>", "POINT_T[3, 4]", "0102", "REF PERSON_T(Ada)"),
                 result.rows.getFirst().stream().map(ResultValueFormatter::format).toList());
@@ -221,8 +417,8 @@ class QueryResultMetadataTest {
     void primaryReadFailureIsPreservedAndEveryResourceCleanupStillRuns() throws Exception {
         assertPrimaryFailureStillFrees(Clob.class, Types.CLOB, "CLOB", "getSubString");
         assertPrimaryFailureStillFrees(java.sql.Blob.class, Types.BLOB, "BLOB", "getBinaryStream");
-        assertPrimaryFailureStillFrees(java.sql.Array.class, Types.ARRAY, "ARRAY", "getArray");
-        assertPrimaryFailureStillFrees(SQLXML.class, Types.SQLXML, "SQLXML", "getString");
+        assertPrimaryFailureStillFrees(java.sql.Array.class, Types.ARRAY, "ARRAY", "getResultSet");
+        assertPrimaryFailureStillFrees(SQLXML.class, Types.SQLXML, "SQLXML", "getCharacterStream");
     }
 
     @Test
@@ -230,7 +426,7 @@ class QueryResultMetadataTest {
         AtomicBoolean freed = new AtomicBoolean();
         Object xmlText = Proxy.newProxyInstance(QueryResultMetadataTest.class.getClassLoader(),
                 new Class<?>[]{SQLXML.class, CharSequence.class}, (proxy, method, args) -> switch (method.getName()) {
-                    case "getString" -> "<dual/>";
+                    case "getCharacterStream" -> new StringReader("<dual/>");
                     case "free" -> {
                         freed.set(true);
                         yield null;
@@ -448,6 +644,10 @@ class QueryResultMetadataTest {
                         uuidGetStringCalls.incrementAndGet();
                         yield uuid.toString();
                     }
+                    case "getCharacterStream" -> {
+                        int index = (int) args[0];
+                        yield index == 1 ? new StringReader(jsonText) : new StringReader(uuid.toString());
+                    }
                     case "isWrapperFor" -> false;
                     case "unwrap" -> null;
                     default -> defaultValue(method.getReturnType());
@@ -464,6 +664,14 @@ class QueryResultMetadataTest {
     private static ResultSet singleOtherTypeResultSet(
             String typeName, Object objectValue, String stringValue,
             AtomicInteger getObjectCalls, AtomicInteger getStringCalls) {
+        return singleOtherTypeResultSet(typeName, objectValue, stringValue,
+                getObjectCalls, getStringCalls, new AtomicInteger());
+    }
+
+    private static ResultSet singleOtherTypeResultSet(
+            String typeName, Object objectValue, String stringValue,
+            AtomicInteger getObjectCalls, AtomicInteger getStringCalls,
+            AtomicInteger getCharacterStreamCalls) {
         ResultSetMetaData metadata = (ResultSetMetaData) Proxy.newProxyInstance(
                 ResultSetMetaData.class.getClassLoader(), new Class<?>[]{ResultSetMetaData.class},
                 (proxy, method, args) -> switch (method.getName()) {
@@ -486,8 +694,72 @@ class QueryResultMetadataTest {
                         getStringCalls.incrementAndGet();
                         yield stringValue;
                     }
+                    case "getCharacterStream" -> {
+                        getCharacterStreamCalls.incrementAndGet();
+                        yield stringValue == null ? null : new StringReader(stringValue);
+                    }
                     default -> defaultValue(method.getReturnType());
                 });
+    }
+
+    private static java.sql.Array streamingArray(
+            Object[] values, AtomicBoolean resultSetClosed, AtomicBoolean freed,
+            AtomicInteger getArrayCalls) {
+        AtomicInteger position = new AtomicInteger(-1);
+        ResultSet elements = (ResultSet) Proxy.newProxyInstance(ResultSet.class.getClassLoader(),
+                new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "next" -> position.incrementAndGet() < values.length;
+                    case "getObject" -> (int) args[0] == 1
+                            ? (long) position.get() + 1 : values[position.get()];
+                    case "close" -> {
+                        resultSetClosed.set(true);
+                        yield null;
+                    }
+                    default -> defaultValue(method.getReturnType());
+                });
+        return proxy(java.sql.Array.class, (method, args) -> switch (method.getName()) {
+            case "getResultSet" -> elements;
+            case "getArray" -> {
+                getArrayCalls.incrementAndGet();
+                yield values;
+            }
+            case "free" -> {
+                if (!resultSetClosed.get()) {
+                    throw new AssertionError("array ResultSet must close before Array.free");
+                }
+                freed.set(true);
+                yield null;
+            }
+            default -> defaultValue(method.getReturnType());
+        });
+    }
+
+    private static SQLXML sqlXml(String value) {
+        return proxy(SQLXML.class, (method, args) -> switch (method.getName()) {
+            case "getCharacterStream" -> new StringReader(value);
+            case "free" -> null;
+            default -> defaultValue(method.getReturnType());
+        });
+    }
+
+    private static void assertBoundedTextSnapshot(Object value, int totalCharacters) throws Exception {
+        assertInstanceOf(ImmutableResultValue.class, value);
+        java.lang.reflect.Field text = ImmutableResultValue.class.getDeclaredField("text");
+        text.setAccessible(true);
+        assertTrue(((String) text.get(value)).length() <= 500);
+        assertTrue(ResultValueFormatter.format(value).endsWith("...(" + totalCharacters + " chars)"));
+    }
+
+    private static void assertBoundedAggregateSnapshot(Object value, int totalElements) throws Exception {
+        assertInstanceOf(ImmutableResultValue.class, value);
+        assertTrue(aggregatePreview(value).size() <= 128);
+        assertTrue(ResultValueFormatter.format(value).contains("...(" + totalElements + " elements)"));
+    }
+
+    private static List<?> aggregatePreview(Object value) throws Exception {
+        java.lang.reflect.Field values = ImmutableResultValue.class.getDeclaredField("values");
+        values.setAccessible(true);
+        return (List<?>) values.get(value);
     }
 
     private static ResultSet singleRowResultSet(List<JdbcCell> cells) {
@@ -568,6 +840,19 @@ class QueryResultMetadataTest {
         BaseConnection connection = proxy(BaseConnection.class, (method, args) ->
                 method.getName().equals("getTypeInfo") ? typeInfo : defaultValue(method.getReturnType()));
         return new PgArray(connection, 1007, literal) {
+            @Override
+            public ResultSet getResultSet() {
+                AtomicInteger position = new AtomicInteger();
+                return (ResultSet) Proxy.newProxyInstance(ResultSet.class.getClassLoader(),
+                        new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
+                            case "next" -> position.incrementAndGet() <= 3;
+                            case "getObject" -> (int) args[0] == 1
+                                    ? (long) position.get() : position.get();
+                            case "close" -> null;
+                            default -> defaultValue(method.getReturnType());
+                        });
+            }
+
             @Override
             public void free() throws SQLException {
                 freed.set(true);
