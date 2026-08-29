@@ -15,11 +15,11 @@ import java.util.UUID;
 
 /** Pure, synchronized state model for local and database-backed result filtering. */
 public final class ResultFilterState {
-    private enum RequestMode { TAGGED, UNTAGGED }
+    private static final long NO_IN_FLIGHT = -1L;
 
     public enum DatabaseStatus { ORIGINAL, LOCAL_PREVIEW, APPLIED, DIRTY_AFTER_APPLY }
 
-    public record DatabaseFilterRequest(
+    public record DatabaseFilterRequest(long generation,
             String originalSql, QueryResult originalResult, List<FilterCondition> conditions) {
         public DatabaseFilterRequest {
             originalSql = Objects.requireNonNull(originalSql, "originalSql");
@@ -55,7 +55,7 @@ public final class ResultFilterState {
     private String databaseUnavailableReason;
     private String recoverableError;
     private long nextGeneration;
-    private InFlight inFlight;
+    private long inFlightGeneration = NO_IN_FLIGHT;
 
     public synchronized void showOriginal(QueryResult result, String sql, String unavailableReason) {
         QueryResult copied = copyResult(Objects.requireNonNull(result, "result"));
@@ -98,55 +98,54 @@ public final class ResultFilterState {
         invalidateRequests();
     }
 
-    /**
-     * Creates the current untagged request lifecycle. Its matching no-token terminal method may
-     * settle it exactly once; a later request or local mutation makes that terminal stale.
-     */
+    /** Creates a generation-bound database filter request. */
     public synchronized DatabaseFilterRequest databaseRequest() {
-        DatabaseFilterRequest request = requestSnapshot();
-        inFlight = new InFlight(RequestMode.UNTAGGED, nextGeneration());
+        long generation = nextGeneration + 1;
+        DatabaseFilterRequest request = requestSnapshot(generation);
+        nextGeneration = generation;
+        inFlightGeneration = generation;
         return request;
     }
 
-    /** Starts a tagged request, replacing any current untagged request. */
+    /** Compatibility wrapper for callers that previously requested a separate request envelope. */
     public synchronized DatabaseRequest beginDatabaseRequest() {
-        DatabaseFilterRequest request = requestSnapshot();
-        long generation = nextGeneration();
-        inFlight = new InFlight(RequestMode.TAGGED, generation);
-        return new DatabaseRequest(generation, request);
+        DatabaseFilterRequest request = databaseRequest();
+        return new DatabaseRequest(request.generation(), request);
     }
 
-    /** Settles the current untagged request exactly once. */
+    /**
+     * @deprecated A completion without a generation cannot be protected against stale callbacks.
+     * Use {@link #databaseApplied(long, QueryResult)}.
+     */
+    @Deprecated
     public synchronized void databaseApplied(QueryResult result) {
-        requireMode(RequestMode.UNTAGGED);
-        AppliedCandidate candidate = appliedCandidate(result);
-        commitApplied(candidate);
-        inFlight = null;
+        throw missingGeneration();
     }
 
-    /** Applies a result only when it belongs to the current tagged request. */
+    /** Applies a result only when it belongs to the current request. */
     public synchronized boolean databaseApplied(long generation, QueryResult result) {
-        if (!matches(RequestMode.TAGGED, generation)) return false;
+        if (generation != inFlightGeneration) return false;
         AppliedCandidate candidate = appliedCandidate(result);
         commitApplied(candidate);
-        inFlight = null;
+        inFlightGeneration = NO_IN_FLIGHT;
         return true;
     }
 
-    /** Settles the current untagged request exactly once. */
+    /**
+     * @deprecated A completion without a generation cannot be protected against stale callbacks.
+     * Use {@link #databaseFailed(long, String)}.
+     */
+    @Deprecated
     public synchronized void databaseFailed(String message) {
-        requireMode(RequestMode.UNTAGGED);
-        FailureCandidate candidate = failureCandidate(message);
-        commitFailure(candidate);
-        inFlight = null;
+        throw missingGeneration();
     }
 
-    /** Records a failure only when it belongs to the current tagged request. */
+    /** Records a failure only when it belongs to the current request. */
     public synchronized boolean databaseFailed(long generation, String message) {
-        if (!matches(RequestMode.TAGGED, generation)) return false;
+        if (generation != inFlightGeneration) return false;
         FailureCandidate candidate = failureCandidate(message);
         commitFailure(candidate);
-        inFlight = null;
+        inFlightGeneration = NO_IN_FLIGHT;
         return true;
     }
 
@@ -181,14 +180,14 @@ public final class ResultFilterState {
                 databaseUnavailableReason, recoverableError);
     }
 
-    private DatabaseFilterRequest requestSnapshot() {
+    private DatabaseFilterRequest requestSnapshot(long generation) {
         if (originalResult == null || conditions.isEmpty()) {
             throw new IllegalStateException("没有可应用的数据库筛选条件");
         }
         if (databaseUnavailableReason != null) {
             throw new IllegalStateException(databaseUnavailableReason);
         }
-        return new DatabaseFilterRequest(originalSql, originalResult, conditions);
+        return new DatabaseFilterRequest(generation, originalSql, originalResult, conditions);
     }
 
     private AppliedCandidate appliedCandidate(QueryResult result) {
@@ -227,17 +226,11 @@ public final class ResultFilterState {
 
     private void invalidateRequests() {
         nextGeneration();
-        inFlight = null;
+        inFlightGeneration = NO_IN_FLIGHT;
     }
 
-    private boolean matches(RequestMode mode, long generation) {
-        return inFlight != null && inFlight.mode() == mode && inFlight.generation() == generation;
-    }
-
-    private void requireMode(RequestMode mode) {
-        if (inFlight == null || inFlight.mode() != mode) {
-            throw new IllegalStateException("没有可结算的" + (mode == RequestMode.TAGGED ? "带 token" : "无 token") + "数据库筛选请求");
-        }
+    private static IllegalStateException missingGeneration() {
+        return new IllegalStateException("数据库筛选完成必须携带 generation");
     }
 
     private static List<Integer> indexesFor(
@@ -320,7 +313,7 @@ public final class ResultFilterState {
     private static Object freezeArray(Object value) {
         int length = Array.getLength(value);
         Class<?> componentType = value.getClass().getComponentType();
-        Object copied = Array.newInstance(componentType, length);
+        Object copied = componentType.isPrimitive() ? Array.newInstance(componentType, length) : new Object[length];
         if (componentType.isPrimitive()) {
             System.arraycopy(value, 0, copied, 0, length);
             return copied;
@@ -333,9 +326,6 @@ public final class ResultFilterState {
 
     private static <T> List<T> immutableCopy(List<? extends T> values) {
         return Collections.unmodifiableList(new ArrayList<>(values));
-    }
-
-    private record InFlight(RequestMode mode, long generation) {
     }
 
     private record AppliedCandidate(QueryResult result, List<Integer> visibleIndexes) {

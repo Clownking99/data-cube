@@ -27,12 +27,11 @@ class ResultFilterStateTest {
     @Test
     void databaseFailurePreservesActiveRowsConditionsAndStatus() {
         ResultFilterState state = preparedState();
-        state.databaseRequest();
-        state.databaseApplied(FILTERED_RESULT);
+        state.databaseApplied(request(state), FILTERED_RESULT);
         QueryResult before = state.snapshot().activeResult();
-        state.databaseRequest();
+        long failureRequest = request(state);
 
-        state.databaseFailed("timeout");
+        assertTrue(state.databaseFailed(failureRequest, "timeout"));
 
         assertEquals(before.rows, state.snapshot().activeResult().rows);
         assertEquals(ResultFilterState.DatabaseStatus.APPLIED, state.snapshot().databaseStatus());
@@ -43,9 +42,7 @@ class ResultFilterStateTest {
     @Test
     void databaseFailureUsesDefaultMessageWhenMissing() {
         ResultFilterState state = preparedState();
-        state.databaseRequest();
-
-        state.databaseFailed(null);
+        assertTrue(state.databaseFailed(request(state), null));
 
         assertEquals("数据库筛选失败", state.snapshot().recoverableError());
     }
@@ -53,8 +50,7 @@ class ResultFilterStateTest {
     @Test
     void clearAfterDatabaseApplyRestoresCachedOriginalWithoutExecution() {
         ResultFilterState state = preparedState();
-        state.databaseRequest();
-        state.databaseApplied(FILTERED_RESULT);
+        state.databaseApplied(request(state), FILTERED_RESULT);
 
         state.clearFilters();
 
@@ -101,15 +97,15 @@ class ResultFilterStateTest {
     }
 
     @Test
-    void untaggedTerminalMethodsCannotBypassAnInFlightGeneration() {
+    @SuppressWarnings("deprecation")
+    void noTokenTerminalMethodsAlwaysFailFast() {
         ResultFilterState state = preparedState();
-        long generation = state.beginDatabaseRequest().generation();
+        request(state);
         ResultFilterState.Snapshot before = state.snapshot();
 
         assertThrows(IllegalStateException.class, () -> state.databaseApplied(FILTERED_RESULT));
         assertThrows(IllegalStateException.class, () -> state.databaseFailed("timeout"));
         assertSnapshotSame(before, state.snapshot());
-        assertTrue(state.databaseApplied(generation, FILTERED_RESULT));
     }
 
     @Test
@@ -189,7 +185,7 @@ class ResultFilterStateTest {
         QueryResult update = QueryResult.update(4, 3);
         state.showOriginal(update, "update USERS", null);
         assertNotSame(update, state.snapshot().originalResult());
-        assertEquals(3, state.snapshot().originalResult().updateCount);
+        assertResultEquivalent(update, state.snapshot().originalResult());
 
         for (QueryResult error : List.of(QueryResult.error("sql", 5),
                 QueryResult.cancelled("cancelled", 6), QueryResult.timeout("slow", 7))) {
@@ -233,36 +229,35 @@ class ResultFilterStateTest {
     }
 
     @Test
-    void untaggedRequestHasOneShotLifecycleAndLocalChangesInvalidateIt() {
+    void newRequestsAndLocalChangesRejectEveryOlderGeneration() {
         ResultFilterState state = preparedState();
-        state.databaseRequest();
+        long first = request(state);
+        long second = request(state);
+        assertFalse(state.databaseApplied(first, FILTERED_RESULT));
+        assertFalse(state.databaseFailed(first, "timeout"));
+
         state.setSearchText("2");
-
-        assertThrows(IllegalStateException.class, () -> state.databaseApplied(FILTERED_RESULT));
-        assertThrows(IllegalStateException.class, () -> state.databaseFailed("timeout"));
-
-        state.setSearchText("");
-        state.databaseRequest();
-        state.databaseApplied(FILTERED_RESULT);
-        assertThrows(IllegalStateException.class, () -> state.databaseApplied(RESULT));
-        assertThrows(IllegalStateException.class, () -> state.databaseFailed("again"));
+        long third = request(state);
+        assertFalse(state.databaseApplied(second, FILTERED_RESULT));
+        assertFalse(state.databaseFailed(second, "timeout"));
+        assertTrue(state.databaseApplied(third, FILTERED_RESULT));
     }
 
     @Test
-    void taggedAndUntaggedLifecyclesSafelyReplaceOneAnother() {
+    void databaseRequestAndBeginDatabaseRequestSafelyReplaceOneAnother() {
         ResultFilterState state = preparedState();
-        state.databaseRequest();
+        long first = request(state);
         long tagged = state.beginDatabaseRequest().generation();
-        assertThrows(IllegalStateException.class, () -> state.databaseApplied(FILTERED_RESULT));
+        assertFalse(state.databaseApplied(first, FILTERED_RESULT));
         assertTrue(state.databaseApplied(tagged, FILTERED_RESULT));
 
-        state.databaseRequest();
-        state.databaseApplied(RESULT);
+        long replacement = request(state);
+        assertTrue(state.databaseApplied(replacement, RESULT));
 
         long staleTagged = state.beginDatabaseRequest().generation();
-        state.databaseRequest();
+        long finalRequest = request(state);
         assertFalse(state.databaseApplied(staleTagged, FILTERED_RESULT));
-        state.databaseFailed("timeout");
+        assertTrue(state.databaseFailed(finalRequest, "timeout"));
         assertEquals("timeout", state.snapshot().recoverableError());
     }
 
@@ -275,8 +270,7 @@ class ResultFilterStateTest {
         state.clearFilters();
         state.showOriginal(RESULT, "select ID from USERS", null);
         state.setConditions(List.of(CONDITION));
-        state.databaseRequest();
-        state.databaseApplied(FILTERED_RESULT);
+        state.databaseApplied(request(state), FILTERED_RESULT);
         state.setSearchText("2");
         assertEquals(ResultFilterState.DatabaseStatus.DIRTY_AFTER_APPLY, state.snapshot().databaseStatus());
 
@@ -342,11 +336,53 @@ class ResultFilterStateTest {
                 (byte[]) state.snapshot().conditions().getFirst().value());
     }
 
+    @Test
+    void calendarsAndReferenceArraysFreezeWithoutElementTypeFailures() {
+        CalendarValue value = new CalendarValue();
+        java.util.Calendar calendar = value.calendar();
+        StringBuilder[] builders = {new StringBuilder("first"), new StringBuilder("second")};
+        Object[] nested = {builders, new Object[]{new StringBuilder("nested"), new int[]{1, 2}}};
+        QueryResult source = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "CAL", Types.TIMESTAMP, "TIMESTAMP"),
+                new ResultColumn(1, "ARRAY", Types.ARRAY, "ARRAY")),
+                List.of(new ArrayList<>(List.of(calendar, nested))), 1, false);
+        ResultFilterState state = new ResultFilterState();
+        state.showOriginal(source, "select * from T", null);
+
+        calendar.setTimeInMillis(0);
+        builders[0].append(" changed");
+        Object[] exposed = (Object[]) state.snapshot().originalResult().rows.getFirst().get(1);
+        assertEquals(value.millis(), ((java.util.Calendar) state.snapshot().originalResult().rows.getFirst().get(0)).getTimeInMillis());
+        assertEquals("first", ((Object[]) exposed[0])[0]);
+        assertEquals("nested", ((Object[]) exposed[1])[0]);
+        ((Object[]) exposed[0])[0] = "changed output";
+        ((java.util.Calendar) state.snapshot().originalResult().rows.getFirst().get(0)).setTimeInMillis(1);
+        assertEquals(value.millis(), ((java.util.Calendar) state.snapshot().originalResult().rows.getFirst().get(0)).getTimeInMillis());
+        assertEquals("first", ((Object[]) ((Object[]) state.snapshot().originalResult().rows.getFirst().get(1))[0])[0]);
+    }
+
+    @Test
+    void unknownValueFailsAtomicallyAndDoesNotConsumeTaggedRequest() {
+        ResultFilterState state = preparedState();
+        long generation = state.beginDatabaseRequest().generation();
+        ResultFilterState.Snapshot before = state.snapshot();
+        QueryResult unsupported = QueryResult.queryWithMetadata(List.of(column()),
+                List.of(List.of(new Object())), 1, false);
+
+        assertThrows(IllegalArgumentException.class, () -> state.databaseApplied(generation, unsupported));
+        assertSnapshotSame(before, state.snapshot());
+        assertTrue(state.databaseApplied(generation, FILTERED_RESULT));
+    }
+
     private static ResultFilterState preparedState() {
         ResultFilterState state = new ResultFilterState();
         state.showOriginal(RESULT, "select ID from USERS", null);
         state.setConditions(List.of(CONDITION));
         return state;
+    }
+
+    private static long request(ResultFilterState state) {
+        return state.databaseRequest().generation();
     }
 
     private static void assertInvalidates(Consumer<ResultFilterState> invalidation) {
@@ -395,5 +431,15 @@ class ResultFilterStateTest {
 
     private static ResultColumn column() {
         return new ResultColumn(0, "ID", Types.INTEGER, "INTEGER");
+    }
+
+    private static final class CalendarValue {
+        private final java.util.Calendar calendar = new java.util.GregorianCalendar(
+                2026, java.util.Calendar.AUGUST, 29, 10, 11, 12);
+        private final long millis = calendar.getTimeInMillis();
+
+        private java.util.Calendar calendar() { return calendar; }
+
+        private long millis() { return millis; }
     }
 }
