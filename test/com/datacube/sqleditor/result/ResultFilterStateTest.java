@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -26,12 +27,14 @@ class ResultFilterStateTest {
     @Test
     void databaseFailurePreservesActiveRowsConditionsAndStatus() {
         ResultFilterState state = preparedState();
+        state.databaseRequest();
         state.databaseApplied(FILTERED_RESULT);
         QueryResult before = state.snapshot().activeResult();
+        state.databaseRequest();
 
         state.databaseFailed("timeout");
 
-        assertSame(before, state.snapshot().activeResult());
+        assertEquals(before.rows, state.snapshot().activeResult().rows);
         assertEquals(ResultFilterState.DatabaseStatus.APPLIED, state.snapshot().databaseStatus());
         assertEquals("timeout", state.snapshot().recoverableError());
         assertEquals(List.of(CONDITION), state.snapshot().conditions());
@@ -40,6 +43,7 @@ class ResultFilterStateTest {
     @Test
     void databaseFailureUsesDefaultMessageWhenMissing() {
         ResultFilterState state = preparedState();
+        state.databaseRequest();
 
         state.databaseFailed(null);
 
@@ -49,6 +53,7 @@ class ResultFilterStateTest {
     @Test
     void clearAfterDatabaseApplyRestoresCachedOriginalWithoutExecution() {
         ResultFilterState state = preparedState();
+        state.databaseRequest();
         state.databaseApplied(FILTERED_RESULT);
 
         state.clearFilters();
@@ -186,11 +191,21 @@ class ResultFilterStateTest {
         assertNotSame(update, state.snapshot().originalResult());
         assertEquals(3, state.snapshot().originalResult().updateCount);
 
-        QueryResult error = QueryResult.timeout("slow", 5);
-        state.showOriginal(error, "select ID from USERS", null);
-        assertNotSame(error, state.snapshot().originalResult());
-        assertEquals(QueryResult.FailureKind.TIMEOUT, state.snapshot().originalResult().failureKind);
-        assertEquals("slow", state.snapshot().originalResult().errorMessage);
+        for (QueryResult error : List.of(QueryResult.error("sql", 5),
+                QueryResult.cancelled("cancelled", 6), QueryResult.timeout("slow", 7))) {
+            state.showOriginal(error, "select ID from USERS", null);
+            QueryResult snapshot = state.snapshot().originalResult();
+            assertNotSame(error, snapshot);
+            assertEquals(error.kind, snapshot.kind);
+            assertEquals(error.failureKind, snapshot.failureKind);
+            assertEquals(error.errorMessage, snapshot.errorMessage);
+            assertEquals(error.elapsedMillis, snapshot.elapsedMillis);
+            assertEquals(error.updateCount, snapshot.updateCount);
+            assertEquals(error.columns, snapshot.columns);
+            assertEquals(error.rows, snapshot.rows);
+            assertEquals(error.columnComments, snapshot.columnComments);
+            assertEquals(error.truncated, snapshot.truncated);
+        }
     }
 
     @Test
@@ -217,6 +232,116 @@ class ResultFilterStateTest {
         assertEquals("连接不可用", failure.getMessage());
     }
 
+    @Test
+    void untaggedRequestHasOneShotLifecycleAndLocalChangesInvalidateIt() {
+        ResultFilterState state = preparedState();
+        state.databaseRequest();
+        state.setSearchText("2");
+
+        assertThrows(IllegalStateException.class, () -> state.databaseApplied(FILTERED_RESULT));
+        assertThrows(IllegalStateException.class, () -> state.databaseFailed("timeout"));
+
+        state.setSearchText("");
+        state.databaseRequest();
+        state.databaseApplied(FILTERED_RESULT);
+        assertThrows(IllegalStateException.class, () -> state.databaseApplied(RESULT));
+        assertThrows(IllegalStateException.class, () -> state.databaseFailed("again"));
+    }
+
+    @Test
+    void taggedAndUntaggedLifecyclesSafelyReplaceOneAnother() {
+        ResultFilterState state = preparedState();
+        state.databaseRequest();
+        long tagged = state.beginDatabaseRequest().generation();
+        assertThrows(IllegalStateException.class, () -> state.databaseApplied(FILTERED_RESULT));
+        assertTrue(state.databaseApplied(tagged, FILTERED_RESULT));
+
+        state.databaseRequest();
+        state.databaseApplied(RESULT);
+
+        long staleTagged = state.beginDatabaseRequest().generation();
+        state.databaseRequest();
+        assertFalse(state.databaseApplied(staleTagged, FILTERED_RESULT));
+        state.databaseFailed("timeout");
+        assertEquals("timeout", state.snapshot().recoverableError());
+    }
+
+    @Test
+    void dirtyAfterApplyAndClearAllResetAllVisibleState() {
+        ResultFilterState state = new ResultFilterState();
+        state.showOriginal(RESULT, "select ID from USERS", "连接不可用");
+        state.setConditions(List.of(CONDITION));
+        state.setSearchText("2");
+        state.clearFilters();
+        state.showOriginal(RESULT, "select ID from USERS", null);
+        state.setConditions(List.of(CONDITION));
+        state.databaseRequest();
+        state.databaseApplied(FILTERED_RESULT);
+        state.setSearchText("2");
+        assertEquals(ResultFilterState.DatabaseStatus.DIRTY_AFTER_APPLY, state.snapshot().databaseStatus());
+
+        state.clearAll();
+
+        ResultFilterState.Snapshot snapshot = state.snapshot();
+        assertNull(snapshot.originalResult());
+        assertNull(snapshot.activeResult());
+        assertNull(snapshot.originalSql());
+        assertEquals("", snapshot.searchText());
+        assertEquals(List.of(), snapshot.conditions());
+        assertEquals(List.of(), snapshot.visibleRowIndexes());
+        assertEquals(ResultFilterState.DatabaseStatus.ORIGINAL, snapshot.databaseStatus());
+        assertNull(snapshot.databaseUnavailableReason());
+        assertNull(snapshot.recoverableError());
+    }
+
+    @Test
+    void mutableResultCellsAreFrozenAtInputAndOutputBoundaries() {
+        StringBuilder text = new StringBuilder("before");
+        java.sql.Timestamp timestamp = java.sql.Timestamp.valueOf("2026-08-29 10:11:12.123456789");
+        byte[] bytes = {1, 2, 3};
+        QueryResult source = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "TEXT", Types.VARCHAR, "VARCHAR"),
+                new ResultColumn(1, "TS", Types.TIMESTAMP, "TIMESTAMP"),
+                new ResultColumn(2, "BIN", Types.VARBINARY, "VARBINARY")),
+                List.of(new ArrayList<>(List.of(text, timestamp, bytes))), 1, false);
+        ResultFilterState state = new ResultFilterState();
+        state.showOriginal(source, "select * from T", null);
+
+        text.append(" changed");
+        timestamp.setNanos(1);
+        bytes[0] = 9;
+        List<Object> exposed = state.snapshot().originalResult().rows.getFirst();
+        assertEquals("before", exposed.get(0));
+        assertEquals(java.sql.Timestamp.valueOf("2026-08-29 10:11:12.123456789"), exposed.get(1));
+        assertArrayEquals(new byte[]{1, 2, 3}, (byte[]) exposed.get(2));
+
+        ((java.sql.Timestamp) exposed.get(1)).setNanos(2);
+        ((byte[]) exposed.get(2))[0] = 8;
+        List<Object> later = state.snapshot().originalResult().rows.getFirst();
+        assertEquals(java.sql.Timestamp.valueOf("2026-08-29 10:11:12.123456789"), later.get(1));
+        assertArrayEquals(new byte[]{1, 2, 3}, (byte[]) later.get(2));
+    }
+
+    @Test
+    void mutableConditionValuesAreFrozenForStateSnapshotAndRequest() {
+        byte[] value = {4, 5};
+        FilterCondition condition = new FilterCondition(0, FilterConnector.AND, FilterOperator.EQ, value);
+        ResultFilterState state = new ResultFilterState();
+        state.showOriginal(QueryResult.queryWithMetadata(List.of(column()), List.of(List.of("x")), 1, false),
+                "select ID from USERS", null);
+        state.setConditions(List.of(condition));
+
+        value[0] = 9;
+        byte[] fromSnapshot = (byte[]) state.snapshot().conditions().getFirst().value();
+        assertArrayEquals(new byte[]{4, 5}, fromSnapshot);
+        fromSnapshot[1] = 8;
+        byte[] fromRequest = (byte[]) state.databaseRequest().conditions().getFirst().value();
+        assertArrayEquals(new byte[]{4, 5}, fromRequest);
+        fromRequest[0] = 7;
+        assertArrayEquals(new byte[]{4, 5},
+                (byte[]) state.snapshot().conditions().getFirst().value());
+    }
+
     private static ResultFilterState preparedState() {
         ResultFilterState state = new ResultFilterState();
         state.showOriginal(RESULT, "select ID from USERS", null);
@@ -235,8 +360,8 @@ class ResultFilterStateTest {
     }
 
     private static void assertSnapshotSame(ResultFilterState.Snapshot expected, ResultFilterState.Snapshot actual) {
-        assertSame(expected.originalResult(), actual.originalResult());
-        assertSame(expected.activeResult(), actual.activeResult());
+        assertResultEquivalent(expected.originalResult(), actual.originalResult());
+        assertResultEquivalent(expected.activeResult(), actual.activeResult());
         assertEquals(expected.originalSql(), actual.originalSql());
         assertEquals(expected.searchText(), actual.searchText());
         assertEquals(expected.conditions(), actual.conditions());
@@ -244,6 +369,23 @@ class ResultFilterStateTest {
         assertEquals(expected.databaseStatus(), actual.databaseStatus());
         assertEquals(expected.databaseUnavailableReason(), actual.databaseUnavailableReason());
         assertEquals(expected.recoverableError(), actual.recoverableError());
+    }
+
+    private static void assertResultEquivalent(QueryResult expected, QueryResult actual) {
+        if (expected == null || actual == null) {
+            assertEquals(expected, actual);
+            return;
+        }
+        assertEquals(expected.kind, actual.kind);
+        assertEquals(expected.columns, actual.columns);
+        assertEquals(expected.columnComments, actual.columnComments);
+        assertEquals(expected.resultColumns, actual.resultColumns);
+        assertEquals(expected.rows, actual.rows);
+        assertEquals(expected.updateCount, actual.updateCount);
+        assertEquals(expected.elapsedMillis, actual.elapsedMillis);
+        assertEquals(expected.errorMessage, actual.errorMessage);
+        assertEquals(expected.failureKind, actual.failureKind);
+        assertEquals(expected.truncated, actual.truncated);
     }
 
     private static QueryResult result(List<List<Integer>> values) {

@@ -1,21 +1,30 @@
 package com.datacube.sqleditor.result;
 
 import com.datacube.spi.model.QueryResult;
+import java.lang.reflect.Array;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.sql.Time;
+import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 /** Pure, synchronized state model for local and database-backed result filtering. */
 public final class ResultFilterState {
-    private static final long NO_IN_FLIGHT = -1L;
+    private enum RequestMode { TAGGED, UNTAGGED }
 
     public enum DatabaseStatus { ORIGINAL, LOCAL_PREVIEW, APPLIED, DIRTY_AFTER_APPLY }
 
     public record DatabaseFilterRequest(
             String originalSql, QueryResult originalResult, List<FilterCondition> conditions) {
         public DatabaseFilterRequest {
-            conditions = List.copyOf(conditions);
+            originalSql = Objects.requireNonNull(originalSql, "originalSql");
+            originalResult = copyResult(Objects.requireNonNull(originalResult, "originalResult"));
+            conditions = freezeConditions(conditions);
         }
     }
 
@@ -29,7 +38,9 @@ public final class ResultFilterState {
             List<Integer> visibleRowIndexes, DatabaseStatus databaseStatus,
             String databaseUnavailableReason, String recoverableError) {
         public Snapshot {
-            conditions = List.copyOf(conditions);
+            originalResult = copyNullableResult(originalResult);
+            activeResult = copyNullableResult(activeResult);
+            conditions = freezeConditions(conditions);
             visibleRowIndexes = List.copyOf(visibleRowIndexes);
         }
     }
@@ -44,8 +55,7 @@ public final class ResultFilterState {
     private String databaseUnavailableReason;
     private String recoverableError;
     private long nextGeneration;
-    private long inFlightGeneration = NO_IN_FLIGHT;
-    private boolean generationProtocolUsed;
+    private InFlight inFlight;
 
     public synchronized void showOriginal(QueryResult result, String sql, String unavailableReason) {
         QueryResult copied = copyResult(Objects.requireNonNull(result, "result"));
@@ -77,7 +87,7 @@ public final class ResultFilterState {
     }
 
     public synchronized void setConditions(List<FilterCondition> value) {
-        List<FilterCondition> candidateConditions = List.copyOf(value);
+        List<FilterCondition> candidateConditions = freezeConditions(value);
         DatabaseStatus candidateStatus = previewStatus(searchText, candidateConditions);
         List<Integer> indexes = indexesFor(activeResult, searchText, candidateConditions);
 
@@ -88,58 +98,55 @@ public final class ResultFilterState {
         invalidateRequests();
     }
 
+    /**
+     * Creates the current untagged request lifecycle. Its matching no-token terminal method may
+     * settle it exactly once; a later request or local mutation makes that terminal stale.
+     */
     public synchronized DatabaseFilterRequest databaseRequest() {
-        if (originalResult == null || conditions.isEmpty()) {
-            throw new IllegalStateException("没有可应用的数据库筛选条件");
-        }
-        if (databaseUnavailableReason != null) {
-            throw new IllegalStateException(databaseUnavailableReason);
-        }
-        return new DatabaseFilterRequest(originalSql, originalResult, conditions);
+        DatabaseFilterRequest request = requestSnapshot();
+        inFlight = new InFlight(RequestMode.UNTAGGED, nextGeneration());
+        return request;
     }
 
-    /** Starts a request. Only the matching token may complete it, once. */
+    /** Starts a tagged request, replacing any current untagged request. */
     public synchronized DatabaseRequest beginDatabaseRequest() {
-        DatabaseFilterRequest request = databaseRequest();
-        long generation = nextGeneration + 1;
-        nextGeneration = generation;
-        inFlightGeneration = generation;
-        generationProtocolUsed = true;
+        DatabaseFilterRequest request = requestSnapshot();
+        long generation = nextGeneration();
+        inFlight = new InFlight(RequestMode.TAGGED, generation);
         return new DatabaseRequest(generation, request);
     }
 
-    /**
-     * Compatibility entry point for synchronous callers. It is unavailable once a generation-aware
-     * request has been started, so it cannot overwrite an asynchronously protected result.
-     */
+    /** Settles the current untagged request exactly once. */
     public synchronized void databaseApplied(QueryResult result) {
-        rejectUnsafeUntaggedCompletion();
+        requireMode(RequestMode.UNTAGGED);
         AppliedCandidate candidate = appliedCandidate(result);
         commitApplied(candidate);
+        inFlight = null;
     }
 
-    /** Applies a result only when it belongs to the current in-flight request. */
+    /** Applies a result only when it belongs to the current tagged request. */
     public synchronized boolean databaseApplied(long generation, QueryResult result) {
-        if (generation != inFlightGeneration) return false;
+        if (!matches(RequestMode.TAGGED, generation)) return false;
         AppliedCandidate candidate = appliedCandidate(result);
         commitApplied(candidate);
-        inFlightGeneration = NO_IN_FLIGHT;
+        inFlight = null;
         return true;
     }
 
-    /** See {@link #databaseApplied(QueryResult)} for the compatibility safety rule. */
+    /** Settles the current untagged request exactly once. */
     public synchronized void databaseFailed(String message) {
-        rejectUnsafeUntaggedCompletion();
+        requireMode(RequestMode.UNTAGGED);
         FailureCandidate candidate = failureCandidate(message);
         commitFailure(candidate);
+        inFlight = null;
     }
 
-    /** Records a failure only when it belongs to the current in-flight request. */
+    /** Records a failure only when it belongs to the current tagged request. */
     public synchronized boolean databaseFailed(long generation, String message) {
-        if (generation != inFlightGeneration) return false;
+        if (!matches(RequestMode.TAGGED, generation)) return false;
         FailureCandidate candidate = failureCandidate(message);
         commitFailure(candidate);
-        inFlightGeneration = NO_IN_FLIGHT;
+        inFlight = null;
         return true;
     }
 
@@ -174,6 +181,16 @@ public final class ResultFilterState {
                 databaseUnavailableReason, recoverableError);
     }
 
+    private DatabaseFilterRequest requestSnapshot() {
+        if (originalResult == null || conditions.isEmpty()) {
+            throw new IllegalStateException("没有可应用的数据库筛选条件");
+        }
+        if (databaseUnavailableReason != null) {
+            throw new IllegalStateException(databaseUnavailableReason);
+        }
+        return new DatabaseFilterRequest(originalSql, originalResult, conditions);
+    }
+
     private AppliedCandidate appliedCandidate(QueryResult result) {
         QueryResult copied = copyResult(Objects.requireNonNull(result, "result"));
         return new AppliedCandidate(copied, indexesFor(copied, searchText, conditions));
@@ -204,14 +221,22 @@ public final class ResultFilterState {
         return DatabaseStatus.LOCAL_PREVIEW;
     }
 
-    private void invalidateRequests() {
-        nextGeneration++;
-        inFlightGeneration = NO_IN_FLIGHT;
+    private long nextGeneration() {
+        return ++nextGeneration;
     }
 
-    private void rejectUnsafeUntaggedCompletion() {
-        if (generationProtocolUsed || inFlightGeneration != NO_IN_FLIGHT) {
-            throw new IllegalStateException("异步数据库筛选必须使用 generation 完成请求");
+    private void invalidateRequests() {
+        nextGeneration();
+        inFlight = null;
+    }
+
+    private boolean matches(RequestMode mode, long generation) {
+        return inFlight != null && inFlight.mode() == mode && inFlight.generation() == generation;
+    }
+
+    private void requireMode(RequestMode mode) {
+        if (inFlight == null || inFlight.mode() != mode) {
+            throw new IllegalStateException("没有可结算的" + (mode == RequestMode.TAGGED ? "带 token" : "无 token") + "数据库筛选请求");
         }
     }
 
@@ -222,6 +247,10 @@ public final class ResultFilterState {
 
     private static String failureMessage(String message) {
         return message == null ? "数据库筛选失败" : message;
+    }
+
+    private static QueryResult copyNullableResult(QueryResult source) {
+        return source == null ? null : copyResult(source);
     }
 
     private static QueryResult copyResult(QueryResult source) {
@@ -235,7 +264,9 @@ public final class ResultFilterState {
     private static QueryResult copyQuery(QueryResult source) {
         List<List<Object>> rows = new ArrayList<>(source.rows.size());
         for (List<Object> row : source.rows) {
-            rows.add(immutableCopy(Objects.requireNonNull(row, "result row")));
+            List<Object> copiedRow = new ArrayList<>(Objects.requireNonNull(row, "result row").size());
+            for (Object value : row) copiedRow.add(freezeValue(value));
+            rows.add(Collections.unmodifiableList(copiedRow));
         }
         QueryResult copied = QueryResult.queryWithMetadata(immutableCopy(source.resultColumns),
                 Collections.unmodifiableList(rows), source.elapsedMillis, source.truncated);
@@ -254,8 +285,57 @@ public final class ResultFilterState {
         return QueryResult.error(source.errorMessage, source.elapsedMillis);
     }
 
+    private static List<FilterCondition> freezeConditions(List<FilterCondition> values) {
+        Objects.requireNonNull(values, "conditions");
+        List<FilterCondition> copied = new ArrayList<>(values.size());
+        for (FilterCondition condition : values) {
+            FilterCondition source = Objects.requireNonNull(condition, "condition");
+            copied.add(new FilterCondition(source.columnIndex(), source.connector(), source.operator(),
+                    freezeValue(source.value())));
+        }
+        return List.copyOf(copied);
+    }
+
+    private static Object freezeValue(Object value) {
+        if (value == null || value instanceof String || value instanceof Boolean || value instanceof Character
+                || value instanceof Byte || value instanceof Short || value instanceof Integer
+                || value instanceof Long || value instanceof Float || value instanceof Double
+                || value instanceof BigInteger || value instanceof BigDecimal || value instanceof UUID
+                || value instanceof Enum<?>) return value;
+        if (value instanceof Timestamp timestamp) {
+            Timestamp copied = new Timestamp(timestamp.getTime());
+            copied.setNanos(timestamp.getNanos());
+            return copied;
+        }
+        if (value instanceof java.sql.Date date) return new java.sql.Date(date.getTime());
+        if (value instanceof Time time) return new Time(time.getTime());
+        if (value instanceof java.util.Date date) return new java.util.Date(date.getTime());
+        if (value instanceof Calendar calendar) return calendar.clone();
+        if (value instanceof CharSequence text) return text.toString();
+        if (value.getClass().isArray()) return freezeArray(value);
+        if (value.getClass().getPackageName().startsWith("java.time")) return value;
+        throw new IllegalArgumentException("不支持冻结的可变结果值类型: " + value.getClass().getName());
+    }
+
+    private static Object freezeArray(Object value) {
+        int length = Array.getLength(value);
+        Class<?> componentType = value.getClass().getComponentType();
+        Object copied = Array.newInstance(componentType, length);
+        if (componentType.isPrimitive()) {
+            System.arraycopy(value, 0, copied, 0, length);
+            return copied;
+        }
+        for (int index = 0; index < length; index++) {
+            Array.set(copied, index, freezeValue(Array.get(value, index)));
+        }
+        return copied;
+    }
+
     private static <T> List<T> immutableCopy(List<? extends T> values) {
         return Collections.unmodifiableList(new ArrayList<>(values));
+    }
+
+    private record InFlight(RequestMode mode, long generation) {
     }
 
     private record AppliedCandidate(QueryResult result, List<Integer> visibleIndexes) {
