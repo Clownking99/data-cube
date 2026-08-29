@@ -223,6 +223,77 @@ class ResultFilterStateTest {
     }
 
     @Test
+    void availabilityReasonGatesDatabaseRequestWithoutChangingLocalPreview() {
+        ResultFilterState state = preparedState();
+        List<Integer> visibleBefore = state.snapshot().visibleRowIndexes();
+        String reason = "列“ID”（数据库专有类型）不支持数据库筛选运算符“大于”；本地筛选仍可使用";
+
+        state.setDatabaseUnavailableReason(reason);
+
+        ResultFilterState.Snapshot snapshot = state.snapshot();
+        assertEquals(ResultFilterState.DatabaseStatus.LOCAL_PREVIEW, snapshot.databaseStatus());
+        assertEquals(visibleBefore, snapshot.visibleRowIndexes());
+        assertEquals(List.of(redacted(CONDITION)), snapshot.conditions());
+        assertEquals(reason, snapshot.databaseUnavailableReason());
+        assertEquals(reason, assertThrows(
+                IllegalStateException.class, state::databaseRequest).getMessage());
+    }
+
+    @Test
+    void clearingAvailabilityReasonRestoresDatabaseRequestAndPrivateValue() {
+        String secret = "private-filter-value";
+        ResultFilterState state = new ResultFilterState();
+        state.showOriginal(RESULT, "select ID from USERS", "暂不可用");
+        state.setConditions(List.of(new FilterCondition(
+                0, FilterConnector.AND, FilterOperator.EQ, secret)));
+
+        state.setDatabaseUnavailableReason(null);
+
+        ResultFilterState.DatabaseFilterRequest request = state.databaseRequest();
+        assertEquals(secret, request.conditions().getFirst().value());
+        assertNull(state.snapshot().databaseUnavailableReason());
+        assertFalse(state.snapshot().toString().contains(secret));
+    }
+
+    @Test
+    void databaseAvailabilityContextExposesOnlyTheRedactedConditionShape() {
+        String secret = "private-availability-value";
+        ResultFilterState state = new ResultFilterState();
+        state.showOriginal(RESULT, "select ID from USERS", null);
+        state.setConditions(List.of(new FilterCondition(
+                0, FilterConnector.AND, FilterOperator.EQ, secret)));
+
+        ResultFilterState.DatabaseAvailabilityContext context =
+                state.databaseAvailabilityContext();
+
+        assertSame(RESULT, context.originalResult());
+        assertEquals("select ID from USERS", context.originalSql());
+        assertEquals("<redacted>", context.conditions().getFirst().value());
+        assertFalse(context.toString().contains(secret));
+    }
+
+    @Test
+    void repeatingTheSameAvailabilityReasonDoesNotInvalidateAnInFlightGeneration() {
+        ResultFilterState state = preparedState();
+        long generation = request(state);
+
+        state.setDatabaseUnavailableReason(null);
+
+        assertTrue(state.databaseApplied(generation, FILTERED_RESULT));
+    }
+
+    @Test
+    void changingAvailabilityReasonInvalidatesAnInFlightGeneration() {
+        ResultFilterState state = preparedState();
+        long generation = request(state);
+
+        state.setDatabaseUnavailableReason("筛选条件不受支持");
+
+        assertFalse(state.databaseApplied(generation, FILTERED_RESULT));
+        assertEquals(RESULT.rows, state.snapshot().activeResult().rows);
+    }
+
+    @Test
     void newRequestsAndLocalChangesRejectEveryOlderGeneration() {
         ResultFilterState state = preparedState();
         long first = request(state);

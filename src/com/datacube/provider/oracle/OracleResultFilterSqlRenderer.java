@@ -3,6 +3,7 @@ package com.datacube.provider.oracle;
 import com.datacube.spi.SqlParameter;
 import com.datacube.spi.model.ResultColumn;
 import com.datacube.sqleditor.result.FilterCondition;
+import com.datacube.sqleditor.result.FilterOperator;
 import com.datacube.sqleditor.result.RenderedFilterQuery;
 import com.datacube.sqleditor.result.ResultFilterSqlRenderer;
 
@@ -21,12 +22,19 @@ public final class OracleResultFilterSqlRenderer implements ResultFilterSqlRende
         Objects.requireNonNull(originalSql, "originalSql");
         List<ResultColumn> metadata = List.copyOf(columns);
         List<FilterCondition> filters = List.copyOf(conditions);
+        String unsupported = firstUnsupportedReason(metadata, filters);
+        if (unsupported != null) throw new IllegalArgumentException(unsupported);
         List<SqlParameter> parameters = new ArrayList<>();
         String quotedAlias = dialect.quoteIdentifier(ALIAS);
         String where = foldPredicates(metadata, filters, quotedAlias, parameters);
-        String sql = "SELECT * FROM (" + originalSql + ") " + quotedAlias;
+        String sql = "SELECT * FROM (\n" + originalSql + "\n) " + quotedAlias;
         if (!where.isEmpty()) sql += " WHERE " + where;
         return new RenderedFilterQuery(sql, parameters);
+    }
+
+    @Override
+    public ConditionSupport conditionSupport(ResultColumn column, FilterOperator operator) {
+        return ResultFilterSqlRenderer.jdbcConditionSupport(column, operator, true);
     }
 
     private String foldPredicates(

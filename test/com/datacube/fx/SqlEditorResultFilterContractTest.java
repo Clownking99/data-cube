@@ -6,8 +6,10 @@ import com.datacube.config.ShortcutSettings;
 import com.datacube.config.SqlHistoryStore;
 import com.datacube.fx.task.FxTaskRunner;
 import com.datacube.fx.task.SerialSessionOperationQueue;
+import com.datacube.provider.postgres.PostgresProvider;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.JdbcEditorSession;
+import com.datacube.spi.DatabaseProvider;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
@@ -22,6 +24,8 @@ import com.datacube.spi.model.ScriptOutcome;
 import com.datacube.sqleditor.result.FilterCondition;
 import com.datacube.sqleditor.result.FilterConnector;
 import com.datacube.sqleditor.result.FilterOperator;
+import com.datacube.sqleditor.result.RenderedFilterQuery;
+import com.datacube.sqleditor.result.ResultFilterSqlRenderer;
 import com.datacube.sqleditor.result.ResultFilterState;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -45,6 +49,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import javafx.event.ActionEvent;
 import javafx.collections.ObservableList;
 import javafx.scene.Parent;
@@ -68,13 +73,16 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SqlEditorResultFilterContractTest {
+    private static final String SAFE_POSTGRES_REQUERY_SQL =
+            "select 'Ada' AS name, 7 AS score, '2026-08-29 10:11:12' AS created_at";
     private static final List<ResultColumn> COLUMNS = List.of(
-            new ResultColumn(0, "NAME", Types.VARCHAR, "VARCHAR"),
-            new ResultColumn(1, "SCORE", Types.INTEGER, "INTEGER"),
-            new ResultColumn(2, "CREATED_AT", Types.TIMESTAMP, "TIMESTAMP"));
+            new ResultColumn(0, "NAME", Types.VARCHAR, "varchar"),
+            new ResultColumn(1, "SCORE", Types.INTEGER, "int4"),
+            new ResultColumn(2, "CREATED_AT", Types.TIMESTAMP, "timestamp"));
 
     @TempDir Path directory;
 
@@ -112,7 +120,7 @@ class SqlEditorResultFilterContractTest {
                     row("Ada", 7, "2026-08-29 10:11:12"),
                     row("Bob", 9, "2026-08-29 11:12:13"));
             FxUiTestSupport.call(() -> {
-                showQuery(fixture.pane, original, "select name, score, created_at from people");
+                showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
                 ResultFilterState state = state(fixture.pane);
                 state.setConditions(List.of(new FilterCondition(
                         1, FilterConnector.AND, FilterOperator.GT, 7)));
@@ -151,7 +159,11 @@ class SqlEditorResultFilterContractTest {
                 return null;
             });
             assertEquals(1, prepared.preparedCalls.get());
-            assertTrue(prepared.lastSql.contains("FROM (select name, score, created_at from people)"));
+            assertTrue(prepared.lastSql.contains(
+                    "FROM (\n" + SAFE_POSTGRES_REQUERY_SQL + "\n)"));
+            assertTrue(prepared.lastSql.contains(
+                    "\"SCORE\" OPERATOR(pg_catalog.>) ?"));
+            assertFalse(prepared.lastSql.contains("\"SCORE\" > ?"));
             assertEquals(1, prepared.lastParameters.size());
             assertSame(fixture.ownedSession, field(fixture.pane, "jdbcSession"));
         } finally {
@@ -169,7 +181,7 @@ class SqlEditorResultFilterContractTest {
                     row(sentinel, 7, "2026-08-29 10:11:12"),
                     row("other", 9, "2026-08-29 11:12:13"));
             FxUiTestSupport.call(() -> {
-                showQuery(fixture.pane, original, "select name, score, created_at from people");
+                showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
                 ResultFilterState state = state(fixture.pane);
                 state.appendCondition(new FilterCondition(
                         0, FilterConnector.AND, FilterOperator.EQ, sentinel));
@@ -210,6 +222,283 @@ class SqlEditorResultFilterContractTest {
     }
 
     @Test
+    void unsupportedDatabaseOperatorKeepsLocalPreviewAndCannotReachPreparedExecution() throws Exception {
+        String sentinel = "sentinel-json-condition-secret-71ad";
+        String unavailable = "列“PAYLOAD”（JSON 类型）不支持数据库筛选运算符“等于”；本地筛选仍可使用";
+        List<ResultColumn> columns = List.of(
+                new ResultColumn(0, "NAME", Types.VARCHAR, "VARCHAR"),
+                new ResultColumn(1, "PAYLOAD", Types.OTHER, "jsonb"));
+        PreparedRunner prepared = new PreparedRunner(QueryResult.queryWithMetadata(
+                columns, List.of(List.of("Ada", sentinel)), 1, false));
+        try (PaneFixture fixture = databaseFixture(prepared)) {
+            QueryResult original = QueryResult.queryWithMetadata(
+                    columns,
+                    List.of(List.of("Ada", sentinel), List.of("Ada", "other"),
+                            List.of("Bob", sentinel)),
+                    37, false);
+
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, original,
+                        "select 'Ada' AS name, '{}' AS payload");
+                ResultFilterState state = state(fixture.pane);
+                state.setConditions(List.of(
+                        new FilterCondition(
+                                0, FilterConnector.AND, FilterOperator.EQ, "Ada"),
+                        new FilterCondition(
+                                1, FilterConnector.AND, FilterOperator.EQ, sentinel)));
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+
+                ResultFilterState.Snapshot snapshot = state.snapshot();
+                Button apply = (Button) fixture.pane.getNode()
+                        .lookup("#sql-result-apply-database");
+                assertEquals(ResultFilterState.DatabaseStatus.LOCAL_PREVIEW,
+                        snapshot.databaseStatus());
+                assertEquals(List.of(0), snapshot.visibleRowIndexes(),
+                        "provider rejection must not disable local filtering");
+                assertEquals(unavailable, snapshot.databaseUnavailableReason());
+                assertTrue(apply.isDisabled());
+                assertEquals(unavailable, apply.getTooltip().getText());
+                assertEquals(unavailable, apply.getAccessibleHelp());
+                assertFalse(unavailable.contains(sentinel));
+                assertFalse(snapshot.toString().contains(sentinel));
+
+                apply.fire();
+                assertEquals(0, prepared.preparedCalls.get());
+                assertEquals(unavailable,
+                        assertThrows(IllegalStateException.class, state::databaseRequest)
+                                .getMessage());
+
+                state.replaceCondition(1, new FilterCondition(
+                        1, FilterConnector.AND, FilterOperator.IS_NULL, null));
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+                assertNull(state.snapshot().databaseUnavailableReason());
+                assertFalse(apply.isDisabled(),
+                        "parameter-free null predicates remain supported for JSON");
+                return null;
+            });
+        } finally {
+            prepared.release.countDown();
+        }
+    }
+
+    @Test
+    void ambiguousOracleBareFunctionReferencesCannotReachPreparedExecution() throws Exception {
+        String unavailable = "该 Oracle SELECT 超出可证明安全的 SYS.DUAL 通配符子集；本地筛选仍可使用";
+        PreparedRunner prepared = new PreparedRunner(result(false,
+                row("Ada", 7, "2026-08-29 10:11:12")));
+        try (PaneFixture fixture = databaseFixture(prepared, DbType.ORACLE)) {
+            QueryResult original = result(false,
+                    row("Ada", 7, "2026-08-29 10:11:12"),
+                    row("Bob", 9, "2026-08-29 11:12:13"));
+
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, original, "select d.* from SYS.DUAL d");
+                ResultFilterState state = state(fixture.pane);
+                state.setConditions(List.of(new FilterCondition(
+                        0, FilterConnector.AND, FilterOperator.EQ, "Ada")));
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+                Button apply = (Button) fixture.pane.getNode()
+                        .lookup("#sql-result-apply-database");
+                assertNull(state.snapshot().databaseUnavailableReason(),
+                        "the explicit plain wildcard subset must remain available");
+                assertFalse(apply.isDisabled());
+
+                for (String sql : List.of(
+                        "select side_effecting_zero_arg from dual",
+                        "select app.pkg.side_effecting_zero_arg from dual",
+                        "select * from remote_synonym",
+                        "select v.* from app.side_effecting_view v")) {
+                    showQuery(fixture.pane, original, sql);
+                    state.setConditions(List.of(new FilterCondition(
+                            0, FilterConnector.AND, FilterOperator.EQ, "Ada")));
+                    invoke(fixture.pane, "renderResultFilterSnapshot");
+
+                    assertEquals(unavailable, state.snapshot().databaseUnavailableReason(), sql);
+                    assertTrue(apply.isDisabled(), sql);
+                    assertEquals(unavailable, apply.getTooltip().getText(), sql);
+                    apply.fire();
+                    assertEquals(0, prepared.preparedCalls.get(), sql);
+                    List<Integer> visibleBefore = state.snapshot().visibleRowIndexes();
+                    state.setDatabaseUnavailableReason(null);
+                    invoke(fixture.pane, "onApplyDatabaseFilter");
+                    assertEquals(unavailable,
+                            state.snapshot().databaseUnavailableReason(), sql);
+                    assertEquals(visibleBefore, state.snapshot().visibleRowIndexes(), sql);
+                    assertEquals(0, prepared.preparedCalls.get(), sql);
+                    assertEquals(unavailable,
+                            assertThrows(IllegalStateException.class, state::databaseRequest)
+                                    .getMessage(),
+                            sql);
+                }
+                return null;
+            });
+        } finally {
+            prepared.release.countDown();
+        }
+    }
+
+    @Test
+    void postgresRelationsTypeInputsAndOperatorsCannotReachPreparedExecution() throws Exception {
+        String unavailable = "该 PostgreSQL SELECT 超出可证明安全的无 FROM 基础字面量子集；本地筛选仍可使用";
+        PreparedRunner prepared = new PreparedRunner(result(false,
+                row("Ada", 7, "2026-08-29 10:11:12")));
+        try (PaneFixture fixture = databaseFixture(prepared)) {
+            QueryResult original = result(false,
+                    row("Ada", 7, "2026-08-29 10:11:12"),
+                    row("Bob", 9, "2026-08-29 11:12:13"));
+
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, original,
+                        "select 'Ada' AS name, 7 AS score, '2026-08-29' AS created_at");
+                ResultFilterState state = state(fixture.pane);
+                state.setConditions(List.of(new FilterCondition(
+                        0, FilterConnector.AND, FilterOperator.EQ, "Ada")));
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+                Button apply = (Button) fixture.pane.getNode()
+                        .lookup("#sql-result-apply-database");
+                assertNull(state.snapshot().databaseUnavailableReason());
+                assertFalse(apply.isDisabled());
+
+                for (String sql : List.of(
+                        "select * from policy_protected_table",
+                        "select * from side_effecting_view",
+                        "select dangerous_type 'payload'",
+                        "select payload + 1 from events")) {
+                    showQuery(fixture.pane, original, sql);
+                    state.setConditions(List.of(new FilterCondition(
+                            0, FilterConnector.AND, FilterOperator.EQ, "Ada")));
+                    invoke(fixture.pane, "renderResultFilterSnapshot");
+
+                    assertEquals(ResultFilterState.DatabaseStatus.LOCAL_PREVIEW,
+                            state.snapshot().databaseStatus(), sql);
+                    assertEquals(List.of(0), state.snapshot().visibleRowIndexes(), sql);
+                    assertEquals(unavailable, state.snapshot().databaseUnavailableReason(), sql);
+                    assertTrue(apply.isDisabled(), sql);
+                    state.setDatabaseUnavailableReason(null);
+                    invoke(fixture.pane, "onApplyDatabaseFilter");
+                    assertEquals(unavailable,
+                            state.snapshot().databaseUnavailableReason(), sql);
+                    assertEquals(0, prepared.preparedCalls.get(), sql);
+                }
+                return null;
+            });
+        } finally {
+            prepared.release.countDown();
+        }
+    }
+
+    @Test
+    void capabilityEvaluationFailuresUseAFixedFailClosedReasonWithoutDiagnosticLeakage()
+            throws Exception {
+        String unavailable = "当前数据库筛选能力无法安全确认；本地筛选仍可使用";
+        String sentinel = "sentinel-capability-diagnostic-secret-320d";
+        for (String diagnostic : Arrays.asList(null, "", sentinel)) {
+            PreparedRunner prepared = new PreparedRunner(result(false,
+                    row("Ada", 7, "2026-08-29 10:11:12")));
+            ResultFilterSqlRenderer failingRenderer = new ResultFilterSqlRenderer() {
+                @Override
+                public RenderedFilterQuery render(String originalSql, List<ResultColumn> columns,
+                        List<FilterCondition> conditions) {
+                    throw new AssertionError("a rejected capability must never render SQL");
+                }
+
+                @Override
+                public ConditionSupport conditionSupport(
+                        ResultColumn column, FilterOperator operator) {
+                    throw diagnostic == null
+                            ? new IllegalStateException()
+                            : new IllegalStateException(diagnostic);
+                }
+            };
+            try (PaneFixture fixture = databaseFixture(prepared, failingRenderer)) {
+                QueryResult original = result(false,
+                        row("Ada", 7, "2026-08-29 10:11:12"),
+                        row("Bob", 9, "2026-08-29 11:12:13"));
+
+                FxUiTestSupport.call(() -> {
+                    showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
+                    ResultFilterState state = state(fixture.pane);
+                    state.setConditions(List.of(new FilterCondition(
+                            0, FilterConnector.AND, FilterOperator.EQ, "Ada")));
+                    invoke(fixture.pane, "renderResultFilterSnapshot");
+
+                    ResultFilterState.Snapshot snapshot = state.snapshot();
+                    Button apply = (Button) fixture.pane.getNode()
+                            .lookup("#sql-result-apply-database");
+                    assertEquals(ResultFilterState.DatabaseStatus.LOCAL_PREVIEW,
+                            snapshot.databaseStatus());
+                    assertEquals(List.of(0), snapshot.visibleRowIndexes());
+                    assertEquals(unavailable, snapshot.databaseUnavailableReason());
+                    assertTrue(apply.isDisabled());
+                    assertEquals(unavailable, apply.getTooltip().getText());
+                    assertEquals(unavailable, apply.getAccessibleHelp());
+                    assertFalse(snapshot.toString().contains(sentinel));
+                    assertFalse(unavailable.contains(sentinel));
+                    apply.fire();
+                    assertEquals(0, prepared.preparedCalls.get());
+                    assertEquals(unavailable,
+                            assertThrows(IllegalStateException.class, state::databaseRequest)
+                                    .getMessage());
+                    return null;
+                });
+            } finally {
+                prepared.release.countDown();
+            }
+        }
+    }
+
+    @Test
+    void applyTimeRendererFailureUsesAFixedReasonWithoutDiagnosticLeakage() throws Exception {
+        String unavailable = "当前数据库筛选能力无法安全确认；本地筛选仍可使用";
+        String sentinel = "sentinel-renderer-diagnostic-secret-31be";
+        PreparedRunner prepared = new PreparedRunner(result(false,
+                row("Ada", 7, "2026-08-29 10:11:12")));
+        ResultFilterSqlRenderer failingRenderer = new ResultFilterSqlRenderer() {
+            @Override
+            public RenderedFilterQuery render(String originalSql, List<ResultColumn> columns,
+                    List<FilterCondition> conditions) {
+                throw new IllegalStateException(sentinel);
+            }
+
+            @Override
+            public ConditionSupport conditionSupport(
+                    ResultColumn column, FilterOperator operator) {
+                return ConditionSupport.allowed();
+            }
+        };
+        try (PaneFixture fixture = databaseFixture(prepared, failingRenderer)) {
+            QueryResult original = result(false,
+                    row("Ada", 7, "2026-08-29 10:11:12"),
+                    row("Bob", 9, "2026-08-29 11:12:13"));
+
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, original,
+                        "select 'Ada' AS name, 7 AS score, '2026-08-29' AS created_at");
+                ResultFilterState state = state(fixture.pane);
+                state.setConditions(List.of(new FilterCondition(
+                        0, FilterConnector.AND, FilterOperator.EQ, "Ada")));
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+                assertNull(state.snapshot().databaseUnavailableReason());
+
+                ((Button) fixture.pane.getNode()
+                        .lookup("#sql-result-apply-database")).fire();
+
+                ResultFilterState.Snapshot snapshot = state.snapshot();
+                assertEquals(unavailable, snapshot.recoverableError());
+                assertEquals(List.of(0), snapshot.visibleRowIndexes());
+                assertEquals(0, prepared.preparedCalls.get());
+                assertEquals("数据库筛选失败，仍显示当前结果：" + unavailable,
+                        labelText(fixture.pane, "statusLabel"));
+                assertFalse(snapshot.toString().contains(sentinel));
+                assertFalse(labelText(fixture.pane, "statusLabel").contains(sentinel));
+                return null;
+            });
+        } finally {
+            prepared.release.countDown();
+        }
+    }
+
+    @Test
     void databaseFilterReusesSchemaCapturedByTheOriginalPaneExecution() throws Exception {
         PreparedRunner prepared = new PreparedRunner(result(false,
                 row("Bob", 9, "2026-08-29 11:12:13")));
@@ -217,7 +506,7 @@ class SqlEditorResultFilterContractTest {
             FxUiTestSupport.call(() -> {
                 ((TextField) field(fixture.pane, "schemaField")).setText("schema_a");
                 ((org.fxmisc.richtext.CodeArea) field(fixture.pane, "editorArea"))
-                        .replaceText("select name, score, created_at from people");
+                        .replaceText(SAFE_POSTGRES_REQUERY_SQL);
                 ((Button) fixture.pane.getNode().lookup("#sql-execute")).fire();
                 return null;
             });
@@ -261,7 +550,7 @@ class SqlEditorResultFilterContractTest {
             FxUiTestSupport.call(() -> {
                 ((TextField) field(fixture.pane, "schemaField")).setText("schema_a");
                 ((org.fxmisc.richtext.CodeArea) field(fixture.pane, "editorArea"))
-                        .replaceText("select name, score, created_at from people");
+                        .replaceText(SAFE_POSTGRES_REQUERY_SQL);
                 ((Button) fixture.pane.getNode().lookup("#sql-execute")).fire();
                 return null;
             });
@@ -314,7 +603,7 @@ class SqlEditorResultFilterContractTest {
                     row("Ada", 7, "2026-08-29 10:11:12"),
                     row("Bob", 9, "2026-08-29 11:12:13"));
             FxUiTestSupport.call(() -> {
-                showQuery(fixture.pane, original, "select name, score, created_at from people");
+                showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
                 ResultFilterState state = state(fixture.pane);
                 state.setConditions(List.of(new FilterCondition(
                         1, FilterConnector.AND, FilterOperator.GT, 7)));
@@ -359,7 +648,7 @@ class SqlEditorResultFilterContractTest {
                     row("Ada", 7, "2026-08-29 10:11:12"),
                     row("Bob", 9, "2026-08-29 11:12:13"));
             FxUiTestSupport.call(() -> {
-                showQuery(fixture.pane, original, "select name, score, created_at from people");
+                showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
                 ResultFilterState state = state(fixture.pane);
                 state.setConditions(List.of(new FilterCondition(
                         1, FilterConnector.AND, FilterOperator.GT, 7)));
@@ -408,7 +697,7 @@ class SqlEditorResultFilterContractTest {
                     row("Ada", 7, "2026-08-29 10:11:12"),
                     row("Bob", 9, "2026-08-29 11:12:13"));
             FxUiTestSupport.call(() -> {
-                showQuery(fixture.pane, original, "select name, score, created_at from people");
+                showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
                 ResultFilterState state = state(fixture.pane);
                 state.setConditions(List.of(new FilterCondition(
                         1, FilterConnector.AND, FilterOperator.GT, 7)));
@@ -447,7 +736,7 @@ class SqlEditorResultFilterContractTest {
                     Arrays.asList("Ada", 7, timestamp),
                     row("Bob", 9, "2026-08-29 11:12:13"));
             FxUiTestSupport.call(() -> {
-                showQuery(fixture.pane, original, "select name, score, created_at from people");
+                showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
                 Parent resultToolbar = (Parent) fixture.pane.getNode().lookup(".sql-result-toolbar");
                 assertNotNull(resultToolbar);
                 assertNotNull(resultToolbar.getParent(), "toolbar must be embedded in the result container");
@@ -477,7 +766,7 @@ class SqlEditorResultFilterContractTest {
                     row("Ada", 7, "2026-08-29 10:11:12"),
                     row("Bob", 9, "2026-08-29 11:12:13"));
             FxUiTestSupport.call(() -> {
-                showQuery(fixture.pane, original, "select name, score, created_at from people");
+                showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
                 TableView<ObservableList<Object>> table = resultTable(fixture.pane);
                 TableColumn<ObservableList<Object>, ?> name = table.getColumns().get(1);
                 TableColumn<ObservableList<Object>, ?> score = table.getColumns().get(2);
@@ -528,7 +817,7 @@ class SqlEditorResultFilterContractTest {
                     new ArrayList<Object>(List.of("Ragged")),
                     row("Bob", 9, "2026-08-29 11:12:13"));
             FxUiTestSupport.call(() -> {
-                showQuery(fixture.pane, original, "select name, score, created_at from people");
+                showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
                 TableView<ObservableList<Object>> table = resultTable(fixture.pane);
                 table.applyCss();
                 table.layout();
@@ -745,9 +1034,45 @@ class SqlEditorResultFilterContractTest {
     }
 
     private PaneFixture databaseFixture(PreparedRunner prepared) throws Exception {
-        ConnectionManager connections = new ConnectionManager(new CredentialCipher());
-        ConnConfig config = new ConnConfig("pg", "Postgres", DbType.POSTGRESQL,
-                "example.invalid", 5432, "db", "user", "", Map.of());
+        return databaseFixture(prepared, DbType.POSTGRESQL);
+    }
+
+    private PaneFixture databaseFixture(
+            PreparedRunner prepared, ResultFilterSqlRenderer renderer) throws Exception {
+        DatabaseProvider delegate = new PostgresProvider();
+        DatabaseProvider provider = (DatabaseProvider) Proxy.newProxyInstance(
+                DatabaseProvider.class.getClassLoader(),
+                new Class<?>[]{DatabaseProvider.class},
+                (proxy, method, arguments) -> {
+                    if (method.getName().equals("resultFilterSqlRenderer")) {
+                        return java.util.Optional.of(renderer);
+                    }
+                    try {
+                        return method.invoke(delegate, arguments);
+                    } catch (java.lang.reflect.InvocationTargetException failure) {
+                        throw failure.getCause();
+                    }
+                });
+        Constructor<ConnectionManager> constructor = ConnectionManager.class
+                .getDeclaredConstructor(CredentialCipher.class, Function.class);
+        constructor.setAccessible(true);
+        Function<DbType, DatabaseProvider> resolver = ignored -> provider;
+        ConnectionManager connections = constructor.newInstance(
+                new CredentialCipher(), resolver);
+        return databaseFixture(prepared, DbType.POSTGRESQL, connections);
+    }
+
+    private PaneFixture databaseFixture(PreparedRunner prepared, DbType type) throws Exception {
+        return databaseFixture(
+                prepared, type, new ConnectionManager(new CredentialCipher()));
+    }
+
+    private PaneFixture databaseFixture(
+            PreparedRunner prepared, DbType type, ConnectionManager connections) throws Exception {
+        String id = type == DbType.ORACLE ? "oracle" : "pg";
+        int port = type == DbType.ORACLE ? 1521 : 5432;
+        ConnConfig config = new ConnConfig(id, type.name(), type,
+                "example.invalid", port, "db", "user", "", Map.of());
         connections.register(config);
         JdbcEditorSession owned = preparedSession(config, prepared);
         PaneFixture fixture = new PaneFixture(connections, owned);
@@ -768,7 +1093,7 @@ class SqlEditorResultFilterContractTest {
                 row("Ada", 7, "2026-08-29 10:11:12"),
                 row("Bob", 9, "2026-08-29 11:12:13"));
         FxUiTestSupport.call(() -> {
-            showQuery(fixture.pane, original, "select name, score, created_at from people");
+            showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
             ResultFilterState state = state(fixture.pane);
             state.setConditions(List.of(new FilterCondition(
                     1, FilterConnector.AND, FilterOperator.GT, 7)));

@@ -117,6 +117,8 @@ public final class SqlEditorPane implements AutoCloseable {
     private static final Pattern SAFE_DATABASE_FILTER_FAILURE = Pattern.compile(
             "数据库查询(?:失败|超时|已取消)(?: \\((?:SQLState=[A-Za-z0-9]{5}"
                     + "(?:, vendorCode=-?\\d+)?|vendorCode=-?\\d+)\\))?");
+    private static final String UNCONFIRMED_DATABASE_FILTER_CAPABILITY =
+            "当前数据库筛选能力无法安全确认；本地筛选仍可使用";
 
     private final SessionContext session;
     private final ConnectionManager connections;
@@ -1454,8 +1456,8 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void onClearResultFilters() {
         resultFilterState.clearFilters();
+        renderResultFilterSnapshot();
         ResultFilterState.Snapshot snapshot = resultFilterState.snapshot();
-        renderResultFilterSnapshot(snapshot);
         QueryResult restored = snapshot.activeResult();
         if (restored == null) return;
         statusLabel.setText("已清除筛选 - " + formatResultRowCount(restored));
@@ -1465,6 +1467,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private void onApplyDatabaseFilter() {
         ResultFilterState.DatabaseFilterRequest request;
         try {
+            refreshDatabaseFilterAvailability();
             request = resultFilterState.databaseRequest();
         } catch (RuntimeException unavailable) {
             statusLabel.setText(message(unavailable));
@@ -1490,7 +1493,8 @@ public final class SqlEditorPane implements AutoCloseable {
                     eligibility.normalizedSql(), request.originalResult().resultColumns,
                     request.conditions());
         } catch (RuntimeException failure) {
-            onDatabaseFilterFailed(request.generation(), message(failure));
+            onDatabaseFilterFailed(
+                    request.generation(), UNCONFIRMED_DATABASE_FILTER_CAPABILITY);
             return;
         }
 
@@ -1786,7 +1790,19 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void renderResultFilterSnapshot() {
-        renderResultFilterSnapshot(resultFilterState.snapshot());
+        renderResultFilterSnapshot(refreshDatabaseFilterAvailability());
+    }
+
+    private ResultFilterState.Snapshot refreshDatabaseFilterAvailability() {
+        ResultFilterState.DatabaseAvailabilityContext context =
+                resultFilterState.databaseAvailabilityContext();
+        QueryResult original = context.originalResult();
+        if (original != null) {
+            resultFilterState.setDatabaseUnavailableReason(
+                    databaseFilterUnavailableReason(
+                            context.originalSql(), original, context.conditions()));
+        }
+        return resultFilterState.snapshot();
     }
 
     private void renderResultFilterSnapshot(ResultFilterState.Snapshot snapshot) {
@@ -1836,16 +1852,23 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private String databaseFilterUnavailableReason(String sql, QueryResult result) {
+        return databaseFilterUnavailableReason(sql, result, List.of());
+    }
+
+    private String databaseFilterUnavailableReason(
+            String sql, QueryResult result, List<FilterCondition> conditions) {
         ConnConfig connection = currentConn();
         SafeSelectEligibility.Result eligibility = SafeSelectEligibility.check(
                 sql, connection != null && connection.type() == DbType.ORACLE, result);
         if (!eligibility.eligible()) return eligibility.reason();
         if (connection == null || connections == null) return "当前编辑器未绑定数据库连接";
         try {
-            return connections.provider(connection.id()).resultFilterSqlRenderer().isPresent()
-                    ? null : "当前数据库不支持结果筛选";
+            ResultFilterSqlRenderer renderer = connections.provider(connection.id())
+                    .resultFilterSqlRenderer().orElse(null);
+            if (renderer == null) return "当前数据库不支持结果筛选";
+            return renderer.firstUnsupportedReason(result.resultColumns, conditions);
         } catch (RuntimeException unavailable) {
-            return message(unavailable);
+            return UNCONFIRMED_DATABASE_FILTER_CAPABILITY;
         }
     }
 

@@ -7,6 +7,8 @@ import com.datacube.sqleditor.result.FilterConnector;
 import com.datacube.sqleditor.result.FilterOperator;
 import com.datacube.sqleditor.result.RenderedFilterQuery;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.lang.reflect.Proxy;
 import java.sql.PreparedStatement;
@@ -21,9 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PgResultFilterSqlRendererTest {
     private static final List<ResultColumn> COLUMNS = List.of(
-            new ResultColumn(0, "id", Types.INTEGER, "INTEGER"),
-            new ResultColumn(1, "name", Types.VARCHAR, "VARCHAR"),
-            new ResultColumn(2, "odd\"label", Types.VARCHAR, "VARCHAR"));
+            new ResultColumn(0, "id", Types.INTEGER, "int4"),
+            new ResultColumn(1, "name", Types.VARCHAR, "varchar"),
+            new ResultColumn(2, "odd\"label", Types.VARCHAR, "varchar"));
 
     @Test
     void bindsValuesAndPreservesLeftToRightParentheses() {
@@ -33,8 +35,9 @@ class PgResultFilterSqlRendererTest {
                 List.of(new FilterCondition(0, FilterConnector.AND, FilterOperator.GT, 10),
                         new FilterCondition(1, FilterConnector.OR, FilterOperator.CONTAINS, "a%_\\")));
 
-        assertEquals("SELECT * FROM (select id, name from users) AS \"dc_filter\" "
-                        + "WHERE (\"dc_filter\".\"id\" > ? OR \"dc_filter\".\"name\" LIKE ? ESCAPE '\\')",
+        assertEquals("SELECT * FROM (\nselect id, name from users\n) AS \"dc_filter\" "
+                        + "WHERE (\"dc_filter\".\"id\" OPERATOR(pg_catalog.>) ? OR "
+                        + "\"dc_filter\".\"name\" OPERATOR(pg_catalog.~~) ?)",
                 query.sql());
         assertEquals(List.of(
                 new SqlParameter(Types.INTEGER, 10),
@@ -54,8 +57,9 @@ class PgResultFilterSqlRendererTest {
                         condition(1, FilterConnector.OR, FilterOperator.CONTAINS, "a"),
                         condition(2, FilterConnector.AND, FilterOperator.IS_NOT_NULL, null)));
 
-        assertEquals("SELECT * FROM (select id, name from users) AS \"dc_filter\" "
-                        + "WHERE ((\"dc_filter\".\"id\" > ? OR \"dc_filter\".\"name\" LIKE ? ESCAPE '\\') "
+        assertEquals("SELECT * FROM (\nselect id, name from users\n) AS \"dc_filter\" "
+                        + "WHERE ((\"dc_filter\".\"id\" OPERATOR(pg_catalog.>) ? OR "
+                        + "\"dc_filter\".\"name\" OPERATOR(pg_catalog.~~) ?) "
                         + "AND \"dc_filter\".\"odd\"\"label\" IS NOT NULL)",
                 query.sql());
         assertEquals(List.of(new SqlParameter(Types.INTEGER, 10),
@@ -76,16 +80,30 @@ class PgResultFilterSqlRendererTest {
                         condition(1, FilterConnector.AND, FilterOperator.IS_NULL, null),
                         condition(2, FilterConnector.OR, FilterOperator.IS_NOT_NULL, null)));
 
-        assertTrue(query.sql().contains("= ?"));
-        assertTrue(query.sql().contains("<> ?"));
-        assertTrue(query.sql().contains("LIKE ? ESCAPE '\\'"));
-        assertTrue(query.sql().contains(">= ?"));
-        assertTrue(query.sql().contains("< ?"));
-        assertTrue(query.sql().contains("<= ?"));
+        for (String operator : List.of("=", "<>", "~~", ">=", "<", "<=")) {
+            assertTrue(query.sql().contains("OPERATOR(pg_catalog." + operator + ") ?"),
+                    operator);
+        }
+        assertFalse(query.sql().contains(" LIKE "));
+        assertFalse(query.sql().contains(" ESCAPE "));
         assertTrue(query.sql().contains("IS NULL"));
         assertTrue(query.sql().contains("\"odd\"\"label\" IS NOT NULL"));
         assertEquals(List.of(1, 2, "a%", "%z", 3, 4, 5),
                 query.parameters().stream().map(SqlParameter::value).toList());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\n", "\r\n", "\r"})
+    void terminalLineCommentCannotConsumeWrapperSuffix(String lineEnding) {
+        String original = "select id from users" + lineEnding + "-- terminal comment";
+
+        RenderedFilterQuery query = new PgResultFilterSqlRenderer().render(
+                original, COLUMNS,
+                List.of(condition(0, FilterConnector.AND, FilterOperator.EQ, 7)));
+
+        assertEquals("SELECT * FROM (\n" + original + "\n) AS \"dc_filter\" "
+                + "WHERE \"dc_filter\".\"id\" OPERATOR(pg_catalog.=) ?", query.sql());
+        assertEquals(List.of(new SqlParameter(Types.INTEGER, 7)), query.parameters());
     }
 
     @Test
@@ -96,6 +114,8 @@ class PgResultFilterSqlRendererTest {
                 () -> new PgResultFilterSqlRenderer().render("select id from users", COLUMNS,
                         List.of(condition(9, FilterConnector.AND, FilterOperator.EQ, secret))));
 
+        assertEquals("筛选列已不存在，无法执行数据库筛选；本地筛选仍可使用",
+                failure.getMessage());
         assertFalse(failure.getMessage().contains(secret));
     }
 

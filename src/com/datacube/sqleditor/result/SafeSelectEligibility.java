@@ -11,7 +11,7 @@ import java.util.Set;
 /** Proves the conservative subset of SELECT statements that may be wrapped for filtering. */
 public final class SafeSelectEligibility {
     private static final Set<String> UNSAFE_TOP_LEVEL = Set.of(
-            "WITH", "UNION", "INTERSECT", "EXCEPT", "MINUS", "INTO");
+            "UNION", "INTERSECT", "EXCEPT", "MINUS", "INTO");
 
     private SafeSelectEligibility() {
     }
@@ -22,20 +22,29 @@ public final class SafeSelectEligibility {
         if (statements.size() != 1) return Result.rejected("仅支持单条 SELECT");
 
         String normalized = stripSingleTerminalSemicolon(statements.getFirst());
-        List<String> tokens;
+        TopLevelSqlTokens.Analysis analysis;
         try {
-            tokens = TopLevelSqlTokens.scan(normalized, oracleMode);
-            if (TopLevelSqlTokens.containsKnownSideEffectInvocation(normalized, oracleMode)) {
-                return Result.rejected("该 SELECT 包含不能安全执行的调用");
-            }
+            analysis = TopLevelSqlTokens.analyze(normalized, oracleMode);
         } catch (IllegalArgumentException failure) {
             return Result.rejected("SQL 结构不能安全识别");
         }
+        List<String> tokens = analysis.topLevelTokens();
         if (tokens.isEmpty() || !tokens.getFirst().equals("SELECT")) {
             return Result.rejected("仅支持只读 SELECT");
         }
-        if (tokens.stream().anyMatch(UNSAFE_TOP_LEVEL::contains) || containsLockClause(tokens)) {
+        if (analysis.unsafeStructure() || tokens.stream().anyMatch(UNSAFE_TOP_LEVEL::contains)) {
             return Result.rejected("该 SELECT 结构不能安全包装");
+        }
+        if (analysis.unprovenCallable()) {
+            return Result.rejected("该 SELECT 包含无法证明安全的调用");
+        }
+        if (!oracleMode && !analysis.postgresNativeLiteralSelect()) {
+            return Result.rejected(
+                    "该 PostgreSQL SELECT 超出可证明安全的无 FROM 基础字面量子集；本地筛选仍可使用");
+        }
+        if (oracleMode && !analysis.oracleTrustedSysDualSelect()) {
+            return Result.rejected(
+                    "该 Oracle SELECT 超出可证明安全的 SYS.DUAL 通配符子集；本地筛选仍可使用");
         }
         if (result.kind != QueryResult.Kind.QUERY || hasDuplicateOrBlankLabels(result.resultColumns)) {
             return Result.rejected("结果列名必须唯一，请在原 SQL 中添加别名");
@@ -49,18 +58,6 @@ public final class SafeSelectEligibility {
             normalized = normalized.substring(0, normalized.length() - 1).stripTrailing();
         }
         return normalized;
-    }
-
-    private static boolean containsLockClause(List<String> tokens) {
-        for (int index = 0; index < tokens.size(); index++) {
-            if (!tokens.get(index).equals("FOR")) continue;
-            int end = Math.min(tokens.size(), index + 5);
-            for (int next = index + 1; next < end; next++) {
-                String token = tokens.get(next);
-                if (token.equals("UPDATE") || token.equals("SHARE")) return true;
-            }
-        }
-        return false;
     }
 
     private static boolean hasDuplicateOrBlankLabels(List<ResultColumn> columns) {

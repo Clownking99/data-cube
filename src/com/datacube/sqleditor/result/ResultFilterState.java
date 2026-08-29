@@ -41,6 +41,20 @@ public final class ResultFilterState {
     public record DatabaseRequest(long generation, DatabaseFilterRequest filter) {
     }
 
+    /** Value-free inputs needed to refresh provider capability before taking a render snapshot. */
+    public record DatabaseAvailabilityContext(
+            QueryResult originalResult, String originalSql, List<FilterCondition> conditions) {
+        public DatabaseAvailabilityContext {
+            conditions = redactConditions(conditions);
+        }
+
+        @Override
+        public String toString() {
+            return "DatabaseAvailabilityContext[originalResult=" + resultSummary(originalResult)
+                    + ", originalSql=<redacted>, conditionCount=" + conditions.size() + "]";
+        }
+    }
+
     public record Snapshot(
             QueryResult originalResult, QueryResult activeResult, String originalSql, String effectiveSchema,
             String searchText, List<FilterCondition> conditions,
@@ -117,6 +131,14 @@ public final class ResultFilterState {
     public synchronized void setConditions(List<FilterCondition> value) {
         List<FilterCondition> candidateConditions = freezeConditions(value);
         updateConditions(candidateConditions);
+    }
+
+    /** Updates the current database-only availability gate without disturbing local preview state. */
+    public synchronized void setDatabaseUnavailableReason(String reason) {
+        String normalized = reason == null || reason.isBlank() ? null : reason;
+        if (Objects.equals(databaseUnavailableReason, normalized)) return;
+        databaseUnavailableReason = normalized;
+        invalidateRequests();
     }
 
     /** Appends a raw execution condition without reading it back through a public snapshot. */
@@ -238,6 +260,10 @@ public final class ResultFilterState {
         return new Snapshot(originalResult, activeResult, originalSql, effectiveSchema, searchText,
                 snapshotConditions, visibleRowIndexes, databaseStatus,
                 databaseUnavailableReason, recoverableError);
+    }
+
+    public synchronized DatabaseAvailabilityContext databaseAvailabilityContext() {
+        return new DatabaseAvailabilityContext(originalResult, originalSql, snapshotConditions);
     }
 
     private DatabaseFilterRequest requestSnapshot(long generation) {

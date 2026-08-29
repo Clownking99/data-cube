@@ -22,12 +22,19 @@ public final class PgResultFilterSqlRenderer implements ResultFilterSqlRenderer 
         Objects.requireNonNull(originalSql, "originalSql");
         List<ResultColumn> metadata = List.copyOf(columns);
         List<FilterCondition> filters = List.copyOf(conditions);
+        String unsupported = firstUnsupportedReason(metadata, filters);
+        if (unsupported != null) throw new IllegalArgumentException(unsupported);
         List<SqlParameter> parameters = new ArrayList<>();
         String quotedAlias = dialect.quoteIdentifier(ALIAS);
         String where = foldPredicates(metadata, filters, quotedAlias, parameters);
-        String sql = "SELECT * FROM (" + originalSql + ") AS " + quotedAlias;
+        String sql = "SELECT * FROM (\n" + originalSql + "\n) AS " + quotedAlias;
         if (!where.isEmpty()) sql += " WHERE " + where;
         return new RenderedFilterQuery(sql, parameters);
+    }
+
+    @Override
+    public ConditionSupport conditionSupport(ResultColumn column, FilterOperator operator) {
+        return ResultFilterSqlRenderer.postgresConditionSupport(column, operator);
     }
 
     private String foldPredicates(
@@ -76,13 +83,19 @@ public final class PgResultFilterSqlRenderer implements ResultFilterSqlRenderer 
             String reference, String operator, ResultColumn column, Object value,
             List<SqlParameter> parameters) {
         parameters.add(new SqlParameter(column.jdbcType(), value));
-        return reference + " " + operator + " ?";
+        return reference + " " + catalogOperator(operator) + " ?";
     }
 
     private static String pattern(
             String reference, ResultColumn column, String value, List<SqlParameter> parameters) {
         parameters.add(new SqlParameter(column.jdbcType(), value));
-        return reference + " LIKE ? ESCAPE '\\'";
+        // pg_catalog.~~ is PostgreSQL's built-in LIKE operator. Its default escape is backslash,
+        // matching escaped(), without exposing operator resolution to the session search_path.
+        return reference + " " + catalogOperator("~~") + " ?";
+    }
+
+    private static String catalogOperator(String operator) {
+        return "OPERATOR(pg_catalog." + operator + ")";
     }
 
     private static String escaped(Object value) {
