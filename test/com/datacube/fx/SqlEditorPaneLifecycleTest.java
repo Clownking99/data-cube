@@ -64,4 +64,19 @@ class SqlEditorPaneLifecycleTest {
         assertTrue(source.indexOf("metadataTasks::close") < source.indexOf("persistCloseSnapshot"));
         assertTrue(source.indexOf("tasks::close") < source.indexOf("persistCloseSnapshot"));
     }
+
+    @Test
+    void resultFilteringSharesTheExistingCloseAndCallbackSuppressionLifecycle() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        int apply = source.indexOf("private void onApplyDatabaseFilter()");
+        assertTrue(apply >= 0, "database filter action must be wired into SqlEditorPane");
+        int nextMethod = source.indexOf("\n    private ", apply + 1);
+        String body = source.substring(apply, nextMethod);
+        assertTrue(body.contains("submitSessionOperation("));
+        assertTrue(body.contains("SerialSessionOperationQueue.OperationKind.EXECUTE"));
+        assertTrue(source.contains("sessionOperations.stopAcceptingAndCancelQueued()"));
+        assertTrue(source.contains("sessionOperations.suppressCallbacks()"));
+        assertTrue(source.contains("resultFilterState.clearAll()"));
+    }
 }

@@ -19,6 +19,14 @@ import com.datacube.sqleditor.SqlFormatter;
 import com.datacube.sqleditor.SqlSafetyAnalyzer;
 import com.datacube.sqleditor.SqlSafetyPolicy;
 import com.datacube.sqleditor.SqlScriptSplitter;
+import com.datacube.sqleditor.result.FilterCondition;
+import com.datacube.sqleditor.result.FilterConnector;
+import com.datacube.sqleditor.result.RenderedFilterQuery;
+import com.datacube.sqleditor.result.ResultFilterSqlRenderer;
+import com.datacube.sqleditor.result.ResultFilterState;
+import com.datacube.sqleditor.result.ResultValueFormatter;
+import com.datacube.sqleditor.result.SafeSelectEligibility;
+import com.datacube.sqleditor.result.TsvClipboardFormatter;
 import com.datacube.spi.SqlRunner;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.model.ColumnInfo;
@@ -27,6 +35,7 @@ import com.datacube.spi.model.ConnectionEnvironment;
 import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.model.QueryResult;
+import com.datacube.spi.model.ResultColumn;
 import com.datacube.spi.model.SchemaInfo;
 import com.datacube.spi.model.ScriptOutcome;
 import com.datacube.spi.model.TableInfo;
@@ -66,7 +75,9 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
@@ -139,7 +150,9 @@ public final class SqlEditorPane implements AutoCloseable {
     private final VBox root = new VBox(8);
     private CodeArea editorArea;
     private SqlAutoComplete autoComplete;
-    private TableView<ObservableList<String>> resultTable;
+    private final ResultFilterState resultFilterState = new ResultFilterState();
+    private SqlResultToolbar resultToolbar;
+    private TableView<ObservableList<Object>> resultTable;
     private TextArea planArea;
     private TitledPane resultPane;
     private Label statusLabel;
@@ -164,9 +177,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private final AtomicBoolean uiFinalized = new AtomicBoolean();
     private final AsyncTabCloseGuard closeGuard;
     private final AsyncTabCloseGuard mandatoryCloseGuard;
-    /** 最近一次单条查询结果（用于注释显示模式切换后即时重渲染表头）；非查询视图时为 null。 */
-    private QueryResult lastQueryResult;
-    /** 最近一次单条查询的原 SQL（用于「复制 INSERT」解析目标表）；与 lastQueryResult 同生命周期。 */
+    /** 最近一次单条查询的原 SQL（用于安全重查与「复制 INSERT」解析目标表）。 */
     private String lastQuerySql;
 
     public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
@@ -200,7 +211,7 @@ public final class SqlEditorPane implements AutoCloseable {
             this.closeGuard = AsyncTabCloseGuards.retryable(this::startCloseAttempt);
             this.mandatoryCloseGuard = AsyncTabCloseGuards.retryable(this::startMandatoryCloseAttempt);
             this.commentModeListener = (obs, oldMode, newMode) -> {
-                if (lastQueryResult != null) showQueryResult(lastQueryResult);
+                if (resultFilterState.snapshot().activeResult() != null) renderResultFilterSnapshot();
             };
             this.activeConnectionListener = (obs, oldConnection, connection) -> {
                 if (admission.pinned() == null) {
@@ -328,6 +339,9 @@ public final class SqlEditorPane implements AutoCloseable {
     /** Lightweight JavaFX phase; callers invoke this only on the FX Application Thread. */
     void finalizeCloseOnFx() {
         if (!uiFinalized.compareAndSet(false, true)) return;
+        resultFilterState.clearAll();
+        renderResultFilterToolbar();
+        if (resultToolbar != null) resultToolbar.getNode().setDisable(true);
         settings.commentModeProperty().removeListener(commentModeListener);
         session.activeConnectionProperty().removeListener(activeConnectionListener);
         if (autoComplete != null) autoComplete.hide();
@@ -655,8 +669,7 @@ public final class SqlEditorPane implements AutoCloseable {
             resultTable.getColumns().clear();
             planArea.clear();
             useTable();
-            lastQueryResult = null;
-            lastQuerySql = null;
+            clearResultFilterState();
             exportResultBtn.setDisable(true);
             copyInsertBtn.setDisable(true);
             statusLabel.setText("就绪");
@@ -884,12 +897,12 @@ public final class SqlEditorPane implements AutoCloseable {
         resultTable.getSelectionModel().setCellSelectionEnabled(true);
         resultTable.addEventHandler(KeyEvent.KEY_PRESSED, e -> {
             if (e.isShortcutDown() && e.getCode() == KeyCode.C) {
-                copySelectedCells();
+                copyResultSelection(SqlResultToolbar.CopyMode.SELECTION);
                 e.consume();
             }
         });
         MenuItem copyItem = new MenuItem("复制");
-        copyItem.setOnAction(e -> copySelectedCells());
+        copyItem.setOnAction(e -> copyResultSelection(SqlResultToolbar.CopyMode.SELECTION));
         MenuItem insertItem = new MenuItem("复制为 INSERT 语句");
         insertItem.setOnAction(e -> onCopyInsert());
         resultTable.setContextMenu(new ContextMenu(copyItem, insertItem));
@@ -903,7 +916,18 @@ public final class SqlEditorPane implements AutoCloseable {
         // 同 editor()：解除 TitledPane 的 prefHeight 上限，使其在 VBox 中随 Vgrow 填满可用
         // 空间（否则结果表只占 TableView 首选高度，下方留大片空白）。
         resultPane.setMaxHeight(Double.MAX_VALUE);
-        VBox box = new VBox(resultPane);
+        resultToolbar = new SqlResultToolbar(new SqlResultToolbar.Actions(
+                text -> {
+                    resultFilterState.setSearchText(text);
+                    renderResultFilterSnapshot();
+                },
+                this::onAddResultFilterCondition,
+                this::onRemoveResultFilterCondition,
+                this::onApplyDatabaseFilter,
+                this::onClearResultFilters,
+                this::copyResultSelection));
+        renderResultFilterToolbar();
+        VBox box = new VBox(resultToolbar.getNode(), resultPane);
         VBox.setVgrow(resultPane, Priority.ALWAYS);
         return box;
     }
@@ -1385,8 +1409,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void showPlan(String planText, long elapsed, int totalStmts) {
-        lastQueryResult = null;
-        lastQuerySql = null;
+        clearResultFilterState();
         exportResultBtn.setDisable(true);
         copyInsertBtn.setDisable(true);
         planArea.setText(planText);
@@ -1403,26 +1426,207 @@ public final class SqlEditorPane implements AutoCloseable {
         resultPane.setText("结果");
     }
 
-    /** 复制选中单元格到系统剪贴板：同行以 TAB 分隔，跨行以换行分隔（Excel 友好）。 */
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private void copySelectedCells() {
-        // getSelectedCells() 返回 raw TablePosition 列表，排序/取值统一按 raw 处理
-        List<TablePosition> cells = new ArrayList<>(resultTable.getSelectionModel().getSelectedCells());
-        if (cells.isEmpty()) return;
-        cells.sort(Comparator.comparingInt((TablePosition p) -> p.getRow())
-                .thenComparingInt((TablePosition p) -> p.getColumn()));
-        StringBuilder sb = new StringBuilder();
-        int lastRow = -1;
-        for (TablePosition p : cells) {
-            if (lastRow >= 0) sb.append(p.getRow() == lastRow ? '\t' : '\n');
-            Object v = p.getTableColumn().getCellData(p.getRow());
-            sb.append(v == null ? "" : v.toString());
-            lastRow = p.getRow();
+    private void onAddResultFilterCondition() {
+        ResultFilterState.Snapshot snapshot = resultFilterState.snapshot();
+        QueryResult original = snapshot.originalResult();
+        if (original == null || original.kind != QueryResult.Kind.QUERY) return;
+        Window owner = root.getScene() == null ? null : root.getScene().getWindow();
+        List<FilterCondition> conditions = new ArrayList<>(snapshot.conditions());
+        FilterConditionDialog.show(owner, original.resultColumns, conditions.size(), FilterConnector.AND)
+                .ifPresent(condition -> {
+                    conditions.add(condition);
+                    resultFilterState.setConditions(conditions);
+                    renderResultFilterSnapshot();
+                });
+    }
+
+    private void onRemoveResultFilterCondition(int index) {
+        List<FilterCondition> conditions = new ArrayList<>(resultFilterState.snapshot().conditions());
+        if (index < 0 || index >= conditions.size()) return;
+        conditions.remove(index);
+        resultFilterState.setConditions(conditions);
+        renderResultFilterSnapshot();
+    }
+
+    private void onClearResultFilters() {
+        resultFilterState.clearFilters();
+        renderResultFilterSnapshot();
+        QueryResult restored = resultFilterState.snapshot().activeResult();
+        if (restored == null) return;
+        statusLabel.setText("已清除筛选 - " + formatResultRowCount(restored));
+        statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
+    }
+
+    private void onApplyDatabaseFilter() {
+        ResultFilterState.DatabaseFilterRequest request;
+        try {
+            request = resultFilterState.databaseRequest();
+        } catch (RuntimeException unavailable) {
+            statusLabel.setText(message(unavailable));
+            statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
+            return;
+        }
+
+        final ConnConfig connection;
+        final RenderedFilterQuery query;
+        try {
+            connection = admission.requireOpenPinned();
+            SafeSelectEligibility.Result eligibility = SafeSelectEligibility.check(
+                    request.originalSql(), connection.type() == DbType.ORACLE,
+                    request.originalResult());
+            if (!eligibility.eligible()) {
+                onDatabaseFilterFailed(request.generation(), eligibility.reason());
+                return;
+            }
+            ResultFilterSqlRenderer resultFilterRenderer = connections.provider(connection.id())
+                    .resultFilterSqlRenderer()
+                    .orElseThrow(() -> new IllegalStateException("当前数据库不支持结果筛选"));
+            query = resultFilterRenderer.render(
+                    eligibility.normalizedSql(), request.originalResult().resultColumns,
+                    request.conditions());
+        } catch (RuntimeException failure) {
+            onDatabaseFilterFailed(request.generation(), message(failure));
+            return;
+        }
+
+        String schema = schemaField.getText().trim();
+        statusLabel.setText("正在应用数据库筛选...");
+        statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
+        try {
+            submitSessionOperation(SerialSessionOperationQueue.OperationKind.EXECUTE,
+                    () -> ensureEditorSession().executePrepared(
+                            query.sql(), query.parameters(),
+                            schema.isEmpty() ? null : schema,
+                            settings.getMaxResultRows()),
+                    result -> onDatabaseFilterSucceeded(request, result),
+                    failure -> onDatabaseFilterFailed(request.generation(), message(failure)));
+        } catch (RuntimeException rejected) {
+            onDatabaseFilterFailed(request.generation(), message(rejected));
+        }
+    }
+
+    private void onDatabaseFilterSucceeded(
+            ResultFilterState.DatabaseFilterRequest request, QueryResult result) {
+        if (result == null || result.kind != QueryResult.Kind.QUERY) {
+            String failure = result == null ? "数据库筛选未返回结果" : result.errorMessage;
+            onDatabaseFilterFailed(request.generation(), failure);
+            return;
+        }
+        if (!orderedLabels(request.originalResult()).equals(orderedLabels(result))) {
+            onDatabaseFilterFailed(request.generation(), "数据库筛选返回了不一致的列结构");
+            return;
+        }
+        QueryResult candidate = request.originalResult().columnComments.isEmpty()
+                ? result : result.withColumnComments(request.originalResult().columnComments);
+        if (!resultFilterState.databaseApplied(request.generation(), candidate)) return;
+        renderResultFilterSnapshot();
+        statusLabel.setText("数据库筛选已应用 - " + formatResultRowCount(candidate));
+        statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
+    }
+
+    private void onDatabaseFilterFailed(long generation, String failure) {
+        String detail = failure == null || failure.isBlank() ? "数据库筛选失败" : failure;
+        if (!resultFilterState.databaseFailed(generation, detail)) return;
+        renderResultFilterSnapshot();
+        statusLabel.setText("数据库筛选失败，仍显示当前结果：" + detail);
+        statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
+    }
+
+    private static List<String> orderedLabels(QueryResult result) {
+        if (!result.resultColumns.isEmpty()) {
+            return result.resultColumns.stream().map(ResultColumn::label).toList();
+        }
+        return result.columns;
+    }
+
+    /** Copies only formatted values in the table's current visible order. */
+    private void copyResultSelection(SqlResultToolbar.CopyMode mode) {
+        ResultFilterState.Snapshot snapshot = resultFilterState.snapshot();
+        QueryResult active = snapshot.activeResult();
+        if (active == null || active.kind != QueryResult.Kind.QUERY) return;
+        List<TableColumn> copyColumns = visibleResultColumns();
+        List<String> headers = copyColumns.stream()
+                .map(column -> String.valueOf(column.getProperties().get("sql-result-label")))
+                .toList();
+        List<List<String>> rows = formattedVisibleRows(copyColumns);
+        List<TablePosition> positions =
+                new ArrayList<>(resultTable.getSelectionModel().getSelectedCells());
+        Set<TsvClipboardFormatter.CellRef> cells = new HashSet<>();
+        for (TablePosition position : positions) {
+            int column = copyColumns.indexOf(position.getTableColumn());
+            if (position.getRow() >= 0 && position.getRow() < rows.size()
+                    && column >= 0 && column < headers.size()) {
+                cells.add(new TsvClipboardFormatter.CellRef(position.getRow(), column));
+            }
+        }
+
+        String value;
+        int copied;
+        String unit;
+        switch (mode) {
+            case CURRENT_CELL -> {
+                TsvClipboardFormatter.CellRef focused = focusedResultCell(headers.size(), rows.size());
+                if (focused == null) {
+                    focused = cells.stream().min(Comparator
+                            .comparingInt(TsvClipboardFormatter.CellRef::row)
+                            .thenComparingInt(TsvClipboardFormatter.CellRef::column)).orElse(null);
+                }
+                if (focused == null) return;
+                value = TsvClipboardFormatter.rectangle(headers, rows, Set.of(focused), false);
+                copied = 1;
+                unit = "个单元格";
+            }
+            case SELECTION -> {
+                if (cells.isEmpty()) return;
+                value = TsvClipboardFormatter.rectangle(headers, rows, cells, false);
+                copied = cells.size();
+                unit = "个单元格";
+            }
+            case SELECTED_ROWS, SELECTED_ROWS_WITH_HEADERS -> {
+                Set<Integer> selectedRows = new HashSet<>();
+                for (TsvClipboardFormatter.CellRef cell : cells) selectedRows.add(cell.row());
+                if (selectedRows.isEmpty()) return;
+                value = TsvClipboardFormatter.rows(headers, rows, selectedRows,
+                        mode == SqlResultToolbar.CopyMode.SELECTED_ROWS_WITH_HEADERS);
+                copied = selectedRows.size();
+                unit = "行";
+            }
+            default -> throw new IllegalStateException("未知复制模式: " + mode);
         }
         ClipboardContent content = new ClipboardContent();
-        content.putString(sb.toString());
+        content.putString(value);
         Clipboard.getSystemClipboard().setContent(content);
-        statusLabel.setText("已复制 " + cells.size() + " 个单元格");
+        statusLabel.setText("已复制 " + copied + " " + unit);
+        statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
+    }
+
+    private TsvClipboardFormatter.CellRef focusedResultCell(int columns, int rows) {
+        TablePosition focused = resultTable.getFocusModel().getFocusedCell();
+        int column = visibleResultColumns().indexOf(focused.getTableColumn());
+        if (focused.getRow() < 0 || focused.getRow() >= rows || column < 0 || column >= columns) {
+            return null;
+        }
+        return new TsvClipboardFormatter.CellRef(focused.getRow(), column);
+    }
+
+    private List<TableColumn> visibleResultColumns() {
+        List<TableColumn> columns = new ArrayList<>();
+        for (TableColumn column : resultTable.getVisibleLeafColumns()) {
+            if (column.getUserData() instanceof Integer index && index >= 0) columns.add(column);
+        }
+        return columns;
+    }
+
+    private List<List<String>> formattedVisibleRows(List<TableColumn> columns) {
+        List<List<String>> formatted = new ArrayList<>(resultTable.getItems().size());
+        for (int rowIndex = 0; rowIndex < resultTable.getItems().size(); rowIndex++) {
+            List<String> row = new ArrayList<>(columns.size());
+            for (TableColumn column : columns) {
+                row.add(ResultValueFormatter.format(column.getCellData(rowIndex)));
+            }
+            formatted.add(row);
+        }
+        return formatted;
     }
 
     /** 将结果区切到执行计划文本视图。 */
@@ -1432,17 +1636,16 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void showError(String msg, long elapsed) {
-        lastQueryResult = null;
-        lastQuerySql = null;
+        clearResultFilterState();
         useTable();
         exportResultBtn.setDisable(true);
         copyInsertBtn.setDisable(true);
         resultTable.getColumns().clear();
         resultTable.getItems().clear();
-        TableColumn<ObservableList<String>, String> col = new TableColumn<>("错误");
-        col.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue().get(0)));
+        TableColumn<ObservableList<Object>, Object> col = new TableColumn<>("错误");
+        col.setCellValueFactory(d -> new javafx.beans.property.SimpleObjectProperty<>(d.getValue().get(0)));
         resultTable.getColumns().add(col);
-        ObservableList<ObservableList<String>> rows = FXCollections.observableArrayList();
+        ObservableList<ObservableList<Object>> rows = FXCollections.observableArrayList();
         rows.add(FXCollections.observableArrayList(msg));
         resultTable.setItems(rows);
         statusLabel.setText("ERROR - " + elapsed + "ms");
@@ -1462,8 +1665,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void showScriptResults(List<ScriptOutcome> outcomes, long totalElapsed) {
-        lastQueryResult = null;
-        lastQuerySql = null;
+        clearResultFilterState();
         useTable();
         exportResultBtn.setDisable(true);
         copyInsertBtn.setDisable(true);
@@ -1478,7 +1680,7 @@ public final class SqlEditorPane implements AutoCloseable {
             addColumn("类型", 1);
             addColumn("耗时", 2);
             addColumn("结果", 3);
-            ObservableList<ObservableList<String>> data = FXCollections.observableArrayList();
+            ObservableList<ObservableList<Object>> data = FXCollections.observableArrayList();
             for (ScriptOutcome o : outcomes) {
                 QueryResult r = o.result();
                 data.add(FXCollections.observableArrayList(
@@ -1493,10 +1695,8 @@ public final class SqlEditorPane implements AutoCloseable {
                 case QUERY -> {
                     lastQuerySql = outcomes.get(0).sql();
                     showQueryResult(r);
-                    int cap = settings.getMaxResultRows();
-                    String extra = (cap > 0 && r.rows.size() >= cap)
-                            ? "（已截断至上限 " + cap + " 行，可在设置中调整）" : "";
-                    statusLabel.setText("OK - " + r.rows.size() + " rows - " + r.elapsedMillis + "ms" + extra);
+                    statusLabel.setText("OK - " + formatResultRowCount(r)
+                            + " - " + r.elapsedMillis + "ms");
                     statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
                 }
                 case UPDATE -> {
@@ -1521,35 +1721,80 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void addColumn(String title, int idx) {
-        TableColumn<ObservableList<String>, String> c = new TableColumn<>(title);
-        c.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(
+        TableColumn<ObservableList<Object>, Object> c = new TableColumn<>(title);
+        c.setCellValueFactory(d -> new javafx.beans.property.SimpleObjectProperty<>(
                 idx < d.getValue().size() ? d.getValue().get(idx) : ""));
         resultTable.getColumns().add(c);
     }
 
     private void showQueryResult(QueryResult r) {
-        lastQueryResult = r;
-        ObservableList<ObservableList<String>> data = FXCollections.observableArrayList();
-        for (List<Object> row : r.rows) {
-            ObservableList<String> rowData = FXCollections.observableArrayList();
-            for (Object cell : row) {
-                rowData.add(cell == null ? "" : cell.toString());
-            }
-            data.add(rowData);
-        }
+        String sql = lastQuerySql == null ? "" : lastQuerySql;
+        resultFilterState.showOriginal(r, sql, databaseFilterUnavailableReason(sql, r));
+        renderResultFilterSnapshot();
+    }
+
+    private void renderResultFilterSnapshot() {
+        ResultFilterState.Snapshot snapshot = resultFilterState.snapshot();
+        QueryResult active = snapshot.activeResult();
         resultTable.getColumns().clear();
+        resultTable.getItems().clear();
+        if (active == null || active.kind != QueryResult.Kind.QUERY) {
+            exportResultBtn.setDisable(true);
+            copyInsertBtn.setDisable(true);
+            renderResultFilterToolbar();
+            return;
+        }
+        useTable();
         resultTable.getColumns().add(buildSeqColumn());
-        List<String> comments = r.columnComments;
-        for (int i = 0; i < r.columns.size(); i++) {
-            String name = r.columns.get(i);
+        List<String> labels = orderedLabels(active);
+        List<String> comments = active.columnComments;
+        for (int i = 0; i < labels.size(); i++) {
+            String name = labels.get(i);
             String comment = (comments != null && i < comments.size()) ? comments.get(i) : null;
-            TableColumn<ObservableList<String>, String> col = buildQueryColumn(name, comment, i);
-            col.setPrefWidth(estimateColumnWidth(name, r.rows, i));
+            TableColumn<ObservableList<Object>, Object> col = buildQueryColumn(name, comment, i);
+            col.setPrefWidth(estimateColumnWidth(name, active.rows, i));
             resultTable.getColumns().add(col);
         }
+        ObservableList<ObservableList<Object>> data = FXCollections.observableArrayList();
+        for (int rowIndex : snapshot.visibleRowIndexes()) {
+            if (rowIndex < 0 || rowIndex >= active.rows.size()) continue;
+            data.add(FXCollections.observableArrayList(active.rows.get(rowIndex)));
+        }
         resultTable.setItems(data);
-        exportResultBtn.setDisable(r.rows.isEmpty());
-        copyInsertBtn.setDisable(r.rows.isEmpty());
+        exportResultBtn.setDisable(active.rows.isEmpty());
+        copyInsertBtn.setDisable(active.rows.isEmpty());
+        renderResultFilterToolbar();
+    }
+
+    private void renderResultFilterToolbar() {
+        if (resultToolbar != null) resultToolbar.render(resultFilterState.snapshot());
+    }
+
+    private void clearResultFilterState() {
+        resultFilterState.clearAll();
+        lastQuerySql = null;
+        renderResultFilterToolbar();
+    }
+
+    private String databaseFilterUnavailableReason(String sql, QueryResult result) {
+        ConnConfig connection = currentConn();
+        SafeSelectEligibility.Result eligibility = SafeSelectEligibility.check(
+                sql, connection != null && connection.type() == DbType.ORACLE, result);
+        if (!eligibility.eligible()) return eligibility.reason();
+        if (connection == null || connections == null) return "当前编辑器未绑定数据库连接";
+        try {
+            return connections.provider(connection.id()).resultFilterSqlRenderer().isPresent()
+                    ? null : "当前数据库不支持结果筛选";
+        } catch (RuntimeException unavailable) {
+            return message(unavailable);
+        }
+    }
+
+    private String formatResultRowCount(QueryResult result) {
+        int count = result.truncated && settings.getMaxResultRows() > 0
+                ? settings.getMaxResultRows() : result.rows.size();
+        String formatted = String.format(Locale.ROOT, "%,d", count);
+        return result.truncated ? formatted + "+，当前结果已截断" : formatted + " rows";
     }
 
     /** 导出格式：菜单标签 + FileChooser 过滤器描述/后缀 + 默认文件名。 */
@@ -1575,7 +1820,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** 将当前查询结果导出为指定格式的文件（PL/SQL Developer 风格多格式导出）。 */
     private void exportAs(ExportFormat fmt) {
-        QueryResult r = lastQueryResult;
+        QueryResult r = resultFilterState.snapshot().activeResult();
         if (r == null || r.kind != QueryResult.Kind.QUERY || r.rows.isEmpty()) {
             showAlert("没有可导出的查询结果");
             return;
@@ -1664,7 +1909,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** 将当前查询结果生成 INSERT 语句复制到剪贴板；目标表解析见 {@link #resolveInsertTable()}。 */
     private void onCopyInsert() {
-        QueryResult r = lastQueryResult;
+        QueryResult r = resultFilterState.snapshot().activeResult();
         if (r == null || r.kind != QueryResult.Kind.QUERY || r.rows.isEmpty()) {
             showAlert("没有可生成的查询结果");
             return;
@@ -1680,14 +1925,14 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     /** 行号列（序号）：显示 1..N，不参与排序，不映射数据。 */
-    private TableColumn<ObservableList<String>, String> buildSeqColumn() {
-        TableColumn<ObservableList<String>, String> seq = new TableColumn<>("#");
+    private TableColumn<ObservableList<Object>, Object> buildSeqColumn() {
+        TableColumn<ObservableList<Object>, Object> seq = new TableColumn<>("#");
         seq.setSortable(false);
         seq.setResizable(false);
         seq.setPrefWidth(56);
         seq.setCellFactory(tc -> new TableCell<>() {
             @Override
-            protected void updateItem(String item, boolean empty) {
+            protected void updateItem(Object item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || getIndex() < 0) {
                     setText(null);
@@ -1702,16 +1947,26 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     /** 构建带注释表头的查询列，表头展现方式由当前 {@link CommentMode} 决定。 */
-    private TableColumn<ObservableList<String>, String> buildQueryColumn(String name, String comment, int idx) {
-        TableColumn<ObservableList<String>, String> c = new TableColumn<>();
-        c.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(
-                idx < d.getValue().size() ? d.getValue().get(idx) : ""));
+    private TableColumn<ObservableList<Object>, Object> buildQueryColumn(
+            String name, String comment, int idx) {
+        TableColumn<ObservableList<Object>, Object> c = new TableColumn<>();
+        c.setUserData(idx);
+        c.getProperties().put("sql-result-label", name);
+        c.setCellValueFactory(d -> new javafx.beans.property.SimpleObjectProperty<>(
+                idx < d.getValue().size() ? d.getValue().get(idx) : null));
+        c.setCellFactory(ignored -> new TableCell<>() {
+            @Override
+            protected void updateItem(Object item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty ? null : ResultValueFormatter.format(item));
+            }
+        });
         applyColumnHeader(c, name, comment);
         return c;
     }
 
     /** 根据当前注释显示模式设置列头（纯文本 / 悬停 Tooltip / 固定两行）。 */
-    private void applyColumnHeader(TableColumn<ObservableList<String>, String> c, String name, String comment) {
+    private void applyColumnHeader(TableColumn<?, ?> c, String name, String comment) {
         boolean hasComment = comment != null && !comment.isEmpty();
         CommentMode mode = settings.getCommentMode();
         if (!hasComment || mode == CommentMode.OFF) {
@@ -1748,7 +2003,7 @@ public final class SqlEditorPane implements AutoCloseable {
         for (int r = 0; r < sample; r++) {
             List<Object> row = rows.get(r);
             if (idx < row.size() && row.get(idx) != null) {
-                int len = row.get(idx).toString().length();
+                int len = ResultValueFormatter.format(row.get(idx)).length();
                 if (len > maxLen) maxLen = len;
             }
         }
@@ -1764,6 +2019,7 @@ public final class SqlEditorPane implements AutoCloseable {
         explainBtn.setDisable(disabled);
         formatBtn.setDisable(busy);
         clearBtn.setDisable(busy);
+        if (resultToolbar != null) resultToolbar.getNode().setDisable(busy);
     }
 
     // ---------- 自动补全：候选词 + 元数据预热 ----------

@@ -189,4 +189,19 @@ class SqlEditorSessionContractTest {
         assertFalse(feedbackBody.contains("sql"));
         assertFalse(feedbackBody.contains("password"));
     }
+
+    @Test
+    void databaseResultFilterRetainsExecuteQueueAndOwnedPreparedSessionContract() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+        int apply = source.indexOf("private void onApplyDatabaseFilter()");
+        assertTrue(apply >= 0, "database filter action must be wired into SqlEditorPane");
+        int nextMethod = source.indexOf("\n    private ", apply + 1);
+        String body = source.substring(apply, nextMethod);
+
+        assertTrue(body.contains("admission.requireOpenPinned()"));
+        assertTrue(body.contains("ensureEditorSession().executePrepared("));
+        assertTrue(body.contains("SerialSessionOperationQueue.OperationKind.EXECUTE"));
+        assertFalse(body.contains("openDedicated"));
+        assertFalse(body.contains("DriverManager"));
+    }
 }
