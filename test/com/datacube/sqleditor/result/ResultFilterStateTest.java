@@ -192,15 +192,7 @@ class ResultFilterStateTest {
             state.showOriginal(error, "select ID from USERS", null);
             QueryResult snapshot = state.snapshot().originalResult();
             assertNotSame(error, snapshot);
-            assertEquals(error.kind, snapshot.kind);
-            assertEquals(error.failureKind, snapshot.failureKind);
-            assertEquals(error.errorMessage, snapshot.errorMessage);
-            assertEquals(error.elapsedMillis, snapshot.elapsedMillis);
-            assertEquals(error.updateCount, snapshot.updateCount);
-            assertEquals(error.columns, snapshot.columns);
-            assertEquals(error.rows, snapshot.rows);
-            assertEquals(error.columnComments, snapshot.columnComments);
-            assertEquals(error.truncated, snapshot.truncated);
+            assertResultEquivalent(error, snapshot);
         }
     }
 
