@@ -8,14 +8,37 @@
 
 **Tech Stack:** Java 25、JavaFX 25、JDBC、RichTextFX 0.11.6、JUnit 5.11、Gradle 9.2 wrapper。
 
+## 2026-08-30 Final-review correction
+
+This plan is retained as the historical implementation record. Its Task 4 examples and references to a
+general “safe single SELECT” are broader than the shipped fail-closed implementation and must not be used
+as current capability claims. The final boundary is:
+
+- Local search and typed conditions operate only on retained immutable rows and never access JDBC.
+- PostgreSQL database Apply accepts only no-`FROM` native-literal projections with safe grouping/comma;
+  projections may be unaliased, and any alias must use explicit `AS`. Oracle database Apply accepts only explicit `SYS.DUAL` wildcard or matching-alias
+  wildcard forms. Normal table/view queries retain local filtering but database Apply is unavailable.
+- Predicate identifiers come only from immutable result metadata; values are prepared parameters. Provider
+  capability uses JDBC type code plus provider type name, PostgreSQL operators are `pg_catalog`-qualified,
+  and diagnostics/condition snapshots are redacted.
+- Result values are detached and frozen before publication; large binary/provider values are bounded and
+  deterministic. Driver row bounds use saturating `maxRows + 1`; retained snapshots carry the authoritative
+  truncation fact and retained-row count used by status formatting.
+- Apply flushes pending search. Recoverable error/timeout/cancel/rejection preserves the existing table
+  presentation, and stale generations cannot replace it. Clipboard success requires the JavaFX write to
+  return true and is tested through an injectable seam.
+- No PostgreSQL/Oracle live database filtering was executed because no explicitly authorized endpoint was
+  available. Final evidence is limited to model, recording-JDBC, provider-renderer and forced non-headless
+  JavaFX tests.
+
 ## Global Constraints
 
-- 数据库筛选只处理可保守证明为可包装、只读、单条顶层 `SELECT` 的 SQL；首版拒绝 `WITH`、集合运算、锁定查询和多语句。
+- 数据库筛选采用上述最终极窄 provider 子集；普通表/视图查询只保留本地筛选。
 - 全文搜索只处理当前已加载结果，忽略大小写，永远不访问数据库。
 - 结构化条件为平面有序列表，严格从左到右计算 `AND / OR`，不支持嵌套组。
 - 用户筛选值必须通过 `PreparedStatement` 参数绑定；SQL、日志和错误摘要不得包含参数值或凭据。
 - 数据库筛选失败、超时、取消或迟到完成不得替换当前结果。
-- 读取上限继续来自 `AppSettings.getMaxResultRows()`；达到上限且仍有下一行时显示“已截断”，不得推断数据库总行数。
+- 执行时读取上限来自 `AppSettings.getMaxResultRows()`；达到上限且仍有下一行时记录“已截断”，后续状态文案使用保留结果中的行数和截断事实，不读取当前可变设置，也不得推断数据库总行数。
 - 不增加第三方依赖，不改变事务、只读、生产环境确认、取消、关闭和连接所有权语义。
 - `com.datacube.spi.model.QueryResult` 是权威结果类型；不扩展未被生产路径使用的 `com.datacube.sqleditor.QueryResult` 副本。
 - 每个任务只暂存其列出的文件；不得暂存或修改用户的 `.testagent/`。
@@ -1092,7 +1115,7 @@ When the filtered result has the same ordered labels as the original, carry forw
 
 - A new user SQL result calls `showOriginal` and clears old filters.
 - “清除筛选” restores the cached original result without JDBC.
-- `QueryResult.truncated` uses `settings.getMaxResultRows()` to format the status, for example the default `10,000+，当前结果已截断`; `rows.size() == cap` without `truncated` does not claim truncation.
+- `QueryResult.truncated` and the retained snapshot's `rows.size()` format the status, for example `10,000+，当前结果已截断`; changing `settings.getMaxResultRows()` after execution does not rewrite that retained fact, and `rows.size() == cap` without `truncated` does not claim truncation.
 - Normal user SQL errors keep their existing presentation; database-filter errors use the non-destructive inline toolbar/status path.
 - Plan view, multi-statement summary, clear editor, tab close, and application exit call `resultFilterState.clearAll()` and disable the result toolbar.
 

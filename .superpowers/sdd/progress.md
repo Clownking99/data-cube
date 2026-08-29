@@ -1,27 +1,27 @@
 # Subagent-Driven Development Progress
 
-- Plan: `docs/superpowers/plans/2026-08-10-schema-diff.md`
-- Branch: `main`
-- Starting base: `3d8c40b`
-- Workspace policy: in-place development explicitly approved by the user; preserve `.testagent/` untouched.
+- Plan: `docs/superpowers/plans/2026-08-29-sql-result-filtering.md`
+- Branch: `codex/connection-onboarding`
+- Starting base: `6962807`
+- Workspace policy: in-place development was previously approved by the user; preserve `.testagent/` untouched.
+- Baseline: `gradlew test --no-daemon --console=plain` passed before implementation.
 
 | Task | Status | Commits | Review | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | completed | `ab3f9d1`, `3ac0d72` | Ready; 0 findings after re-review | 11 focused and 438 full tests passed. |
-| 2 | completed | `1680436`, `24d92dd`, `a178f1a` | Ready; 0 findings after three reviews | 34 focused and 472 full tests passed. |
-| 3 | completed | `55867ce`, `ac061e3`, `7a7c700`, `3fc8953`, `d85bc18` | Ready; 0 findings after atomic-definition re-review | 35 focused and 532 full tests passed; definition changes are coalesced atomically and retain their canonical path set. |
-| 4 | completed | `64f8137`, `b1c1a33`, `c5a72e0` | Ready; 0 Critical/Important, 1 Minor | 25 focused and 527 full tests passed at Task 4 completion; reserved-word quoted metadata remains a non-blocking final-review Minor. |
-| 5 | completed | `eb01b06`, `2e85a02`, `869f6ce`, `c7b9064` | Ready; 0 Critical/Important/Minor after final review | 32 focused, 139 Task1–5 matrix, and 566 full tests passed. |
-| 6 | completed | `c2ccd97`, `486da20`, `6663495` | Ready; 0 Critical/Important/Minor after three reviews | 58 focused, 162 Task1–6 matrix and 589 full tests passed; Oracle official catalog semantics and snapshot summary confidentiality are closed. |
-| 7 | completed | `1e176ef`, `5a87f13`, `85d9953`, `5e44c3d` | Ready; 0 Critical/Important/Minor after final review | 27 focused, 189 Task1–7 matrix and 616 full tests passed; target-owner, PL/SQL lexical and routine signature-side boundaries are closed. |
-| 8 | completed | `631cf3d`, `e88c9fa`, `51a5883` | Ready; 0 Critical/Important/Minor after final review | 37 focused, 226 Task1–8 matrix and 653 full tests passed; cancellation target isolation and production confirmation are closed. |
-| 9 | completed | `54f9f40`, `2ea0a93`, `bb8e884` | Ready; 0 Critical/Important/Minor after final review | 52 focused, 268 Task1–9 matrix and 695 full tests passed; canonical identity, failure review context, and managed lifecycle are closed. |
-| 10 | completed | `ee6e258`, `1bf6684`, `d789be0`, `087d639` | Ready; 0 Critical/Important/Minor after final review | Release gate passed 704 tests with 3 documented skips; image, CodeGraph, gradlew mode and workflow secret scope verified; relational live runs remain unexecuted without authorized endpoints. |
+| 1 | completed | `16e8803`, `4cd6be1` | APPROVED; 0 findings after re-review | 33 focused tests passed with forced execution. |
+| 2 | completed | `5b49eb4`, `958f6ff`, `e8c9793` | APPROVED; 0 findings after three reviews | 12 focused and 843 full tests passed; 3 existing skips. |
+| 3 | completed | `8f1f07d`, `142265e`, `1db47c6`, `feeba85`, `d9f9727` | APPROVED; 0 findings after final review | 28 Task 3 tests and full regression passed; generation-only completion protocol. |
+| 4 | completed | `b07fabe`, `106d1c4` | APPROVED; 0 findings after security re-review | 58 focused and 925 full tests passed; 35 existing skips. |
+| 5 | completed | `3302655`, `dcecf5d` | APPROVED; 0 findings after re-review | 74 focused and 943 full tests passed; 35 existing skips. |
+| 6 | completed | `4a8e0b5`, `df50d5e` | APPROVED; 0 Critical/Important, 1 non-blocking Minor | 19 focused FX and 962 full tests passed; 3 external skips. |
+| 7 | completed | `2d5194e`, `e2a07e1` | APPROVED; 0 findings after re-review | 102 focused and 980 full tests passed; 3 external skips; JSON/JSONB lifecycle fixes included. |
+| 8 | completed | `ac2da54`, `a323a4f` | APPROVED; 0 findings after re-review | 142 focused and 980 clean full tests passed; 3 external skips. |
 
 ## Cumulative review
 
-- Status: complete; twelfth fresh cumulative review found 0 Critical / 0 Important / 0 Minor; Spec PASS, Quality APPROVED, Ready Yes.
-- Fresh cumulative review range: `3d8c40b..HEAD`; use the actual HEAD reported after the report/progress commit so the range includes both implementation and verification evidence.
-- Finding closed by TDD: statement/clause consumption now distinguishes query relation `FROM` from `IS [NOT] DISTINCT FROM`; trigger headers consume event lists before the owning-table `ON`, and PostgreSQL constraint triggers consume their referenced-table `FROM`. Malformed definition objects fail closed to LOW/manual without aborting stable siblings.
-- Eleventh follow-up gates: focused 5 suites / 144 tests / 0 skips; Task 1-10 matrix 36 suites / 363 tests / 2 documented live skips; clean full+jlink 111 suites / 782 tests / 3 documented live skips; explicit no-credential live gate 6 tests / 2 skips; all zero failures/errors.
-- Eleventh follow-up commits: implementation `e73d839`, report/plan `d14b9fd`. No amend/push/tag/live DB.
+- Status: complete; final fixed-range review reports 0 Critical / 0 Important / 1 non-blocking Minor; Ready Yes.
+- Remediation 1: `b240318` APPROVED; 0 findings; 58 core focused and 992 clean full tests passed, 3 external skips.
+- Remediation 2: `dc80c0a`, `22fdd37` APPROVED; 0 findings; 102 focused and 1,014 clean full tests passed, 3 external skips.
+- Remediation 3: `6416d85` APPROVED; 0 findings; 303 focused and 1,147 clean full tests passed, 3 external skips; database Apply reduced to fail-closed provider subsets.
+- Remediation 4: `c6738a2` APPROVED; 0 findings; 89 focused and 1,154 clean full tests passed, 3 external skips; Apply/debounce, presentation preservation, retained truncation and clipboard seam closed.
+- Remediation 5: review identified an unbounded provider-value blocker. Isolated TDD fix `fce82a9` bounds retained provider text/aggregates; `4e24d06` updates the JSON reader test fixture after the post-fix matrix exposed its stale `getString`-only proxy. Final post-fix gates passed 15 suites / 378 tests and 128 suites / 1,159 clean full tests with 3 documented live skips. Re-review closed all Critical/Important findings; one non-blocking Minor recommends direct PostgreSQL bare-alias rejection cases. Fixed feature base is `6962807ad17ec6587541e8fc9f18155a2506e491`.
