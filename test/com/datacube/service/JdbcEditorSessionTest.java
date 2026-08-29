@@ -4,6 +4,7 @@ import com.datacube.sqleditor.SqlSafetyAnalyzer;
 import com.datacube.sqleditor.SqlSafetyPolicy;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.SqlExecutionOptions;
+import com.datacube.spi.SqlParameter;
 import com.datacube.spi.SqlRunner;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.ConnectionEnvironment;
@@ -18,6 +19,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -1031,6 +1033,37 @@ class JdbcEditorSessionTest {
         session.close();
     }
 
+    @Test
+    void manualPreparedExecutionUsesOwnedConnectionControlAndSafetyOptions() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        StubRunner runner = new StubRunner(QueryResult.update(1, 1));
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 37),
+                jdbc::open, runner);
+        session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
+        List<SqlParameter> parameters = List.of(
+                new SqlParameter(Types.INTEGER, 10),
+                new SqlParameter(Types.VARCHAR, "Ada"));
+
+        QueryResult result = session.executePrepared(
+                "select * from q where id > ? and name = ?", parameters, "public", 19);
+
+        assertEquals(QueryResult.Kind.UPDATE, result.kind);
+        assertEquals(1, jdbc.opens.get());
+        assertSame(jdbc.handles.getFirst().connection, runner.lastPreparedConnection);
+        assertEquals("select * from q where id > ? and name = ?", runner.lastPreparedSql);
+        assertEquals(parameters, runner.lastParameters);
+        assertEquals("public", runner.lastPreparedSchema);
+        assertEquals(19, runner.lastOptions.maxRows());
+        assertEquals(37, runner.lastOptions.queryTimeoutSeconds());
+        assertNotNull(runner.lastOptions.control());
+        assertFalse(runner.lastOptions.control().hasActiveStatement());
+        assertEquals(0, runner.scriptCalls.get(), "prepared execution must not use executeScript");
+        assertEquals(JdbcEditorSession.TransactionState.ACTIVE,
+                session.snapshot().transactionState());
+        session.close();
+    }
+
     private static ConnConfig config() {
         return new ConnConfig("conn", "test", DbType.POSTGRESQL, "localhost", 5432,
                 "db", "user", "encrypted", Map.of());
@@ -1042,6 +1075,10 @@ class JdbcEditorSessionTest {
         private final AtomicInteger explainCalls = new AtomicInteger();
         private ScriptErrorPolicy lastPolicy;
         private SqlExecutionOptions lastOptions;
+        private Connection lastPreparedConnection;
+        private String lastPreparedSql;
+        private List<SqlParameter> lastParameters;
+        private String lastPreparedSchema;
 
         private StubRunner(QueryResult result) {
             this.result = result;
@@ -1050,6 +1087,18 @@ class JdbcEditorSessionTest {
         @Override
         public QueryResult execute(
                 Connection connection, String sql, String schema, SqlExecutionOptions options) {
+            return result;
+        }
+
+        @Override
+        public QueryResult executePrepared(
+                Connection connection, String sql, List<SqlParameter> parameters,
+                String schema, SqlExecutionOptions options) {
+            lastPreparedConnection = connection;
+            lastPreparedSql = sql;
+            lastParameters = parameters;
+            lastPreparedSchema = schema;
+            lastOptions = options;
             return result;
         }
 

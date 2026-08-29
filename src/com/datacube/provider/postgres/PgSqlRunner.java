@@ -1,8 +1,10 @@
 package com.datacube.provider.postgres;
 
+import com.datacube.provider.jdbc.JdbcPreparedQueryExecutor;
 import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.spi.SqlDialect;
 import com.datacube.spi.SqlExecutionOptions;
+import com.datacube.spi.SqlParameter;
 import com.datacube.spi.SqlRunner;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.model.QueryResult;
@@ -62,6 +64,25 @@ public final class PgSqlRunner implements SqlRunner {
             return options.control().cancellationRequested()
                     ? QueryResult.cancelled(e.getMessage(), elapsed)
                     : QueryResult.error(e.getMessage(), elapsed);
+        }
+    }
+
+    @Override
+    public QueryResult executePrepared(
+            Connection conn, String sql, List<SqlParameter> parameters,
+            String schema, SqlExecutionOptions options) {
+        long startedAt = System.currentTimeMillis();
+        try {
+            applySchema(conn, schema, options);
+            return JdbcPreparedQueryExecutor.execute(conn, sql, parameters, options);
+        } catch (SQLTimeoutException timeout) {
+            return QueryResult.timeout(
+                    timeout.getMessage(), System.currentTimeMillis() - startedAt);
+        } catch (SQLException failure) {
+            long elapsed = System.currentTimeMillis() - startedAt;
+            return options.control().cancellationRequested()
+                    ? QueryResult.cancelled(failure.getMessage(), elapsed)
+                    : QueryResult.error(failure.getMessage(), elapsed);
         }
     }
 

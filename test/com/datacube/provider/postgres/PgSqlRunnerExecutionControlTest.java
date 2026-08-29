@@ -2,6 +2,7 @@ package com.datacube.provider.postgres;
 
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
+import com.datacube.spi.SqlParameter;
 import com.datacube.spi.model.QueryResult;
 import com.datacube.spi.model.ScriptOutcome;
 import org.junit.jupiter.api.Test;
@@ -79,6 +80,25 @@ class PgSqlRunnerExecutionControlTest {
         assertEquals(QueryResult.FailureKind.CANCELLED, cancelled.failureKind);
         assertEquals(1, cancelJdbc.cancelCalls.get());
         assertFalse(cancelControl.hasActiveStatement());
+    }
+
+    @Test
+    void preparedExecutionAppliesSchemaBindsInOrderAndUsesTheSharedControl() {
+        JdbcScenario jdbc = new JdbcScenario();
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = runner.executePrepared(
+                jdbc.connection(), "select * from things where id > ? and name = ?",
+                List.of(new SqlParameter(Types.INTEGER, 10),
+                        new SqlParameter(Types.VARCHAR, "Ada")), "App",
+                new SqlExecutionOptions(25, 7, control));
+
+        assertEquals(QueryResult.Kind.QUERY, result.kind);
+        assertEquals(List.of("SET search_path TO \"app\""), jdbc.executedSql);
+        assertEquals(List.of("select * from things where id > ? and name = ?"), jdbc.preparedSql);
+        assertEquals(List.of(10, "Ada"), jdbc.boundValues);
+        assertEquals(List.of(7, 7), jdbc.timeouts);
+        assertFalse(control.hasActiveStatement());
     }
 
     @Test
@@ -198,6 +218,8 @@ class PgSqlRunnerExecutionControlTest {
     private static final class JdbcScenario {
         private final List<String> executedSql = new ArrayList<>();
         private final List<Integer> timeouts = new ArrayList<>();
+        private final List<String> preparedSql = new ArrayList<>();
+        private final List<Object> boundValues = new ArrayList<>();
         private final AtomicInteger cancelCalls = new AtomicInteger();
         private final AtomicInteger readOnlyWrites = new AtomicInteger();
         private Consumer<String> beforeExecute = sql -> { };
@@ -208,6 +230,10 @@ class PgSqlRunnerExecutionControlTest {
                     new Class<?>[]{Connection.class}, (proxy, method, args) -> {
                         return switch (method.getName()) {
                             case "createStatement" -> statement();
+                            case "prepareStatement" -> {
+                                preparedSql.add((String) args[0]);
+                                yield preparedStatement();
+                            }
                             case "isReadOnly" -> true;
                             case "setReadOnly" -> {
                                 readOnlyWrites.incrementAndGet();
@@ -243,6 +269,53 @@ class PgSqlRunnerExecutionControlTest {
                             case "isClosed" -> false;
                             default -> defaultValue(method.getReturnType());
                         };
+                    });
+        }
+
+        private PreparedStatement preparedStatement() {
+            return (PreparedStatement) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{PreparedStatement.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "setQueryTimeout" -> {
+                            timeouts.add((Integer) args[0]);
+                            yield null;
+                        }
+                        case "setObject" -> {
+                            boundValues.add(args[1]);
+                            yield null;
+                        }
+                        case "setNull" -> {
+                            boundValues.add(null);
+                            yield null;
+                        }
+                        case "executeQuery" -> emptyResultSet();
+                        case "cancel" -> {
+                            cancelCalls.incrementAndGet();
+                            yield null;
+                        }
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private ResultSet emptyResultSet() {
+            ResultSetMetaData metadata = metadata("public", "things");
+            return (ResultSet) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "getMetaData" -> metadata;
+                        case "next" -> false;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private ResultSetMetaData metadata(String schema, String table) {
+            return (ResultSetMetaData) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{ResultSetMetaData.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "getColumnCount" -> 1;
+                        case "getColumnLabel", "getColumnName" -> "id";
+                        case "getColumnType" -> Types.INTEGER;
+                        case "getColumnTypeName" -> "integer";
+                        case "getSchemaName" -> schema;
+                        case "getTableName" -> table;
+                        default -> defaultValue(method.getReturnType());
                     });
         }
     }

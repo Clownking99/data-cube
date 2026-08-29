@@ -29,6 +29,18 @@ public interface SqlRunner {
     }
 
     /**
+     * Executes a parameterized query on the caller-owned connection.
+     *
+     * <p>The default preserves source compatibility for third-party providers and fails
+     * without exposing SQL or parameter values.
+     */
+    default QueryResult executePrepared(
+            Connection conn, String sql, List<SqlParameter> parameters,
+            String schema, SqlExecutionOptions options) {
+        return QueryResult.error("Parameterized query execution is not supported by this provider", 0);
+    }
+
+    /**
      * 多语句逐条执行；遇失败语句时通过 {@code policy} 决定继续/全部继续/中止，
      * 每条结果（含失败）作为一条 {@link ScriptOutcome} 返回。
      *

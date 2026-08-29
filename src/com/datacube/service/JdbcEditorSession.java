@@ -4,6 +4,7 @@ import com.datacube.sqleditor.SqlSafetyAnalyzer;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.SqlExecutionOptions;
+import com.datacube.spi.SqlParameter;
 import com.datacube.spi.SqlRunner;
 import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.QueryResult;
@@ -183,6 +184,33 @@ public final class JdbcEditorSession implements AutoCloseable {
             SqlExecutionOptions options =
                     new SqlExecutionOptions(0, safety.queryTimeoutSeconds(), control);
             QueryResult result = runner.explain(connection(control), sql, schema, analyze, options);
+            updateTransactionState(List.of(new ScriptOutcome(1, sql, result)));
+            return result;
+        } catch (SQLException failure) {
+            QueryResult result = executionFailure(failure, startedAt, control);
+            updateTransactionState(List.of(new ScriptOutcome(1, sql, result)));
+            return result;
+        } finally {
+            finishOperation(control);
+            singleFlight.unlock();
+        }
+    }
+
+    public QueryResult executePrepared(
+            String sql, List<SqlParameter> parameters, String schema, int maxRows) {
+        Objects.requireNonNull(sql, "sql");
+        Objects.requireNonNull(parameters, "parameters");
+        singleFlight.lock();
+        SqlExecutionControl control = null;
+        long startedAt = System.currentTimeMillis();
+        try {
+            ensureOpen();
+            control = beginOperation();
+            ensureOpen();
+            SqlExecutionOptions options = new SqlExecutionOptions(
+                    maxRows, safety.queryTimeoutSeconds(), control);
+            QueryResult result = runner.executePrepared(
+                    connection(control), sql, List.copyOf(parameters), schema, options);
             updateTransactionState(List.of(new ScriptOutcome(1, sql, result)));
             return result;
         } catch (SQLException failure) {

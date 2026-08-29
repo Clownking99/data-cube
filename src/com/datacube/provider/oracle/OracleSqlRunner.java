@@ -1,8 +1,10 @@
 package com.datacube.provider.oracle;
 
+import com.datacube.provider.jdbc.JdbcPreparedQueryExecutor;
 import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.spi.SqlDialect;
 import com.datacube.spi.SqlExecutionOptions;
+import com.datacube.spi.SqlParameter;
 import com.datacube.spi.SqlRunner;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.model.QueryResult;
@@ -66,6 +68,22 @@ public final class OracleSqlRunner implements SqlRunner {
             return QueryResult.timeout(e.getMessage(), System.currentTimeMillis() - t0);
         } catch (SQLException e) {
             return failure(e, t0, options);
+        }
+    }
+
+    @Override
+    public QueryResult executePrepared(
+            Connection conn, String sql, List<SqlParameter> parameters,
+            String schema, SqlExecutionOptions options) {
+        long startedAt = System.currentTimeMillis();
+        try {
+            applySchema(conn, schema, options);
+            return JdbcPreparedQueryExecutor.execute(conn, strip(sql), parameters, options);
+        } catch (SQLTimeoutException timeout) {
+            return QueryResult.timeout(
+                    timeout.getMessage(), System.currentTimeMillis() - startedAt);
+        } catch (SQLException failure) {
+            return failure(failure, startedAt, options);
         }
     }
 
