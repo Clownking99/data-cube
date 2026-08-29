@@ -22,7 +22,9 @@ public final class FilterValueParser {
         Objects.requireNonNull(column, "column");
         Objects.requireNonNull(operator, "operator");
         if (!operator.valueRequired()) return null;
-        if (input == null || input.isBlank()) {
+        if (input == null) throw invalid(column, null);
+        if (isTextType(column.jdbcType())) return input;
+        if (input.isBlank()) {
             throw invalid(column, input);
         }
         String value = input.trim();
@@ -32,8 +34,8 @@ public final class FilterValueParser {
                 case Types.SMALLINT -> Short.valueOf(value);
                 case Types.INTEGER -> Integer.valueOf(value);
                 case Types.BIGINT -> Long.valueOf(value);
-                case Types.REAL -> Float.valueOf(value);
-                case Types.FLOAT, Types.DOUBLE -> Double.valueOf(value);
+                case Types.REAL, Types.FLOAT -> finite(Float.valueOf(value), column, input);
+                case Types.DOUBLE -> finite(Double.valueOf(value), column, input);
                 case Types.NUMERIC, Types.DECIMAL -> new BigDecimal(value);
                 case Types.BIT, Types.BOOLEAN -> parseBoolean(column, value);
                 case Types.DATE -> Date.valueOf(LocalDate.parse(value));
@@ -54,6 +56,24 @@ public final class FilterValueParser {
             return Boolean.valueOf(normalized);
         }
         throw invalid(column, value);
+    }
+
+    private static Float finite(Float value, ResultColumn column, String input) {
+        if (!Float.isFinite(value)) throw invalid(column, input);
+        return value;
+    }
+
+    private static Double finite(Double value, ResultColumn column, String input) {
+        if (!Double.isFinite(value)) throw invalid(column, input);
+        return value;
+    }
+
+    private static boolean isTextType(int jdbcType) {
+        return switch (jdbcType) {
+            case Types.CHAR, Types.VARCHAR, Types.LONGVARCHAR, Types.NCHAR,
+                    Types.NVARCHAR, Types.LONGNVARCHAR -> true;
+            default -> false;
+        };
     }
 
     private static IllegalArgumentException invalid(ResultColumn column, String input) {

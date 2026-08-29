@@ -21,6 +21,8 @@ public final class ResultValueFormatter {
         if (value instanceof java.time.LocalDateTime dateTime) return DATE_TIME.format(dateTime);
         if (value instanceof java.time.LocalDate date) return date.toString();
         if (value instanceof java.time.LocalTime time) return TIME.format(time);
+        if (value instanceof java.time.OffsetDateTime dateTime) return DATE_TIME.format(dateTime);
+        if (value instanceof java.time.OffsetTime time) return TIME.format(time);
         return String.valueOf(value);
     }
 }
