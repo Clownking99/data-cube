@@ -34,8 +34,8 @@ public final class FilterValueParser {
                 case Types.SMALLINT -> Short.valueOf(value);
                 case Types.INTEGER -> Integer.valueOf(value);
                 case Types.BIGINT -> Long.valueOf(value);
-                case Types.REAL, Types.FLOAT -> finite(Float.valueOf(value), column, input);
-                case Types.DOUBLE -> finite(Double.valueOf(value), column, input);
+                case Types.REAL -> finite(Float.valueOf(value), column, input);
+                case Types.FLOAT, Types.DOUBLE -> finite(Double.valueOf(value), column, input);
                 case Types.NUMERIC, Types.DECIMAL -> new BigDecimal(value);
                 case Types.BIT, Types.BOOLEAN -> parseBoolean(column, value);
                 case Types.DATE -> Date.valueOf(LocalDate.parse(value));

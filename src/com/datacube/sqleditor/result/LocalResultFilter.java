@@ -115,8 +115,10 @@ public final class LocalResultFilter {
 
     private static java.time.OffsetTime offsetTimeValue(Object value) {
         if (value instanceof java.time.OffsetTime time) return time;
-        if (value instanceof java.sql.Time time) return time.toLocalTime().atOffset(java.time.ZoneOffset.UTC);
-        return value instanceof java.time.LocalTime time ? time.atOffset(java.time.ZoneOffset.UTC) : null;
+        if (value instanceof java.sql.Time || value instanceof java.time.LocalTime) {
+            throw new IllegalArgumentException("带时区时间不能使用缺少时区信息的值比较");
+        }
+        return null;
     }
 
     private static java.time.LocalDateTime timestampValue(Object value) {
@@ -125,12 +127,12 @@ public final class LocalResultFilter {
         return value instanceof java.time.LocalDateTime dateTime ? dateTime : null;
     }
 
-    private static java.time.OffsetDateTime offsetDateTimeValue(Object value) {
-        if (value instanceof java.time.OffsetDateTime dateTime) return dateTime;
-        if (value instanceof java.sql.Timestamp timestamp) {
-            return timestamp.toLocalDateTime().atOffset(java.time.ZoneOffset.UTC);
+    private static java.time.Instant offsetDateTimeValue(Object value) {
+        if (value instanceof java.time.OffsetDateTime dateTime) return dateTime.toInstant();
+        if (value instanceof java.sql.Timestamp timestamp) return timestamp.toInstant();
+        if (value instanceof java.time.LocalDateTime) {
+            throw new IllegalArgumentException("带时区时间戳不能使用缺少时区信息的值比较");
         }
-        return value instanceof java.time.LocalDateTime dateTime
-                ? dateTime.atOffset(java.time.ZoneOffset.UTC) : null;
+        return null;
     }
 }

@@ -9,6 +9,9 @@ public final class ResultValueFormatter {
     private static final DateTimeFormatter DATE_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
+    private static final DateTimeFormatter OFFSET_DATE_TIME =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX");
+    private static final DateTimeFormatter OFFSET_TIME = DateTimeFormatter.ofPattern("HH:mm:ssXXX");
 
     private ResultValueFormatter() {
     }
@@ -21,8 +24,8 @@ public final class ResultValueFormatter {
         if (value instanceof java.time.LocalDateTime dateTime) return DATE_TIME.format(dateTime);
         if (value instanceof java.time.LocalDate date) return date.toString();
         if (value instanceof java.time.LocalTime time) return TIME.format(time);
-        if (value instanceof java.time.OffsetDateTime dateTime) return DATE_TIME.format(dateTime);
-        if (value instanceof java.time.OffsetTime time) return TIME.format(time);
+        if (value instanceof java.time.OffsetDateTime dateTime) return OFFSET_DATE_TIME.format(dateTime);
+        if (value instanceof java.time.OffsetTime time) return OFFSET_TIME.format(time);
         return String.valueOf(value);
     }
 }

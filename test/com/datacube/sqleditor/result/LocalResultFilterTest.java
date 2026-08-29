@@ -14,6 +14,7 @@ import java.time.OffsetTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.TimeZone;
 import org.junit.jupiter.api.Test;
 
 class LocalResultFilterTest {
@@ -64,14 +65,25 @@ class LocalResultFilterTest {
                 column(Types.BIGINT), FilterOperator.EQ, "9223372036854775807"));
         assertEquals(new BigDecimal("12.30"), FilterValueParser.parse(
                 column(Types.DECIMAL), FilterOperator.EQ, "12.30"));
-        assertEquals(1.5F, FilterValueParser.parse(column(Types.FLOAT), FilterOperator.EQ, "1.5"));
+        assertEquals(1.5F, FilterValueParser.parse(column(Types.REAL), FilterOperator.EQ, "1.5"));
+        assertEquals(16_777_217D, FilterValueParser.parse(
+                column(Types.FLOAT), FilterOperator.EQ, "16777217"));
+        assertEquals(1.5D, FilterValueParser.parse(column(Types.DOUBLE), FilterOperator.EQ, "1.5"));
+        assertEquals(new BigDecimal("12.30"), FilterValueParser.parse(
+                column(Types.NUMERIC), FilterOperator.EQ, "12.30"));
         assertEquals(true, FilterValueParser.parse(column(Types.BOOLEAN), FilterOperator.EQ, "true"));
+        assertEquals(false, FilterValueParser.parse(column(Types.BIT), FilterOperator.EQ, "false"));
         assertEquals(java.sql.Date.valueOf("2026-08-29"), FilterValueParser.parse(
                 column(Types.DATE), FilterOperator.EQ, "2026-08-29"));
         assertEquals(java.sql.Time.valueOf("10:11:12"), FilterValueParser.parse(
                 column(Types.TIME), FilterOperator.EQ, "10:11:12"));
         assertEquals(java.sql.Timestamp.valueOf("2026-08-29 10:11:12"), FilterValueParser.parse(
                 column(Types.TIMESTAMP), FilterOperator.EQ, "2026-08-29 10:11:12"));
+        assertEquals(OffsetTime.of(10, 11, 12, 0, ZoneOffset.ofHours(8)), FilterValueParser.parse(
+                column(Types.TIME_WITH_TIMEZONE), FilterOperator.EQ, "10:11:12+08:00"));
+        assertEquals(OffsetDateTime.of(2026, 8, 29, 10, 11, 12, 0, ZoneOffset.ofHours(8)),
+                FilterValueParser.parse(column(Types.TIMESTAMP_WITH_TIMEZONE), FilterOperator.EQ,
+                        "2026-08-29T10:11:12+08:00"));
 
         for (String invalid : List.of("NaN", "Infinity", "-Infinity", " ")) {
             IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
@@ -165,6 +177,51 @@ class LocalResultFilterTest {
         assertEquals("10:11:12", ResultValueFormatter.format(LocalTime.of(10, 11, 12)));
         assertEquals("2026-08-29 10:11:12", ResultValueFormatter.format(
                 LocalDateTime.of(2026, 8, 29, 10, 11, 12)));
+        assertEquals("10:11:12+08:00", ResultValueFormatter.format(
+                OffsetTime.of(10, 11, 12, 0, ZoneOffset.ofHours(8))));
+        assertEquals("2026-08-29 10:11:12Z", ResultValueFormatter.format(
+                OffsetDateTime.of(2026, 8, 29, 10, 11, 12, 0, ZoneOffset.UTC)));
+    }
+
+    @Test
+    void timezoneAwareComparisonUsesTimestampInstantAndRejectsOffsetlessSqlTime() {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            java.sql.Timestamp timestamp = java.sql.Timestamp.from(
+                    java.time.Instant.parse("2026-08-29T02:30:00Z"));
+            QueryResult value = QueryResult.queryWithMetadata(List.of(column(Types.TIMESTAMP_WITH_TIMEZONE)),
+                    List.of(List.of(timestamp)), 1, false);
+            FilterCondition sameInstant = new FilterCondition(0, FilterConnector.AND, FilterOperator.EQ,
+                    OffsetDateTime.parse("2026-08-29T10:30:00+08:00"));
+            TimeZone.setDefault(TimeZone.getTimeZone("America/Los_Angeles"));
+            assertEquals(List.of(0), LocalResultFilter.visibleRowIndexes(value, "", List.of(sameInstant)));
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            assertEquals(List.of(0), LocalResultFilter.visibleRowIndexes(value, "", List.of(sameInstant)));
+
+            QueryResult offsetTime = QueryResult.queryWithMetadata(List.of(column(Types.TIME_WITH_TIMEZONE)),
+                    List.of(List.of(OffsetTime.parse("10:30:00+08:00"))), 1, false);
+            assertEquals(List.of(0), LocalResultFilter.visibleRowIndexes(offsetTime, "", List.of(
+                    new FilterCondition(0, FilterConnector.AND, FilterOperator.EQ,
+                            OffsetTime.parse("10:30:00+08:00")))));
+            QueryResult sqlTime = QueryResult.queryWithMetadata(List.of(column(Types.TIME_WITH_TIMEZONE)),
+                    List.of(List.of(java.sql.Time.valueOf("10:30:00"))), 1, false);
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> LocalResultFilter.visibleRowIndexes(sqlTime, "", List.of(
+                            new FilterCondition(0, FilterConnector.AND, FilterOperator.EQ,
+                                    OffsetTime.parse("10:30:00+08:00")))));
+            assertTrue(failure.getMessage().matches(".*[\\u4e00-\\u9fff].*"));
+        } finally {
+            TimeZone.setDefault(original);
+        }
+    }
+
+    @Test
+    void offsetFormattingSupportsDistinctGlobalSearches() {
+        QueryResult values = QueryResult.queryWithMetadata(List.of(column(Types.TIMESTAMP_WITH_TIMEZONE)),
+                List.of(List.of(OffsetDateTime.parse("2026-08-29T10:11:12+08:00")),
+                        List.of(OffsetDateTime.parse("2026-08-29T10:11:12Z"))), 1, false);
+        assertEquals(List.of(0), LocalResultFilter.visibleRowIndexes(values, "+08:00", List.of()));
+        assertEquals(List.of(1), LocalResultFilter.visibleRowIndexes(values, "z", List.of()));
     }
 
     private static ResultColumn column(int jdbcType) {
