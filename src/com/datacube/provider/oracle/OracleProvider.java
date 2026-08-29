@@ -11,6 +11,7 @@ import com.datacube.spi.SqlRunner;
 import com.datacube.spi.SequenceDdlBuilder;
 import com.datacube.spi.TableDdlBuilder;
 import com.datacube.spi.model.DbType;
+import com.datacube.sqleditor.result.ResultFilterSqlRenderer;
 import com.datacube.spi.schemadiff.SchemaDiffCapability;
 
 import com.datacube.provider.jdbc.JdbcDataEditor;
@@ -32,6 +33,7 @@ public final class OracleProvider implements DatabaseProvider {
     private final OracleTableDdlBuilder tableDdlBuilder = new OracleTableDdlBuilder();
     private final OracleSequenceDdlBuilder sequenceDdlBuilder = new OracleSequenceDdlBuilder();
     private final SchemaDiffCapability schemaDiffCapability = new OracleSchemaDiffCapability();
+    private final ResultFilterSqlRenderer resultFilterSqlRenderer = new OracleResultFilterSqlRenderer();
 
     @Override
     public DbType type() {
@@ -91,5 +93,10 @@ public final class OracleProvider implements DatabaseProvider {
     @Override
     public Optional<SchemaDiffCapability> schemaDiffCapability() {
         return Optional.of(schemaDiffCapability);
+    }
+
+    @Override
+    public Optional<ResultFilterSqlRenderer> resultFilterSqlRenderer() {
+        return Optional.of(resultFilterSqlRenderer);
     }
 }

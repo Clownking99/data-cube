@@ -1,6 +1,7 @@
 package com.datacube.spi;
 
 import com.datacube.spi.model.DbType;
+import com.datacube.sqleditor.result.ResultFilterSqlRenderer;
 import com.datacube.spi.schemadiff.SchemaDiffCapability;
 
 import java.sql.Connection;
@@ -53,6 +54,11 @@ public interface DatabaseProvider {
 
     /** 可选 Schema Diff 能力；旧 provider 默认保持兼容。 */
     default Optional<SchemaDiffCapability> schemaDiffCapability() {
+        return Optional.empty();
+    }
+
+    /** 可选结果集数据库筛选 SQL 渲染能力；旧 provider 默认保持兼容。 */
+    default Optional<ResultFilterSqlRenderer> resultFilterSqlRenderer() {
         return Optional.empty();
     }
 }
