@@ -12,6 +12,7 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -34,7 +35,7 @@ class ResultFilterStateTest {
         assertEquals(before.rows, state.snapshot().activeResult().rows);
         assertEquals(ResultFilterState.DatabaseStatus.APPLIED, state.snapshot().databaseStatus());
         assertEquals("timeout", state.snapshot().recoverableError());
-        assertEquals(List.of(CONDITION), state.snapshot().conditions());
+        assertEquals(List.of(redacted(CONDITION)), state.snapshot().conditions());
     }
 
     @Test
@@ -205,7 +206,7 @@ class ResultFilterStateTest {
         mutable.clear();
 
         ResultFilterState.Snapshot snapshot = state.snapshot();
-        assertEquals(List.of(CONDITION), snapshot.conditions());
+        assertEquals(List.of(redacted(CONDITION)), snapshot.conditions());
         assertThrows(UnsupportedOperationException.class, () -> snapshot.conditions().clear());
         assertThrows(UnsupportedOperationException.class, () -> snapshot.visibleRowIndexes().clear());
         assertThrows(UnsupportedOperationException.class, () -> state.databaseRequest().conditions().clear());
@@ -322,12 +323,76 @@ class ResultFilterStateTest {
         value[0] = 9;
         ResultFilterState.Snapshot snapshot = state.snapshot();
         Object fromSnapshot = snapshot.conditions().getFirst().value();
-        assertEquals("0405", ResultValueFormatter.format(fromSnapshot));
+        assertEquals("<redacted>", fromSnapshot);
         assertFalse(fromSnapshot instanceof byte[]);
         ResultFilterState.DatabaseFilterRequest request = state.databaseRequest();
-        assertSame(snapshot.conditions(), request.conditions());
-        assertSame(fromSnapshot, request.conditions().getFirst().value());
+        Object fromRequest = request.conditions().getFirst().value();
+        assertEquals("0405", ResultValueFormatter.format(fromRequest));
+        assertFalse(fromRequest instanceof byte[]);
+        assertNotSame(snapshot.conditions(), request.conditions());
+        assertNotSame(fromSnapshot, fromRequest);
         assertSame(snapshot.conditions(), state.snapshot().conditions());
+    }
+
+    @Test
+    void snapshotRedactsConditionValueWhileLocalFilteringAndPreparedRequestKeepIt() {
+        String sentinel = "sentinel-condition-secret-92bd";
+        ResultFilterState state = new ResultFilterState();
+        state.showOriginal(QueryResult.queryWithMetadata(List.of(
+                        new ResultColumn(0, "NAME", Types.VARCHAR, "VARCHAR")),
+                List.of(List.of(sentinel), List.of("other")), 1, false),
+                "select NAME from PEOPLE", null);
+        FilterCondition raw = new FilterCondition(
+                0, FilterConnector.OR, FilterOperator.EQ, sentinel);
+
+        state.setConditions(List.of(raw));
+
+        ResultFilterState.Snapshot snapshot = state.snapshot();
+        FilterCondition exposed = snapshot.conditions().getFirst();
+        assertEquals(0, exposed.columnIndex());
+        assertEquals(FilterConnector.OR, exposed.connector());
+        assertEquals(FilterOperator.EQ, exposed.operator());
+        assertEquals("<redacted>", exposed.value());
+        assertFalse(String.valueOf(snapshot.conditions()).contains(sentinel));
+        assertFalse(snapshot.toString().contains(sentinel));
+        assertEquals(List.of(0), snapshot.visibleRowIndexes(),
+                "local filtering must still evaluate the private raw condition value");
+
+        ResultFilterState.DatabaseFilterRequest request = state.databaseRequest();
+        assertEquals(sentinel, request.conditions().getFirst().value(),
+                "the generation-bound execution request must retain the real value");
+        assertFalse(request.toString().contains(sentinel));
+    }
+
+    @Test
+    void conditionMutationApisNeverRoundTripThroughTheRedactedSnapshot() {
+        String firstSecret = "sentinel-first-secret-92bd";
+        String secondSecret = "sentinel-second-secret-92bd";
+        ResultFilterState state = new ResultFilterState();
+        state.showOriginal(QueryResult.queryWithMetadata(List.of(
+                        new ResultColumn(0, "NAME", Types.VARCHAR, "VARCHAR")),
+                List.of(List.of(firstSecret), List.of(secondSecret), java.util.Arrays.asList((Object) null)),
+                1, false), "select NAME from PEOPLE", null);
+
+        state.appendCondition(new FilterCondition(
+                0, FilterConnector.AND, FilterOperator.EQ, firstSecret));
+        assertEquals(firstSecret, state.databaseRequest().conditions().getFirst().value());
+
+        state.replaceCondition(0, new FilterCondition(
+                0, FilterConnector.OR, FilterOperator.EQ, secondSecret));
+        assertEquals(List.of(1), state.snapshot().visibleRowIndexes());
+        assertEquals("<redacted>", state.snapshot().conditions().getFirst().value());
+        assertEquals(secondSecret, state.databaseRequest().conditions().getFirst().value());
+
+        state.replaceCondition(0, new FilterCondition(
+                0, FilterConnector.OR, FilterOperator.IS_NULL, null));
+        assertNull(state.snapshot().conditions().getFirst().value(),
+                "NULL operators must preserve their public null semantics");
+        assertEquals(List.of(2), state.snapshot().visibleRowIndexes());
+
+        state.removeCondition(0);
+        assertTrue(state.snapshot().conditions().isEmpty());
+        assertEquals(List.of(0, 1, 2), state.snapshot().visibleRowIndexes());
     }
 
     @Test
@@ -429,7 +494,8 @@ class ResultFilterStateTest {
         assertSame(first.conditions(), second.conditions());
         assertSame(first.visibleRowIndexes(), second.visibleRowIndexes());
         assertSame(first.originalResult(), request.originalResult());
-        assertSame(first.conditions(), request.conditions());
+        assertNotSame(first.conditions(), request.conditions());
+        assertEquals(CONDITION, request.conditions().getFirst());
         assertThrows(UnsupportedOperationException.class,
                 () -> request.originalResult().rows.getFirst().set(0, 99));
         assertThrows(UnsupportedOperationException.class, () -> request.conditions().clear());
@@ -488,6 +554,11 @@ class ResultFilterStateTest {
     private static QueryResult result(List<List<Integer>> values) {
         List<List<Object>> rows = values.stream().<List<Object>>map(value -> new ArrayList<>(value)).toList();
         return QueryResult.queryWithMetadata(List.of(column()), rows, 1, false);
+    }
+
+    private static FilterCondition redacted(FilterCondition source) {
+        return new FilterCondition(source.columnIndex(), source.connector(), source.operator(),
+                source.operator().valueRequired() ? "<redacted>" : null);
     }
 
     private static ResultColumn column() {

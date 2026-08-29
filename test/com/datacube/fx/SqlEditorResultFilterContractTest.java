@@ -160,6 +160,56 @@ class SqlEditorResultFilterContractTest {
     }
 
     @Test
+    void conditionSecretStaysPrivateThroughSnapshotToolbarStatusAndPreparedExecution() throws Exception {
+        String sentinel = "sentinel-pane-condition-secret-92bd";
+        PreparedRunner prepared = new PreparedRunner(result(false,
+                row(sentinel, 7, "2026-08-29 10:11:12")));
+        try (PaneFixture fixture = databaseFixture(prepared)) {
+            QueryResult original = result(false,
+                    row(sentinel, 7, "2026-08-29 10:11:12"),
+                    row("other", 9, "2026-08-29 11:12:13"));
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, original, "select name, score, created_at from people");
+                ResultFilterState state = state(fixture.pane);
+                state.appendCondition(new FilterCondition(
+                        0, FilterConnector.AND, FilterOperator.EQ, sentinel));
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+
+                ResultFilterState.Snapshot snapshot = state.snapshot();
+                Button chip = (Button) fixture.pane.getNode().lookup("#sql-result-filter-remove-0");
+                assertEquals("<redacted>", snapshot.conditions().getFirst().value());
+                assertFalse(snapshot.toString().contains(sentinel));
+                assertEquals(List.of(0), snapshot.visibleRowIndexes(),
+                        "the private raw value must still drive local filtering");
+                assertFalse(chip.getText().contains(sentinel));
+                assertFalse(chip.getAccessibleText().contains(sentinel));
+                assertTrue(chip.getText().contains("<redacted>"));
+                assertTrue(chip.getAccessibleText().contains("<redacted>"));
+                assertFalse(labelText(fixture.pane, "statusLabel").contains(sentinel));
+                assertFalse(((javafx.scene.control.Label) fixture.pane.getNode()
+                        .lookup("#sql-result-summary")).getText().contains(sentinel));
+
+                ((Button) fixture.pane.getNode().lookup("#sql-result-apply-database")).fire();
+                return null;
+            });
+
+            assertTrue(prepared.entered.await(5, TimeUnit.SECONDS));
+            assertEquals(sentinel, prepared.lastParameters.getFirst().value(),
+                    "prepared execution must receive the real private value");
+            assertFalse(prepared.lastParameters.toString().contains(sentinel));
+            prepared.release.countDown();
+            operations(fixture.pane).idle().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            FxUiTestSupport.call(() -> {
+                assertFalse(labelText(fixture.pane, "statusLabel").contains(sentinel));
+                assertFalse(state(fixture.pane).snapshot().toString().contains(sentinel));
+                return null;
+            });
+        } finally {
+            prepared.release.countDown();
+        }
+    }
+
+    @Test
     void databaseFilterReusesSchemaCapturedByTheOriginalPaneExecution() throws Exception {
         PreparedRunner prepared = new PreparedRunner(result(false,
                 row("Bob", 9, "2026-08-29 11:12:13")));
@@ -198,6 +248,59 @@ class SqlEditorResultFilterContractTest {
                 return null;
             });
         } finally {
+            prepared.release.countDown();
+        }
+    }
+
+    @Test
+    void schemaEditDuringOriginalExecutionCannotChangePublishedRequestOrApplySchema() throws Exception {
+        PreparedRunner prepared = new PreparedRunner(result(false,
+                row("Bob", 9, "2026-08-29 11:12:13")));
+        prepared.blockScript = true;
+        try (PaneFixture fixture = databaseFixture(prepared)) {
+            FxUiTestSupport.call(() -> {
+                ((TextField) field(fixture.pane, "schemaField")).setText("schema_a");
+                ((org.fxmisc.richtext.CodeArea) field(fixture.pane, "editorArea"))
+                        .replaceText("select name, score, created_at from people");
+                ((Button) fixture.pane.getNode().lookup("#sql-execute")).fire();
+                return null;
+            });
+            assertTrue(prepared.scriptEntered.await(5, TimeUnit.SECONDS),
+                    "original query did not enter the blocked runner");
+
+            FxUiTestSupport.call(() -> {
+                ((TextField) field(fixture.pane, "schemaField")).setText("schema_b");
+                return null;
+            });
+            prepared.scriptRelease.countDown();
+            operations(fixture.pane).idle().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            FxUiTestSupport.call(() -> null);
+
+            FxUiTestSupport.call(() -> {
+                ResultFilterState state = state(fixture.pane);
+                assertEquals("schema_a", state.snapshot().effectiveSchema(),
+                        "completion must publish the schema captured at submission");
+                state.appendCondition(new FilterCondition(
+                        1, FilterConnector.AND, FilterOperator.GT, 7));
+                assertEquals("schema_a", state.databaseRequest().effectiveSchema(),
+                        "generation-bound request must retain the captured schema");
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+                ((Button) fixture.pane.getNode().lookup("#sql-result-apply-database")).fire();
+                return null;
+            });
+
+            assertTrue(prepared.entered.await(5, TimeUnit.SECONDS));
+            assertEquals("schema_a", prepared.lastScriptSchema);
+            assertEquals("schema_a", prepared.lastSchema);
+            prepared.release.countDown();
+            operations(fixture.pane).idle().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            FxUiTestSupport.call(() -> {
+                assertTrue(labelText(fixture.pane, "statusLabel").contains("schema_a"));
+                assertFalse(labelText(fixture.pane, "statusLabel").contains("schema_b"));
+                return null;
+            });
+        } finally {
+            prepared.scriptRelease.countDown();
             prepared.release.countDown();
         }
     }
@@ -900,6 +1003,8 @@ class SqlEditorResultFilterContractTest {
         final RuntimeException failure;
         final CountDownLatch entered = new CountDownLatch(1);
         final CountDownLatch release = new CountDownLatch(1);
+        final CountDownLatch scriptEntered = new CountDownLatch(1);
+        final CountDownLatch scriptRelease = new CountDownLatch(1);
         final CountDownLatch cancelled = new CountDownLatch(1);
         final AtomicInteger preparedCalls = new AtomicInteger();
         final AtomicInteger statementCancelCalls = new AtomicInteger();
@@ -910,6 +1015,7 @@ class SqlEditorResultFilterContractTest {
         volatile String lastSchema;
         volatile String lastScriptSchema;
         volatile List<SqlParameter> lastParameters = List.of();
+        volatile boolean blockScript;
 
         PreparedRunner(QueryResult result) {
             this(result, null);
@@ -978,6 +1084,19 @@ class SqlEditorResultFilterContractTest {
         public List<ScriptOutcome> executeScript(Connection connection, String script,
                 String schema, SqlExecutionOptions options, ScriptErrorPolicy policy) {
             lastScriptSchema = schema;
+            if (blockScript) {
+                scriptEntered.countDown();
+                try {
+                    if (!scriptRelease.await(5, TimeUnit.SECONDS)) {
+                        return List.of(new ScriptOutcome(1, script,
+                                QueryResult.error("test script release timed out", 0)));
+                    }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return List.of(new ScriptOutcome(1, script,
+                            QueryResult.cancelled("interrupted", 0)));
+                }
+            }
             return List.of(new ScriptOutcome(1, script, result));
         }
 

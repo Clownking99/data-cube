@@ -235,6 +235,31 @@ class SqlResultToolbarTest {
     }
 
     @Test
+    void conditionChipAndAccessibilityUseANeutralValueMarker() throws Exception {
+        String sentinel = "sentinel-toolbar-secret-92bd";
+        FxUiTestSupport.call(() -> {
+            SqlResultToolbar toolbar = toolbar(new AtomicInteger(), new AtomicInteger());
+            ResultFilterState.Snapshot snapshot = snapshot(
+                    ResultFilterState.DatabaseStatus.LOCAL_PREVIEW, "",
+                    List.of(condition(0, FilterConnector.AND, FilterOperator.EQ, sentinel)),
+                    7, null, null);
+
+            toolbar.render(snapshot);
+
+            Button chip = (Button) toolbar.getNode().lookup("#sql-result-filter-remove-0");
+            Label summary = (Label) toolbar.getNode().lookup("#sql-result-summary");
+            assertFalse(String.valueOf(snapshot.conditions().getFirst().value()).contains(sentinel));
+            assertFalse(chip.getText().contains(sentinel));
+            assertFalse(chip.getAccessibleText().contains(sentinel));
+            assertFalse(summary.getText().contains(sentinel));
+            assertFalse(summary.getAccessibleText().contains(sentinel));
+            assertTrue(chip.getText().contains("<redacted>"));
+            assertTrue(chip.getAccessibleText().contains("<redacted>"));
+            return null;
+        });
+    }
+
+    @Test
     void searchUsesAResettableLocalDebounceWithoutDatabaseExecution() throws Exception {
         AtomicReference<String> search = new AtomicReference<>();
         AtomicInteger searchCount = new AtomicInteger();

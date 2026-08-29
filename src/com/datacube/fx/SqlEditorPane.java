@@ -1438,20 +1438,17 @@ public final class SqlEditorPane implements AutoCloseable {
         QueryResult original = snapshot.originalResult();
         if (original == null || original.kind != QueryResult.Kind.QUERY) return;
         Window owner = root.getScene() == null ? null : root.getScene().getWindow();
-        List<FilterCondition> conditions = new ArrayList<>(snapshot.conditions());
-        FilterConditionDialog.show(owner, original.resultColumns, conditions.size(), FilterConnector.AND)
+        FilterConditionDialog.show(owner, original.resultColumns,
+                snapshot.conditions().size(), FilterConnector.AND)
                 .ifPresent(condition -> {
-                    conditions.add(condition);
-                    resultFilterState.setConditions(conditions);
+                    resultFilterState.appendCondition(condition);
                     renderResultFilterSnapshot();
                 });
     }
 
     private void onRemoveResultFilterCondition(int index) {
-        List<FilterCondition> conditions = new ArrayList<>(resultFilterState.snapshot().conditions());
-        if (index < 0 || index >= conditions.size()) return;
-        conditions.remove(index);
-        resultFilterState.setConditions(conditions);
+        if (index < 0 || index >= resultFilterState.snapshot().conditions().size()) return;
+        resultFilterState.removeCondition(index);
         renderResultFilterSnapshot();
     }
 

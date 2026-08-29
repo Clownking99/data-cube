@@ -274,6 +274,30 @@ class JdbcPreparedQueryExecutorTest {
     }
 
     @Test
+    void prepareStatementFailureIsClassifiedSanitizedAndLeavesNoResourcesActive() {
+        String sentinel = "sentinel-prepare-secret-92bd";
+        RecordingPreparedJdbc jdbc = new RecordingPreparedJdbc();
+        jdbc.prepareFailure = new SQLException(
+                "prepare failed for " + sentinel, "42000", 942);
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = JdbcPreparedQueryExecutor.execute(
+                jdbc.connection(), "select " + sentinel + " where value = ?",
+                List.of(new SqlParameter(Types.VARCHAR, sentinel)),
+                new SqlExecutionOptions(10, 3, control));
+
+        assertFailure(result, QueryResult.FailureKind.SQL_ERROR,
+                "数据库查询失败 (SQLState=42000, vendorCode=942)");
+        assertFalse(result.errorMessage.contains(sentinel));
+        assertFalse(result.toString().contains(sentinel));
+        assertEquals(1, jdbc.prepareCalls.get());
+        assertEquals(0, jdbc.statementCloses.get(),
+                "no statement exists when Connection.prepareStatement fails");
+        assertEquals(0, jdbc.resultSetCloses.get());
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
     void timeoutAndCancellationDiagnosticsAreTypedAndRedacted() throws Exception {
         String sentinel = "sentinel-control-secret-7f3a";
         RecordingPreparedJdbc timeoutJdbc = new RecordingPreparedJdbc();
@@ -329,6 +353,7 @@ class JdbcPreparedQueryExecutorTest {
         private final List<String> boundMethods = new ArrayList<>();
         private final List<String> events = new ArrayList<>();
         private final AtomicInteger cancelCalls = new AtomicInteger();
+        private final AtomicInteger prepareCalls = new AtomicInteger();
         private final AtomicInteger statementCloses = new AtomicInteger();
         private final AtomicInteger resultSetCloses = new AtomicInteger();
         private int queryTimeout = -1;
@@ -342,13 +367,19 @@ class JdbcPreparedQueryExecutorTest {
         private SQLException getObjectFailure;
         private SQLException resultSetCloseFailure;
         private SQLException statementCloseFailure;
+        private SQLException prepareFailure;
 
         private Connection connection() {
             return (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
                     new Class<?>[]{Connection.class}, (proxy, method, args) ->
-                            method.getName().equals("prepareStatement")
-                                    ? preparedStatement()
-                                    : defaultValue(method.getReturnType()));
+                            {
+                                if (method.getName().equals("prepareStatement")) {
+                                    prepareCalls.incrementAndGet();
+                                    if (prepareFailure != null) throw prepareFailure;
+                                    return preparedStatement();
+                                }
+                                return defaultValue(method.getReturnType());
+                            });
         }
 
         private PreparedStatement preparedStatement() {

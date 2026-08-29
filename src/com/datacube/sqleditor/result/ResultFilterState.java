@@ -12,6 +12,9 @@ import java.util.RandomAccess;
 public final class ResultFilterState {
     private static final long NO_IN_FLIGHT = -1L;
     private static final List<FilterCondition> NO_CONDITIONS = new FrozenConditions(List.of());
+    private static final List<FilterCondition> NO_REDACTED_CONDITIONS =
+            new RedactedConditions(List.of());
+    private static final String REDACTED_FILTER_VALUE = "<redacted>";
 
     public enum DatabaseStatus { ORIGINAL, LOCAL_PREVIEW, APPLIED, DIRTY_AFTER_APPLY }
 
@@ -44,7 +47,7 @@ public final class ResultFilterState {
             List<Integer> visibleRowIndexes, DatabaseStatus databaseStatus,
             String databaseUnavailableReason, String recoverableError) {
         public Snapshot {
-            conditions = freezeConditions(conditions);
+            conditions = redactConditions(conditions);
             visibleRowIndexes = List.copyOf(visibleRowIndexes);
         }
 
@@ -67,6 +70,7 @@ public final class ResultFilterState {
     private String effectiveSchema;
     private String searchText = "";
     private List<FilterCondition> conditions = NO_CONDITIONS;
+    private List<FilterCondition> snapshotConditions = NO_REDACTED_CONDITIONS;
     private List<Integer> visibleRowIndexes = List.of();
     private DatabaseStatus databaseStatus = DatabaseStatus.ORIGINAL;
     private String databaseUnavailableReason;
@@ -90,6 +94,7 @@ public final class ResultFilterState {
         effectiveSchema = normalizeSchema(schema);
         searchText = "";
         conditions = NO_CONDITIONS;
+        snapshotConditions = NO_REDACTED_CONDITIONS;
         visibleRowIndexes = indexes;
         databaseStatus = DatabaseStatus.ORIGINAL;
         databaseUnavailableReason = unavailableReason;
@@ -111,10 +116,39 @@ public final class ResultFilterState {
 
     public synchronized void setConditions(List<FilterCondition> value) {
         List<FilterCondition> candidateConditions = freezeConditions(value);
+        updateConditions(candidateConditions);
+    }
+
+    /** Appends a raw execution condition without reading it back through a public snapshot. */
+    public synchronized void appendCondition(FilterCondition value) {
+        List<FilterCondition> candidateConditions = new ArrayList<>(conditions);
+        candidateConditions.add(Objects.requireNonNull(value, "condition"));
+        updateConditions(freezeConditions(candidateConditions));
+    }
+
+    /** Replaces a raw execution condition without reading it back through a public snapshot. */
+    public synchronized void replaceCondition(int index, FilterCondition value) {
+        Objects.checkIndex(index, conditions.size());
+        List<FilterCondition> candidateConditions = new ArrayList<>(conditions);
+        candidateConditions.set(index, Objects.requireNonNull(value, "condition"));
+        updateConditions(freezeConditions(candidateConditions));
+    }
+
+    /** Removes a raw execution condition without reading it back through a public snapshot. */
+    public synchronized void removeCondition(int index) {
+        Objects.checkIndex(index, conditions.size());
+        List<FilterCondition> candidateConditions = new ArrayList<>(conditions);
+        candidateConditions.remove(index);
+        updateConditions(freezeConditions(candidateConditions));
+    }
+
+    private void updateConditions(List<FilterCondition> candidateConditions) {
+        List<FilterCondition> candidateSnapshotConditions = redactConditions(candidateConditions);
         DatabaseStatus candidateStatus = previewStatus(searchText, candidateConditions);
         List<Integer> indexes = indexesFor(activeResult, searchText, candidateConditions);
 
         conditions = candidateConditions;
+        snapshotConditions = candidateSnapshotConditions;
         visibleRowIndexes = indexes;
         databaseStatus = candidateStatus;
         recoverableError = null;
@@ -178,6 +212,7 @@ public final class ResultFilterState {
         activeResult = originalResult;
         searchText = "";
         conditions = NO_CONDITIONS;
+        snapshotConditions = NO_REDACTED_CONDITIONS;
         visibleRowIndexes = indexes;
         databaseStatus = DatabaseStatus.ORIGINAL;
         recoverableError = null;
@@ -191,6 +226,7 @@ public final class ResultFilterState {
         effectiveSchema = null;
         searchText = "";
         conditions = NO_CONDITIONS;
+        snapshotConditions = NO_REDACTED_CONDITIONS;
         visibleRowIndexes = List.of();
         databaseStatus = DatabaseStatus.ORIGINAL;
         databaseUnavailableReason = null;
@@ -200,7 +236,7 @@ public final class ResultFilterState {
 
     public synchronized Snapshot snapshot() {
         return new Snapshot(originalResult, activeResult, originalSql, effectiveSchema, searchText,
-                conditions, visibleRowIndexes, databaseStatus,
+                snapshotConditions, visibleRowIndexes, databaseStatus,
                 databaseUnavailableReason, recoverableError);
     }
 
@@ -300,6 +336,20 @@ public final class ResultFilterState {
         return new FrozenConditions(copied);
     }
 
+    private static List<FilterCondition> redactConditions(List<FilterCondition> values) {
+        Objects.requireNonNull(values, "conditions");
+        if (values instanceof RedactedConditions) return values;
+        if (values.isEmpty()) return NO_REDACTED_CONDITIONS;
+        List<FilterCondition> redacted = new ArrayList<>(values.size());
+        for (FilterCondition condition : values) {
+            FilterCondition source = Objects.requireNonNull(condition, "condition");
+            Object safeValue = source.operator().valueRequired() ? REDACTED_FILTER_VALUE : null;
+            redacted.add(new FilterCondition(source.columnIndex(), source.connector(),
+                    source.operator(), safeValue));
+        }
+        return new RedactedConditions(redacted);
+    }
+
     private record AppliedCandidate(QueryResult result, List<Integer> visibleIndexes) {
     }
 
@@ -311,6 +361,25 @@ public final class ResultFilterState {
         private final List<FilterCondition> values;
 
         private FrozenConditions(List<FilterCondition> values) {
+            this.values = List.copyOf(values);
+        }
+
+        @Override
+        public FilterCondition get(int index) {
+            return values.get(index);
+        }
+
+        @Override
+        public int size() {
+            return values.size();
+        }
+    }
+
+    private static final class RedactedConditions extends AbstractList<FilterCondition>
+            implements RandomAccess {
+        private final List<FilterCondition> values;
+
+        private RedactedConditions(List<FilterCondition> values) {
             this.values = List.copyOf(values);
         }
 

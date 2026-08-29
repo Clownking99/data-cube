@@ -150,6 +150,30 @@ class OracleSqlRunnerExecutionControlTest {
     }
 
     @Test
+    void preparedSchemaSwitchFailureIsSanitizedClassifiedAndClosesItsStatement() {
+        String sentinel = "sentinel-oracle-schema-secret-92bd";
+        JdbcScenario jdbc = new JdbcScenario();
+        jdbc.failure = sql -> new SQLException(
+                "schema switch exposed " + sentinel, "42000", 1031);
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = runner.executePrepared(
+                jdbc.connection(), " select " + sentinel + " where value = ?; ",
+                List.of(new SqlParameter(Types.VARCHAR, sentinel)), "App",
+                new SqlExecutionOptions(25, 11, control));
+
+        assertEquals(QueryResult.FailureKind.SQL_ERROR, result.failureKind);
+        assertEquals("数据库查询失败 (SQLState=42000, vendorCode=1031)", result.errorMessage);
+        assertFalse(result.errorMessage.contains(sentinel));
+        assertFalse(result.toString().contains(sentinel));
+        assertEquals(List.of("ALTER SESSION SET CURRENT_SCHEMA = \"APP\""), jdbc.executedSql);
+        assertTrue(jdbc.preparedSql.isEmpty(), "user query must not be prepared after schema failure");
+        assertTrue(jdbc.boundValues.isEmpty());
+        assertEquals(1, jdbc.statementCloses.get());
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
     void cancelBeforeStatementPublicationReturnsCancelledWithoutExecutingSql() throws Exception {
         JdbcScenario jdbc = new JdbcScenario();
         SqlExecutionControl control = new SqlExecutionControl();
@@ -314,6 +338,7 @@ class OracleSqlRunnerExecutionControlTest {
         private final List<String> preparedSql = new ArrayList<>();
         private final List<Object> boundValues = new ArrayList<>();
         private final AtomicInteger cancelCalls = new AtomicInteger();
+        private final AtomicInteger statementCloses = new AtomicInteger();
         private final AtomicInteger readOnlyWrites = new AtomicInteger();
         private Consumer<String> beforeExecute = sql -> { };
         private Function<String, SQLException> failure = sql -> null;
@@ -365,6 +390,10 @@ class OracleSqlRunnerExecutionControlTest {
                             case "getResultSet" -> queryResultSet();
                             case "cancel" -> {
                                 cancelCalls.incrementAndGet();
+                                yield null;
+                            }
+                            case "close" -> {
+                                statementCloses.incrementAndGet();
                                 yield null;
                             }
                             case "getUpdateCount" -> 1;
