@@ -31,6 +31,8 @@ public final class QueryResult {
     public final List<String> columns;
     /** 列注释（仅 QUERY 有；与 {@link #columns} 平行，元素可为 null；由 provider best-effort 填充） */
     public final List<String> columnComments;
+    /** 列元数据（仅 QUERY 有；与 {@link #columns} 平行） */
+    public final List<ResultColumn> resultColumns;
     /** 数据行（仅 QUERY 有；每个 List<Object> 对应一行） */
     public final List<List<Object>> rows;
     /** 受影响行数（仅 UPDATE 有；-1 表示无信息） */
@@ -41,10 +43,12 @@ public final class QueryResult {
     public final String errorMessage;
     /** 错误细分（仅 ERROR 有；QUERY/UPDATE 为 null） */
     public final FailureKind failureKind;
+    /** 是否因达到最大行数限制而仍有未读取行 */
+    public final boolean truncated;
 
     private QueryResult(Kind kind, List<String> columns, List<String> columnComments,
                         List<List<Object>> rows, int updateCount, long elapsedMillis, String errorMessage,
-                        FailureKind failureKind) {
+                        FailureKind failureKind, List<ResultColumn> resultColumns, boolean truncated) {
         this.kind = kind;
         this.columns = columns != null ? columns : Collections.emptyList();
         this.columnComments = columnComments != null ? columnComments : Collections.emptyList();
@@ -53,14 +57,28 @@ public final class QueryResult {
         this.elapsedMillis = elapsedMillis;
         this.errorMessage = errorMessage;
         this.failureKind = failureKind;
+        this.resultColumns = resultColumns != null ? List.copyOf(resultColumns) : Collections.emptyList();
+        this.truncated = truncated;
     }
 
     public static QueryResult query(List<String> columns, List<List<Object>> rows, long elapsedMillis) {
-        return new QueryResult(Kind.QUERY, columns, null, rows, -1, elapsedMillis, null, null);
+        List<ResultColumn> metadata = new ArrayList<>();
+        if (columns != null) {
+            for (int i = 0; i < columns.size(); i++) metadata.add(ResultColumn.unknown(i, columns.get(i)));
+        }
+        return new QueryResult(Kind.QUERY, columns, null, rows, -1, elapsedMillis, null, null, metadata, false);
+    }
+
+    public static QueryResult queryWithMetadata(
+            List<ResultColumn> columns, List<List<Object>> rows,
+            long elapsedMillis, boolean truncated) {
+        List<ResultColumn> metadata = List.copyOf(columns);
+        List<String> labels = metadata.stream().map(ResultColumn::label).toList();
+        return new QueryResult(Kind.QUERY, labels, null, rows, -1, elapsedMillis, null, null, metadata, truncated);
     }
 
     public static QueryResult update(long elapsedMillis, int updateCount) {
-        return new QueryResult(Kind.UPDATE, null, null, null, updateCount, elapsedMillis, null, null);
+        return new QueryResult(Kind.UPDATE, null, null, null, updateCount, elapsedMillis, null, null, null, false);
     }
 
     public static QueryResult error(String errorMessage, long elapsedMillis) {
@@ -76,7 +94,7 @@ public final class QueryResult {
     }
 
     private static QueryResult failure(FailureKind kind, String message, long elapsedMillis) {
-        return new QueryResult(Kind.ERROR, null, null, null, -1, elapsedMillis, message, kind);
+        return new QueryResult(Kind.ERROR, null, null, null, -1, elapsedMillis, message, kind, null, false);
     }
 
     /**
@@ -84,7 +102,8 @@ public final class QueryResult {
      * 元素可为 null（该列取不到注释）。仅对 QUERY 结果有意义。
      */
     public QueryResult withColumnComments(List<String> comments) {
-        return new QueryResult(kind, columns, comments, rows, updateCount, elapsedMillis, errorMessage, failureKind);
+        return new QueryResult(kind, columns, comments, rows, updateCount, elapsedMillis, errorMessage, failureKind,
+                resultColumns, truncated);
     }
 
     /**
@@ -101,14 +120,14 @@ public final class QueryResult {
     public static QueryResult fromResultSet(ResultSet rs, long elapsedMillis, int maxRows) throws SQLException {
         ResultSetMetaData md = rs.getMetaData();
         int colCount = md.getColumnCount();
-        List<String> cols = new ArrayList<>(colCount);
+        List<ResultColumn> metadata = new ArrayList<>(colCount);
         for (int i = 1; i <= colCount; i++) {
-            cols.add(md.getColumnLabel(i));
+            metadata.add(new ResultColumn(i - 1, md.getColumnLabel(i), md.getColumnType(i), md.getColumnTypeName(i)));
         }
         List<List<Object>> data = new ArrayList<>();
         int max = maxRows <= 0 ? Integer.MAX_VALUE : maxRows;
         int rowCount = 0;
-        while (rs.next() && rowCount < max) {
+        while (rowCount < max && rs.next()) {
             List<Object> row = new ArrayList<>(colCount);
             for (int i = 1; i <= colCount; i++) {
                 row.add(readCell(rs, i, md.getColumnType(i)));
@@ -116,16 +135,13 @@ public final class QueryResult {
             data.add(row);
             rowCount++;
         }
-        return query(cols, data, elapsedMillis);
+        boolean truncated = maxRows > 0 && rowCount >= max && rs.next();
+        return queryWithMetadata(metadata, data, elapsedMillis, truncated);
     }
 
     private static Object readCell(ResultSet rs, int idx, int sqlType) throws SQLException {
         Object v = rs.getObject(idx);
         if (v == null) return null;
-        // 时间类型转为字符串，避免 TableView 默认渲染为长串数字
-        if (v instanceof Timestamp) {
-            return v.toString().substring(0, Math.min(19, v.toString().length()));
-        }
         // 大字段截断
         if (v instanceof java.sql.Clob) {
             java.sql.Clob c = (java.sql.Clob) v;
