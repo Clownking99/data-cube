@@ -59,8 +59,6 @@ import javafx.scene.control.MenuButton;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
-import javafx.scene.input.Clipboard;
-import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import org.postgresql.util.PGobject;
@@ -168,6 +166,125 @@ class SqlEditorResultFilterContractTest {
             assertSame(fixture.ownedSession, field(fixture.pane, "jdbcSession"));
         } finally {
             prepared.release.countDown();
+        }
+    }
+
+    @Test
+    void terminalDatabaseFailuresPreserveTheExactVisibleTablePresentation() throws Exception {
+        assertTerminalFailurePreservesTable(
+                QueryResult.error("unsafe driver diagnostic", 4), "数据库筛选执行失败");
+        assertTerminalFailurePreservesTable(
+                QueryResult.timeout("unsafe timeout diagnostic", 5), "数据库筛选超时");
+        assertTerminalFailurePreservesTable(
+                QueryResult.cancelled("unsafe cancel diagnostic", 6), "数据库筛选已取消");
+    }
+
+    @Test
+    void immediateApplyCommitsPendingSearchAndDelayedDebounceCannotInvalidateSuccess()
+            throws Exception {
+        PreparedRunner prepared = new PreparedRunner(result(false,
+                row("Bob", 9, "2026-08-29 11:12:13")));
+        try (PaneFixture fixture = databaseFixture(prepared)) {
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, result(false,
+                        row("Ada", 7, "2026-08-29 10:11:12"),
+                        row("Bob", 9, "2026-08-29 11:12:13")), SAFE_POSTGRES_REQUERY_SQL);
+                ResultFilterState state = state(fixture.pane);
+                state.setConditions(List.of(new FilterCondition(
+                        1, FilterConnector.AND, FilterOperator.GT, 7)));
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+                ((TextField) fixture.pane.getNode().lookup("#sql-result-search")).setText("Bob");
+                ((Button) fixture.pane.getNode().lookup("#sql-result-apply-database")).fire();
+                assertEquals("Bob", state.snapshot().searchText());
+                return null;
+            });
+
+            assertTrue(prepared.entered.await(5, TimeUnit.SECONDS));
+            prepared.release.countDown();
+            operations(fixture.pane).idle().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            awaitFxDelay(javafx.util.Duration.millis(300));
+
+            FxUiTestSupport.call(() -> {
+                ResultFilterState.Snapshot snapshot = state(fixture.pane).snapshot();
+                assertEquals(ResultFilterState.DatabaseStatus.APPLIED, snapshot.databaseStatus());
+                assertEquals("Bob", snapshot.searchText());
+                assertEquals(List.of(0), snapshot.visibleRowIndexes());
+                assertEquals(1, prepared.preparedCalls.get());
+                return null;
+            });
+        } finally {
+            prepared.release.countDown();
+        }
+    }
+
+    @Test
+    void synchronousQueueRejectionPreservesTheExactVisibleTablePresentation() throws Exception {
+        PreparedRunner prepared = new PreparedRunner(result(false,
+                row("Bob", 9, "2026-08-29 11:12:13")));
+        try (PaneFixture fixture = databaseFixture(prepared)) {
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, result(false,
+                        row("Ada", 7, "2026-08-29 10:11:12"),
+                        row("Bob", 9, "2026-08-29 11:12:13")), SAFE_POSTGRES_REQUERY_SQL);
+                ResultFilterState state = state(fixture.pane);
+                state.setConditions(List.of(new FilterCondition(
+                        1, FilterConnector.AND, FilterOperator.GT, 7)));
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+                TablePresentation before = arrangeAndCaptureTable(fixture.pane);
+                operations(fixture.pane).close();
+
+                invoke(fixture.pane, "onApplyDatabaseFilter");
+
+                assertTablePresentation(before, fixture.pane);
+                assertEquals(List.of(1), state.snapshot().visibleRowIndexes());
+                assertEquals("数据库筛选执行失败", state.snapshot().recoverableError());
+                assertEquals(0, prepared.preparedCalls.get());
+                return null;
+            });
+        } finally {
+            prepared.release.countDown();
+        }
+    }
+
+    @Test
+    void clipboardWritesMustUseAnInjectableBooleanResultInsteadOfAssumingSuccess() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+        assertTrue(source.contains("ClipboardWriter"));
+        assertTrue(source.contains("return Clipboard.getSystemClipboard().setContent(content)"));
+    }
+
+    @Test
+    void clipboardFailureNeverClaimsSuccessAndInsertCopyUsesTheSameSeam() throws Exception {
+        AtomicReference<String> captured = new AtomicReference<>("unchanged");
+        try (PaneFixture fixture = new PaneFixture(null, null)) {
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, result(false,
+                        row("Ada", 7, "2026-08-29 10:11:12")),
+                        "select * from people");
+                TableView<ObservableList<Object>> table = resultTable(fixture.pane);
+                table.getSelectionModel().clearAndSelect(0, table.getColumns().get(1));
+                fixture.pane.setClipboardWriterForTesting(ignored -> false);
+
+                ((MenuButton) fixture.pane.getNode().lookup("#sql-result-copy"))
+                        .getItems().get(0).fire();
+                assertEquals("unchanged", captured.get());
+                assertEquals("复制失败：无法写入系统剪贴板",
+                        labelText(fixture.pane, "statusLabel"));
+
+                invoke(fixture.pane, "onCopyInsert");
+                assertEquals("unchanged", captured.get());
+                assertEquals("复制失败：无法写入系统剪贴板",
+                        labelText(fixture.pane, "statusLabel"));
+
+                fixture.pane.setClipboardWriterForTesting(text -> {
+                    captured.set(text);
+                    return true;
+                });
+                invoke(fixture.pane, "onCopyInsert");
+                assertTrue(captured.get().startsWith("INSERT INTO people"));
+                assertTrue(labelText(fixture.pane, "statusLabel").startsWith("已复制 1 条 INSERT"));
+                return null;
+            });
         }
     }
 
@@ -479,6 +596,7 @@ class SqlEditorResultFilterContractTest {
                         0, FilterConnector.AND, FilterOperator.EQ, "Ada")));
                 invoke(fixture.pane, "renderResultFilterSnapshot");
                 assertNull(state.snapshot().databaseUnavailableReason());
+                TablePresentation before = arrangeAndCaptureTable(fixture.pane);
 
                 ((Button) fixture.pane.getNode()
                         .lookup("#sql-result-apply-database")).fire();
@@ -487,6 +605,7 @@ class SqlEditorResultFilterContractTest {
                 assertEquals(unavailable, snapshot.recoverableError());
                 assertEquals(List.of(0), snapshot.visibleRowIndexes());
                 assertEquals(0, prepared.preparedCalls.get());
+                assertTablePresentation(before, fixture.pane);
                 assertEquals("数据库筛选失败，仍显示当前结果：" + unavailable,
                         labelText(fixture.pane, "statusLabel"));
                 assertFalse(snapshot.toString().contains(sentinel));
@@ -761,11 +880,16 @@ class SqlEditorResultFilterContractTest {
     @Test
     void copyModesUseVisibleFormattedRowsAndClearRestoresCachedOriginal() throws Exception {
         PreparedRunner prepared = new PreparedRunner(QueryResult.error("unused", 0));
+        AtomicReference<String> clipboard = new AtomicReference<>();
         try (PaneFixture fixture = databaseFixture(prepared)) {
             QueryResult original = result(false,
                     row("Ada", 7, "2026-08-29 10:11:12"),
                     row("Bob", 9, "2026-08-29 11:12:13"));
             FxUiTestSupport.call(() -> {
+                fixture.pane.setClipboardWriterForTesting(text -> {
+                    clipboard.set(text);
+                    return true;
+                });
                 showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
                 TableView<ObservableList<Object>> table = resultTable(fixture.pane);
                 TableColumn<ObservableList<Object>, ?> name = table.getColumns().get(1);
@@ -775,7 +899,7 @@ class SqlEditorResultFilterContractTest {
 
                 MenuButton copy = (MenuButton) fixture.pane.getNode().lookup("#sql-result-copy");
                 copy.getItems().get(1).fire();
-                assertEquals("Ada\t\n\t9", Clipboard.getSystemClipboard().getString());
+                assertEquals("Ada\t\n\t9", clipboard.get());
                 assertEquals("已复制 2 个单元格", labelText(fixture.pane, "statusLabel"));
 
                 table.getSelectionModel().clearAndSelect(0, name);
@@ -784,7 +908,7 @@ class SqlEditorResultFilterContractTest {
                 assertEquals("NAME\tSCORE\tCREATED_AT\n"
                                 + "Ada\t7\t2026-08-29 10:11:12\n"
                                 + "Bob\t9\t2026-08-29 11:12:13",
-                        Clipboard.getSystemClipboard().getString());
+                        clipboard.get());
                 assertEquals("已复制 2 行", labelText(fixture.pane, "statusLabel"));
 
                 ResultFilterState state = state(fixture.pane);
@@ -811,12 +935,17 @@ class SqlEditorResultFilterContractTest {
     @Test
     @SuppressWarnings("unchecked")
     void allCopyModesFollowVisibleColumnOrderAndHandleRaggedRowsAndShortcut() throws Exception {
+        AtomicReference<String> clipboard = new AtomicReference<>();
         try (PaneFixture fixture = new PaneFixture(null, null)) {
             QueryResult original = result(false,
                     row("Ada", 7, "2026-08-29 10:11:12"),
                     new ArrayList<Object>(List.of("Ragged")),
                     row("Bob", 9, "2026-08-29 11:12:13"));
             FxUiTestSupport.call(() -> {
+                fixture.pane.setClipboardWriterForTesting(text -> {
+                    clipboard.set(text);
+                    return true;
+                });
                 showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
                 TableView<ObservableList<Object>> table = resultTable(fixture.pane);
                 table.applyCss();
@@ -835,39 +964,37 @@ class SqlEditorResultFilterContractTest {
                 table.getFocusModel().focus(0, created);
                 assertEquals(1, table.getSelectionModel().getSelectedCells().size());
                 copy.getItems().get(0).fire();
-                assertEquals("2026-08-29 10:11:12", Clipboard.getSystemClipboard().getString());
+                assertEquals("2026-08-29 10:11:12", clipboard.get());
 
                 table.getSelectionModel().clearAndSelect(0, created);
                 table.getSelectionModel().select(1, name);
                 copy.getItems().get(1).fire();
                 assertEquals("2026-08-29 10:11:12\t\n\tRagged",
-                        Clipboard.getSystemClipboard().getString());
+                        clipboard.get());
 
                 copy.getItems().get(2).fire();
                 assertEquals("2026-08-29 10:11:12\tAda\t7\n\tRagged\t",
-                        Clipboard.getSystemClipboard().getString());
+                        clipboard.get());
 
                 copy.getItems().get(3).fire();
                 assertEquals("CREATED_AT\tNAME\tSCORE\n"
                                 + "2026-08-29 10:11:12\tAda\t7\n\tRagged\t",
-                        Clipboard.getSystemClipboard().getString());
+                        clipboard.get());
 
                 table.getSelectionModel().clearAndSelect(0, name);
                 table.getSelectionModel().select(1, name);
                 KeyEvent shortcut = new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.C,
                         false, true, false, false);
                 table.fireEvent(shortcut);
-                assertEquals("Ada\nRagged", Clipboard.getSystemClipboard().getString());
+                assertEquals("Ada\nRagged", clipboard.get());
 
-                ClipboardContent sentinel = new ClipboardContent();
-                sentinel.putString("keep clipboard");
-                Clipboard.getSystemClipboard().setContent(sentinel);
+                clipboard.set("keep clipboard");
                 table.getSelectionModel().clearSelection();
                 table.getFocusModel().focus(-1);
                 KeyEvent emptyShortcut = new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.C,
                         false, true, false, false);
                 table.fireEvent(emptyShortcut);
-                assertEquals("keep clipboard", Clipboard.getSystemClipboard().getString());
+                assertEquals("keep clipboard", clipboard.get());
 
                 state(fixture.pane).setSearchText("Ada");
                 invoke(fixture.pane, "renderResultFilterSnapshot");
@@ -878,7 +1005,7 @@ class SqlEditorResultFilterContractTest {
                 assertEquals(1, table.getSelectionModel().getSelectedCells().size());
                 copy.getItems().get(2).fire();
                 assertEquals("Ada\t7\t2026-08-29 10:11:12",
-                        Clipboard.getSystemClipboard().getString(),
+                        clipboard.get(),
                         "copy must use only the currently visible local-filter subset");
 
                 state(fixture.pane).setSearchText("");
@@ -893,7 +1020,7 @@ class SqlEditorResultFilterContractTest {
                 assertEquals(1, table.getSelectionModel().getSelectedCells().size());
                 copy.getItems().get(2).fire();
                 assertEquals("Bob\t9\t2026-08-29 11:12:13",
-                        Clipboard.getSystemClipboard().getString(),
+                        clipboard.get(),
                         "copy must follow the TableView's current sorted row order");
                 return null;
             });
@@ -984,8 +1111,46 @@ class SqlEditorResultFilterContractTest {
                 showScriptResults(fixture.pane, truncated, "select truncated");
                 assertTrue(labelText(fixture.pane, "statusLabel")
                         .contains("2+，当前结果已截断"));
+
+                fixture.settings.setMaxResultRows(999);
+                invoke(fixture.pane, "onClearResultFilters");
+                assertTrue(labelText(fixture.pane, "statusLabel")
+                                .contains("2+，当前结果已截断"),
+                        "historical retained-row status must come from the result snapshot");
+                assertFalse(labelText(fixture.pane, "statusLabel").contains("999+"));
                 return null;
             });
+        }
+    }
+
+    @Test
+    void appliedTruncatedResultStatusUsesItsRetainedRowsAfterSettingsChange() throws Exception {
+        PreparedRunner prepared = new PreparedRunner(result(true,
+                row("Bob", 9, "2026-08-29 11:12:13")));
+        try (PaneFixture fixture = databaseFixture(prepared)) {
+            fixture.settings.setMaxResultRows(2);
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, result(false,
+                        row("Ada", 7, "2026-08-29 10:11:12"),
+                        row("Bob", 9, "2026-08-29 11:12:13")), SAFE_POSTGRES_REQUERY_SQL);
+                state(fixture.pane).setConditions(List.of(new FilterCondition(
+                        1, FilterConnector.AND, FilterOperator.GT, 7)));
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+                invoke(fixture.pane, "onApplyDatabaseFilter");
+                return null;
+            });
+            assertTrue(prepared.entered.await(5, TimeUnit.SECONDS));
+            fixture.settings.setMaxResultRows(999);
+            prepared.release.countDown();
+            operations(fixture.pane).idle().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            FxUiTestSupport.call(() -> {
+                assertTrue(labelText(fixture.pane, "statusLabel")
+                                .contains("1+，当前结果已截断"));
+                assertFalse(labelText(fixture.pane, "statusLabel").contains("999+"));
+                return null;
+            });
+        } finally {
+            prepared.release.countDown();
         }
     }
 
@@ -1035,6 +1200,89 @@ class SqlEditorResultFilterContractTest {
 
     private PaneFixture databaseFixture(PreparedRunner prepared) throws Exception {
         return databaseFixture(prepared, DbType.POSTGRESQL);
+    }
+
+    private void assertTerminalFailurePreservesTable(QueryResult failure, String expectedDetail)
+            throws Exception {
+        try (PaneFixture fixture = new PaneFixture(null, null)) {
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, result(false,
+                        row("Ada", 7, "2026-08-29 10:11:12"),
+                        row("Bob", 9, "2026-08-29 11:12:13")), SAFE_POSTGRES_REQUERY_SQL);
+                ResultFilterState state = state(fixture.pane);
+                state.setConditions(List.of(new FilterCondition(
+                        1, FilterConnector.AND, FilterOperator.GT, 7)));
+                state.setDatabaseUnavailableReason(null);
+                invoke(fixture.pane, "renderResultFilterSnapshot",
+                        new Class<?>[]{ResultFilterState.Snapshot.class}, state.snapshot());
+
+                TablePresentation before = arrangeAndCaptureTable(fixture.pane);
+                ResultFilterState.DatabaseFilterRequest request = state.databaseRequest();
+                invoke(fixture.pane, "onDatabaseFilterSucceeded",
+                        new Class<?>[]{ResultFilterState.DatabaseFilterRequest.class, QueryResult.class},
+                        request, failure);
+
+                assertTablePresentation(before, fixture.pane);
+                assertEquals(List.of(1), state.snapshot().visibleRowIndexes());
+                assertEquals(expectedDetail, state.snapshot().recoverableError());
+                assertTrue(labelText(fixture.pane, "statusLabel").contains(expectedDetail));
+                assertFalse(labelText(fixture.pane, "statusLabel").contains("unsafe"));
+                return null;
+            });
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static TablePresentation arrangeAndCaptureTable(SqlEditorPane pane) throws Exception {
+        TableView<ObservableList<Object>> table = resultTable(pane);
+        TableColumn sequence = table.getColumns().get(0);
+        TableColumn name = table.getColumns().get(1);
+        TableColumn score = table.getColumns().get(2);
+        TableColumn created = table.getColumns().get(3);
+        table.getColumns().setAll(sequence, created, name, score);
+        created.setPrefWidth(237);
+        name.setPrefWidth(191);
+        score.setSortType(TableColumn.SortType.DESCENDING);
+        table.getSortOrder().setAll(score);
+        table.sort();
+        table.getSelectionModel().clearAndSelect(0, name);
+        table.getFocusModel().focus(0, name);
+        return new TablePresentation(table.getItems(), List.copyOf(table.getColumns()),
+                List.copyOf(table.getSelectionModel().getSelectedCells()),
+                table.getFocusModel().getFocusedCell(), List.copyOf(table.getSortOrder()),
+                table.getColumns().stream().map(TableColumn::getWidth).toList());
+    }
+
+    private static void assertTablePresentation(TablePresentation before, SqlEditorPane pane)
+            throws Exception {
+        TableView<ObservableList<Object>> table = resultTable(pane);
+        assertSame(before.items(), table.getItems());
+        assertEquals(before.columns(), List.copyOf(table.getColumns()));
+        assertEquals(before.selection(), List.copyOf(table.getSelectionModel().getSelectedCells()));
+        assertEquals(before.focus(), table.getFocusModel().getFocusedCell());
+        assertEquals(before.sortOrder(), List.copyOf(table.getSortOrder()));
+        assertEquals(before.widths(), table.getColumns().stream()
+                .map(TableColumn::getWidth).toList());
+    }
+
+    private static void awaitFxDelay(javafx.util.Duration duration) throws Exception {
+        CountDownLatch elapsed = new CountDownLatch(1);
+        FxUiTestSupport.call(() -> {
+            javafx.animation.PauseTransition marker = new javafx.animation.PauseTransition(duration);
+            marker.setOnFinished(ignored -> elapsed.countDown());
+            marker.play();
+            return null;
+        });
+        assertTrue(elapsed.await(2, TimeUnit.SECONDS), "FX delay marker timed out");
+        FxUiTestSupport.call(() -> null);
+    }
+
+    private record TablePresentation(
+            ObservableList<ObservableList<Object>> items,
+            List<TableColumn<ObservableList<Object>, ?>> columns,
+            List<?> selection, Object focus,
+            List<TableColumn<ObservableList<Object>, ?>> sortOrder,
+            List<Double> widths) {
     }
 
     private PaneFixture databaseFixture(

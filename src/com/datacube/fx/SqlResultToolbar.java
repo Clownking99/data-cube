@@ -64,6 +64,7 @@ public final class SqlResultToolbar {
     private final PauseTransition searchDebounce =
             new PauseTransition(Duration.millis(SEARCH_DEBOUNCE_MILLIS));
     private boolean rendering;
+    private String committedSearch = "";
 
     public SqlResultToolbar(Actions actions) {
         this.actions = Objects.requireNonNull(actions, "actions");
@@ -81,7 +82,8 @@ public final class SqlResultToolbar {
         searchDebounce.stop();
         rendering = true;
         try {
-            search.setText(snapshot.searchText() == null ? "" : snapshot.searchText());
+            committedSearch = snapshot.searchText() == null ? "" : snapshot.searchText();
+            search.setText(committedSearch);
         } finally {
             rendering = false;
         }
@@ -117,13 +119,12 @@ public final class SqlResultToolbar {
         search.textProperty().addListener((ignored, oldValue, newValue) -> {
             if (!rendering) searchDebounce.playFromStart();
         });
-        searchDebounce.setOnFinished(ignored -> actions.searchChanged().accept(search.getText()));
+        searchDebounce.setOnFinished(ignored -> commitSearchInput());
         root.sceneProperty().addListener((ignored, oldScene, newScene) -> {
             if (oldScene != null && newScene == null) searchDebounce.stop();
         });
         search.setOnAction(ignored -> {
-            searchDebounce.stop();
-            actions.searchChanged().accept(search.getText());
+            commitSearchInput();
         });
 
         addCondition.setId("sql-result-add-filter");
@@ -132,7 +133,10 @@ public final class SqlResultToolbar {
 
         applyDatabase.setId("sql-result-apply-database");
         applyDatabase.setAccessibleText("应用数据库筛选");
-        applyDatabase.setOnAction(ignored -> actions.applyDatabaseFilter().run());
+        applyDatabase.setOnAction(ignored -> {
+            commitSearchInput();
+            actions.applyDatabaseFilter().run();
+        });
 
         copy.setId("sql-result-copy");
         copy.setAccessibleText("复制查询结果");
@@ -162,6 +166,14 @@ public final class SqlResultToolbar {
         MenuItem item = new MenuItem(text);
         item.setOnAction(ignored -> actions.copyRequested().accept(mode));
         copy.getItems().add(item);
+    }
+
+    private void commitSearchInput() {
+        searchDebounce.stop();
+        String current = search.getText();
+        if (Objects.equals(committedSearch, current)) return;
+        committedSearch = current;
+        actions.searchChanged().accept(current);
     }
 
     private void rebuildConditionChips(ResultFilterState.Snapshot snapshot, boolean hasQuery) {

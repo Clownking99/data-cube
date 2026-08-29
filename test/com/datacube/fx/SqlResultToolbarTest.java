@@ -295,6 +295,32 @@ class SqlResultToolbarTest {
     }
 
     @Test
+    void applyCommitsPendingSearchExactlyOnceBeforeDispatchAndCancelsTheDebounce() throws Exception {
+        List<String> events = new ArrayList<>();
+        AtomicReference<SqlResultToolbar> toolbar = new AtomicReference<>();
+        FxUiTestSupport.call(() -> {
+            SqlResultToolbar created = new SqlResultToolbar(new SqlResultToolbar.Actions(
+                    text -> events.add("search:" + text), () -> {}, ignored -> {},
+                    () -> events.add("apply"), () -> {}, ignored -> {}));
+            created.render(snapshot(ResultFilterState.DatabaseStatus.LOCAL_PREVIEW,
+                    "old", List.of(condition(1, FilterConnector.AND, FilterOperator.GT, 60)),
+                    12, null, null));
+            toolbar.set(created);
+
+            TextField field = (TextField) created.getNode().lookup("#sql-result-search");
+            field.setText("current");
+            ((Button) created.getNode().lookup("#sql-result-apply-database")).fire();
+            assertEquals(List.of("search:current", "apply"), events,
+                    "Apply must commit the exact visible search before creating a request");
+            return null;
+        });
+
+        awaitFxDelay(Duration.millis(300));
+        assertEquals(List.of("search:current", "apply"), events,
+                "the stopped debounce must not replay a stale search callback");
+    }
+
+    @Test
     void renderImmediatelyCancelsPendingSearchAndRepeatedRenderStaysSilent() throws Exception {
         AtomicInteger searches = new AtomicInteger();
         AtomicInteger database = new AtomicInteger();

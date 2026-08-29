@@ -79,6 +79,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
@@ -96,6 +97,11 @@ import java.util.regex.Pattern;
  * 执行委托 provider 的 {@link SqlRunner}，方言差异（schema 切换）由 provider 处理。
  */
 public final class SqlEditorPane implements AutoCloseable {
+    @FunctionalInterface
+    interface ClipboardWriter {
+        boolean write(String text);
+    }
+
 
     /** 常见 SQL 关键字（大写形式，补全时展示）。 */
     private static final List<String> SQL_KEYWORDS = Arrays.asList(
@@ -156,6 +162,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private CodeArea editorArea;
     private SqlAutoComplete autoComplete;
     private final ResultFilterState resultFilterState = new ResultFilterState();
+    private ClipboardWriter clipboardWriter = SqlEditorPane::writeSystemClipboard;
     private SqlResultToolbar resultToolbar;
     private TableView<ObservableList<Object>> resultTable;
     private TextArea planArea;
@@ -1539,7 +1546,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private void onDatabaseFilterFailed(long generation, String failure) {
         String detail = failure == null || failure.isBlank() ? "数据库筛选失败" : failure;
         if (!resultFilterState.databaseFailed(generation, detail)) return;
-        renderResultFilterSnapshot();
+        renderResultFilterToolbar(resultFilterState.snapshot());
         statusLabel.setText("数据库筛选失败，仍显示当前结果：" + detail);
         statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
     }
@@ -1620,9 +1627,10 @@ public final class SqlEditorPane implements AutoCloseable {
             }
             default -> throw new IllegalStateException("未知复制模式: " + mode);
         }
-        ClipboardContent content = new ClipboardContent();
-        content.putString(value);
-        Clipboard.getSystemClipboard().setContent(content);
+        if (!writeClipboard(value)) {
+            showClipboardWriteFailure();
+            return;
+        }
         statusLabel.setText("已复制 " + copied + " " + unit);
         statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
     }
@@ -1873,8 +1881,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private String formatResultRowCount(QueryResult result) {
-        int count = result.truncated && settings.getMaxResultRows() > 0
-                ? settings.getMaxResultRows() : result.rows.size();
+        int count = result.rows.size();
         String formatted = String.format(Locale.ROOT, "%,d", count);
         return result.truncated ? formatted + "+，当前结果已截断" : formatted + " rows";
     }
@@ -2003,11 +2010,35 @@ public final class SqlEditorPane implements AutoCloseable {
         String table = resolveInsertTable();
         if (table == null) return;
         String script = InsertSqlGenerator.generate(table, r.columns, r.rows);
-        ClipboardContent content = new ClipboardContent();
-        content.putString(script);
-        Clipboard.getSystemClipboard().setContent(content);
+        if (!writeClipboard(script)) {
+            showClipboardWriteFailure();
+            return;
+        }
         statusLabel.setText("已复制 " + r.rows.size() + " 条 INSERT 语句（目标表 " + table + "）");
         statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
+    }
+
+    void setClipboardWriterForTesting(ClipboardWriter writer) {
+        clipboardWriter = Objects.requireNonNull(writer, "writer");
+    }
+
+    private boolean writeClipboard(String text) {
+        try {
+            return clipboardWriter.write(text);
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
+    }
+
+    private static boolean writeSystemClipboard(String text) {
+        ClipboardContent content = new ClipboardContent();
+        content.putString(text);
+        return Clipboard.getSystemClipboard().setContent(content);
+    }
+
+    private void showClipboardWriteFailure() {
+        statusLabel.setText("复制失败：无法写入系统剪贴板");
+        statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
     }
 
     /** 行号列（序号）：显示 1..N，不参与排序，不映射数据。 */
