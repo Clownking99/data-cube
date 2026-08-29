@@ -1,21 +1,17 @@
 package com.datacube.sqleditor.result;
 
+import com.datacube.spi.model.ImmutableResultValue;
 import com.datacube.spi.model.QueryResult;
-import java.lang.reflect.Array;
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.sql.Time;
-import java.sql.Timestamp;
+import java.util.AbstractList;
 import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
+import java.util.RandomAccess;
 
 /** Pure, synchronized state model for local and database-backed result filtering. */
 public final class ResultFilterState {
     private static final long NO_IN_FLIGHT = -1L;
+    private static final List<FilterCondition> NO_CONDITIONS = new FrozenConditions(List.of());
 
     public enum DatabaseStatus { ORIGINAL, LOCAL_PREVIEW, APPLIED, DIRTY_AFTER_APPLY }
 
@@ -23,7 +19,7 @@ public final class ResultFilterState {
             String originalSql, QueryResult originalResult, List<FilterCondition> conditions) {
         public DatabaseFilterRequest {
             originalSql = Objects.requireNonNull(originalSql, "originalSql");
-            originalResult = copyResult(Objects.requireNonNull(originalResult, "originalResult"));
+            originalResult = Objects.requireNonNull(originalResult, "originalResult");
             conditions = freezeConditions(conditions);
         }
     }
@@ -38,8 +34,6 @@ public final class ResultFilterState {
             List<Integer> visibleRowIndexes, DatabaseStatus databaseStatus,
             String databaseUnavailableReason, String recoverableError) {
         public Snapshot {
-            originalResult = copyNullableResult(originalResult);
-            activeResult = copyNullableResult(activeResult);
             conditions = freezeConditions(conditions);
             visibleRowIndexes = List.copyOf(visibleRowIndexes);
         }
@@ -49,7 +43,7 @@ public final class ResultFilterState {
     private QueryResult activeResult;
     private String originalSql;
     private String searchText = "";
-    private List<FilterCondition> conditions = List.of();
+    private List<FilterCondition> conditions = NO_CONDITIONS;
     private List<Integer> visibleRowIndexes = List.of();
     private DatabaseStatus databaseStatus = DatabaseStatus.ORIGINAL;
     private String databaseUnavailableReason;
@@ -58,7 +52,7 @@ public final class ResultFilterState {
     private long inFlightGeneration = NO_IN_FLIGHT;
 
     public synchronized void showOriginal(QueryResult result, String sql, String unavailableReason) {
-        QueryResult copied = copyResult(Objects.requireNonNull(result, "result"));
+        QueryResult copied = Objects.requireNonNull(result, "result");
         String candidateSql = Objects.requireNonNull(sql, "sql");
         List<Integer> indexes = indexesFor(copied, "", List.of());
 
@@ -66,7 +60,7 @@ public final class ResultFilterState {
         activeResult = copied;
         originalSql = candidateSql;
         searchText = "";
-        conditions = List.of();
+        conditions = NO_CONDITIONS;
         visibleRowIndexes = indexes;
         databaseStatus = DatabaseStatus.ORIGINAL;
         databaseUnavailableReason = unavailableReason;
@@ -154,7 +148,7 @@ public final class ResultFilterState {
 
         activeResult = originalResult;
         searchText = "";
-        conditions = List.of();
+        conditions = NO_CONDITIONS;
         visibleRowIndexes = indexes;
         databaseStatus = DatabaseStatus.ORIGINAL;
         recoverableError = null;
@@ -166,7 +160,7 @@ public final class ResultFilterState {
         activeResult = null;
         originalSql = null;
         searchText = "";
-        conditions = List.of();
+        conditions = NO_CONDITIONS;
         visibleRowIndexes = List.of();
         databaseStatus = DatabaseStatus.ORIGINAL;
         databaseUnavailableReason = null;
@@ -191,7 +185,7 @@ public final class ResultFilterState {
     }
 
     private AppliedCandidate appliedCandidate(QueryResult result) {
-        QueryResult copied = copyResult(Objects.requireNonNull(result, "result"));
+        QueryResult copied = Objects.requireNonNull(result, "result");
         return new AppliedCandidate(copied, indexesFor(copied, searchText, conditions));
     }
 
@@ -242,95 +236,42 @@ public final class ResultFilterState {
         return message == null ? "数据库筛选失败" : message;
     }
 
-    private static QueryResult copyNullableResult(QueryResult source) {
-        return source == null ? null : copyResult(source);
-    }
-
-    private static QueryResult copyResult(QueryResult source) {
-        return switch (source.kind) {
-            case QUERY -> copyQuery(source);
-            case UPDATE -> QueryResult.update(source.elapsedMillis, source.updateCount);
-            case ERROR -> copyError(source);
-        };
-    }
-
-    private static QueryResult copyQuery(QueryResult source) {
-        List<List<Object>> rows = new ArrayList<>(source.rows.size());
-        for (List<Object> row : source.rows) {
-            List<Object> copiedRow = new ArrayList<>(Objects.requireNonNull(row, "result row").size());
-            for (Object value : row) copiedRow.add(freezeValue(value));
-            rows.add(Collections.unmodifiableList(copiedRow));
-        }
-        QueryResult copied = QueryResult.queryWithMetadata(immutableCopy(source.resultColumns),
-                Collections.unmodifiableList(rows), source.elapsedMillis, source.truncated);
-        return source.columnComments.isEmpty() ? copied
-                : copied.withColumnComments(immutableCopy(source.columnComments));
-    }
-
-    private static QueryResult copyError(QueryResult source) {
-        QueryResult.FailureKind kind = source.failureKind;
-        if (kind == QueryResult.FailureKind.CANCELLED) {
-            return QueryResult.cancelled(source.errorMessage, source.elapsedMillis);
-        }
-        if (kind == QueryResult.FailureKind.TIMEOUT) {
-            return QueryResult.timeout(source.errorMessage, source.elapsedMillis);
-        }
-        return QueryResult.error(source.errorMessage, source.elapsedMillis);
-    }
-
     private static List<FilterCondition> freezeConditions(List<FilterCondition> values) {
         Objects.requireNonNull(values, "conditions");
+        if (values instanceof FrozenConditions) return values;
+        if (values.isEmpty()) return NO_CONDITIONS;
         List<FilterCondition> copied = new ArrayList<>(values.size());
         for (FilterCondition condition : values) {
             FilterCondition source = Objects.requireNonNull(condition, "condition");
-            copied.add(new FilterCondition(source.columnIndex(), source.connector(), source.operator(),
-                    freezeValue(source.value())));
+            Object frozenValue = ImmutableResultValue.freeze(source.value());
+            copied.add(frozenValue == source.value() ? source
+                    : new FilterCondition(source.columnIndex(), source.connector(), source.operator(), frozenValue));
         }
-        return List.copyOf(copied);
-    }
-
-    private static Object freezeValue(Object value) {
-        if (value == null || value instanceof String || value instanceof Boolean || value instanceof Character
-                || value instanceof Byte || value instanceof Short || value instanceof Integer
-                || value instanceof Long || value instanceof Float || value instanceof Double
-                || value instanceof BigInteger || value instanceof BigDecimal || value instanceof UUID
-                || value instanceof Enum<?>) return value;
-        if (value instanceof Timestamp timestamp) {
-            Timestamp copied = new Timestamp(timestamp.getTime());
-            copied.setNanos(timestamp.getNanos());
-            return copied;
-        }
-        if (value instanceof java.sql.Date date) return new java.sql.Date(date.getTime());
-        if (value instanceof Time time) return new Time(time.getTime());
-        if (value instanceof java.util.Date date) return new java.util.Date(date.getTime());
-        if (value instanceof Calendar calendar) return calendar.clone();
-        if (value instanceof CharSequence text) return text.toString();
-        if (value.getClass().isArray()) return freezeArray(value);
-        if (value.getClass().getPackageName().startsWith("java.time")) return value;
-        throw new IllegalArgumentException("不支持冻结的可变结果值类型: " + value.getClass().getName());
-    }
-
-    private static Object freezeArray(Object value) {
-        int length = Array.getLength(value);
-        Class<?> componentType = value.getClass().getComponentType();
-        Object copied = componentType.isPrimitive() ? Array.newInstance(componentType, length) : new Object[length];
-        if (componentType.isPrimitive()) {
-            System.arraycopy(value, 0, copied, 0, length);
-            return copied;
-        }
-        for (int index = 0; index < length; index++) {
-            Array.set(copied, index, freezeValue(Array.get(value, index)));
-        }
-        return copied;
-    }
-
-    private static <T> List<T> immutableCopy(List<? extends T> values) {
-        return Collections.unmodifiableList(new ArrayList<>(values));
+        return new FrozenConditions(copied);
     }
 
     private record AppliedCandidate(QueryResult result, List<Integer> visibleIndexes) {
     }
 
     private record FailureCandidate(String message, List<Integer> visibleIndexes) {
+    }
+
+    private static final class FrozenConditions extends AbstractList<FilterCondition>
+            implements RandomAccess {
+        private final List<FilterCondition> values;
+
+        private FrozenConditions(List<FilterCondition> values) {
+            this.values = List.copyOf(values);
+        }
+
+        @Override
+        public FilterCondition get(int index) {
+            return values.get(index);
+        }
+
+        @Override
+        public int size() {
+            return values.size();
+        }
     }
 }

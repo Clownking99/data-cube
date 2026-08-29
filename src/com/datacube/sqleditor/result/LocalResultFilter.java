@@ -1,5 +1,6 @@
 package com.datacube.sqleditor.result;
 
+import com.datacube.spi.model.ImmutableResultValue;
 import com.datacube.spi.model.QueryResult;
 import com.datacube.spi.model.ResultColumn;
 import java.math.BigDecimal;
@@ -56,9 +57,9 @@ public final class LocalResultFilter {
             case IS_NOT_NULL -> cell != null;
             case EQ -> cell != null && compare(columns.get(condition.columnIndex()), cell, condition.value()) == 0;
             case NE -> cell != null && compare(columns.get(condition.columnIndex()), cell, condition.value()) != 0;
-            case CONTAINS -> cell != null && String.valueOf(cell).contains(String.valueOf(condition.value()));
-            case STARTS_WITH -> cell != null && String.valueOf(cell).startsWith(String.valueOf(condition.value()));
-            case ENDS_WITH -> cell != null && String.valueOf(cell).endsWith(String.valueOf(condition.value()));
+            case CONTAINS -> cell != null && display(cell).contains(display(condition.value()));
+            case STARTS_WITH -> cell != null && display(cell).startsWith(display(condition.value()));
+            case ENDS_WITH -> cell != null && display(cell).endsWith(display(condition.value()));
             case GT -> cell != null && compare(columns.get(condition.columnIndex()), cell, condition.value()) > 0;
             case GTE -> cell != null && compare(columns.get(condition.columnIndex()), cell, condition.value()) >= 0;
             case LT -> cell != null && compare(columns.get(condition.columnIndex()), cell, condition.value()) < 0;
@@ -68,7 +69,20 @@ public final class LocalResultFilter {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static int compare(ResultColumn column, Object left, Object right) {
+        if (arrayLike(left) || arrayLike(right)) {
+            if (arrayLike(left) && arrayLike(right)) {
+                ImmutableResultValue immutableLeft =
+                        (ImmutableResultValue) ImmutableResultValue.freeze(left);
+                ImmutableResultValue immutableRight =
+                        (ImmutableResultValue) ImmutableResultValue.freeze(right);
+                return immutableLeft.compareContent(immutableRight);
+            }
+            return display(left).compareTo(display(right));
+        }
         if (left instanceof Number && right instanceof Number) {
+            if (nonFinite((Number) left) || nonFinite((Number) right)) {
+                return Integer.compare(numberRank((Number) left), numberRank((Number) right));
+            }
             return new BigDecimal(left.toString()).compareTo(new BigDecimal(right.toString()));
         }
         Comparable temporalLeft = temporal(column.jdbcType(), left);
@@ -81,6 +95,29 @@ public final class LocalResultFilter {
             return comparable.compareTo(right);
         }
         return left.equals(right) ? 0 : String.valueOf(left).compareTo(String.valueOf(right));
+    }
+
+    private static boolean arrayLike(Object value) {
+        return value instanceof ImmutableResultValue
+                || value != null && value.getClass().isArray();
+    }
+
+    private static String display(Object value) {
+        return ResultValueFormatter.format(value);
+    }
+
+    private static boolean nonFinite(Number value) {
+        if (value instanceof Double doubleValue) return !Double.isFinite(doubleValue);
+        return value instanceof Float floatValue && !Float.isFinite(floatValue);
+    }
+
+    /** -Infinity < every finite value < +Infinity < NaN. */
+    private static int numberRank(Number value) {
+        if (!nonFinite(value)) return 1;
+        double number = value.doubleValue();
+        if (number == Double.NEGATIVE_INFINITY) return 0;
+        if (number == Double.POSITIVE_INFINITY) return 2;
+        return 3;
     }
 
     private static void validateColumns(List<ResultColumn> columns, List<FilterCondition> conditions) {
@@ -128,6 +165,7 @@ public final class LocalResultFilter {
     }
 
     private static java.time.Instant offsetDateTimeValue(Object value) {
+        if (value instanceof java.time.Instant instant) return instant;
         if (value instanceof java.time.OffsetDateTime dateTime) return dateTime.toInstant();
         if (value instanceof java.sql.Timestamp timestamp) return timestamp.toInstant();
         if (value instanceof java.time.LocalDateTime) {

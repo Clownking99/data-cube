@@ -284,8 +284,8 @@ class SqlEditorResultFilterContractTest {
                 assertNotNull(resultToolbar.getParent(), "toolbar must be embedded in the result container");
 
                 TableView<ObservableList<Object>> table = resultTable(fixture.pane);
-                assertInstanceOf(Timestamp.class, table.getItems().getFirst().get(2),
-                        "table rows must retain raw JDBC values");
+                assertInstanceOf(java.time.LocalDateTime.class, table.getItems().getFirst().get(2),
+                        "table rows must retain typed, immutable JDBC values");
                 TextField search = (TextField) resultToolbar.lookup("#sql-result-search");
                 search.setText("Bob");
                 search.fireEvent(new ActionEvent());
@@ -558,13 +558,11 @@ class SqlEditorResultFilterContractTest {
             QueryResult original = result(false,
                     row("Ada", 7, "2026-08-29 10:11:12"),
                     row("Bob", 9, "2026-08-29 11:12:13"));
-            QueryResult unsupported = QueryResult.queryWithMetadata(
-                    List.of(new ResultColumn(0, "driver_value", Types.OTHER, "vendor_value")),
-                    List.of(List.of(new Object())), 4, false);
 
             FxUiTestSupport.call(() -> {
                 showScriptResults(fixture.pane, original, "select original");
-                showScriptResults(fixture.pane, unsupported, "select unsupported");
+                invoke(fixture.pane, "showQueryResult",
+                        new Class<?>[]{QueryResult.class, String.class}, null, "select unsupported");
 
                 ResultFilterState.Snapshot snapshot = state(fixture.pane).snapshot();
                 assertEquals(original.rows, snapshot.activeResult().rows);

@@ -211,7 +211,8 @@ public final class SqlEditorPane implements AutoCloseable {
             this.closeGuard = AsyncTabCloseGuards.retryable(this::startCloseAttempt);
             this.mandatoryCloseGuard = AsyncTabCloseGuards.retryable(this::startMandatoryCloseAttempt);
             this.commentModeListener = (obs, oldMode, newMode) -> {
-                if (resultFilterState.snapshot().activeResult() != null) renderResultFilterSnapshot();
+                ResultFilterState.Snapshot snapshot = resultFilterState.snapshot();
+                if (snapshot.activeResult() != null) renderResultFilterSnapshot(snapshot);
             };
             this.activeConnectionListener = (obs, oldConnection, connection) -> {
                 if (admission.pinned() == null) {
@@ -1452,8 +1453,9 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void onClearResultFilters() {
         resultFilterState.clearFilters();
-        renderResultFilterSnapshot();
-        QueryResult restored = resultFilterState.snapshot().activeResult();
+        ResultFilterState.Snapshot snapshot = resultFilterState.snapshot();
+        renderResultFilterSnapshot(snapshot);
+        QueryResult restored = snapshot.activeResult();
         if (restored == null) return;
         statusLabel.setText("已清除筛选 - " + formatResultRowCount(restored));
         statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
@@ -1756,14 +1758,17 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void renderResultFilterSnapshot() {
-        ResultFilterState.Snapshot snapshot = resultFilterState.snapshot();
+        renderResultFilterSnapshot(resultFilterState.snapshot());
+    }
+
+    private void renderResultFilterSnapshot(ResultFilterState.Snapshot snapshot) {
         QueryResult active = snapshot.activeResult();
         resultTable.getColumns().clear();
         resultTable.getItems().clear();
         if (active == null || active.kind != QueryResult.Kind.QUERY) {
             exportResultBtn.setDisable(true);
             copyInsertBtn.setDisable(true);
-            renderResultFilterToolbar();
+            renderResultFilterToolbar(snapshot);
             return;
         }
         useTable();
@@ -1785,11 +1790,15 @@ public final class SqlEditorPane implements AutoCloseable {
         resultTable.setItems(data);
         exportResultBtn.setDisable(active.rows.isEmpty());
         copyInsertBtn.setDisable(active.rows.isEmpty());
-        renderResultFilterToolbar();
+        renderResultFilterToolbar(snapshot);
     }
 
     private void renderResultFilterToolbar() {
-        if (resultToolbar != null) resultToolbar.render(resultFilterState.snapshot());
+        renderResultFilterToolbar(resultFilterState.snapshot());
+    }
+
+    private void renderResultFilterToolbar(ResultFilterState.Snapshot snapshot) {
+        if (resultToolbar != null) resultToolbar.render(snapshot);
     }
 
     private void clearResultFilterState() {

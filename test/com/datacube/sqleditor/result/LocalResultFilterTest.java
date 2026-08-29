@@ -14,6 +14,7 @@ import java.time.OffsetTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.TimeZone;
 import org.junit.jupiter.api.Test;
 
@@ -222,6 +223,64 @@ class LocalResultFilterTest {
                         List.of(OffsetDateTime.parse("2026-08-29T10:11:12Z"))), 1, false);
         assertEquals(List.of(0), LocalResultFilter.visibleRowIndexes(values, "+08:00", List.of()));
         assertEquals(List.of(1), LocalResultFilter.visibleRowIndexes(values, "z", List.of()));
+    }
+
+    @Test
+    void arraysUseStableContentForDisplaySearchEqualityAndTsv() {
+        byte[] first = new byte[65];
+        for (int index = 0; index < first.length; index++) first[index] = (byte) index;
+        byte[] differentTail = first.clone();
+        differentTail[differentTail.length - 1] = 99;
+        Object[] nested = {new int[]{1, 2}, new Object[]{"Ada", null}, new byte[]{4, 5}};
+        QueryResult arrays = QueryResult.queryWithMetadata(List.of(
+                column(Types.VARBINARY), new ResultColumn(1, "NESTED", Types.ARRAY, "ARRAY")),
+                List.of(Arrays.asList(first, nested), Arrays.asList(differentTail,
+                        new Object[]{new int[]{9}, new Object[]{"Lin"}})), 1, false);
+
+        String binary = ResultValueFormatter.format(arrays.rows.getFirst().getFirst());
+        String nestedText = ResultValueFormatter.format(arrays.rows.getFirst().get(1));
+        assertEquals(binaryPreview(first), binary);
+        assertEquals("[[1, 2], [Ada, null], 0405]", nestedText);
+        assertFalse(binary.matches(".*\\[B@[0-9a-fA-F]+.*"));
+        assertFalse(nestedText.matches(".*\\[[A-Z]@[0-9a-fA-F]+.*"));
+        assertEquals(List.of(0, 1), LocalResultFilter.visibleRowIndexes(arrays, "000102", List.of()));
+        assertEquals(List.of(0), filter(arrays, 0, FilterOperator.EQ, first.clone()),
+                "binary equality must inspect bytes beyond the bounded preview");
+        assertEquals(List.of(0), filter(arrays, 1, FilterOperator.EQ,
+                new Object[]{new int[]{1, 2}, new Object[]{"Ada", null}, new byte[]{4, 5}}));
+        assertEquals(binary + "\t" + nestedText, TsvClipboardFormatter.rows(
+                List.of("BIN", "NESTED"), List.of(List.of(binary, nestedText)), Set.of(0), false));
+    }
+
+    @Test
+    void nonFiniteJdbcNumbersHaveExplicitTotalOrderingWithoutParserRelaxation() {
+        QueryResult numbers = QueryResult.queryWithMetadata(List.of(column(Types.DOUBLE)), List.of(
+                List.of(Double.NEGATIVE_INFINITY), List.of(-1D), List.of(0D),
+                List.of(Double.POSITIVE_INFINITY), List.of(Double.NaN)), 1, false);
+
+        List<Integer> negativeInfinity = assertDoesNotThrow(
+                () -> filter(numbers, 0, FilterOperator.EQ, Float.NEGATIVE_INFINITY));
+        assertEquals(List.of(0), negativeInfinity);
+        assertEquals(List.of(3), filter(numbers, 0, FilterOperator.EQ, Double.POSITIVE_INFINITY));
+        assertEquals(List.of(4), filter(numbers, 0, FilterOperator.EQ, Float.NaN));
+        assertEquals(List.of(3, 4), filter(numbers, 0, FilterOperator.GT, 0D));
+        assertEquals(List.of(0, 1), filter(numbers, 0, FilterOperator.LT, 0D));
+        assertEquals(List.of(4), filter(numbers, 0, FilterOperator.GT, Double.POSITIVE_INFINITY));
+        assertEquals(List.of(), filter(numbers, 0, FilterOperator.LT, Double.NEGATIVE_INFINITY));
+
+        IllegalArgumentException invalid = assertThrows(IllegalArgumentException.class,
+                () -> FilterValueParser.parse(column(Types.DOUBLE), FilterOperator.EQ, "NaN"));
+        assertTrue(invalid.getMessage().matches(".*[\\u4e00-\\u9fff].*"));
+    }
+
+    private static String binaryPreview(byte[] value) {
+        StringBuilder preview = new StringBuilder();
+        int displayed = Math.min(64, value.length);
+        for (int index = 0; index < displayed; index++) {
+            preview.append(String.format("%02x", value[index]));
+        }
+        if (value.length > displayed) preview.append("...(").append(value.length).append(" bytes)");
+        return preview.toString();
     }
 
     private static ResultColumn column(int jdbcType) {

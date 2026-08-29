@@ -4,9 +4,11 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * SQL 执行结果包装：与 UI 完全解耦，CLI 与 GUI 共用。
@@ -50,14 +52,14 @@ public final class QueryResult {
                         List<List<Object>> rows, int updateCount, long elapsedMillis, String errorMessage,
                         FailureKind failureKind, List<ResultColumn> resultColumns, boolean truncated) {
         this.kind = kind;
-        this.columns = columns != null ? columns : Collections.emptyList();
-        this.columnComments = columnComments != null ? columnComments : Collections.emptyList();
-        this.rows = rows != null ? rows : Collections.emptyList();
+        this.columns = columns;
+        this.columnComments = columnComments;
+        this.rows = rows;
         this.updateCount = updateCount;
         this.elapsedMillis = elapsedMillis;
         this.errorMessage = errorMessage;
         this.failureKind = failureKind;
-        this.resultColumns = resultColumns != null ? List.copyOf(resultColumns) : Collections.emptyList();
+        this.resultColumns = resultColumns;
         this.truncated = truncated;
     }
 
@@ -66,19 +68,19 @@ public final class QueryResult {
         if (columns != null) {
             for (int i = 0; i < columns.size(); i++) metadata.add(ResultColumn.unknown(i, columns.get(i)));
         }
-        return new QueryResult(Kind.QUERY, columns, null, rows, -1, elapsedMillis, null, null, metadata, false);
+        return queryWithMetadata(metadata, rows, elapsedMillis, false);
     }
 
     public static QueryResult queryWithMetadata(
             List<ResultColumn> columns, List<List<Object>> rows,
             long elapsedMillis, boolean truncated) {
-        List<ResultColumn> metadata = List.copyOf(columns);
-        List<String> labels = metadata.stream().map(ResultColumn::label).toList();
-        return new QueryResult(Kind.QUERY, labels, null, rows, -1, elapsedMillis, null, null, metadata, truncated);
+        List<ResultColumn> metadata = List.copyOf(Objects.requireNonNull(columns, "columns"));
+        return frozenQuery(metadata, freezeRows(metadata, rows), elapsedMillis, truncated);
     }
 
     public static QueryResult update(long elapsedMillis, int updateCount) {
-        return new QueryResult(Kind.UPDATE, null, null, null, updateCount, elapsedMillis, null, null, null, false);
+        return new QueryResult(Kind.UPDATE, List.of(), List.of(), List.of(), updateCount,
+                elapsedMillis, null, null, List.of(), false);
     }
 
     public static QueryResult error(String errorMessage, long elapsedMillis) {
@@ -94,7 +96,8 @@ public final class QueryResult {
     }
 
     private static QueryResult failure(FailureKind kind, String message, long elapsedMillis) {
-        return new QueryResult(Kind.ERROR, null, null, null, -1, elapsedMillis, message, kind, null, false);
+        return new QueryResult(Kind.ERROR, List.of(), List.of(), List.of(), -1,
+                elapsedMillis, message, kind, List.of(), false);
     }
 
     /**
@@ -102,8 +105,8 @@ public final class QueryResult {
      * 元素可为 null（该列取不到注释）。仅对 QUERY 结果有意义。
      */
     public QueryResult withColumnComments(List<String> comments) {
-        return new QueryResult(kind, columns, comments, rows, updateCount, elapsedMillis, errorMessage, failureKind,
-                resultColumns, truncated);
+        return new QueryResult(kind, columns, immutableNullableCopy(comments), rows,
+                updateCount, elapsedMillis, errorMessage, failureKind, resultColumns, truncated);
     }
 
     /**
@@ -133,11 +136,11 @@ public final class QueryResult {
                 ResultColumn column = metadata.get(i - 1);
                 row.add(readCell(rs, i, column.jdbcType(), column.jdbcTypeName()));
             }
-            data.add(row);
+            data.add(Collections.unmodifiableList(row));
             rowCount++;
         }
         boolean truncated = maxRows > 0 && rowCount >= max && rs.next();
-        return queryWithMetadata(metadata, data, elapsedMillis, truncated);
+        return frozenQuery(List.copyOf(metadata), Collections.unmodifiableList(data), elapsedMillis, truncated);
     }
 
     private static Object readCell(ResultSet rs, int idx, int sqlType, String typeName)
@@ -146,28 +149,51 @@ public final class QueryResult {
                 && ("json".equalsIgnoreCase(typeName) || "jsonb".equalsIgnoreCase(typeName))) {
             return rs.getString(idx);
         }
-        Object v = rs.getObject(idx);
-        if (v == null) return null;
-        // 大字段截断
-        if (v instanceof java.sql.Clob) {
-            java.sql.Clob c = (java.sql.Clob) v;
-            long len = c.length();
-            String s = c.getSubString(1, (int) Math.min(500, len));
-            c.free();
-            return s + (len > 500 ? "..." : "");
+        if (isTimestampWithLocalTimeZone(typeName)) {
+            Object temporal = rs.getObject(idx, OffsetDateTime.class);
+            return ImmutableResultValue.freezeJdbc(temporal, Types.TIMESTAMP_WITH_TIMEZONE);
         }
-        // Oracle BLOB 返回 java.sql.Blob（而非 byte[]）：取前 64 字节 hex 预览
-        if (v instanceof java.sql.Blob) {
-            java.sql.Blob blob = (java.sql.Blob) v;
-            long len = blob.length();
-            byte[] b = blob.getBytes(1, (int) Math.min(64, len));
-            blob.free();
-            StringBuilder sb = new StringBuilder();
-            for (byte x : b) sb.append(String.format("%02x", x));
-            if (len > 64) sb.append("...(").append(len).append(" bytes)");
-            return sb.toString();
+        return ImmutableResultValue.freezeJdbc(rs.getObject(idx), sqlType);
+    }
+
+    private static boolean isTimestampWithLocalTimeZone(String typeName) {
+        return typeName != null
+                && typeName.toUpperCase(java.util.Locale.ROOT).contains("WITH LOCAL TIME ZONE");
+    }
+
+    private static QueryResult frozenQuery(
+            List<ResultColumn> metadata, List<List<Object>> rows,
+            long elapsedMillis, boolean truncated) {
+        List<String> labels = metadata.stream().map(ResultColumn::label).toList();
+        return new QueryResult(Kind.QUERY, labels, List.of(), rows, -1,
+                elapsedMillis, null, null, metadata, truncated);
+    }
+
+    private static List<List<Object>> freezeRows(
+            List<ResultColumn> metadata, List<List<Object>> rows) {
+        if (rows == null || rows.isEmpty()) return List.of();
+        List<List<Object>> frozenRows = new ArrayList<>(rows.size());
+        for (List<Object> row : rows) {
+            List<Object> source = Objects.requireNonNull(row, "result row");
+            List<Object> frozenRow = new ArrayList<>(source.size());
+            for (int index = 0; index < source.size(); index++) {
+                Object value = source.get(index);
+                try {
+                    frozenRow.add(index < metadata.size()
+                            ? ImmutableResultValue.freezeJdbc(value, metadata.get(index).jdbcType())
+                            : ImmutableResultValue.freezeJdbc(value));
+                } catch (SQLException failure) {
+                    throw new IllegalArgumentException("无法读取 JDBC 结果值", failure);
+                }
+            }
+            frozenRows.add(Collections.unmodifiableList(frozenRow));
         }
-        return v;
+        return Collections.unmodifiableList(frozenRows);
+    }
+
+    private static <T> List<T> immutableNullableCopy(List<? extends T> values) {
+        if (values == null || values.isEmpty()) return List.of();
+        return Collections.unmodifiableList(new ArrayList<>(values));
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.datacube.sqleditor.result;
 
+import com.datacube.spi.model.ImmutableResultValue;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -18,6 +19,8 @@ public final class ResultValueFormatter {
 
     public static String format(Object value) {
         if (value == null) return "";
+        if (value instanceof ImmutableResultValue immutable) return immutable.displayText();
+        if (value.getClass().isArray()) return String.valueOf(ImmutableResultValue.freeze(value));
         if (value instanceof Timestamp timestamp) return DATE_TIME.format(timestamp.toLocalDateTime());
         if (value instanceof Date date) return date.toLocalDate().toString();
         if (value instanceof Time time) return TIME.format(time.toLocalTime());

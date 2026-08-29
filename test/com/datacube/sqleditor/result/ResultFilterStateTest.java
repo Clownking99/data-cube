@@ -10,9 +10,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -170,7 +168,10 @@ class ResultFilterStateTest {
         comments.set(0, "new comment");
 
         QueryResult snapshot = state.snapshot().originalResult();
-        assertNotSame(source, snapshot);
+        assertSame(source, snapshot, "an immutable QueryResult must be frozen only once on ingestion");
+        assertSame(source.rows, snapshot.rows);
+        assertSame(source.resultColumns, snapshot.resultColumns);
+        assertSame(source.columnComments, snapshot.columnComments);
         assertEquals(List.of("ID"), snapshot.columns);
         assertEquals(List.of(List.of(1)), snapshot.rows);
         assertEquals(List.of("old comment"), snapshot.columnComments);
@@ -184,14 +185,14 @@ class ResultFilterStateTest {
         ResultFilterState state = new ResultFilterState();
         QueryResult update = QueryResult.update(4, 3);
         state.showOriginal(update, "update USERS", null);
-        assertNotSame(update, state.snapshot().originalResult());
+        assertSame(update, state.snapshot().originalResult());
         assertResultEquivalent(update, state.snapshot().originalResult());
 
         for (QueryResult error : List.of(QueryResult.error("sql", 5),
                 QueryResult.cancelled("cancelled", 6), QueryResult.timeout("slow", 7))) {
             state.showOriginal(error, "select ID from USERS", null);
             QueryResult snapshot = state.snapshot().originalResult();
-            assertNotSame(error, snapshot);
+            assertSame(error, snapshot);
             assertResultEquivalent(error, snapshot);
         }
     }
@@ -298,14 +299,15 @@ class ResultFilterStateTest {
         bytes[0] = 9;
         List<Object> exposed = state.snapshot().originalResult().rows.getFirst();
         assertEquals("before", exposed.get(0));
-        assertEquals(java.sql.Timestamp.valueOf("2026-08-29 10:11:12.123456789"), exposed.get(1));
-        assertArrayEquals(new byte[]{1, 2, 3}, (byte[]) exposed.get(2));
-
-        ((java.sql.Timestamp) exposed.get(1)).setNanos(2);
-        ((byte[]) exposed.get(2))[0] = 8;
+        assertEquals(java.time.LocalDateTime.parse("2026-08-29T10:11:12.123456789"), exposed.get(1));
+        assertEquals("010203", ResultValueFormatter.format(exposed.get(2)));
+        assertFalse(exposed.get(1) instanceof java.sql.Timestamp);
+        assertFalse(exposed.get(2) instanceof byte[]);
+        assertThrows(UnsupportedOperationException.class, () -> exposed.set(0, "changed output"));
         List<Object> later = state.snapshot().originalResult().rows.getFirst();
-        assertEquals(java.sql.Timestamp.valueOf("2026-08-29 10:11:12.123456789"), later.get(1));
-        assertArrayEquals(new byte[]{1, 2, 3}, (byte[]) later.get(2));
+        assertSame(exposed, later);
+        assertSame(exposed.get(1), later.get(1));
+        assertSame(exposed.get(2), later.get(2));
     }
 
     @Test
@@ -318,14 +320,14 @@ class ResultFilterStateTest {
         state.setConditions(List.of(condition));
 
         value[0] = 9;
-        byte[] fromSnapshot = (byte[]) state.snapshot().conditions().getFirst().value();
-        assertArrayEquals(new byte[]{4, 5}, fromSnapshot);
-        fromSnapshot[1] = 8;
-        byte[] fromRequest = (byte[]) state.databaseRequest().conditions().getFirst().value();
-        assertArrayEquals(new byte[]{4, 5}, fromRequest);
-        fromRequest[0] = 7;
-        assertArrayEquals(new byte[]{4, 5},
-                (byte[]) state.snapshot().conditions().getFirst().value());
+        ResultFilterState.Snapshot snapshot = state.snapshot();
+        Object fromSnapshot = snapshot.conditions().getFirst().value();
+        assertEquals("0405", ResultValueFormatter.format(fromSnapshot));
+        assertFalse(fromSnapshot instanceof byte[]);
+        ResultFilterState.DatabaseFilterRequest request = state.databaseRequest();
+        assertSame(snapshot.conditions(), request.conditions());
+        assertSame(fromSnapshot, request.conditions().getFirst().value());
+        assertSame(snapshot.conditions(), state.snapshot().conditions());
     }
 
     @Test
@@ -343,27 +345,48 @@ class ResultFilterStateTest {
 
         calendar.setTimeInMillis(0);
         builders[0].append(" changed");
-        Object[] exposed = (Object[]) state.snapshot().originalResult().rows.getFirst().get(1);
-        assertEquals(value.millis(), ((java.util.Calendar) state.snapshot().originalResult().rows.getFirst().get(0)).getTimeInMillis());
-        assertEquals("first", ((Object[]) exposed[0])[0]);
-        assertEquals("nested", ((Object[]) exposed[1])[0]);
-        ((Object[]) exposed[0])[0] = "changed output";
-        ((java.util.Calendar) state.snapshot().originalResult().rows.getFirst().get(0)).setTimeInMillis(1);
-        assertEquals(value.millis(), ((java.util.Calendar) state.snapshot().originalResult().rows.getFirst().get(0)).getTimeInMillis());
-        assertEquals("first", ((Object[]) ((Object[]) state.snapshot().originalResult().rows.getFirst().get(1))[0])[0]);
+        List<Object> exposed = state.snapshot().originalResult().rows.getFirst();
+        assertEquals(value.instant(), exposed.get(0));
+        assertEquals("[[first, second], [nested, [1, 2]]]", ResultValueFormatter.format(exposed.get(1)));
+        assertFalse(exposed.get(0) instanceof java.util.Calendar);
+        assertFalse(exposed.get(1).getClass().isArray());
+        assertSame(exposed.get(0), state.snapshot().originalResult().rows.getFirst().get(0));
+        assertSame(exposed.get(1), state.snapshot().originalResult().rows.getFirst().get(1));
     }
 
     @Test
-    void unknownValueFailsAtomicallyAndDoesNotConsumeTaggedRequest() {
+    void unknownIdentityOnlyValueIsRejectedBeforeItCanEnterState() {
         ResultFilterState state = preparedState();
         long generation = state.beginDatabaseRequest().generation();
         ResultFilterState.Snapshot before = state.snapshot();
-        QueryResult unsupported = QueryResult.queryWithMetadata(List.of(column()),
-                List.of(List.of(new Object())), 1, false);
 
-        assertThrows(IllegalArgumentException.class, () -> state.databaseApplied(generation, unsupported));
+        assertThrows(IllegalArgumentException.class, () -> QueryResult.queryWithMetadata(List.of(column()),
+                List.of(List.of(new Object())), 1, false));
         assertSnapshotSame(before, state.snapshot());
         assertTrue(state.databaseApplied(generation, FILTERED_RESULT));
+    }
+
+    @Test
+    void repeatedSnapshotsAndRequestsShareImmutablePayloads() {
+        ResultFilterState state = preparedState();
+
+        ResultFilterState.Snapshot first = state.snapshot();
+        ResultFilterState.Snapshot second = state.snapshot();
+        ResultFilterState.DatabaseFilterRequest request = state.databaseRequest();
+
+        assertSame(RESULT, first.originalResult());
+        assertSame(first.originalResult(), second.originalResult());
+        assertSame(first.activeResult(), second.activeResult());
+        assertSame(first.originalResult().rows, second.originalResult().rows);
+        assertSame(first.originalResult().rows.getFirst(), second.originalResult().rows.getFirst());
+        assertSame(first.originalResult().resultColumns, second.originalResult().resultColumns);
+        assertSame(first.conditions(), second.conditions());
+        assertSame(first.visibleRowIndexes(), second.visibleRowIndexes());
+        assertSame(first.originalResult(), request.originalResult());
+        assertSame(first.conditions(), request.conditions());
+        assertThrows(UnsupportedOperationException.class,
+                () -> request.originalResult().rows.getFirst().set(0, 99));
+        assertThrows(UnsupportedOperationException.class, () -> request.conditions().clear());
     }
 
     private static ResultFilterState preparedState() {
@@ -428,10 +451,10 @@ class ResultFilterStateTest {
     private static final class CalendarValue {
         private final java.util.Calendar calendar = new java.util.GregorianCalendar(
                 2026, java.util.Calendar.AUGUST, 29, 10, 11, 12);
-        private final long millis = calendar.getTimeInMillis();
+        private final java.time.Instant instant = calendar.toInstant();
 
         private java.util.Calendar calendar() { return calendar; }
 
-        private long millis() { return millis; }
+        private java.time.Instant instant() { return instant; }
     }
 }

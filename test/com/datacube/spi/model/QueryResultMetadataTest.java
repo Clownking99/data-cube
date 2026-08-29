@@ -2,18 +2,37 @@ package com.datacube.spi.model;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.datacube.sqleditor.result.FilterCondition;
+import com.datacube.sqleditor.result.FilterConnector;
+import com.datacube.sqleditor.result.FilterOperator;
+import com.datacube.sqleditor.result.LocalResultFilter;
+import com.datacube.sqleditor.result.ResultValueFormatter;
+import java.sql.Clob;
+import java.sql.SQLException;
+import java.sql.SQLXML;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.lang.reflect.Proxy;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.sql.rowset.CachedRowSet;
 import javax.sql.rowset.RowSetMetaDataImpl;
 import javax.sql.rowset.RowSetProvider;
+import javax.sql.rowset.serial.SerialBlob;
+import oracle.sql.BFILE;
+import oracle.sql.BOOLEAN;
+import oracle.sql.RAW;
+import oracle.sql.TIMESTAMPLTZ;
+import org.postgresql.core.BaseConnection;
+import org.postgresql.core.TypeInfo;
+import org.postgresql.jdbc.PgArray;
 import org.postgresql.util.PGobject;
 import org.junit.jupiter.api.Test;
 
@@ -58,7 +77,7 @@ class QueryResultMetadataTest {
     }
 
     @Test
-    void resultSetReaderPreservesJdbcMetadataTimestampAndBinaryValues() throws Exception {
+    void resultSetReaderPreservesMetadataAndDetachesMutableTimestampAndBinaryValues() throws Exception {
         Timestamp timestamp = Timestamp.valueOf("2026-08-29 12:34:56.123456789");
         byte[] binary = new byte[65];
         for (int i = 0; i < binary.length; i++) binary[i] = (byte) i;
@@ -70,10 +89,10 @@ class QueryResultMetadataTest {
                 new ResultColumn(0, "event_time", Types.TIMESTAMP, "TIMESTAMP"),
                 new ResultColumn(1, "payload", Types.VARBINARY, "VARBINARY")), result.resultColumns);
         assertEquals(1, result.rows.size());
-        assertInstanceOf(Timestamp.class, result.rows.getFirst().get(0));
-        assertEquals(timestamp, result.rows.getFirst().get(0));
-        assertInstanceOf(byte[].class, result.rows.getFirst().get(1));
-        assertArrayEquals(binary, (byte[]) result.rows.getFirst().get(1));
+        assertInstanceOf(LocalDateTime.class, result.rows.getFirst().get(0));
+        assertEquals(timestamp.toLocalDateTime(), result.rows.getFirst().get(0));
+        assertFalse(result.rows.getFirst().get(1) instanceof byte[]);
+        assertEquals(binaryPreview(binary), ResultValueFormatter.format(result.rows.getFirst().get(1)));
         assertEquals(1, QueryResult.fromResultSet(resultSetWithRows(1), 0, -1).rows.size());
     }
 
@@ -124,9 +143,10 @@ class QueryResultMetadataTest {
     }
 
     @Test
-    void resultSetReaderDoesNotTreatNearJsonTypeNamesAsJson() throws Exception {
+    void resultSetReaderDetachesNonJsonPgObjectsWithoutUsingObjectIdentity() throws Exception {
         for (String typeName : List.of("jsonpath", "jsonb ", " json")) {
             PGobject driverValue = pgObject(typeName, "{\"kind\":\"near\"}");
+            String originalValue = driverValue.getValue();
             AtomicInteger getObjectCalls = new AtomicInteger();
             AtomicInteger getStringCalls = new AtomicInteger();
 
@@ -134,11 +154,218 @@ class QueryResultMetadataTest {
                     typeName, driverValue, driverValue.getValue(),
                     getObjectCalls, getStringCalls), 1, 0);
 
-            assertSame(driverValue, result.rows.getFirst().getFirst(), typeName);
+            assertEquals(originalValue, result.rows.getFirst().getFirst(), typeName);
+            assertInstanceOf(String.class, result.rows.getFirst().getFirst(), typeName);
+            driverValue.setValue("changed after ResultSet read");
+            assertEquals(originalValue, result.rows.getFirst().getFirst(), typeName);
             assertEquals(typeName, result.resultColumns.getFirst().jdbcTypeName());
             assertEquals(1, getObjectCalls.get(), typeName);
             assertEquals(0, getStringCalls.get(), typeName);
         }
+    }
+
+    @Test
+    void resultSetReaderMaterializesJdbcValuesAndFreesResourceBackedObjects() throws Exception {
+        AtomicBoolean arrayFreed = new AtomicBoolean();
+        AtomicBoolean xmlFreed = new AtomicBoolean();
+        java.sql.Array array = proxy(java.sql.Array.class, (method, args) -> switch (method.getName()) {
+            case "getArray" -> new Object[]{"alpha", new int[]{1, 2}};
+            case "getBaseTypeName" -> "INTEGER";
+            case "getBaseType" -> Types.INTEGER;
+            case "free" -> {
+                arrayFreed.set(true);
+                yield null;
+            }
+            default -> defaultValue(method.getReturnType());
+        });
+        SQLXML xml = proxy(SQLXML.class, (method, args) -> switch (method.getName()) {
+            case "getString" -> "<root/>";
+            case "free" -> {
+                xmlFreed.set(true);
+                yield null;
+            }
+            default -> defaultValue(method.getReturnType());
+        });
+        java.sql.Struct struct = proxy(java.sql.Struct.class, (method, args) -> switch (method.getName()) {
+            case "getSQLTypeName" -> "POINT_T";
+            case "getAttributes" -> new Object[]{3, 4};
+            default -> defaultValue(method.getReturnType());
+        });
+        java.sql.RowId rowId = proxy(java.sql.RowId.class, (method, args) -> switch (method.getName()) {
+            case "getBytes" -> new byte[]{1, 2};
+            default -> defaultValue(method.getReturnType());
+        });
+        java.sql.Ref ref = proxy(java.sql.Ref.class, (method, args) -> switch (method.getName()) {
+            case "getBaseTypeName" -> "PERSON_T";
+            case "getObject" -> "Ada";
+            default -> defaultValue(method.getReturnType());
+        });
+
+        QueryResult result = QueryResult.fromResultSet(singleRowResultSet(List.of(
+                new JdbcCell("numbers", Types.ARRAY, "_int4", array),
+                new JdbcCell("document", Types.SQLXML, "XML", xml),
+                new JdbcCell("point", Types.STRUCT, "POINT_T", struct),
+                new JdbcCell("row_id", Types.ROWID, "ROWID", rowId),
+                new JdbcCell("owner", Types.REF, "PERSON_T", ref))), 2, 0);
+
+        assertTrue(arrayFreed.get());
+        assertTrue(xmlFreed.get());
+        assertEquals(List.of("[alpha, [1, 2]]", "<root/>", "POINT_T[3, 4]", "0102", "REF PERSON_T(Ada)"),
+                result.rows.getFirst().stream().map(ResultValueFormatter::format).toList());
+        assertTrue(result.rows.getFirst().stream().noneMatch(value -> value instanceof java.sql.Array
+                || value instanceof SQLXML || value instanceof java.sql.Struct
+                || value instanceof java.sql.RowId || value instanceof java.sql.Ref));
+    }
+
+    @Test
+    void primaryReadFailureIsPreservedAndEveryResourceCleanupStillRuns() throws Exception {
+        assertPrimaryFailureStillFrees(Clob.class, Types.CLOB, "CLOB", "getSubString");
+        assertPrimaryFailureStillFrees(java.sql.Blob.class, Types.BLOB, "BLOB", "getBinaryStream");
+        assertPrimaryFailureStillFrees(java.sql.Array.class, Types.ARRAY, "ARRAY", "getArray");
+        assertPrimaryFailureStillFrees(SQLXML.class, Types.SQLXML, "SQLXML", "getString");
+    }
+
+    @Test
+    void resourceInterfacesTakePrecedenceOverGenericCharSequences() throws Exception {
+        AtomicBoolean freed = new AtomicBoolean();
+        Object xmlText = Proxy.newProxyInstance(QueryResultMetadataTest.class.getClassLoader(),
+                new Class<?>[]{SQLXML.class, CharSequence.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getString" -> "<dual/>";
+                    case "free" -> {
+                        freed.set(true);
+                        yield null;
+                    }
+                    case "toString" -> "identity-like fallback";
+                    case "length" -> 22;
+                    case "charAt" -> 'x';
+                    case "subSequence" -> "identity-like fallback";
+                    default -> defaultValue(method.getReturnType());
+                });
+
+        QueryResult result = QueryResult.fromResultSet(singleRowResultSet(List.of(
+                new JdbcCell("document", Types.SQLXML, "SQLXML", xmlText))), 1, 0);
+
+        assertTrue(freed.get());
+        assertEquals("<dual/>", result.rows.getFirst().getFirst());
+    }
+
+    @Test
+    void binaryStorageIsBoundedAndBlobEqualityIncludesContentBeyondThePreview() throws Exception {
+        byte[] large = new byte[1_000_000];
+        for (int index = 0; index < large.length; index++) large[index] = (byte) index;
+        QueryResult largeResult = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "BIN", Types.VARBINARY, "VARBINARY")),
+                List.of(List.of(large)), 1, false);
+        Object frozenLarge = largeResult.rows.getFirst().getFirst();
+        java.lang.reflect.Field retainedBytes = ImmutableResultValue.class.getDeclaredField("bytes");
+        retainedBytes.setAccessible(true);
+        assertTrue(((byte[]) retainedBytes.get(frozenLarge)).length <= 64,
+                "immutable binary state must retain only the bounded preview");
+
+        byte[] first = new byte[65];
+        byte[] differentTail = first.clone();
+        first[64] = 1;
+        differentTail[64] = 2;
+        QueryResult blobs = QueryResult.queryWithMetadata(List.of(
+                new ResultColumn(0, "BIN", Types.BLOB, "BLOB")), List.of(
+                List.of(new SerialBlob(first)), List.of(new SerialBlob(differentTail))), 1, false);
+
+        assertNotEquals(blobs.rows.get(0).getFirst(), blobs.rows.get(1).getFirst(),
+                "same-length BLOBs with the same preview must retain distinct content fingerprints");
+        assertEquals(List.of(0), LocalResultFilter.visibleRowIndexes(blobs, "", List.of(
+                new FilterCondition(0, FilterConnector.AND, FilterOperator.EQ, first))));
+    }
+
+    @Test
+    void cyclicAndExcessivelyNestedArraysAreRejectedDeterministically() {
+        ResultColumn arrayColumn = new ResultColumn(0, "VALUE", Types.ARRAY, "ARRAY");
+        Object[] cyclic = new Object[1];
+        cyclic[0] = cyclic;
+
+        IllegalArgumentException cycleFailure = assertThrows(IllegalArgumentException.class,
+                () -> QueryResult.queryWithMetadata(List.of(arrayColumn),
+                        List.of(List.of(cyclic)), 1, false));
+        assertTrue(cycleFailure.getMessage().contains("循环"));
+
+        Object nested = "leaf";
+        for (int depth = 0; depth < 65; depth++) nested = new Object[]{nested};
+        Object tooDeep = nested;
+        IllegalArgumentException depthFailure = assertThrows(IllegalArgumentException.class,
+                () -> QueryResult.queryWithMetadata(List.of(arrayColumn),
+                        List.of(List.of(tooDeep)), 1, false));
+        assertTrue(depthFailure.getMessage().contains("嵌套"));
+    }
+
+    @Test
+    void realPgArrayIsMaterializedBeforeItsDriverConnectionIsReleased() throws Exception {
+        AtomicBoolean freed = new AtomicBoolean();
+        PgArray array = pgIntArray(freed, "{1,2,3}");
+
+        QueryResult result = QueryResult.fromResultSet(singleRowResultSet(List.of(
+                new JdbcCell("values", Types.ARRAY, "_int4", array))), 1, 0);
+
+        assertTrue(freed.get());
+        assertEquals("[1, 2, 3]", ResultValueFormatter.format(result.rows.getFirst().getFirst()));
+        assertFalse(result.rows.getFirst().getFirst() instanceof java.sql.Array);
+    }
+
+    @Test
+    void oracleDatumsDetachWithoutKeepingMutableDriverStateOrRequiringAConnection() throws Exception {
+        RAW raw = new RAW(new byte[]{10, 11});
+        BOOLEAN bool = new BOOLEAN(true);
+        TIMESTAMPLTZ localTimestamp = new TIMESTAMPLTZ(
+                new byte[]{120, 126, 8, 29, 11, 12, 13});
+        OffsetDateTime localTimestampValue = OffsetDateTime.parse("2026-08-29T10:11:12+08:00");
+        QueryResult result = assertDoesNotThrow(() -> QueryResult.fromResultSet(singleRowResultSet(List.of(
+                new JdbcCell("raw_value", Types.OTHER, "RAW", raw),
+                new JdbcCell("boolean_value", Types.OTHER, "BOOLEAN", bool),
+                new JdbcCell("local_timestamp", Types.TIMESTAMP_WITH_TIMEZONE,
+                        "TIMESTAMP WITH LOCAL TIME ZONE", localTimestamp)),
+                Map.of(3, localTimestampValue)), 1, 0));
+
+        raw.setBytes(new byte[]{12, 13});
+        bool.setBytes(new byte[]{0});
+        localTimestamp.setBytes(new byte[]{1, 2, 3});
+
+        assertEquals(List.of("0A0B", "true", "2026-08-29 10:11:12+08:00"),
+                result.rows.getFirst().stream().map(ResultValueFormatter::format).toList());
+        assertTrue(result.rows.getFirst().stream()
+                .noneMatch(value -> value.getClass().getName().startsWith("oracle.")));
+        assertEquals(List.of(0), LocalResultFilter.visibleRowIndexes(result, "", List.of(
+                new FilterCondition(2, FilterConnector.AND, FilterOperator.EQ,
+                        OffsetDateTime.parse("2026-08-29T02:11:12Z")))));
+        assertEquals(List.of(0), LocalResultFilter.visibleRowIndexes(result, "", List.of(
+                new FilterCondition(2, FilterConnector.AND, FilterOperator.GT,
+                        localTimestampValue.minusSeconds(1)))));
+        assertEquals(List.of(0), LocalResultFilter.visibleRowIndexes(result, "", List.of(
+                new FilterCondition(2, FilterConnector.AND, FilterOperator.LT,
+                        localTimestampValue.plusSeconds(1)))));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void oracleBfileDetachesItsLogicalNameWithoutRetainingTheLocator() throws Exception {
+        String[] logicalName = {"MEDIA_DIR", "payload.bin"};
+        BFILE locator = new BFILE(oracleConnectionStub()) {
+            @Override
+            public String getDirAlias() {
+                return logicalName[0];
+            }
+
+            @Override
+            public String getName() {
+                return logicalName[1];
+            }
+        };
+
+        QueryResult result = assertDoesNotThrow(() -> QueryResult.fromResultSet(singleRowResultSet(List.of(
+                new JdbcCell("attachment", Types.OTHER, "BFILE", locator))), 1, 0));
+        logicalName[0] = "CHANGED_DIR";
+        logicalName[1] = "changed.bin";
+
+        Object frozen = result.rows.getFirst().getFirst();
+        assertEquals("BFILE[MEDIA_DIR, payload.bin]", ResultValueFormatter.format(frozen));
+        assertFalse(frozen.getClass().getName().startsWith("oracle."));
     }
 
     private static CachedRowSet resultSetWithRows(int count) throws java.sql.SQLException {
@@ -261,6 +488,115 @@ class QueryResultMetadataTest {
                     }
                     default -> defaultValue(method.getReturnType());
                 });
+    }
+
+    private static ResultSet singleRowResultSet(List<JdbcCell> cells) {
+        return singleRowResultSet(cells, Map.of());
+    }
+
+    private static ResultSet singleRowResultSet(List<JdbcCell> cells, Map<Integer, Object> typedValues) {
+        ResultSetMetaData metadata = (ResultSetMetaData) Proxy.newProxyInstance(
+                ResultSetMetaData.class.getClassLoader(), new Class<?>[]{ResultSetMetaData.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "getColumnCount" -> cells.size();
+                    case "getColumnLabel" -> cells.get((int) args[0] - 1).label();
+                    case "getColumnType" -> cells.get((int) args[0] - 1).jdbcType();
+                    case "getColumnTypeName" -> cells.get((int) args[0] - 1).jdbcTypeName();
+                    default -> defaultValue(method.getReturnType());
+                });
+        AtomicBoolean beforeRow = new AtomicBoolean(true);
+        return (ResultSet) Proxy.newProxyInstance(ResultSet.class.getClassLoader(),
+                new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getMetaData" -> metadata;
+                    case "next" -> beforeRow.getAndSet(false);
+                    case "getObject" -> args.length == 2
+                            ? typedValues.get((int) args[0]) : cells.get((int) args[0] - 1).value();
+                    default -> defaultValue(method.getReturnType());
+                });
+    }
+
+    private static oracle.jdbc.internal.OracleConnection oracleConnectionStub() {
+        oracle.jdbc.internal.Monitor.CloseableLock lock =
+                oracle.jdbc.internal.Monitor.newDefaultLock();
+        return (oracle.jdbc.internal.OracleConnection) Proxy.newProxyInstance(
+                QueryResultMetadataTest.class.getClassLoader(),
+                new Class<?>[]{oracle.jdbc.internal.OracleConnection.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("physicalConnectionWithin")) return proxy;
+                    if (method.getName().equals("getMonitorLock")) return lock;
+                    if (method.isDefault()) {
+                        return java.lang.reflect.InvocationHandler.invokeDefault(
+                                proxy, method, args == null ? new Object[0] : args);
+                    }
+                    return defaultValue(method.getReturnType());
+                });
+    }
+
+    private static void assertPrimaryFailureStillFrees(
+            Class<?> resourceType, int jdbcType, String typeName, String failingMethod) {
+        AtomicBoolean freed = new AtomicBoolean();
+        String primaryMessage = "primary " + typeName;
+        String cleanupMessage = "cleanup " + typeName;
+        Object resource = Proxy.newProxyInstance(QueryResultMetadataTest.class.getClassLoader(),
+                new Class<?>[]{resourceType}, (proxy, method, args) -> {
+                    if (method.getName().equals("length")) return 10L;
+                    if (method.getName().equals(failingMethod)) throw new SQLException(primaryMessage);
+                    if (method.getName().equals("free")) {
+                        freed.set(true);
+                        throw new SQLException(cleanupMessage);
+                    }
+                    return defaultValue(method.getReturnType());
+                });
+
+        SQLException failure = assertThrows(SQLException.class, () -> QueryResult.fromResultSet(
+                singleRowResultSet(List.of(new JdbcCell("value", jdbcType, typeName, resource))), 1, 0));
+
+        assertEquals(primaryMessage, failure.getMessage());
+        assertTrue(freed.get(), typeName + " must be freed after a read failure");
+        assertEquals(1, failure.getSuppressed().length);
+        assertEquals(cleanupMessage, failure.getSuppressed()[0].getMessage());
+    }
+
+    private static PgArray pgIntArray(AtomicBoolean freed, String literal) throws SQLException {
+        TypeInfo typeInfo = proxy(TypeInfo.class, (method, args) -> switch (method.getName()) {
+            case "getPGArrayElement" -> 23;
+            case "getArrayDelimiter" -> ',';
+            case "getPGType" -> "int4";
+            case "getSQLType" -> Types.INTEGER;
+            case "getJavaClass" -> Integer.class.getName();
+            default -> defaultValue(method.getReturnType());
+        });
+        BaseConnection connection = proxy(BaseConnection.class, (method, args) ->
+                method.getName().equals("getTypeInfo") ? typeInfo : defaultValue(method.getReturnType()));
+        return new PgArray(connection, 1007, literal) {
+            @Override
+            public void free() throws SQLException {
+                freed.set(true);
+                super.free();
+            }
+        };
+    }
+
+    private static String binaryPreview(byte[] value) {
+        StringBuilder preview = new StringBuilder();
+        int displayed = Math.min(64, value.length);
+        for (int index = 0; index < displayed; index++) {
+            preview.append(String.format("%02x", value[index]));
+        }
+        if (value.length > displayed) preview.append("...(").append(value.length).append(" bytes)");
+        return preview.toString();
+    }
+
+    private static <T> T proxy(Class<T> type, MethodHandler handler) {
+        return type.cast(Proxy.newProxyInstance(QueryResultMetadataTest.class.getClassLoader(),
+                new Class<?>[]{type}, (proxy, method, args) -> handler.invoke(method, args)));
+    }
+
+    @FunctionalInterface
+    private interface MethodHandler {
+        Object invoke(java.lang.reflect.Method method, Object[] arguments) throws Throwable;
+    }
+
+    private record JdbcCell(String label, int jdbcType, String jdbcTypeName, Object value) {
     }
 
     private static Object defaultValue(Class<?> type) {
