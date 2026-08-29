@@ -3,7 +3,6 @@ package com.datacube.spi.model;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -149,14 +148,6 @@ public final class QueryResult {
             String s = c.getSubString(1, (int) Math.min(500, len));
             c.free();
             return s + (len > 500 ? "..." : "");
-        }
-        if (v instanceof byte[]) {
-            byte[] b = (byte[]) v;
-            if (b.length > 64) {
-                StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < 64; i++) sb.append(String.format("%02x", b[i]));
-                return sb.append("...(").append(b.length).append(" bytes)").toString();
-            }
         }
         // Oracle BLOB 返回 java.sql.Blob（而非 byte[]）：取前 64 字节 hex 预览
         if (v instanceof java.sql.Blob) {
