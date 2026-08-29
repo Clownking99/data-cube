@@ -1442,6 +1442,7 @@ class SqlEditorResultFilterContractTest {
                 new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
                     case "getMetaData" -> metadata;
                     case "next" -> beforeRow.getAndSet(false);
+                    case "getCharacterStream" -> new java.io.StringReader(text);
                     case "getString" -> text;
                     case "getObject" -> driverJson;
                     default -> defaultValue(method.getReturnType());
