@@ -3,6 +3,7 @@ package com.datacube.spi.model;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -129,7 +130,8 @@ public final class QueryResult {
         while (rowCount < max && rs.next()) {
             List<Object> row = new ArrayList<>(colCount);
             for (int i = 1; i <= colCount; i++) {
-                row.add(readCell(rs, i, md.getColumnType(i)));
+                ResultColumn column = metadata.get(i - 1);
+                row.add(readCell(rs, i, column.jdbcType(), column.jdbcTypeName()));
             }
             data.add(row);
             rowCount++;
@@ -138,7 +140,12 @@ public final class QueryResult {
         return queryWithMetadata(metadata, data, elapsedMillis, truncated);
     }
 
-    private static Object readCell(ResultSet rs, int idx, int sqlType) throws SQLException {
+    private static Object readCell(ResultSet rs, int idx, int sqlType, String typeName)
+            throws SQLException {
+        if (sqlType == Types.OTHER
+                && ("json".equalsIgnoreCase(typeName) || "jsonb".equalsIgnoreCase(typeName))) {
+            return rs.getString(idx);
+        }
         Object v = rs.getObject(idx);
         if (v == null) return null;
         // 大字段截断

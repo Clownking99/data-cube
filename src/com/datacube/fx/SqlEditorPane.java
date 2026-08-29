@@ -406,6 +406,7 @@ public final class SqlEditorPane implements AutoCloseable {
                     CloseDecision.CANCEL_ROLLBACK);
             admission.beginClosing();
             sessionOperations.stopAcceptingAndCancelQueued();
+            sessionOperations.suppressCallbacks();
             Thread.startVirtualThread(() -> result.complete(closeMandatoryInBackground(plan)));
         } catch (Throwable failure) {
             reportMandatoryCloseFailure(failure);
@@ -432,6 +433,7 @@ public final class SqlEditorPane implements AutoCloseable {
             result.complete(CloseGuardOutcome.REJECTED);
             return;
         }
+        sessionOperations.suppressCallbacks();
         try {
             Thread.startVirtualThread(() -> {
                 try {
@@ -1665,6 +1667,18 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void showScriptResults(List<ScriptOutcome> outcomes, long totalElapsed) {
+        if (outcomes != null && outcomes.size() == 1) {
+            ScriptOutcome outcome = outcomes.getFirst();
+            QueryResult result = outcome.result();
+            if (result.kind == QueryResult.Kind.QUERY) {
+                if (showQueryResult(result, outcome.sql())) {
+                    statusLabel.setText("OK - " + formatResultRowCount(result)
+                            + " - " + result.elapsedMillis + "ms");
+                    statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
+                }
+                return;
+            }
+        }
         clearResultFilterState();
         useTable();
         exportResultBtn.setDisable(true);
@@ -1692,13 +1706,7 @@ public final class SqlEditorPane implements AutoCloseable {
         } else {
             QueryResult r = outcomes.get(0).result();
             switch (r.kind) {
-                case QUERY -> {
-                    lastQuerySql = outcomes.get(0).sql();
-                    showQueryResult(r);
-                    statusLabel.setText("OK - " + formatResultRowCount(r)
-                            + " - " + r.elapsedMillis + "ms");
-                    statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
-                }
+                case QUERY -> throw new IllegalStateException("single query handled before reset");
                 case UPDATE -> {
                     statusLabel.setText("OK - " + r.updateCount + " rows affected - " + r.elapsedMillis + "ms");
                     statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
@@ -1729,8 +1737,22 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void showQueryResult(QueryResult r) {
         String sql = lastQuerySql == null ? "" : lastQuerySql;
-        resultFilterState.showOriginal(r, sql, databaseFilterUnavailableReason(sql, r));
+        showQueryResult(r, sql);
+    }
+
+    private boolean showQueryResult(QueryResult result, String sql) {
+        String candidateSql = sql == null ? "" : sql;
+        try {
+            resultFilterState.showOriginal(result, candidateSql,
+                    databaseFilterUnavailableReason(candidateSql, result));
+        } catch (RuntimeException failure) {
+            statusLabel.setText("无法显示新查询结果，仍显示当前结果：" + message(failure));
+            statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
+            return false;
+        }
+        lastQuerySql = candidateSql;
         renderResultFilterSnapshot();
+        return true;
     }
 
     private void renderResultFilterSnapshot() {

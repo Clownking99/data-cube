@@ -4,10 +4,17 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.sql.rowset.CachedRowSet;
 import javax.sql.rowset.RowSetMetaDataImpl;
 import javax.sql.rowset.RowSetProvider;
+import org.postgresql.util.PGobject;
 import org.junit.jupiter.api.Test;
 
 class QueryResultMetadataTest {
@@ -70,6 +77,70 @@ class QueryResultMetadataTest {
         assertEquals(1, QueryResult.fromResultSet(resultSetWithRows(1), 0, -1).rows.size());
     }
 
+    @Test
+    void resultSetReaderExtractsPostgresJsonAsTextWithoutChangingOtherValues() throws Exception {
+        String jsonText = "{\"name\":\"Ada\",\"active\":true}";
+        PGobject driverJson = new PGobject();
+        driverJson.setType("jsonb");
+        driverJson.setValue(jsonText);
+        UUID uuid = UUID.fromString("48b46e93-674d-49c4-8e97-50fcb72f99df");
+        AtomicInteger jsonGetObjectCalls = new AtomicInteger();
+        AtomicInteger jsonGetStringCalls = new AtomicInteger();
+        AtomicInteger uuidGetObjectCalls = new AtomicInteger();
+        AtomicInteger uuidGetStringCalls = new AtomicInteger();
+
+        QueryResult result = QueryResult.fromResultSet(otherTypesResultSet(
+                driverJson, jsonText, uuid,
+                jsonGetObjectCalls, jsonGetStringCalls,
+                uuidGetObjectCalls, uuidGetStringCalls), 6, 0);
+
+        assertEquals(List.of(
+                new ResultColumn(0, "document", Types.OTHER, "JsOnB"),
+                new ResultColumn(1, "identifier", Types.OTHER, "uuid")), result.resultColumns);
+        assertEquals(jsonText, result.rows.getFirst().getFirst());
+        assertInstanceOf(String.class, result.rows.getFirst().getFirst());
+        assertSame(uuid, result.rows.getFirst().get(1),
+                "non-JSON OTHER values must preserve their JDBC object identity");
+        assertEquals(0, jsonGetObjectCalls.get(),
+                "the driver PGobject must never enter immutable result state");
+        assertEquals(1, jsonGetStringCalls.get());
+        assertEquals(1, uuidGetObjectCalls.get());
+        assertEquals(0, uuidGetStringCalls.get());
+    }
+
+    @Test
+    void resultSetReaderRecognizesTheExactJsonTypeName() throws Exception {
+        PGobject driverJson = pgObject("json", "{\"kind\":\"exact\"}");
+        AtomicInteger getObjectCalls = new AtomicInteger();
+        AtomicInteger getStringCalls = new AtomicInteger();
+
+        QueryResult result = QueryResult.fromResultSet(singleOtherTypeResultSet(
+                "json", driverJson, driverJson.getValue(), getObjectCalls, getStringCalls), 1, 0);
+
+        assertEquals(driverJson.getValue(), result.rows.getFirst().getFirst());
+        assertInstanceOf(String.class, result.rows.getFirst().getFirst());
+        assertEquals(0, getObjectCalls.get());
+        assertEquals(1, getStringCalls.get());
+    }
+
+    @Test
+    void resultSetReaderDoesNotTreatNearJsonTypeNamesAsJson() throws Exception {
+        for (String typeName : List.of("jsonpath", "jsonb ", " json")) {
+            PGobject driverValue = pgObject(typeName, "{\"kind\":\"near\"}");
+            AtomicInteger getObjectCalls = new AtomicInteger();
+            AtomicInteger getStringCalls = new AtomicInteger();
+
+            QueryResult result = QueryResult.fromResultSet(singleOtherTypeResultSet(
+                    typeName, driverValue, driverValue.getValue(),
+                    getObjectCalls, getStringCalls), 1, 0);
+
+            assertSame(driverValue, result.rows.getFirst().getFirst(), typeName);
+            assertEquals(typeName, result.resultColumns.getFirst().jdbcTypeName());
+            assertEquals(1, getObjectCalls.get(), typeName);
+            assertEquals(0, getStringCalls.get(), typeName);
+        }
+    }
+
     private static CachedRowSet resultSetWithRows(int count) throws java.sql.SQLException {
         RowSetMetaDataImpl metadata = new RowSetMetaDataImpl();
         metadata.setColumnCount(1);
@@ -110,5 +181,98 @@ class QueryResultMetadataTest {
         rows.moveToCurrentRow();
         rows.beforeFirst();
         return rows;
+    }
+
+    private static ResultSet otherTypesResultSet(
+            PGobject driverJson, String jsonText, UUID uuid,
+            AtomicInteger jsonGetObjectCalls, AtomicInteger jsonGetStringCalls,
+            AtomicInteger uuidGetObjectCalls, AtomicInteger uuidGetStringCalls) {
+        ResultSetMetaData metadata = (ResultSetMetaData) Proxy.newProxyInstance(
+                ResultSetMetaData.class.getClassLoader(), new Class<?>[]{ResultSetMetaData.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "getColumnCount" -> 2;
+                    case "getColumnLabel" -> (int) args[0] == 1 ? "document" : "identifier";
+                    case "getColumnType" -> Types.OTHER;
+                    case "getColumnTypeName" -> (int) args[0] == 1 ? "JsOnB" : "uuid";
+                    case "isWrapperFor" -> false;
+                    case "unwrap" -> null;
+                    default -> defaultValue(method.getReturnType());
+                });
+        AtomicBoolean beforeRow = new AtomicBoolean(true);
+        return (ResultSet) Proxy.newProxyInstance(ResultSet.class.getClassLoader(),
+                new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getMetaData" -> metadata;
+                    case "next" -> beforeRow.getAndSet(false);
+                    case "getObject" -> {
+                        int index = (int) args[0];
+                        if (index == 1) {
+                            jsonGetObjectCalls.incrementAndGet();
+                            yield driverJson;
+                        }
+                        uuidGetObjectCalls.incrementAndGet();
+                        yield uuid;
+                    }
+                    case "getString" -> {
+                        int index = (int) args[0];
+                        if (index == 1) {
+                            jsonGetStringCalls.incrementAndGet();
+                            yield jsonText;
+                        }
+                        uuidGetStringCalls.incrementAndGet();
+                        yield uuid.toString();
+                    }
+                    case "isWrapperFor" -> false;
+                    case "unwrap" -> null;
+                    default -> defaultValue(method.getReturnType());
+                });
+    }
+
+    private static PGobject pgObject(String typeName, String value) throws java.sql.SQLException {
+        PGobject object = new PGobject();
+        object.setType(typeName);
+        object.setValue(value);
+        return object;
+    }
+
+    private static ResultSet singleOtherTypeResultSet(
+            String typeName, Object objectValue, String stringValue,
+            AtomicInteger getObjectCalls, AtomicInteger getStringCalls) {
+        ResultSetMetaData metadata = (ResultSetMetaData) Proxy.newProxyInstance(
+                ResultSetMetaData.class.getClassLoader(), new Class<?>[]{ResultSetMetaData.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "getColumnCount" -> 1;
+                    case "getColumnLabel" -> "value";
+                    case "getColumnType" -> Types.OTHER;
+                    case "getColumnTypeName" -> typeName;
+                    default -> defaultValue(method.getReturnType());
+                });
+        AtomicBoolean beforeRow = new AtomicBoolean(true);
+        return (ResultSet) Proxy.newProxyInstance(ResultSet.class.getClassLoader(),
+                new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getMetaData" -> metadata;
+                    case "next" -> beforeRow.getAndSet(false);
+                    case "getObject" -> {
+                        getObjectCalls.incrementAndGet();
+                        yield objectValue;
+                    }
+                    case "getString" -> {
+                        getStringCalls.incrementAndGet();
+                        yield stringValue;
+                    }
+                    default -> defaultValue(method.getReturnType());
+                });
+    }
+
+    private static Object defaultValue(Class<?> type) {
+        if (!type.isPrimitive()) return null;
+        if (type == boolean.class) return false;
+        if (type == char.class) return '\0';
+        if (type == byte.class) return (byte) 0;
+        if (type == short.class) return (short) 0;
+        if (type == int.class) return 0;
+        if (type == long.class) return 0L;
+        if (type == float.class) return 0F;
+        if (type == double.class) return 0D;
+        return null;
     }
 }
