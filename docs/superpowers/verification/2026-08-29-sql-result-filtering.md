@@ -4,23 +4,36 @@
 
 本次验收覆盖 SQL 结果元数据与原始值保留、截断事实、本地搜索和类型化条件、安全的
 provider SQL 渲染、参数化会话执行、JavaFX 紧凑工具栏、非破坏性失败、TSV 复制，以及
-编辑器生命周期回归。审阅范围固定为
-`6962807ad17ec6587541e8fc9f18155a2506e491..HEAD`；不使用相对 `HEAD~N` 范围。
+编辑器生命周期回归。实现审阅范围固定为
+`6962807ad17ec6587541e8fc9f18155a2506e491..e2a07e1b0d904ceae03d63904b463efd36f2a065`；
+不使用相对提交范围。验收文档的首个独立提交为
+`ac2da54643590d746b18f91f6164632b11c801d3`，不属于上述实现范围。
 
 ## Commands and observed results
 
 环境：2026-08-29（Asia/Shanghai，UTC+08:00）；Windows 11 10.0 amd64；PowerShell
 7.6.4；Temurin OpenJDK 25.0.1+8 LTS；Gradle 9.2.0；工作目录
-`D:\Projects\朝花夕拾`。为实际运行 JavaFX 用例而非 headless 运行，两个 Gradle 调用
-均设置了 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`；Gradle 和 `:test` 输出均确认
+`D:\Projects\朝花夕拾`。为实际运行 JavaFX 用例而非 headless 运行，先在同一 PowerShell
+会话执行下列可复制命令；Gradle 和 `:test` 输出均确认
 `Picked up JAVA_TOOL_OPTIONS: -Djava.awt.headless=false`。
+
+```powershell
+$env:JAVA_TOOL_OPTIONS='-Djava.awt.headless=false'
+./gradlew test --tests "com.datacube.spi.model.QueryResultMetadataTest" --tests "com.datacube.sqleditor.result.*" --tests "com.datacube.provider.*.*ResultFilterSqlRendererTest" --tests "com.datacube.provider.jdbc.JdbcPreparedQueryExecutorTest" --tests "com.datacube.fx.SqlResultToolbarTest" --tests "com.datacube.fx.SqlEditorResultFilterContractTest" --no-daemon --console=plain --rerun-tasks
+
+$env:JAVA_TOOL_OPTIONS='-Djava.awt.headless=false'
+./gradlew clean test --no-daemon --console=plain
+```
 
 | 时间（UTC+08:00） | 实际命令 | 用例结果 | 用时 | 构建结果 |
 | --- | --- | --- | --- | --- |
-| 2026-08-29 21:09:36–21:10:06 | `./gradlew test --tests "com.datacube.spi.model.QueryResultMetadataTest" --tests "com.datacube.sqleditor.result.*" --tests "com.datacube.provider.*.*ResultFilterSqlRendererTest" --tests "com.datacube.provider.jdbc.JdbcPreparedQueryExecutorTest" --tests "com.datacube.fx.SqlResultToolbarTest" --tests "com.datacube.fx.SqlEditorResultFilterContractTest" --no-daemon --console=plain` | 142 total；0 failures；0 errors；0 skipped | 29.816 s（Gradle 显示 28 s） | `BUILD SUCCESSFUL` |
-| 2026-08-29 21:08:42–21:09:05 | `./gradlew clean test --no-daemon --console=plain` | 980 total；0 failures；0 errors；3 skipped | 23.225 s（Gradle 显示 23 s） | `BUILD SUCCESSFUL` |
+| 2026-08-29 21:23:59–21:24:17 | 上述聚焦命令（含 `--rerun-tasks`） | 142 total；0 failures；0 errors；0 skipped | 18.041 s（Gradle 显示 17 s） | `BUILD SUCCESSFUL` |
+| 2026-08-29 21:24:32–21:24:55 | 上述 `clean test` 命令 | 980 total；0 failures；0 errors；3 skipped | 23.422 s（Gradle 显示 23 s） | `BUILD SUCCESSFUL` |
 
-聚焦集由 10 个 JUnit XML suite 汇总；总计 142 项，且没有跳过项。
+聚焦集由当时 10 个 JUnit XML suite 汇总；总计 142 项，且没有跳过项。随后运行的
+`clean test` 是最后一个测试命令，因此当前 `build/test-results/test` 保留的是可复核的
+全量证据：126 个 suite、980 项、3 项跳过。聚焦计数以该次已记录的命令输出和即时 XML
+汇总为依据，不声称当前 XML 仍保存聚焦集。
 
 完整集的 3 个跳过均为现有显式 assumption，而非失败：
 
@@ -28,9 +41,9 @@ provider SQL 渲染、参数化会话执行、JavaFX 紧凑工具栏、非破坏
 - Oracle Schema Diff live smoke：缺少显式写入门禁及完整 provider 环境。
 - PostgreSQL Schema Diff live smoke：缺少显式写入门禁及完整 provider 环境。
 
-首次尝试把 `-Djava.awt.headless=false` 直接作为 Gradle 参数传入时，当前 Gradle 包装将其
-拆解为不存在的任务 `.awt.headless=false`，测试任务没有启动；该次 5.117 s 的命令错误未纳入
-上表。之后改用上述标准 JVM 环境变量，命令按简报执行并得到表中的结果。
+一次未带 `--rerun-tasks` 的聚焦调用被 Gradle 判为 `UP-TO-DATE`，不作为实际运行证据；
+上表使用其后的强制重跑结果。所有表中命令均通过上述 `JAVA_TOOL_OPTIONS` 环境变量强制
+非 headless JVM。
 
 ## Safety assertions
 
@@ -59,7 +72,7 @@ provider SQL 渲染测试和 JavaFX 实际运行作为本地证据，不把它�
 
 ## Reviewed commits
 
-验收起点：`6962807ad17ec6587541e8fc9f18155a2506e491`。
+实现验收范围：`6962807ad17ec6587541e8fc9f18155a2506e491..e2a07e1b0d904ceae03d63904b463efd36f2a065`。
 
 | Task | 交付重点 | 主提交 | 验收证据 |
 | --- | --- | --- | --- |
@@ -71,8 +84,9 @@ provider SQL 渲染测试和 JavaFX 实际运行作为本地证据，不把它�
 | 6 | JavaFX 工具栏与条件对话框 | `4a8e0b515a1950aecf2009940753250b5c2a84e8` | 非 headless `SqlResultToolbarTest` |
 | 7 | 编辑器接线、复制和安全重查 | `2d5194e7a1fc8dbb7c4a53e30266be069824d008` | 非 headless `SqlEditorResultFilterContractTest` |
 
-同一固定范围还包含针对上述交付的边界与回归修复，最后一个实现修复为
+实现范围还包含针对上述交付的边界与回归修复，范围终点为
 `e2a07e1b0d904ceae03d63904b463efd36f2a065`（`fix: 修复 SQL 结果筛选跨层回归`）。
-在写入本记录前，已检查固定范围的变更清单（43 个实现/测试文件，6,241 additions、98
-deletions）和 `git diff --check 6962807ad17ec6587541e8fc9f18155a2506e491..HEAD`；未报告
-空白错误。
+该显式范围的变更清单为 43 个实现/测试文件、6,241 additions、98 deletions；
+`git diff --check 6962807ad17ec6587541e8fc9f18155a2506e491..e2a07e1b0d904ceae03d63904b463efd36f2a065`
+未报告空白错误。Task 8 验收文档首个独立提交
+`ac2da54643590d746b18f91f6164632b11c801d3` 会与后续文档更正提交单独执行空白检查。
