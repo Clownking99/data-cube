@@ -1,11 +1,15 @@
 package com.datacube.sqleditor.result;
 
 import com.datacube.spi.model.QueryResult;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
-/** Pure state model for local and database-backed result filtering. */
+/** Pure, synchronized state model for local and database-backed result filtering. */
 public final class ResultFilterState {
+    private static final long NO_IN_FLIGHT = -1L;
+
     public enum DatabaseStatus { ORIGINAL, LOCAL_PREVIEW, APPLIED, DIRTY_AFTER_APPLY }
 
     public record DatabaseFilterRequest(
@@ -15,7 +19,7 @@ public final class ResultFilterState {
         }
     }
 
-    /** A database filter request paired with the generation that owns its completion. */
+    /** An immutable database filter payload paired with its one-shot completion token. */
     public record DatabaseRequest(long generation, DatabaseFilterRequest filter) {
     }
 
@@ -39,33 +43,49 @@ public final class ResultFilterState {
     private DatabaseStatus databaseStatus = DatabaseStatus.ORIGINAL;
     private String databaseUnavailableReason;
     private String recoverableError;
-    private long databaseGeneration;
+    private long nextGeneration;
+    private long inFlightGeneration = NO_IN_FLIGHT;
+    private boolean generationProtocolUsed;
 
     public synchronized void showOriginal(QueryResult result, String sql, String unavailableReason) {
-        originalResult = Objects.requireNonNull(result, "result");
-        activeResult = result;
-        originalSql = Objects.requireNonNull(sql, "sql");
+        QueryResult copied = copyResult(Objects.requireNonNull(result, "result"));
+        String candidateSql = Objects.requireNonNull(sql, "sql");
+        List<Integer> indexes = indexesFor(copied, "", List.of());
+
+        originalResult = copied;
+        activeResult = copied;
+        originalSql = candidateSql;
         searchText = "";
         conditions = List.of();
+        visibleRowIndexes = indexes;
         databaseStatus = DatabaseStatus.ORIGINAL;
         databaseUnavailableReason = unavailableReason;
         recoverableError = null;
-        invalidateDatabaseRequests();
-        recompute();
+        invalidateRequests();
     }
 
     public synchronized void setSearchText(String value) {
-        searchText = value == null ? "" : value;
-        markPreview();
-        invalidateDatabaseRequests();
-        recompute();
+        String candidateSearch = value == null ? "" : value;
+        DatabaseStatus candidateStatus = previewStatus(candidateSearch, conditions);
+        List<Integer> indexes = indexesFor(activeResult, candidateSearch, conditions);
+
+        searchText = candidateSearch;
+        visibleRowIndexes = indexes;
+        databaseStatus = candidateStatus;
+        recoverableError = null;
+        invalidateRequests();
     }
 
     public synchronized void setConditions(List<FilterCondition> value) {
-        conditions = List.copyOf(value);
-        markPreview();
-        invalidateDatabaseRequests();
-        recompute();
+        List<FilterCondition> candidateConditions = List.copyOf(value);
+        DatabaseStatus candidateStatus = previewStatus(searchText, candidateConditions);
+        List<Integer> indexes = indexesFor(activeResult, searchText, candidateConditions);
+
+        conditions = candidateConditions;
+        visibleRowIndexes = indexes;
+        databaseStatus = candidateStatus;
+        recoverableError = null;
+        invalidateRequests();
     }
 
     public synchronized DatabaseFilterRequest databaseRequest() {
@@ -78,43 +98,61 @@ public final class ResultFilterState {
         return new DatabaseFilterRequest(originalSql, originalResult, conditions);
     }
 
-    /** Starts an asynchronous request and returns its generation-bound immutable payload. */
+    /** Starts a request. Only the matching token may complete it, once. */
     public synchronized DatabaseRequest beginDatabaseRequest() {
-        return new DatabaseRequest(++databaseGeneration, databaseRequest());
+        DatabaseFilterRequest request = databaseRequest();
+        long generation = nextGeneration + 1;
+        nextGeneration = generation;
+        inFlightGeneration = generation;
+        generationProtocolUsed = true;
+        return new DatabaseRequest(generation, request);
     }
 
+    /**
+     * Compatibility entry point for synchronous callers. It is unavailable once a generation-aware
+     * request has been started, so it cannot overwrite an asynchronously protected result.
+     */
     public synchronized void databaseApplied(QueryResult result) {
-        applyDatabaseResult(result);
-        invalidateDatabaseRequests();
+        rejectUnsafeUntaggedCompletion();
+        AppliedCandidate candidate = appliedCandidate(result);
+        commitApplied(candidate);
     }
 
-    /** Applies a result only when it belongs to the most recently started request. */
+    /** Applies a result only when it belongs to the current in-flight request. */
     public synchronized boolean databaseApplied(long generation, QueryResult result) {
-        if (generation != databaseGeneration) return false;
-        applyDatabaseResult(result);
+        if (generation != inFlightGeneration) return false;
+        AppliedCandidate candidate = appliedCandidate(result);
+        commitApplied(candidate);
+        inFlightGeneration = NO_IN_FLIGHT;
         return true;
     }
 
+    /** See {@link #databaseApplied(QueryResult)} for the compatibility safety rule. */
     public synchronized void databaseFailed(String message) {
-        recoverableError = failureMessage(message);
-        recompute();
+        rejectUnsafeUntaggedCompletion();
+        FailureCandidate candidate = failureCandidate(message);
+        commitFailure(candidate);
     }
 
-    /** Records a failure only when it belongs to the most recently started request. */
+    /** Records a failure only when it belongs to the current in-flight request. */
     public synchronized boolean databaseFailed(long generation, String message) {
-        if (generation != databaseGeneration) return false;
-        databaseFailed(message);
+        if (generation != inFlightGeneration) return false;
+        FailureCandidate candidate = failureCandidate(message);
+        commitFailure(candidate);
+        inFlightGeneration = NO_IN_FLIGHT;
         return true;
     }
 
     public synchronized void clearFilters() {
+        List<Integer> indexes = indexesFor(originalResult, "", List.of());
+
         activeResult = originalResult;
         searchText = "";
         conditions = List.of();
+        visibleRowIndexes = indexes;
         databaseStatus = DatabaseStatus.ORIGINAL;
         recoverableError = null;
-        invalidateDatabaseRequests();
-        recompute();
+        invalidateRequests();
     }
 
     public synchronized void clearAll() {
@@ -127,7 +165,7 @@ public final class ResultFilterState {
         databaseStatus = DatabaseStatus.ORIGINAL;
         databaseUnavailableReason = null;
         recoverableError = null;
-        invalidateDatabaseRequests();
+        invalidateRequests();
     }
 
     public synchronized Snapshot snapshot() {
@@ -136,36 +174,93 @@ public final class ResultFilterState {
                 databaseUnavailableReason, recoverableError);
     }
 
-    private void applyDatabaseResult(QueryResult result) {
-        activeResult = Objects.requireNonNull(result, "result");
+    private AppliedCandidate appliedCandidate(QueryResult result) {
+        QueryResult copied = copyResult(Objects.requireNonNull(result, "result"));
+        return new AppliedCandidate(copied, indexesFor(copied, searchText, conditions));
+    }
+
+    private FailureCandidate failureCandidate(String message) {
+        return new FailureCandidate(failureMessage(message), indexesFor(activeResult, searchText, conditions));
+    }
+
+    private void commitApplied(AppliedCandidate candidate) {
+        activeResult = candidate.result();
+        visibleRowIndexes = candidate.visibleIndexes();
         databaseStatus = DatabaseStatus.APPLIED;
         recoverableError = null;
-        recompute();
     }
 
-    private void markPreview() {
-        boolean empty = searchText.isBlank() && conditions.isEmpty();
-        if (empty && activeResult == originalResult) {
-            databaseStatus = DatabaseStatus.ORIGINAL;
-        } else if (databaseStatus == DatabaseStatus.APPLIED
-                || databaseStatus == DatabaseStatus.DIRTY_AFTER_APPLY) {
-            databaseStatus = DatabaseStatus.DIRTY_AFTER_APPLY;
-        } else {
-            databaseStatus = DatabaseStatus.LOCAL_PREVIEW;
+    private void commitFailure(FailureCandidate candidate) {
+        visibleRowIndexes = candidate.visibleIndexes();
+        recoverableError = candidate.message();
+    }
+
+    private DatabaseStatus previewStatus(String candidateSearch, List<FilterCondition> candidateConditions) {
+        boolean empty = candidateSearch.isEmpty() && candidateConditions.isEmpty();
+        if (empty && activeResult == originalResult) return DatabaseStatus.ORIGINAL;
+        if (databaseStatus == DatabaseStatus.APPLIED || databaseStatus == DatabaseStatus.DIRTY_AFTER_APPLY) {
+            return DatabaseStatus.DIRTY_AFTER_APPLY;
         }
-        recoverableError = null;
+        return DatabaseStatus.LOCAL_PREVIEW;
     }
 
-    private void invalidateDatabaseRequests() {
-        databaseGeneration++;
+    private void invalidateRequests() {
+        nextGeneration++;
+        inFlightGeneration = NO_IN_FLIGHT;
+    }
+
+    private void rejectUnsafeUntaggedCompletion() {
+        if (generationProtocolUsed || inFlightGeneration != NO_IN_FLIGHT) {
+            throw new IllegalStateException("异步数据库筛选必须使用 generation 完成请求");
+        }
+    }
+
+    private static List<Integer> indexesFor(
+            QueryResult result, String search, List<FilterCondition> filters) {
+        return result == null ? List.of() : LocalResultFilter.visibleRowIndexes(result, search, filters);
     }
 
     private static String failureMessage(String message) {
         return message == null ? "数据库筛选失败" : message;
     }
 
-    private void recompute() {
-        visibleRowIndexes = activeResult == null ? List.of()
-                : LocalResultFilter.visibleRowIndexes(activeResult, searchText, conditions);
+    private static QueryResult copyResult(QueryResult source) {
+        return switch (source.kind) {
+            case QUERY -> copyQuery(source);
+            case UPDATE -> QueryResult.update(source.elapsedMillis, source.updateCount);
+            case ERROR -> copyError(source);
+        };
+    }
+
+    private static QueryResult copyQuery(QueryResult source) {
+        List<List<Object>> rows = new ArrayList<>(source.rows.size());
+        for (List<Object> row : source.rows) {
+            rows.add(immutableCopy(Objects.requireNonNull(row, "result row")));
+        }
+        QueryResult copied = QueryResult.queryWithMetadata(immutableCopy(source.resultColumns),
+                Collections.unmodifiableList(rows), source.elapsedMillis, source.truncated);
+        return source.columnComments.isEmpty() ? copied
+                : copied.withColumnComments(immutableCopy(source.columnComments));
+    }
+
+    private static QueryResult copyError(QueryResult source) {
+        QueryResult.FailureKind kind = source.failureKind;
+        if (kind == QueryResult.FailureKind.CANCELLED) {
+            return QueryResult.cancelled(source.errorMessage, source.elapsedMillis);
+        }
+        if (kind == QueryResult.FailureKind.TIMEOUT) {
+            return QueryResult.timeout(source.errorMessage, source.elapsedMillis);
+        }
+        return QueryResult.error(source.errorMessage, source.elapsedMillis);
+    }
+
+    private static <T> List<T> immutableCopy(List<? extends T> values) {
+        return Collections.unmodifiableList(new ArrayList<>(values));
+    }
+
+    private record AppliedCandidate(QueryResult result, List<Integer> visibleIndexes) {
+    }
+
+    private record FailureCandidate(String message, List<Integer> visibleIndexes) {
     }
 }
