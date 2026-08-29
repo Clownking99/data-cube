@@ -1,6 +1,8 @@
 package com.datacube.provider.postgres;
 
 import com.datacube.provider.jdbc.JdbcPreparedQueryExecutor;
+import com.datacube.provider.jdbc.JdbcDiagnostics;
+import com.datacube.provider.jdbc.JdbcStatementLimits;
 import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.spi.SqlDialect;
 import com.datacube.spi.SqlExecutionOptions;
@@ -38,6 +40,7 @@ public final class PgSqlRunner implements SqlRunner {
                 var activation = options.control().activate(stmt, options.queryTimeoutSeconds());
                 try {
                     options.control().ensureNotCancelled(activation);
+                    JdbcStatementLimits.apply(stmt, options.maxRows());
                     boolean hasResult = stmt.execute(sql);
                     long elapsed = System.currentTimeMillis() - t0;
                     if (hasResult) {
@@ -77,12 +80,12 @@ public final class PgSqlRunner implements SqlRunner {
             return JdbcPreparedQueryExecutor.execute(conn, sql, parameters, options);
         } catch (SQLTimeoutException timeout) {
             return QueryResult.timeout(
-                    timeout.getMessage(), System.currentTimeMillis() - startedAt);
+                    JdbcDiagnostics.timeout(timeout), System.currentTimeMillis() - startedAt);
         } catch (SQLException failure) {
             long elapsed = System.currentTimeMillis() - startedAt;
             return options.control().cancellationRequested()
-                    ? QueryResult.cancelled(failure.getMessage(), elapsed)
-                    : QueryResult.error(failure.getMessage(), elapsed);
+                    ? QueryResult.cancelled(JdbcDiagnostics.cancelled(failure), elapsed)
+                    : QueryResult.error(JdbcDiagnostics.sqlFailure(failure), elapsed);
         }
     }
 

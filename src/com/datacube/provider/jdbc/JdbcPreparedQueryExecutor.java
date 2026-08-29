@@ -24,6 +24,7 @@ public final class JdbcPreparedQueryExecutor {
             SqlExecutionControl.Activation activation =
                     options.control().activate(statement, options.queryTimeoutSeconds());
             try {
+                JdbcStatementLimits.apply(statement, options.maxRows());
                 for (int i = 0; i < parameters.size(); i++) {
                     parameters.get(i).bind(statement, i + 1);
                 }
@@ -37,12 +38,12 @@ public final class JdbcPreparedQueryExecutor {
             }
         } catch (SQLTimeoutException timeout) {
             return QueryResult.timeout(
-                    timeout.getMessage(), System.currentTimeMillis() - started);
+                    JdbcDiagnostics.timeout(timeout), System.currentTimeMillis() - started);
         } catch (SQLException failure) {
             long elapsed = System.currentTimeMillis() - started;
             return options.control().cancellationRequested()
-                    ? QueryResult.cancelled(failure.getMessage(), elapsed)
-                    : QueryResult.error(failure.getMessage(), elapsed);
+                    ? QueryResult.cancelled(JdbcDiagnostics.cancelled(failure), elapsed)
+                    : QueryResult.error(JdbcDiagnostics.sqlFailure(failure), elapsed);
         }
     }
 }

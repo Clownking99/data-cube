@@ -61,6 +61,29 @@ class LocalResultFilterTest {
     }
 
     @Test
+    void parserDiagnosticsNeverEchoTheRawFilterValue() {
+        String sentinel = "sentinel-parser-secret-7f3a";
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> FilterValueParser.parse(
+                        new ResultColumn(0, "SCORE", Types.INTEGER, "INTEGER"),
+                        FilterOperator.EQ, sentinel));
+
+        assertFalse(failure.getMessage().contains(sentinel));
+        assertFalse(failure.toString().contains(sentinel));
+        assertTrue(failure.getMessage().contains("SCORE"));
+    }
+
+    @Test
+    void renderedFilterDiagnosticRepresentationRedactsSqlAndParameters() {
+        String sentinel = "sentinel-rendered-secret-7f3a";
+        RenderedFilterQuery query = new RenderedFilterQuery(
+                "select " + sentinel + " where value = ?",
+                List.of(new com.datacube.spi.SqlParameter(Types.VARCHAR, sentinel)));
+
+        assertFalse(query.toString().contains(sentinel));
+    }
+
+    @Test
     void parserHandlesEverySupportedValueTypeAndRejectsInvalidValues() {
         assertEquals(9_223_372_036_854_775_807L, FilterValueParser.parse(
                 column(Types.BIGINT), FilterOperator.EQ, "9223372036854775807"));

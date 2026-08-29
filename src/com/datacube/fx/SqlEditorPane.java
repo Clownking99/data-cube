@@ -114,6 +114,9 @@ public final class SqlEditorPane implements AutoCloseable {
      /** 匹配 FROM 子句区域（至下一个子句边界或语句结束），忽略大小写与换行。 */
      private static final Pattern FROM_REGION = Pattern.compile(
              "(?is)\\bfrom\\b(.*?)(?:\\bwhere\\b|\\bgroup\\b|\\border\\b|\\bhaving\\b|\\blimit\\b|\\bunion\\b|;|$)");
+    private static final Pattern SAFE_DATABASE_FILTER_FAILURE = Pattern.compile(
+            "数据库查询(?:失败|超时|已取消)(?: \\((?:SQLState=[A-Za-z0-9]{5}"
+                    + "(?:, vendorCode=-?\\d+)?|vendorCode=-?\\d+)\\))?");
 
     private final SessionContext session;
     private final ConnectionManager connections;
@@ -990,6 +993,7 @@ public final class SqlEditorPane implements AutoCloseable {
         }
         if (!allowBySafetyPolicy(sql, active)) return;
         final String schema = schemaField.getText().trim();
+        final String effectiveSchema = schema.isEmpty() ? null : schema;
         final boolean oracle = active.type() == DbType.ORACLE;
         HistorySnapshot historySnapshot = captureHistory(sql, active, schema);
 
@@ -1003,7 +1007,7 @@ public final class SqlEditorPane implements AutoCloseable {
             JdbcEditorSession editorSession = ensureEditorSession();
             return editorSession.executeScript(
                     sql,
-                    schema.isEmpty() ? null : schema,
+                    effectiveSchema,
                     settings.getMaxResultRows(),
                     this::askScriptError,
                     oracle);
@@ -1012,7 +1016,7 @@ public final class SqlEditorPane implements AutoCloseable {
             JdbcEditorSession editorSession = jdbcSession;
             if (editorSession != null) renderSessionSnapshot(editorSession.snapshot());
             else setButtonsRunning(false);
-            showScriptResults(batch.outcomes(), batch.elapsedMillis());
+            showScriptResults(batch.outcomes(), batch.elapsedMillis(), effectiveSchema);
         }, failure -> {
             running = false;
             JdbcEditorSession editorSession = jdbcSession;
@@ -1493,26 +1497,28 @@ public final class SqlEditorPane implements AutoCloseable {
             return;
         }
 
-        String schema = schemaField.getText().trim();
-        statusLabel.setText("正在应用数据库筛选...");
+        String effectiveSchema = request.effectiveSchema();
+        statusLabel.setText("正在应用数据库筛选（" + schemaContext(effectiveSchema) + "）...");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
         try {
             submitSessionOperation(SerialSessionOperationQueue.OperationKind.EXECUTE,
                     () -> ensureEditorSession().executePrepared(
                             query.sql(), query.parameters(),
-                            schema.isEmpty() ? null : schema,
+                            effectiveSchema,
                             settings.getMaxResultRows()),
                     result -> onDatabaseFilterSucceeded(request, result),
-                    failure -> onDatabaseFilterFailed(request.generation(), message(failure)));
+                    failure -> onDatabaseFilterFailed(
+                            request.generation(), "数据库筛选执行失败"));
         } catch (RuntimeException rejected) {
-            onDatabaseFilterFailed(request.generation(), message(rejected));
+            onDatabaseFilterFailed(request.generation(), "数据库筛选执行失败");
         }
     }
 
     private void onDatabaseFilterSucceeded(
             ResultFilterState.DatabaseFilterRequest request, QueryResult result) {
         if (result == null || result.kind != QueryResult.Kind.QUERY) {
-            String failure = result == null ? "数据库筛选未返回结果" : result.errorMessage;
+            String failure = result == null
+                    ? "数据库筛选未返回结果" : databaseFilterResultFailureMessage(result);
             onDatabaseFilterFailed(request.generation(), failure);
             return;
         }
@@ -1524,7 +1530,8 @@ public final class SqlEditorPane implements AutoCloseable {
                 ? result : result.withColumnComments(request.originalResult().columnComments);
         if (!resultFilterState.databaseApplied(request.generation(), candidate)) return;
         renderResultFilterSnapshot();
-        statusLabel.setText("数据库筛选已应用 - " + formatResultRowCount(candidate));
+        statusLabel.setText("数据库筛选已应用（" + schemaContext(request.effectiveSchema())
+                + "） - " + formatResultRowCount(candidate));
         statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
     }
 
@@ -1541,6 +1548,21 @@ public final class SqlEditorPane implements AutoCloseable {
             return result.resultColumns.stream().map(ResultColumn::label).toList();
         }
         return result.columns;
+    }
+
+    private static String databaseFilterResultFailureMessage(QueryResult result) {
+        if (result == null || result.kind != QueryResult.Kind.ERROR) {
+            return "数据库筛选执行失败";
+        }
+        String diagnostic = result.errorMessage;
+        if (diagnostic != null && SAFE_DATABASE_FILTER_FAILURE.matcher(diagnostic).matches()) {
+            return diagnostic;
+        }
+        return switch (result.failureKind) {
+            case CANCELLED -> "数据库筛选已取消";
+            case TIMEOUT -> "数据库筛选超时";
+            case SQL_ERROR -> "数据库筛选执行失败";
+        };
     }
 
     /** Copies only formatted values in the table's current visible order. */
@@ -1669,11 +1691,16 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void showScriptResults(List<ScriptOutcome> outcomes, long totalElapsed) {
+        showScriptResults(outcomes, totalElapsed, null);
+    }
+
+    private void showScriptResults(
+            List<ScriptOutcome> outcomes, long totalElapsed, String effectiveSchema) {
         if (outcomes != null && outcomes.size() == 1) {
             ScriptOutcome outcome = outcomes.getFirst();
             QueryResult result = outcome.result();
             if (result.kind == QueryResult.Kind.QUERY) {
-                if (showQueryResult(result, outcome.sql())) {
+                if (showQueryResult(result, outcome.sql(), effectiveSchema)) {
                     statusLabel.setText("OK - " + formatResultRowCount(result)
                             + " - " + result.elapsedMillis + "ms");
                     statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
@@ -1743,9 +1770,13 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private boolean showQueryResult(QueryResult result, String sql) {
+        return showQueryResult(result, sql, null);
+    }
+
+    private boolean showQueryResult(QueryResult result, String sql, String effectiveSchema) {
         String candidateSql = sql == null ? "" : sql;
         try {
-            resultFilterState.showOriginal(result, candidateSql,
+            resultFilterState.showOriginal(result, candidateSql, effectiveSchema,
                     databaseFilterUnavailableReason(candidateSql, result));
         } catch (RuntimeException failure) {
             statusLabel.setText("无法显示新查询结果，仍显示当前结果：" + message(failure));
@@ -1826,6 +1857,10 @@ public final class SqlEditorPane implements AutoCloseable {
                 ? settings.getMaxResultRows() : result.rows.size();
         String formatted = String.format(Locale.ROOT, "%,d", count);
         return result.truncated ? formatted + "+，当前结果已截断" : formatted + " rows";
+    }
+
+    private static String schemaContext(String effectiveSchema) {
+        return effectiveSchema == null ? "原查询默认 Schema" : "原查询 Schema: " + effectiveSchema;
     }
 
     /** 导出格式：菜单标签 + FileChooser 过滤器描述/后缀 + 默认文件名。 */

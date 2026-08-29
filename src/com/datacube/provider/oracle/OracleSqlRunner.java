@@ -1,6 +1,8 @@
 package com.datacube.provider.oracle;
 
 import com.datacube.provider.jdbc.JdbcPreparedQueryExecutor;
+import com.datacube.provider.jdbc.JdbcDiagnostics;
+import com.datacube.provider.jdbc.JdbcStatementLimits;
 import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.spi.SqlDialect;
 import com.datacube.spi.SqlExecutionOptions;
@@ -44,6 +46,7 @@ public final class OracleSqlRunner implements SqlRunner {
                 var activation = options.control().activate(stmt, options.queryTimeoutSeconds());
                 try {
                     options.control().ensureNotCancelled(activation);
+                    JdbcStatementLimits.apply(stmt, options.maxRows());
                     boolean hasResult = stmt.execute(strip(sql));
                     long elapsed = System.currentTimeMillis() - t0;
                     if (hasResult) {
@@ -81,9 +84,12 @@ public final class OracleSqlRunner implements SqlRunner {
             return JdbcPreparedQueryExecutor.execute(conn, strip(sql), parameters, options);
         } catch (SQLTimeoutException timeout) {
             return QueryResult.timeout(
-                    timeout.getMessage(), System.currentTimeMillis() - startedAt);
+                    JdbcDiagnostics.timeout(timeout), System.currentTimeMillis() - startedAt);
         } catch (SQLException failure) {
-            return failure(failure, startedAt, options);
+            long elapsed = System.currentTimeMillis() - startedAt;
+            return options.control().cancellationRequested()
+                    ? QueryResult.cancelled(JdbcDiagnostics.cancelled(failure), elapsed)
+                    : QueryResult.error(JdbcDiagnostics.sqlFailure(failure), elapsed);
         }
     }
 

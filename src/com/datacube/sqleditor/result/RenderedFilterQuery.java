@@ -11,4 +11,9 @@ public record RenderedFilterQuery(String sql, List<SqlParameter> parameters) {
         sql = Objects.requireNonNull(sql, "sql");
         parameters = List.copyOf(parameters);
     }
+
+    @Override
+    public String toString() {
+        return "RenderedFilterQuery[sql=<redacted>, parameterCount=" + parameters.size() + "]";
+    }
 }

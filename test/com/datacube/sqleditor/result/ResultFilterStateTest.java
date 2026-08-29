@@ -331,6 +331,52 @@ class ResultFilterStateTest {
     }
 
     @Test
+    void databaseRequestsRetainTheEffectiveSchemaUntilNewResultOrClear() {
+        ResultFilterState state = new ResultFilterState();
+        state.showOriginal(RESULT, "select ID from USERS", "schema_a", null);
+        state.setConditions(List.of(CONDITION));
+
+        ResultFilterState.DatabaseFilterRequest request = state.databaseRequest();
+        assertEquals("schema_a", request.effectiveSchema());
+        assertEquals("schema_a", state.snapshot().effectiveSchema());
+
+        state.showOriginal(RESULT, "select ID from USERS", "schema_b", null);
+        assertEquals("schema_b", state.snapshot().effectiveSchema());
+        state.clearAll();
+        assertNull(state.snapshot().effectiveSchema());
+    }
+
+    @Test
+    void diagnosticRepresentationsRedactSqlSchemaSearchAndConditionValues() {
+        String sentinel = "sentinel-state-secret-7f3a";
+        ResultFilterState state = new ResultFilterState();
+        state.showOriginal(RESULT, "select '" + sentinel + "'", sentinel, null);
+        state.setSearchText(sentinel);
+        state.setConditions(List.of(new FilterCondition(
+                0, FilterConnector.AND, FilterOperator.EQ, sentinel)));
+
+        ResultFilterState.DatabaseFilterRequest request = state.databaseRequest();
+        assertFalse(request.toString().contains(sentinel));
+        assertFalse(state.snapshot().toString().contains(sentinel));
+        assertFalse(request.conditions().getFirst().toString().contains(sentinel));
+    }
+
+    @Test
+    void stateDiagnosticRepresentationsNeverDelegateToUnsafeErrorResultText() {
+        String sentinel = "sentinel-error-result-secret-7f3a";
+        QueryResult unsafe = QueryResult.error("driver echoed " + sentinel, 4);
+        ResultFilterState.DatabaseFilterRequest request =
+                new ResultFilterState.DatabaseFilterRequest(
+                        7, "select ?", "schema_a", unsafe, List.of());
+        ResultFilterState.Snapshot snapshot = new ResultFilterState.Snapshot(
+                unsafe, unsafe, "select ?", "schema_a", "", List.of(), List.of(),
+                ResultFilterState.DatabaseStatus.ORIGINAL, null, null);
+
+        assertFalse(request.toString().contains(sentinel));
+        assertFalse(snapshot.toString().contains(sentinel));
+    }
+
+    @Test
     void calendarsAndReferenceArraysFreezeWithoutElementTypeFailures() {
         CalendarValue value = new CalendarValue();
         java.util.Calendar calendar = value.calendar();

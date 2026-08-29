@@ -22,10 +22,10 @@ public final class FilterValueParser {
         Objects.requireNonNull(column, "column");
         Objects.requireNonNull(operator, "operator");
         if (!operator.valueRequired()) return null;
-        if (input == null) throw invalid(column, null);
+        if (input == null) throw invalid(column);
         if (isTextType(column.jdbcType())) return input;
         if (input.isBlank()) {
-            throw invalid(column, input);
+            throw invalid(column);
         }
         String value = input.trim();
         try {
@@ -34,8 +34,8 @@ public final class FilterValueParser {
                 case Types.SMALLINT -> Short.valueOf(value);
                 case Types.INTEGER -> Integer.valueOf(value);
                 case Types.BIGINT -> Long.valueOf(value);
-                case Types.REAL -> finite(Float.valueOf(value), column, input);
-                case Types.FLOAT, Types.DOUBLE -> finite(Double.valueOf(value), column, input);
+                case Types.REAL -> finite(Float.valueOf(value), column);
+                case Types.FLOAT, Types.DOUBLE -> finite(Double.valueOf(value), column);
                 case Types.NUMERIC, Types.DECIMAL -> new BigDecimal(value);
                 case Types.BIT, Types.BOOLEAN -> parseBoolean(column, value);
                 case Types.DATE -> Date.valueOf(LocalDate.parse(value));
@@ -46,7 +46,7 @@ public final class FilterValueParser {
                 default -> input;
             };
         } catch (RuntimeException exception) {
-            throw invalid(column, input);
+            throw invalid(column);
         }
     }
 
@@ -55,16 +55,16 @@ public final class FilterValueParser {
         if ("true".equals(normalized) || "false".equals(normalized)) {
             return Boolean.valueOf(normalized);
         }
-        throw invalid(column, value);
+        throw invalid(column);
     }
 
-    private static Float finite(Float value, ResultColumn column, String input) {
-        if (!Float.isFinite(value)) throw invalid(column, input);
+    private static Float finite(Float value, ResultColumn column) {
+        if (!Float.isFinite(value)) throw invalid(column);
         return value;
     }
 
-    private static Double finite(Double value, ResultColumn column, String input) {
-        if (!Double.isFinite(value)) throw invalid(column, input);
+    private static Double finite(Double value, ResultColumn column) {
+        if (!Double.isFinite(value)) throw invalid(column);
         return value;
     }
 
@@ -76,8 +76,7 @@ public final class FilterValueParser {
         };
     }
 
-    private static IllegalArgumentException invalid(ResultColumn column, String input) {
-        return new IllegalArgumentException("列“" + column.label() + "”的筛选值“"
-                + input + "”格式无效");
+    private static IllegalArgumentException invalid(ResultColumn column) {
+        return new IllegalArgumentException("列“" + column.label() + "”的筛选值格式无效");
     }
 }

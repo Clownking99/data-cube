@@ -16,11 +16,21 @@ public final class ResultFilterState {
     public enum DatabaseStatus { ORIGINAL, LOCAL_PREVIEW, APPLIED, DIRTY_AFTER_APPLY }
 
     public record DatabaseFilterRequest(long generation,
-            String originalSql, QueryResult originalResult, List<FilterCondition> conditions) {
+            String originalSql, String effectiveSchema,
+            QueryResult originalResult, List<FilterCondition> conditions) {
         public DatabaseFilterRequest {
             originalSql = Objects.requireNonNull(originalSql, "originalSql");
+            effectiveSchema = normalizeSchema(effectiveSchema);
             originalResult = Objects.requireNonNull(originalResult, "originalResult");
             conditions = freezeConditions(conditions);
+        }
+
+        @Override
+        public String toString() {
+            return "DatabaseFilterRequest[generation=" + generation
+                    + ", originalSql=<redacted>, effectiveSchema=<redacted>"
+                    + ", originalResult=" + resultSummary(originalResult)
+                    + ", conditionCount=" + conditions.size() + "]";
         }
     }
 
@@ -29,7 +39,7 @@ public final class ResultFilterState {
     }
 
     public record Snapshot(
-            QueryResult originalResult, QueryResult activeResult, String originalSql,
+            QueryResult originalResult, QueryResult activeResult, String originalSql, String effectiveSchema,
             String searchText, List<FilterCondition> conditions,
             List<Integer> visibleRowIndexes, DatabaseStatus databaseStatus,
             String databaseUnavailableReason, String recoverableError) {
@@ -37,11 +47,24 @@ public final class ResultFilterState {
             conditions = freezeConditions(conditions);
             visibleRowIndexes = List.copyOf(visibleRowIndexes);
         }
+
+        @Override
+        public String toString() {
+            return "Snapshot[originalResult=" + resultSummary(originalResult)
+                    + ", activeResult=" + resultSummary(activeResult)
+                    + ", originalSql=<redacted>, effectiveSchema=<redacted>, searchText=<redacted>"
+                    + ", conditionCount=" + conditions.size()
+                    + ", visibleRowIndexes=" + visibleRowIndexes
+                    + ", databaseStatus=" + databaseStatus
+                    + ", databaseUnavailableReason=<redacted>"
+                    + ", recoverableError=<redacted>]";
+        }
     }
 
     private QueryResult originalResult;
     private QueryResult activeResult;
     private String originalSql;
+    private String effectiveSchema;
     private String searchText = "";
     private List<FilterCondition> conditions = NO_CONDITIONS;
     private List<Integer> visibleRowIndexes = List.of();
@@ -52,6 +75,11 @@ public final class ResultFilterState {
     private long inFlightGeneration = NO_IN_FLIGHT;
 
     public synchronized void showOriginal(QueryResult result, String sql, String unavailableReason) {
+        showOriginal(result, sql, null, unavailableReason);
+    }
+
+    public synchronized void showOriginal(
+            QueryResult result, String sql, String schema, String unavailableReason) {
         QueryResult copied = Objects.requireNonNull(result, "result");
         String candidateSql = Objects.requireNonNull(sql, "sql");
         List<Integer> indexes = indexesFor(copied, "", List.of());
@@ -59,6 +87,7 @@ public final class ResultFilterState {
         originalResult = copied;
         activeResult = copied;
         originalSql = candidateSql;
+        effectiveSchema = normalizeSchema(schema);
         searchText = "";
         conditions = NO_CONDITIONS;
         visibleRowIndexes = indexes;
@@ -159,6 +188,7 @@ public final class ResultFilterState {
         originalResult = null;
         activeResult = null;
         originalSql = null;
+        effectiveSchema = null;
         searchText = "";
         conditions = NO_CONDITIONS;
         visibleRowIndexes = List.of();
@@ -169,7 +199,7 @@ public final class ResultFilterState {
     }
 
     public synchronized Snapshot snapshot() {
-        return new Snapshot(originalResult, activeResult, originalSql, searchText,
+        return new Snapshot(originalResult, activeResult, originalSql, effectiveSchema, searchText,
                 conditions, visibleRowIndexes, databaseStatus,
                 databaseUnavailableReason, recoverableError);
     }
@@ -181,7 +211,8 @@ public final class ResultFilterState {
         if (databaseUnavailableReason != null) {
             throw new IllegalStateException(databaseUnavailableReason);
         }
-        return new DatabaseFilterRequest(generation, originalSql, originalResult, conditions);
+        return new DatabaseFilterRequest(
+                generation, originalSql, effectiveSchema, originalResult, conditions);
     }
 
     private AppliedCandidate appliedCandidate(QueryResult result) {
@@ -234,6 +265,25 @@ public final class ResultFilterState {
 
     private static String failureMessage(String message) {
         return message == null ? "数据库筛选失败" : message;
+    }
+
+    private static String normalizeSchema(String schema) {
+        if (schema == null) return null;
+        String normalized = schema.trim();
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private static String resultSummary(QueryResult result) {
+        if (result == null) return "null";
+        return switch (result.kind) {
+            case QUERY -> "QUERY[rows=" + result.rows.size()
+                    + ", elapsedMillis=" + result.elapsedMillis
+                    + ", truncated=" + result.truncated + "]";
+            case UPDATE -> "UPDATE[updateCount=" + result.updateCount
+                    + ", elapsedMillis=" + result.elapsedMillis + "]";
+            case ERROR -> "ERROR[failureKind=" + result.failureKind
+                    + ", elapsedMillis=" + result.elapsedMillis + "]";
+        };
     }
 
     private static List<FilterCondition> freezeConditions(List<FilterCondition> values) {

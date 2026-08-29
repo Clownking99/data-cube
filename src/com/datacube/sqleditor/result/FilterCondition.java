@@ -13,4 +13,12 @@ public record FilterCondition(
         }
         if (!operator.valueRequired()) value = null;
     }
+
+    @Override
+    public String toString() {
+        return "FilterCondition[columnIndex=" + columnIndex
+                + ", connector=" + connector
+                + ", operator=" + operator
+                + ", value=<redacted>]";
+    }
 }

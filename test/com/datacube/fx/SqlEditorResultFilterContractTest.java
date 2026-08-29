@@ -79,6 +79,23 @@ class SqlEditorResultFilterContractTest {
     @TempDir Path directory;
 
     @Test
+    void preparedFailureUiMessageRejectsUntrustedDriverTextButKeepsSafeCodes() throws Exception {
+        String sentinel = "sentinel-ui-secret-7f3a";
+        Method sanitizer = SqlEditorPane.class.getDeclaredMethod(
+                "databaseFilterResultFailureMessage", QueryResult.class);
+        sanitizer.setAccessible(true);
+
+        String rejected = (String) sanitizer.invoke(null,
+                QueryResult.error("driver echoed " + sentinel, 1));
+        assertFalse(rejected.contains(sentinel));
+        assertEquals("数据库筛选执行失败", rejected);
+
+        String coded = (String) sanitizer.invoke(null,
+                QueryResult.error("数据库查询失败 (SQLState=42000, vendorCode=942)", 1));
+        assertEquals("数据库查询失败 (SQLState=42000, vendorCode=942)", coded);
+    }
+
+    @Test
     void databaseFilterUsesOwnedSessionAndPreservesResultOnFailure() throws Exception {
         String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
         assertTrue(source.contains("SafeSelectEligibility.check"));
@@ -87,7 +104,9 @@ class SqlEditorResultFilterContractTest {
         assertTrue(source.contains("databaseFailed"));
         assertFalse(source.contains("DriverManager.getConnection"));
 
-        PreparedRunner prepared = new PreparedRunner(QueryResult.error("database rejected filter", 12));
+        String sentinel = "sentinel-pane-secret-7f3a";
+        PreparedRunner prepared = new PreparedRunner(QueryResult.error(
+                "driver rejected filter containing " + sentinel, 12));
         try (PaneFixture fixture = databaseFixture(prepared)) {
             QueryResult original = result(false,
                     row("Ada", 7, "2026-08-29 10:11:12"),
@@ -121,7 +140,11 @@ class SqlEditorResultFilterContractTest {
                 ResultFilterState.Snapshot snapshot = state(fixture.pane).snapshot();
                 assertEquals(original.rows, snapshot.activeResult().rows,
                         "failed re-query must retain the previous result");
-                assertTrue(snapshot.recoverableError().contains("database rejected filter"));
+                assertEquals("数据库筛选执行失败", snapshot.recoverableError());
+                assertFalse(snapshot.toString().contains(sentinel));
+                assertFalse(labelText(fixture.pane, "statusLabel").contains(sentinel));
+                assertFalse(((javafx.scene.control.Label) fixture.pane.getNode()
+                        .lookup("#sql-result-summary")).getText().contains(sentinel));
                 assertEquals(1, resultTable(fixture.pane).getItems().size(),
                         "failure keeps the prior local preview visible");
                 assertFalse(operations.snapshot().pending());
@@ -131,6 +154,49 @@ class SqlEditorResultFilterContractTest {
             assertTrue(prepared.lastSql.contains("FROM (select name, score, created_at from people)"));
             assertEquals(1, prepared.lastParameters.size());
             assertSame(fixture.ownedSession, field(fixture.pane, "jdbcSession"));
+        } finally {
+            prepared.release.countDown();
+        }
+    }
+
+    @Test
+    void databaseFilterReusesSchemaCapturedByTheOriginalPaneExecution() throws Exception {
+        PreparedRunner prepared = new PreparedRunner(result(false,
+                row("Bob", 9, "2026-08-29 11:12:13")));
+        try (PaneFixture fixture = databaseFixture(prepared)) {
+            FxUiTestSupport.call(() -> {
+                ((TextField) field(fixture.pane, "schemaField")).setText("schema_a");
+                ((org.fxmisc.richtext.CodeArea) field(fixture.pane, "editorArea"))
+                        .replaceText("select name, score, created_at from people");
+                ((Button) fixture.pane.getNode().lookup("#sql-execute")).fire();
+                return null;
+            });
+            operations(fixture.pane).idle().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            FxUiTestSupport.call(() -> null);
+
+            FxUiTestSupport.call(() -> {
+                ResultFilterState state = state(fixture.pane);
+                assertNotNull(state.snapshot().originalResult(), "the pane execution must publish its query result");
+                assertEquals("schema_a", state.snapshot().effectiveSchema());
+                state.setConditions(List.of(new FilterCondition(
+                        1, FilterConnector.AND, FilterOperator.GT, 7)));
+                ((TextField) field(fixture.pane, "schemaField")).setText("schema_b");
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+                ((Button) fixture.pane.getNode().lookup("#sql-result-apply-database")).fire();
+                return null;
+            });
+
+            assertTrue(prepared.entered.await(5, TimeUnit.SECONDS));
+            assertEquals("schema_a", prepared.lastScriptSchema);
+            assertEquals("schema_a", prepared.lastSchema,
+                    "database Apply must not silently switch to the edited schema field");
+            prepared.release.countDown();
+            operations(fixture.pane).idle().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            FxUiTestSupport.call(() -> {
+                assertTrue(labelText(fixture.pane, "statusLabel").contains("schema_a"));
+                assertFalse(labelText(fixture.pane, "statusLabel").contains("schema_b"));
+                return null;
+            });
         } finally {
             prepared.release.countDown();
         }
@@ -475,7 +541,7 @@ class SqlEditorResultFilterContractTest {
                     ResultFilterState.Snapshot filter = state(fixture.pane).snapshot();
                     assertEquals(original.rows, filter.originalResult().rows);
                     assertEquals(original.rows, filter.activeResult().rows);
-                    assertTrue(filter.recoverableError().contains("driver cancelled"));
+                    assertEquals("数据库筛选已取消", filter.recoverableError());
                     assertFalse(fixture.pane.getNode().lookup(".sql-result-toolbar").isDisabled());
                     assertTrue(((Button) field(fixture.pane, "cancelBtn")).isDisabled());
                     return null;
@@ -841,6 +907,8 @@ class SqlEditorResultFilterContractTest {
         final AtomicInteger connectionCloseCalls = new AtomicInteger();
         volatile SqlExecutionControl control;
         volatile String lastSql;
+        volatile String lastSchema;
+        volatile String lastScriptSchema;
         volatile List<SqlParameter> lastParameters = List.of();
 
         PreparedRunner(QueryResult result) {
@@ -857,6 +925,7 @@ class SqlEditorResultFilterContractTest {
                 List<SqlParameter> parameters, String schema, SqlExecutionOptions options) {
             preparedCalls.incrementAndGet();
             lastSql = sql;
+            lastSchema = schema;
             lastParameters = List.copyOf(parameters);
             control = options.control();
             Statement statement = (Statement) Proxy.newProxyInstance(
@@ -908,7 +977,8 @@ class SqlEditorResultFilterContractTest {
         @Override
         public List<ScriptOutcome> executeScript(Connection connection, String script,
                 String schema, SqlExecutionOptions options, ScriptErrorPolicy policy) {
-            return List.of();
+            lastScriptSchema = schema;
+            return List.of(new ScriptOutcome(1, script, result));
         }
 
         @Override

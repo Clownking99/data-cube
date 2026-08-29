@@ -124,7 +124,7 @@ class SqlResultToolbarTest {
         FxUiTestSupport.call(() -> {
             SqlResultToolbar toolbar = toolbar(new AtomicInteger(), new AtomicInteger());
             toolbar.render(new ResultFilterState.Snapshot(
-                    null, null, null, "", List.of(), List.of(),
+                    null, null, null, null, "", List.of(), List.of(),
                     ResultFilterState.DatabaseStatus.ORIGINAL, null, null));
             Parent root = toolbar.getNode();
 
@@ -531,7 +531,7 @@ class SqlResultToolbarTest {
             List<FilterCondition> conditions, List<Integer> visible,
             String unavailableReason, String error) {
         return new ResultFilterState.Snapshot(result, result, "select * from people",
-                search, conditions, visible, status, unavailableReason, error);
+                null, search, conditions, visible, status, unavailableReason, error);
     }
 
     private static List<Integer> indexes(int count) {

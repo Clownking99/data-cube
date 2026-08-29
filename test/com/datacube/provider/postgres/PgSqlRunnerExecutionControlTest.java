@@ -47,8 +47,48 @@ class PgSqlRunnerExecutionControlTest {
                 "SET search_path TO \"app\"",
                 "EXPLAIN SELECT 1"), jdbc.executedSql);
         assertEquals(List.of(7, 7, 7, 7), jdbc.timeouts);
+        assertEquals(List.of(21, 21), jdbc.maxRows);
+        assertTrue(jdbc.events.indexOf("setMaxRows:21")
+                        < jdbc.events.indexOf("execute:UPDATE things SET active = true"),
+                "row bound must be configured before the user statement executes");
         assertEquals(0, jdbc.readOnlyWrites.get());
         assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void regularExecutionSkipsUnlimitedBoundAndSaturatesOverflow() {
+        JdbcScenario unlimited = new JdbcScenario();
+        QueryResult unlimitedResult = runner.execute(unlimited.connection(), "UPDATE things SET active = true",
+                null, SqlExecutionOptions.defaults(0));
+        assertEquals(QueryResult.Kind.UPDATE, unlimitedResult.kind);
+        assertTrue(unlimited.maxRows.isEmpty());
+
+        JdbcScenario overflow = new JdbcScenario();
+        QueryResult overflowResult = runner.execute(overflow.connection(), "UPDATE things SET active = true",
+                null, SqlExecutionOptions.defaults(Integer.MAX_VALUE));
+        assertEquals(QueryResult.Kind.UPDATE, overflowResult.kind);
+        assertEquals(List.of(Integer.MAX_VALUE), overflow.maxRows);
+    }
+
+    @Test
+    void regularQueryDistinguishesExactCapFromCapPlusOne() {
+        JdbcScenario exact = new JdbcScenario();
+        exact.queryResult = true;
+        exact.availableRows = 2;
+        QueryResult exactResult = runner.execute(
+                exact.connection(), "SELECT 1", null, SqlExecutionOptions.defaults(2));
+        assertEquals(3, exact.maxRows.getFirst());
+        assertEquals(2, exactResult.rows.size());
+        assertFalse(exactResult.truncated);
+
+        JdbcScenario overflow = new JdbcScenario();
+        overflow.queryResult = true;
+        overflow.availableRows = 3;
+        QueryResult overflowResult = runner.execute(
+                overflow.connection(), "SELECT 1", null, SqlExecutionOptions.defaults(2));
+        assertEquals(3, overflow.maxRows.getFirst());
+        assertEquals(2, overflowResult.rows.size());
+        assertTrue(overflowResult.truncated);
     }
 
     @Test
@@ -218,12 +258,16 @@ class PgSqlRunnerExecutionControlTest {
     private static final class JdbcScenario {
         private final List<String> executedSql = new ArrayList<>();
         private final List<Integer> timeouts = new ArrayList<>();
+        private final List<Integer> maxRows = new ArrayList<>();
+        private final List<String> events = new ArrayList<>();
         private final List<String> preparedSql = new ArrayList<>();
         private final List<Object> boundValues = new ArrayList<>();
         private final AtomicInteger cancelCalls = new AtomicInteger();
         private final AtomicInteger readOnlyWrites = new AtomicInteger();
         private Consumer<String> beforeExecute = sql -> { };
         private Function<String, SQLException> failure = sql -> null;
+        private boolean queryResult;
+        private int availableRows;
 
         private Connection connection() {
             return (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
@@ -253,14 +297,21 @@ class PgSqlRunnerExecutionControlTest {
                                 timeouts.add((Integer) args[0]);
                                 yield null;
                             }
+                            case "setMaxRows" -> {
+                                maxRows.add((Integer) args[0]);
+                                events.add("setMaxRows:" + args[0]);
+                                yield null;
+                            }
                             case "execute" -> {
                                 String sql = (String) args[0];
+                                events.add("execute:" + sql);
                                 executedSql.add(sql);
                                 beforeExecute.accept(sql);
                                 SQLException error = failure.apply(sql);
                                 if (error != null) throw error;
-                                yield false;
+                                yield queryResult;
                             }
+                            case "getResultSet" -> queryResultSet();
                             case "cancel" -> {
                                 cancelCalls.incrementAndGet();
                                 yield null;
@@ -302,6 +353,18 @@ class PgSqlRunnerExecutionControlTest {
                     new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
                         case "getMetaData" -> metadata;
                         case "next" -> false;
+                        default -> defaultValue(method.getReturnType());
+                    });
+        }
+
+        private ResultSet queryResultSet() {
+            AtomicInteger row = new AtomicInteger();
+            ResultSetMetaData metadata = metadata("", "");
+            return (ResultSet) Proxy.newProxyInstance(getClass().getClassLoader(),
+                    new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
+                        case "getMetaData" -> metadata;
+                        case "next" -> row.getAndIncrement() < availableRows;
+                        case "getObject" -> row.get();
                         default -> defaultValue(method.getReturnType());
                     });
         }
