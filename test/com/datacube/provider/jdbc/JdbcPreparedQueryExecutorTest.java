@@ -36,6 +36,7 @@ class JdbcPreparedQueryExecutorTest {
         assertEquals(List.of(1, 2), jdbc.boundIndexes);
         assertEquals(List.of(10, "Ada"), jdbc.boundValues);
         assertEquals(List.of(Types.INTEGER, Types.VARCHAR), jdbc.boundTypes);
+        assertEquals(List.of("setObject", "setObject"), jdbc.boundMethods);
         assertEquals(7, jdbc.queryTimeout);
         assertEquals(QueryResult.Kind.QUERY, result.kind);
         assertEquals(2, result.rows.size());
@@ -46,9 +47,129 @@ class JdbcPreparedQueryExecutorTest {
     }
 
     @Test
+    void bindsNullWithSetNullAndNonNullWithSetObject() {
+        RecordingPreparedJdbc jdbc = new RecordingPreparedJdbc();
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = JdbcPreparedQueryExecutor.execute(
+                jdbc.connection(), "select * from q where optional_name = ? and id = ?",
+                List.of(new SqlParameter(Types.VARCHAR, null),
+                        new SqlParameter(Types.INTEGER, 42)),
+                new SqlExecutionOptions(0, 0, control));
+
+        assertEquals(QueryResult.Kind.QUERY, result.kind);
+        assertEquals(List.of(1, 2), jdbc.boundIndexes);
+        assertEquals(java.util.Arrays.asList(null, 42), jdbc.boundValues);
+        assertEquals(List.of(Types.VARCHAR, Types.INTEGER), jdbc.boundTypes);
+        assertEquals(List.of("setNull", "setObject"), jdbc.boundMethods);
+        assertClosed(jdbc, 1);
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void bindingFailureClosesStatementReleasesActivationAndKeepsPrimaryError() {
+        RecordingPreparedJdbc jdbc = new RecordingPreparedJdbc();
+        jdbc.bindFailureIndex = 2;
+        jdbc.bindFailure = new SQLException("bind failed");
+        jdbc.statementCloseFailure = new SQLException("statement close also failed");
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = JdbcPreparedQueryExecutor.execute(
+                jdbc.connection(), "select * from q where id = ? and name = ?",
+                List.of(new SqlParameter(Types.INTEGER, 42),
+                        new SqlParameter(Types.VARCHAR, "Ada")),
+                new SqlExecutionOptions(0, 0, control));
+
+        assertFailure(result, QueryResult.FailureKind.SQL_ERROR, "bind failed");
+        assertEquals(1, jdbc.statementCloses.get());
+        assertEquals(0, jdbc.resultSetCloses.get());
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void ordinaryExecuteFailureClosesStatementAndIsSqlError() {
+        RecordingPreparedJdbc jdbc = new RecordingPreparedJdbc();
+        jdbc.executeFailure = new SQLException("execute failed");
+        jdbc.statementCloseFailure = new SQLException("statement close also failed");
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = JdbcPreparedQueryExecutor.execute(
+                jdbc.connection(), "select broken(?)",
+                List.of(new SqlParameter(Types.INTEGER, 42)),
+                new SqlExecutionOptions(0, 0, control));
+
+        assertFailure(result, QueryResult.FailureKind.SQL_ERROR, "execute failed");
+        assertClosed(jdbc, 0);
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void resultSetNextFailureClosesBothResourcesAndKeepsPrimaryError() {
+        RecordingPreparedJdbc jdbc = new RecordingPreparedJdbc();
+        jdbc.nextFailure = new SQLException("next failed");
+        jdbc.resultSetCloseFailure = new SQLException("result close also failed");
+        jdbc.statementCloseFailure = new SQLException("statement close also failed");
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = JdbcPreparedQueryExecutor.execute(
+                jdbc.connection(), "select * from q", List.of(),
+                new SqlExecutionOptions(0, 0, control));
+
+        assertFailure(result, QueryResult.FailureKind.SQL_ERROR, "next failed");
+        assertClosed(jdbc, 1);
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void resultSetGetObjectFailureClosesBothResourcesAndIsSqlError() {
+        RecordingPreparedJdbc jdbc = new RecordingPreparedJdbc();
+        jdbc.getObjectFailure = new SQLException("getObject failed");
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = JdbcPreparedQueryExecutor.execute(
+                jdbc.connection(), "select * from q", List.of(),
+                new SqlExecutionOptions(0, 0, control));
+
+        assertFailure(result, QueryResult.FailureKind.SQL_ERROR, "getObject failed");
+        assertClosed(jdbc, 1);
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void resultSetCloseFailureStillClosesStatementAndIsSqlError() {
+        RecordingPreparedJdbc jdbc = new RecordingPreparedJdbc();
+        jdbc.resultSetCloseFailure = new SQLException("result close failed");
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = JdbcPreparedQueryExecutor.execute(
+                jdbc.connection(), "select * from q", List.of(),
+                new SqlExecutionOptions(1, 0, control));
+
+        assertFailure(result, QueryResult.FailureKind.SQL_ERROR, "result close failed");
+        assertClosed(jdbc, 1);
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
+    void statementCloseFailureOccursAfterActivationReleaseAndIsSqlError() {
+        RecordingPreparedJdbc jdbc = new RecordingPreparedJdbc();
+        jdbc.statementCloseFailure = new SQLException("statement close failed");
+        SqlExecutionControl control = new SqlExecutionControl();
+
+        QueryResult result = JdbcPreparedQueryExecutor.execute(
+                jdbc.connection(), "select * from q", List.of(),
+                new SqlExecutionOptions(1, 0, control));
+
+        assertFailure(result, QueryResult.FailureKind.SQL_ERROR, "statement close failed");
+        assertClosed(jdbc, 1);
+        assertFalse(control.hasActiveStatement());
+    }
+
+    @Test
     void mapsTimeoutAndCancellationWithoutLeakingResources() throws Exception {
         RecordingPreparedJdbc timeoutJdbc = new RecordingPreparedJdbc();
         timeoutJdbc.executeFailure = new SQLTimeoutException("too slow");
+        timeoutJdbc.statementCloseFailure = new SQLException("statement close also failed");
         SqlExecutionControl timeoutControl = new SqlExecutionControl();
 
         QueryResult timeout = JdbcPreparedQueryExecutor.execute(
@@ -57,8 +178,7 @@ class JdbcPreparedQueryExecutorTest {
                 new SqlExecutionOptions(0, 3, timeoutControl));
 
         assertEquals(QueryResult.FailureKind.TIMEOUT, timeout.failureKind);
-        assertEquals(1, timeoutJdbc.statementCloses.get());
-        assertEquals(0, timeoutJdbc.resultSetCloses.get());
+        assertClosed(timeoutJdbc, 0);
         assertFalse(timeoutControl.hasActiveStatement());
 
         RecordingPreparedJdbc cancelledJdbc = new RecordingPreparedJdbc();
@@ -71,6 +191,7 @@ class JdbcPreparedQueryExecutorTest {
             }
         };
         cancelledJdbc.executeFailure = new SQLException("cancelled by driver");
+        cancelledJdbc.statementCloseFailure = new SQLException("statement close also failed");
 
         QueryResult cancelled = JdbcPreparedQueryExecutor.execute(
                 cancelledJdbc.connection(), "select slow(?)",
@@ -79,20 +200,40 @@ class JdbcPreparedQueryExecutorTest {
 
         assertEquals(QueryResult.FailureKind.CANCELLED, cancelled.failureKind);
         assertEquals(1, cancelledJdbc.cancelCalls.get());
-        assertEquals(1, cancelledJdbc.statementCloses.get());
+        assertClosed(cancelledJdbc, 0);
         assertFalse(cancelledControl.hasActiveStatement());
+    }
+
+    private static void assertFailure(
+            QueryResult result, QueryResult.FailureKind expectedKind, String expectedMessage) {
+        assertEquals(QueryResult.Kind.ERROR, result.kind);
+        assertEquals(expectedKind, result.failureKind);
+        assertEquals(expectedMessage, result.errorMessage);
+    }
+
+    private static void assertClosed(RecordingPreparedJdbc jdbc, int expectedResultSetCloses) {
+        assertEquals(1, jdbc.statementCloses.get(), "statement close must be attempted");
+        assertEquals(expectedResultSetCloses, jdbc.resultSetCloses.get(),
+                "result-set close attempts must match resource acquisition");
     }
 
     private static final class RecordingPreparedJdbc {
         private final List<Integer> boundIndexes = new ArrayList<>();
         private final List<Object> boundValues = new ArrayList<>();
         private final List<Integer> boundTypes = new ArrayList<>();
+        private final List<String> boundMethods = new ArrayList<>();
         private final AtomicInteger cancelCalls = new AtomicInteger();
         private final AtomicInteger statementCloses = new AtomicInteger();
         private final AtomicInteger resultSetCloses = new AtomicInteger();
         private int queryTimeout = -1;
         private Runnable beforeExecute = () -> {};
+        private int bindFailureIndex = -1;
+        private SQLException bindFailure;
         private SQLException executeFailure;
+        private SQLException nextFailure;
+        private SQLException getObjectFailure;
+        private SQLException resultSetCloseFailure;
+        private SQLException statementCloseFailure;
 
         private Connection connection() {
             return (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
@@ -113,12 +254,16 @@ class JdbcPreparedQueryExecutorTest {
                             boundIndexes.add((Integer) args[0]);
                             boundValues.add(args[1]);
                             boundTypes.add((Integer) args[2]);
+                            boundMethods.add("setObject");
+                            failBindingIfConfigured((Integer) args[0]);
                             yield null;
                         }
                         case "setNull" -> {
                             boundIndexes.add((Integer) args[0]);
                             boundValues.add(null);
                             boundTypes.add((Integer) args[1]);
+                            boundMethods.add("setNull");
+                            failBindingIfConfigured((Integer) args[0]);
                             yield null;
                         }
                         case "executeQuery" -> {
@@ -132,10 +277,15 @@ class JdbcPreparedQueryExecutorTest {
                         }
                         case "close" -> {
                             statementCloses.incrementAndGet();
+                            if (statementCloseFailure != null) throw statementCloseFailure;
                             yield null;
                         }
                         default -> defaultValue(method.getReturnType());
                     });
+        }
+
+        private void failBindingIfConfigured(int index) throws SQLException {
+            if (index == bindFailureIndex && bindFailure != null) throw bindFailure;
         }
 
         private ResultSet resultSet() {
@@ -152,10 +302,17 @@ class JdbcPreparedQueryExecutorTest {
             return (ResultSet) Proxy.newProxyInstance(getClass().getClassLoader(),
                     new Class<?>[]{ResultSet.class}, (proxy, method, args) -> switch (method.getName()) {
                         case "getMetaData" -> metadata;
-                        case "next" -> row.getAndIncrement() < 3;
-                        case "getObject" -> row.get();
+                        case "next" -> {
+                            if (nextFailure != null) throw nextFailure;
+                            yield row.getAndIncrement() < 3;
+                        }
+                        case "getObject" -> {
+                            if (getObjectFailure != null) throw getObjectFailure;
+                            yield row.get();
+                        }
                         case "close" -> {
                             resultSetCloses.incrementAndGet();
+                            if (resultSetCloseFailure != null) throw resultSetCloseFailure;
                             yield null;
                         }
                         default -> defaultValue(method.getReturnType());

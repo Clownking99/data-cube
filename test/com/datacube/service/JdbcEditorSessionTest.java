@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Statement;
@@ -846,6 +847,44 @@ class JdbcEditorSessionTest {
     }
 
     @Test
+    void closeBetweenPreparedAdmissionAndControlPublicationPreventsJdbcOpenAndRunnerCall()
+            throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        StubRunner runner = new StubRunner(QueryResult.update(1, 1));
+        CountDownLatch beforePublish = new CountDownLatch(1);
+        CountDownLatch allowPublish = new CountDownLatch(1);
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
+                jdbc::open, runner, () -> {
+                    beforePublish.countDown();
+                    awaitUnchecked(allowPublish);
+                });
+        AtomicReference<Throwable> executionFailure = new AtomicReference<>();
+        Thread execution = Thread.ofVirtual().start(() -> {
+            try {
+                session.executePrepared("select must-not-run where id = ?",
+                        List.of(new SqlParameter(Types.INTEGER, 7)), null, 100);
+            } catch (Throwable failure) {
+                executionFailure.set(failure);
+            }
+        });
+        await(beforePublish);
+
+        Thread closer = Thread.ofVirtual().start(session::close);
+        awaitWaiting(closer);
+        allowPublish.countDown();
+        join(execution);
+        join(closer);
+
+        assertInstanceOf(IllegalStateException.class, executionFailure.get());
+        assertEquals(0, jdbc.opens.get());
+        assertEquals(0, runner.preparedCalls.get());
+        assertEquals(JdbcEditorSession.ConnectionState.CLOSED,
+                session.snapshot().connectionState());
+        assertOperationFinished(session);
+    }
+
+    @Test
     void unsupportedStatementTimeoutIsVisibleInSnapshot() {
         JdbcStub jdbc = new JdbcStub();
         ActiveStatementRunner runner = new ActiveStatementRunner(false, true);
@@ -960,6 +999,49 @@ class JdbcEditorSessionTest {
     }
 
     @Test
+    void cancelOrCloseWhilePreparedConnectionIsOpeningReturnsCancelledAndSkipsRunner()
+            throws Exception {
+        for (boolean close : List.of(false, true)) {
+            JdbcStub jdbc = new JdbcStub();
+            StubRunner runner = new StubRunner(QueryResult.update(1, 1));
+            CountDownLatch opening = new CountDownLatch(1);
+            CountDownLatch allowOpen = new CountDownLatch(1);
+            JdbcEditorSession session = new JdbcEditorSession(
+                    "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
+                    () -> {
+                        opening.countDown();
+                        awaitUnchecked(allowOpen);
+                        return jdbc.open();
+                    }, runner);
+            AtomicReference<QueryResult> result = new AtomicReference<>();
+            Thread execution = Thread.ofVirtual().start(() -> result.set(session.executePrepared(
+                    "select * from q where id = ?",
+                    List.of(new SqlParameter(Types.INTEGER, 7)), null, 100)));
+            await(opening);
+
+            Thread closer = null;
+            if (close) {
+                closer = Thread.ofVirtual().start(session::close);
+                awaitWaiting(closer);
+            } else {
+                assertEquals(JdbcEditorSession.CancelOutcome.CONNECTION_CLOSED, session.cancel());
+            }
+            allowOpen.countDown();
+            join(execution);
+            if (closer != null) join(closer);
+
+            assertEquals(QueryResult.FailureKind.CANCELLED, result.get().failureKind);
+            assertEquals(0, runner.preparedCalls.get());
+            assertEquals(1, jdbc.closes.get());
+            assertEquals(close ? JdbcEditorSession.ConnectionState.CLOSED
+                            : JdbcEditorSession.ConnectionState.BROKEN,
+                    session.snapshot().connectionState());
+            assertOperationFinished(session);
+            session.close();
+        }
+    }
+
+    @Test
     void unsupportedTimeoutCapabilityDoesNotRecoverAfterStatementFreeOperation() {
         JdbcStub jdbc = new JdbcStub();
         TimeoutThenStatementFreeRunner runner = new TimeoutThenStatementFreeRunner();
@@ -1064,15 +1146,135 @@ class JdbcEditorSessionTest {
         session.close();
     }
 
+    @Test
+    void cancelTargetsActivePreparedStatementAndCleansOperationState() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        BlockingPreparedRunner runner = new BlockingPreparedRunner(true);
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 31),
+                jdbc::open, runner);
+        AtomicReference<QueryResult> result = new AtomicReference<>();
+        Thread execution = Thread.ofVirtual().start(() -> result.set(session.executePrepared(
+                "select slow(?)", List.of(new SqlParameter(Types.INTEGER, 7)), null, 100)));
+        await(runner.entered);
+
+        assertEquals(JdbcEditorSession.CancelOutcome.CANCELLED, session.cancel());
+        join(execution);
+
+        assertEquals(QueryResult.FailureKind.CANCELLED, result.get().failureKind);
+        assertEquals(1, runner.cancelCalls.get());
+        assertNotNull(runner.control);
+        assertFalse(runner.control.hasActiveStatement());
+        assertEquals(JdbcEditorSession.CancelOutcome.NOTHING_RUNNING, session.cancel());
+        assertOperationFinished(session);
+        assertEquals(0, jdbc.closes.get(), "successful JDBC cancel keeps the owned connection");
+        session.close();
+    }
+
+    @Test
+    void preparedExecutionAndScriptAreStrictlySingleFlight() throws Exception {
+        JdbcStub jdbc = new JdbcStub();
+        BlockingPreparedRunner runner = new BlockingPreparedRunner(false);
+        JdbcEditorSession session = new JdbcEditorSession(
+                "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 31),
+                jdbc::open, runner);
+        Thread prepared = Thread.ofVirtual().start(() -> session.executePrepared(
+                "select slow(?)", List.of(new SqlParameter(Types.INTEGER, 7)), null, 100));
+        await(runner.entered);
+
+        CountDownLatch scriptCalling = new CountDownLatch(1);
+        Thread script = Thread.ofVirtual().start(() -> {
+            scriptCalling.countDown();
+            session.executeScript("select queued", null, 100, null, false);
+        });
+        await(scriptCalling);
+        awaitWaiting(script);
+
+        assertEquals(0, runner.scriptCalls.get(), "queued script must not overlap prepared execution");
+        runner.release.countDown();
+        join(prepared);
+        join(script);
+
+        assertEquals(List.of("prepared", "script"), runner.callOrder);
+        assertOperationFinished(session);
+        session.close();
+    }
+
+    @Test
+    void manualPreparedFailuresBecomeErrorPendingForEveryFailureKind() throws Exception {
+        for (QueryResult preparedResult : List.of(
+                QueryResult.error("sql failed", 1),
+                QueryResult.timeout("timed out", 1),
+                QueryResult.cancelled("cancelled", 1))) {
+            JdbcStub jdbc = new JdbcStub();
+            StubRunner runner = new StubRunner(preparedResult);
+            JdbcEditorSession session = new JdbcEditorSession(
+                    "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
+                    jdbc::open, runner);
+            session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
+
+            QueryResult result = session.executePrepared(
+                    "select broken(?)", List.of(new SqlParameter(Types.INTEGER, 7)), null, 100);
+
+            assertSame(preparedResult, result);
+            assertEquals(JdbcEditorSession.TransactionState.ERROR_PENDING,
+                    session.snapshot().transactionState(), preparedResult.failureKind.toString());
+            assertOperationFinished(session);
+            session.close();
+        }
+    }
+
+    @Test
+    void legacyRunnerDefaultPreparedFailureRedactsSqlAndParameterValues() {
+        SqlRunner legacyRunner = new SqlRunner() {
+            @Override
+            public QueryResult execute(
+                    Connection connection, String sql, String schema, SqlExecutionOptions options) {
+                return QueryResult.update(1, 0);
+            }
+
+            @Override
+            public List<ScriptOutcome> executeScript(
+                    Connection connection, String script, String schema,
+                    SqlExecutionOptions options, ScriptErrorPolicy policy) {
+                return List.of();
+            }
+
+            @Override
+            public QueryResult explain(
+                    Connection connection, String sql, String schema, boolean analyze,
+                    SqlExecutionOptions options) {
+                return QueryResult.update(1, 0);
+            }
+        };
+        String sensitiveSql = "select * from secrets where token = ?";
+        String sensitiveValue = "top-secret-token";
+
+        QueryResult result = legacyRunner.executePrepared(null, sensitiveSql,
+                List.of(new SqlParameter(Types.VARCHAR, sensitiveValue)), null,
+                SqlExecutionOptions.defaults(100));
+
+        assertEquals(QueryResult.Kind.ERROR, result.kind);
+        assertEquals(QueryResult.FailureKind.SQL_ERROR, result.failureKind);
+        assertFalse(result.errorMessage.contains(sensitiveSql));
+        assertFalse(result.errorMessage.contains(sensitiveValue));
+    }
+
     private static ConnConfig config() {
         return new ConnConfig("conn", "test", DbType.POSTGRESQL, "localhost", 5432,
                 "db", "user", "encrypted", Map.of());
+    }
+
+    private static void assertOperationFinished(JdbcEditorSession session) {
+        assertFalse(session.snapshot().running());
+        assertFalse(session.snapshot().cancelling());
     }
 
     private static final class StubRunner implements SqlRunner {
         private final QueryResult result;
         private final AtomicInteger scriptCalls = new AtomicInteger();
         private final AtomicInteger explainCalls = new AtomicInteger();
+        private final AtomicInteger preparedCalls = new AtomicInteger();
         private ScriptErrorPolicy lastPolicy;
         private SqlExecutionOptions lastOptions;
         private Connection lastPreparedConnection;
@@ -1094,6 +1296,7 @@ class JdbcEditorSessionTest {
         public QueryResult executePrepared(
                 Connection connection, String sql, List<SqlParameter> parameters,
                 String schema, SqlExecutionOptions options) {
+            preparedCalls.incrementAndGet();
             lastPreparedConnection = connection;
             lastPreparedSql = sql;
             lastParameters = parameters;
@@ -1125,6 +1328,72 @@ class JdbcEditorSessionTest {
             explainCalls.incrementAndGet();
             lastOptions = options;
             return result;
+        }
+    }
+
+    private static final class BlockingPreparedRunner implements SqlRunner {
+        private final boolean waitForCancel;
+        private final CountDownLatch entered = new CountDownLatch(1);
+        private final CountDownLatch release = new CountDownLatch(1);
+        private final CountDownLatch cancelled = new CountDownLatch(1);
+        private final AtomicInteger cancelCalls = new AtomicInteger();
+        private final AtomicInteger scriptCalls = new AtomicInteger();
+        private final List<String> callOrder = java.util.Collections.synchronizedList(new ArrayList<>());
+        private volatile com.datacube.spi.SqlExecutionControl control;
+
+        private BlockingPreparedRunner(boolean waitForCancel) {
+            this.waitForCancel = waitForCancel;
+        }
+
+        @Override
+        public QueryResult execute(
+                Connection connection, String sql, String schema, SqlExecutionOptions options) {
+            return QueryResult.update(1, 0);
+        }
+
+        @Override
+        public QueryResult executePrepared(
+                Connection connection, String sql, List<SqlParameter> parameters,
+                String schema, SqlExecutionOptions options) {
+            callOrder.add("prepared");
+            control = options.control();
+            PreparedStatement statement = (PreparedStatement) Proxy.newProxyInstance(
+                    getClass().getClassLoader(), new Class<?>[]{PreparedStatement.class},
+                    (proxy, method, args) -> {
+                        if (method.getName().equals("cancel")) {
+                            cancelCalls.incrementAndGet();
+                            cancelled.countDown();
+                        }
+                        return defaultValue(method.getReturnType());
+                    });
+            try {
+                var activation = control.activate(statement, options.queryTimeoutSeconds());
+                entered.countDown();
+                awaitUnchecked(waitForCancel ? cancelled : release);
+                QueryResult result = control.cancellationRequested()
+                        ? QueryResult.cancelled("cancelled", 1)
+                        : QueryResult.update(1, 0);
+                control.release(activation);
+                return result;
+            } catch (SQLException failure) {
+                return QueryResult.error(failure.getMessage(), 1);
+            }
+        }
+
+        @Override
+        public List<ScriptOutcome> executeScript(
+                Connection connection, String script, String schema,
+                SqlExecutionOptions options, ScriptErrorPolicy policy) {
+            scriptCalls.incrementAndGet();
+            callOrder.add("script");
+            return List.of(new ScriptOutcome(1, script, QueryResult.update(1, 0)));
+        }
+
+        @Override
+        public QueryResult explain(
+                Connection connection, String sql, String schema, boolean analyze,
+                SqlExecutionOptions options) {
+            return QueryResult.update(1, 0);
         }
     }
 
