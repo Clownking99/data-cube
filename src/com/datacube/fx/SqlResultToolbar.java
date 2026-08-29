@@ -7,6 +7,7 @@ import com.datacube.sqleditor.result.FilterOperator;
 import com.datacube.sqleditor.result.ResultFilterState;
 import com.datacube.sqleditor.result.ResultValueFormatter;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
@@ -117,6 +118,9 @@ public final class SqlResultToolbar {
             if (!rendering) searchDebounce.playFromStart();
         });
         searchDebounce.setOnFinished(ignored -> actions.searchChanged().accept(search.getText()));
+        root.sceneProperty().addListener((ignored, oldScene, newScene) -> {
+            if (oldScene != null && newScene == null) searchDebounce.stop();
+        });
         search.setOnAction(ignored -> {
             searchDebounce.stop();
             actions.searchChanged().accept(search.getText());
@@ -240,20 +244,27 @@ public final class SqlResultToolbar {
         int loaded = active.rows.size();
         int columnCount = active.resultColumns.isEmpty()
                 ? active.columns.size() : active.resultColumns.size();
-        String loadedText = active.truncated ? loaded + "+" : Integer.toString(loaded);
+        String visibleText = formatNumber(visible);
+        String loadedText = formatNumber(loaded) + (active.truncated ? "+" : "");
+        String elapsedText = formatNumber(active.elapsedMillis) + " ms";
         String text = switch (snapshot.databaseStatus()) {
-            case ORIGINAL -> "原始结果：" + loadedText + " 行 · " + columnCount + " 列";
-            case LOCAL_PREVIEW -> "本地预览：显示 " + visible + " / "
-                    + loadedText + " 行 · " + columnCount + " 列";
-            case APPLIED -> "数据库筛选已应用：显示 " + visible + " / "
-                    + loadedText + " 行 · " + columnCount + " 列";
-            case DIRTY_AFTER_APPLY -> "本地预览 / 有未应用更改：显示 " + visible + " / "
-                    + loadedText + " 行 · " + columnCount + " 列";
+            case ORIGINAL -> "原始结果：" + loadedText + " 行 · " + columnCount
+                    + " 列 · " + elapsedText;
+            case LOCAL_PREVIEW -> "本地预览：显示 " + visibleText + " / "
+                    + loadedText + " 行 · " + columnCount + " 列 · " + elapsedText;
+            case APPLIED -> "数据库筛选已应用：显示 " + visibleText + " / "
+                    + loadedText + " 行 · " + columnCount + " 列 · " + elapsedText;
+            case DIRTY_AFTER_APPLY -> "本地预览 / 有未应用更改：显示 " + visibleText + " / "
+                    + loadedText + " 行 · " + columnCount + " 列 · " + elapsedText;
         };
         if (active.truncated) text += "（当前结果已截断）";
         if (snapshot.recoverableError() != null && !snapshot.recoverableError().isBlank()) {
             text += " · " + snapshot.recoverableError();
         }
         return text;
+    }
+
+    private static String formatNumber(long value) {
+        return String.format(Locale.ROOT, "%,d", value);
     }
 }

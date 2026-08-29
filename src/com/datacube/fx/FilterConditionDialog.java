@@ -64,6 +64,7 @@ final class FilterConditionDialog {
         error.setAccessibleText("");
         error.setWrapText(true);
         error.getStyleClass().add("filter-condition-error");
+        error.setStyle("-fx-text-fill: -status-error;");
 
         GridPane form = new GridPane();
         form.setHgap(8);
