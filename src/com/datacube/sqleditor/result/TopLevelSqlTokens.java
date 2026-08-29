@@ -26,6 +26,7 @@ public final class TopLevelSqlTokens {
             char current = sql.charAt(index);
             char next = index + 1 < sql.length() ? sql.charAt(index + 1) : 0;
 
+            if (postgresUnicodeQuotedIdentifierAt(sql, index, oracleMode)) throw invalid();
             OracleQuote oracleQuote = oracleQuoteAt(sql, index, oracleMode);
             if (oracleQuote != null) {
                 flush(tokens, token, depth);
@@ -104,6 +105,7 @@ public final class TopLevelSqlTokens {
         while (index < sql.length()) {
             char current = sql.charAt(index);
             char next = index + 1 < sql.length() ? sql.charAt(index + 1) : 0;
+            if (postgresUnicodeQuotedIdentifierAt(sql, index, oracleMode)) throw invalid();
             OracleQuote oracleQuote = oracleQuoteAt(sql, index, oracleMode);
             if (oracleQuote != null) {
                 flushAll(tokens, token);
@@ -300,6 +302,10 @@ public final class TopLevelSqlTokens {
             return null;
         }
         char opening = sql.charAt(delimiterOffset);
+        if (Character.isWhitespace(opening) || Character.isSpaceChar(opening)
+                || Character.isISOControl(opening)) {
+            throw invalid();
+        }
         char close = switch (opening) {
             case '[' -> ']';
             case '(' -> ')';
@@ -308,6 +314,17 @@ public final class TopLevelSqlTokens {
             default -> opening;
         };
         return new OracleQuote(delimiterOffset - offset + 1, close);
+    }
+
+    private static boolean postgresUnicodeQuotedIdentifierAt(
+            String sql, int offset, boolean oracleMode) {
+        if (oracleMode || offset + 2 >= sql.length()
+                || offset > 0 && wordPart(sql.charAt(offset - 1))) {
+            return false;
+        }
+        char prefix = sql.charAt(offset);
+        return (prefix == 'u' || prefix == 'U')
+                && sql.charAt(offset + 1) == '&' && sql.charAt(offset + 2) == '"';
     }
 
     private static boolean wordPart(char value) {

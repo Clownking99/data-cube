@@ -39,8 +39,27 @@ class PgResultFilterSqlRendererTest {
         assertEquals(List.of(
                 new SqlParameter(Types.INTEGER, 10),
                 new SqlParameter(Types.VARCHAR, "%a\\%\\_\\\\%")), query.parameters());
-        assertFalse(query.toString().contains("a%_"));
-        assertFalse(query.parameters().get(1).toString().contains("a%_"));
+        SqlParameter pattern = query.parameters().get(1);
+        assertEquals("SqlParameter[jdbcType=" + Types.VARCHAR + ", value=<redacted>]",
+                pattern.toString());
+        assertFalse(query.toString().contains(String.valueOf(pattern.value())));
+        assertThrows(UnsupportedOperationException.class, query.parameters()::clear);
+    }
+
+    @Test
+    void foldsThreeConditionsStrictlyFromLeftToRight() {
+        RenderedFilterQuery query = new PgResultFilterSqlRenderer().render(
+                "select id, name from users", COLUMNS, List.of(
+                        condition(0, FilterConnector.AND, FilterOperator.GT, 10),
+                        condition(1, FilterConnector.OR, FilterOperator.CONTAINS, "a"),
+                        condition(2, FilterConnector.AND, FilterOperator.IS_NOT_NULL, null)));
+
+        assertEquals("SELECT * FROM (select id, name from users) AS \"dc_filter\" "
+                        + "WHERE ((\"dc_filter\".\"id\" > ? OR \"dc_filter\".\"name\" LIKE ? ESCAPE '\\') "
+                        + "AND \"dc_filter\".\"odd\"\"label\" IS NOT NULL)",
+                query.sql());
+        assertEquals(List.of(new SqlParameter(Types.INTEGER, 10),
+                new SqlParameter(Types.VARCHAR, "%a%")), query.parameters());
     }
 
     @Test

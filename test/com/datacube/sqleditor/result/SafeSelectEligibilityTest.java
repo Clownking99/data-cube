@@ -11,6 +11,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SafeSelectEligibilityTest {
@@ -106,6 +107,50 @@ class SafeSelectEligibilityTest {
 
         assertFalse(result.eligible());
         assertFalse(result.reason().isBlank());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "select U&\"nextv\\0061l\"('order_sequence')",
+            "select pg_catalog.U&\"setv\\0061l\"('order_sequence', 7)",
+            "select coalesce(u&\"pg_\\0061dvisory_lock\"(7), 0)",
+            "select (select U&\"PG_\\0061DVISORY_LOCK\"(7))",
+            "select U&\"ordinary_name\" from users"
+    })
+    void rejectsPostgresUnicodeQuotedIdentifiersWithoutAttemptingToDecodeThem(String sql) {
+        SafeSelectEligibility.Result result =
+                SafeSelectEligibility.check(sql, false, UNIQUE_RESULT);
+
+        assertFalse(result.eligible());
+        assertFalse(result.reason().isBlank());
+    }
+
+    @Test
+    void rejectsWhitespaceAndControlOracleAlternativeQuoteDelimitersInBothScans() {
+        for (String prefix : List.of("q", "nq")) {
+            for (String delimiter : List.of(" ", "\t", "\r", "\n", "\u0001")) {
+                String sql = "select " + prefix + "'" + delimiter
+                        + "FOR UPDATE" + delimiter + "' value from dual";
+
+                assertThrows(IllegalArgumentException.class,
+                        () -> TopLevelSqlTokens.scan(sql, true));
+                assertThrows(IllegalArgumentException.class,
+                        () -> TopLevelSqlTokens.containsKnownSideEffectInvocation(sql, true));
+                assertFalse(SafeSelectEligibility.check(sql, true, UNIQUE_RESULT).eligible());
+            }
+        }
+    }
+
+    @Test
+    void acceptsPairedAndSingleCharacterOracleAlternativeQuoteDelimiters() {
+        for (String literal : List.of(
+                "q'[FOR UPDATE]'", "q'{UNION}'", "q'(SELECT INTO)'",
+                "q'<WITH>'", "q'!FOR SHARE!'", "nq'#MINUS#'")) {
+            SafeSelectEligibility.Result result = SafeSelectEligibility.check(
+                    "select " + literal + " value from dual", true, UNIQUE_RESULT);
+
+            assertTrue(result.eligible(), literal + ": " + result.reason());
+        }
     }
 
     @Test
