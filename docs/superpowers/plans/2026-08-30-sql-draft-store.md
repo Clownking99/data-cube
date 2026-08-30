@@ -236,6 +236,34 @@ class SqlDraftStoreTest {
         }
     }
 
+    @Test void invalidNewSnapshotNeverReplacesLastSuccessfulBytes() throws Exception {
+        SqlDraft saved = draft(1, NOW, "select 1");
+        try (SqlDraftStore store = SqlDraftStore.open(root())) {
+            store.save(saved);
+            byte[] before = Files.readAllBytes(file(saved.id()));
+            assertCode(SqlDraftStore.FailureCode.INVALID_DRAFT,
+                    () -> store.save(draft(1, NOW + 1, "x".repeat(1024 * 1024 + 1))));
+            assertCode(SqlDraftStore.FailureCode.INVALID_DRAFT, () -> store.save(null));
+            assertArrayEquals(before, Files.readAllBytes(file(saved.id())));
+            assertEquals(List.of(saved), store.snapshot().drafts());
+        }
+    }
+
+    @Test void externallyOverfullDirectoryIsPreservedAndCanStillPersistDisable() throws Exception {
+        Files.createDirectory(root());
+        for (int i = 1; i <= 101; i++) Files.write(file(new UUID(0, i)), SqlDraftCodec.encode(draft(i, NOW, "select " + i)));
+        byte[] before = Files.readAllBytes(file(new UUID(0, 1)));
+        try (SqlDraftStore store = SqlDraftStore.open(root())) {
+            assertCode(SqlDraftStore.FailureCode.CAPACITY, store::snapshot);
+            assertCode(SqlDraftStore.FailureCode.CAPACITY, () -> store.save(draft(1, NOW + 1, "changed")));
+            store.setEnabled(false);
+            assertArrayEquals(ByteBuffer.allocate(9).putInt(0x44434450).putInt(1).put((byte) 0).array(),
+                    Files.readAllBytes(root().resolve("preferences.bin")));
+            assertArrayEquals(before, Files.readAllBytes(file(new UUID(0, 1))));
+            assertTrue(Files.isRegularFile(file(new UUID(0, 101))));
+        }
+    }
+
     @Test void expiryUsesEmbeddedTimeAndPreservesOpenFutureAndInvalidEntries() throws Exception {
         SqlDraft expired = draft(1, NOW - WEEK, "expired");
         SqlDraft recent = draft(2, NOW - WEEK + 1, "recent");
