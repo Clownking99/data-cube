@@ -4,7 +4,7 @@
 
 工作树：`D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery`；分支：`codex/sql-draft-recovery`；起点：`main@0c4ecb9`。
 
-P1 尚未完成。当前已完成草稿值/格式、文件边界和存储策略，保存调度、恢复界面与重启验收仍在后续阶段，不将基础测试当成用户可用恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
+P1 尚未完成。当前已完成草稿值/格式、文件边界、存储策略、纯保存状态和有界写入队列；应用级协调器、编辑器/恢复界面与重启验收仍在后续阶段，不将基础测试当成用户可用恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
 
 设计见[SQL 草稿恢复设计](../specs/2026-08-30-sql-draft-recovery-design.md)。执行计划：
 
@@ -74,6 +74,21 @@ exit $draftTestExit
 
 已覆盖1秒静默、10秒持续输入、写入期间新编辑、旧成功/失败回调、同revision重试的attempt、清空/暂停失效和时钟边界。这只是无SQL/无线程/无I/O的状态契约；实际异步队列、存储屏障和恢复界面尚未实现。独立审查范围`8c85c51..5da7b9c`已Approved，0 Critical/Important/Minor；审查列出的协调器串行化、计时器替换、结构性失败和恢复零DB访问继续作为整合验收项，不以此纯模型替代。
 
+## P1.3有界队列（已完成）
+
+提交`eaebe8c`只包含SqlDraftWriteQueue及对应11项测试；编译成功后的stub RED11/11失败，主代理读取当时XML核实。实现后的草稿focused回归exit0，71 tests / 71 passed / 0 failures / 0 errors / 0 skipped；完整强制非headless回归exit0，143 suites / 1287 tests / 1284 passed / 0 failures / 0 errors / 3相同live skips。主代理读取最终XML、核实3项名称，并逐字核对代码/测试与计划一致。报告随后补齐明确的跳过名称与提交号，未修改源代码或重跑测试冒充新实现。
+
+覆盖同ID一千次合并、独立ID顺序、清空/单条删除取消、运行中写入后的屏障顺序、异常Future结算、执行器拒绝与排空关闭；真实临时Store也验证清空后不会恢复被取消的旧排队文本。这里的可控交错不是跨线程压力或完整FX应用验证。独立审查范围`bb01976..eaebe8c`已Approved，0 Critical/Important；应用级协调器及UI仍未实现。审查提出的两项Minor为补充inline执行器/空闲后第二轮调度测试、继续准确披露原有编译说明/Gradle信息，保留给整体审查跟进。
+
+主代理随后在`eaebe8c`同一生产代码上独立重跑完整强制非headless回归：exit0、39秒、8 tasks执行，XML143 suites / 1287 tests / 1284 passed / 0 failures / 0 errors / 3原live skips；环境恢复。8个文档相对链接与diff whitespace检查通过，原unchecked说明仍存在。
+
+## 下一整合阶段与保留事项
+
+- 应用级协调器必须把FX快照、计时器、generation/revision、单写者和清空/禁用屏障真正接通，并覆盖初始化/禁用持久化失败、结构性失败立即暂停、关闭刷新与锁释放。底层Store的格式/容量/偏好已有独立证据，不代表这些调用路径已经实现。
+- 恢复UI必须显式恢复原文，按稳定ID+类型匹配且首次执行前复核，证明恢复/补全文本赋值零数据库调用；重复恢复只聚焦。实际调用计数不能由旧的source-text测试替代。
+- 整体审查需再次处理非阻塞测试补强：Store部分clear/prune删除失败；Queue inline执行器及空闲后第二轮调度。基线unchecked说明继续披露，不把无关清理混入当前功能。
+- P1还需合成首次启动、重启/异常退出、桌面状态、完整回归及集成审查；通过后才按授权本地合并main。P2/P3及发布门槛也未关闭。
+
 ## Requirement | Evidence
 
 | Requirement | Evidence / 当前边界 |
@@ -96,6 +111,10 @@ exit $draftTestExit
 | 静默/持续输入保存期限 | `SqlDraftSaveStateTest.idleDeadlineMovesWithInputAndOnlyPublicationMarksSaved`、`continuousInputCannotPostponeCapturePastTenSeconds`；纯状态GREEN |
 | 旧回调与重试失效 | `inputDuringPublicationStartsNewWindowAndRejectsOldSuccess`、`oldFailureAndRepeatedCompletionCannotOverwriteNewResult`、`ordinaryFailureWaitsForExplicitRetryWithANewAttemptTicket`；纯状态GREEN |
 | 清空/暂停后的状态规则 | `clearInvalidatesTicketsAndCloseCannotResurrectUneditedText`、`disableCancelsPendingAndEditsDoNotImplicitlyResume`、`unavailableRequiresOwnerRecoveryAndCanResumeWithoutSavingEmptyText`；纯状态GREEN，不代表磁盘屏障 |
+| 待写快照合并与不同ID顺序 | `SqlDraftWriteQueueTest.oneThousandPendingVersionsRetainOnlyLatestAndSettleSupersededFutures`、`independentIdsSurviveAndNewestReplacementOccupiesCurrentTail`；GREEN |
+| 取消/屏障与正在写入的顺序 | `clearCancelsPendingAndPostBarrierSaveCannotMoveBeforeAction`、`targetedDeleteKeepsOtherIdsAndSerializesNewTargetSnapshotAfterIt`、`clearDuringRunningWriteWaitsForItAndCancelsOnlyPendingVersion`；可控交错GREEN |
+| 排空、执行器拒绝与异常结算 | `closeDrainsAcceptedJobsAndRejectsNewJobsWithoutClosingExternalExecutor`、`rejectedExecutorSettlesQueueAndDoesNotLeakItsErrorMessage`、`unexpectedWriterErrorStillSettlesSaveAndDrainFutures`；GREEN |
+| 真实文件清空后旧排队文本不再写回 | `isolatedRealStoreClearCannotResurrectOldQueuedText`；隔离Store GREEN，非完整编辑器流程 |
 | 真实自动保存、关闭/清空/禁用并发顺序 | 尚未实现/验收 |
 | 离线恢复零DB调用、连接身份安全 | 生命周期代码分析完成，尚未实现/验收 |
 | 重启、异常退出、桌面可见状态 | 尚未验收 |

@@ -44,6 +44,8 @@ Before the first explicit database action, resolve the saved ID from `Connection
 
 This distinction also separates display intent from resource ownership. A matching saved target may be shown while JDBC and metadata access remain inactive. Missing/unmatched targets require an explicit user selection, and showing that selection UI must use the in-memory connection snapshot rather than reload credentials/history files. Restored text assignment, including member-completion triggers such as `alias.`, must remain inside the metadata gate until explicit admission.
 
+Existing `SqlEditorSessionContractTest` checks source-text relationships (including both session-ownership call sites and mandatory rollback/no-dialog structure). Preserve those contracts, but do not cite them as runtime evidence of zero database calls. Draft restoration acceptance needs actual provider/session/metadata call counters with isolated synthetic configs, plus a real FX text assignment that can trigger completion. Existing `SqlEditorConnectionAdmissionTest` covers the underlying pin/close gate, not the new restoration path by itself.
+
 ## Initialization and unavailable storage
 
 Opening/initializing the local directory is background work. Before it succeeds, UI must say that draft protection is initializing and no save is confirmed. Editing remains possible and the latest eligible text is captured after successful initialization; do not queue a full SQL snapshot for every initialization-time input event.

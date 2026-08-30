@@ -36,7 +36,7 @@
 - `drainAndClose` rejects new saves/actions, drains accepted work, and returns the same completion on repeated calls. It does not close an injected executor or store. The background owner releases storage after this future; individual failed saves do not make drain success mean they were saved.
 - Executor rejection settles all already queued futures and makes the queue permanently closed. It does not attempt to close external resources from a UI caller; the owner still performs its background cleanup. No FX dependency, timers, wall-clock delays, SQL execution, logging or default user paths.
 
-- [ ] **Step 1: Create compiling stub and behavior tests.**
+- [x] **Step 1: Create compiling stub and behavior tests.**
 
 `src/com/datacube/config/SqlDraftWriteQueue.java`:
 
@@ -281,7 +281,7 @@ class SqlDraftWriteQueueTest {
 }
 ```
 
-- [ ] **Step 2: Observe RED with compiling stub.**
+- [x] **Step 2: Observe RED with compiling stub.**
 
 ```powershell
 .\gradlew.bat test --tests com.datacube.config.SqlDraftWriteQueueTest --rerun-tasks --no-daemon --console=plain
@@ -289,7 +289,7 @@ class SqlDraftWriteQueueTest {
 
 Expected exit1 with assertion failures for absent scheduling/ordering. Capture actual XML before replacing stub.
 
-- [ ] **Step 3: Implement the bounded serial queue.**
+- [x] **Step 3: Implement the bounded serial queue.**
 
 `src/com/datacube/config/SqlDraftWriteQueue.java`:
 
@@ -453,7 +453,7 @@ final class SqlDraftWriteQueue {
 }
 ```
 
-- [ ] **Step 4: Focused GREEN and forced full regression.**
+- [x] **Step 4: Focused GREEN and forced full regression.**
 
 ```powershell
 .\gradlew.bat test --tests com.datacube.config.SqlDraftWriteQueueTest --tests com.datacube.config.SqlDraftSaveStateTest --tests com.datacube.config.SqlDraftStoreTest --tests com.datacube.config.SqlDraftDirectoryTest --tests com.datacube.config.SqlDraftCodecTest --rerun-tasks --no-daemon --console=plain
@@ -471,7 +471,7 @@ try {
 exit $draftTestExit
 ```
 
-- [ ] **Step 5: Self-review, commit and report.**
+- [x] **Step 5: Self-review, commit and report.**
 
 ```powershell
 git diff --check
