@@ -666,7 +666,8 @@ class SqlDraftManagerTest {
                 assertEquals("", f.sql().getText());
                 assertFalse(f.sql().isEditable());
                 f.list().getSelectionModel().select(f.newer);
-                assertEquals(f.newer.sql(), f.sql().getText());
+                assertEquals(f.newer.sql().replace("\r", ""), f.sql().getText());
+                assertEquals("select 1;\r\n-- raw\n", f.newer.sql(), "display normalization must not change checkpoint");
                 assertFalse(f.button("restore").isDisabled());
             });
         }
@@ -1077,7 +1078,7 @@ class SqlDraftRecoveryTabsTest {
         }
     }
 
-    @Test void refusedInstallationAbortsBoundPaneAndReleasesDraftSubscription() throws Exception {
+    @Test void closeDuringReservedConstructionWaitsAndReleasesDraftSubscription() throws Exception {
         try (Fixture f = new Fixture()) {
             AtomicReference<CompletionStage<TabCloseOutcome>> closing = new AtomicReference<>();
             SqlDraftRecoveryTabs recovery = f.call(() -> new SqlDraftRecoveryTabs(f.tabs, f.owner, draft -> {
@@ -1085,8 +1086,30 @@ class SqlDraftRecoveryTabsTest {
                 closing.set(f.tabs.closeAllManagedTabsMandatory());
                 return pane;
             }, ignored -> {}));
-            assertFalse(f.call(() -> recovery.restore(f.draft)));
+            assertTrue(f.call(() -> recovery.restore(f.draft)));
             assertEquals(TabCloseOutcome.COMPLETED, closing.get().toCompletableFuture().get(5, TimeUnit.SECONDS));
+            f.fx(() -> {
+                assertNull(f.owner.installedContent(f.draft.id()));
+                assertTrue(f.tabPane().getTabs().isEmpty());
+                assertEquals(0, ((Map<?, ?>) fieldUnchecked(f.owner, "boundContent")).size());
+                assertEquals(0, ((Map<?, ?>) fieldUnchecked(f.owner.runtime(), "handles")).size());
+            });
+            f.offline();
+        }
+    }
+
+    @Test void failedSelectionInstallationAbortsBoundPaneAndReleasesDraftSubscription() throws Exception {
+        try (Fixture f = new Fixture()) {
+            f.fx(() -> f.tabPane().setSelectionModel(new javafx.scene.control.SingleSelectionModel<Tab>() {
+                @Override protected Tab getModelItem(int index) { return f.tabPane().getTabs().get(index); }
+                @Override protected int getItemCount() { return f.tabPane().getTabs().size(); }
+                @Override public void select(Tab tab) {
+                    throw new IllegalStateException("synthetic installation selection failure");
+                }
+            }));
+            assertFalse(f.call(() -> f.recovery.restore(f.draft)));
+            assertEquals(TabCloseOutcome.COMPLETED,
+                    f.tabs.closeAllManagedTabsMandatory().toCompletableFuture().get(5, TimeUnit.SECONDS));
             f.fx(() -> {
                 assertNull(f.owner.installedContent(f.draft.id()));
                 assertTrue(f.tabPane().getTabs().isEmpty());
