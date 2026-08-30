@@ -87,6 +87,147 @@ class SqlEditorResultFilterContractTest {
     @TempDir Path directory;
 
     @Test
+    void columnMenuGuardsLastColumnAndRestoresAllWithoutChangingRows() throws Exception {
+        try (PaneFixture fixture = new PaneFixture(null, null)) {
+            FxUiTestSupport.call(() -> {
+                assertTrue(columnMenu(fixture.pane).isDisabled());
+                showQuery(fixture.pane, QueryResult.query(List.of("same_name", "same_name", "last"),
+                        List.of(List.of("A", "B", "C")), 1), "select demo");
+                var table = resultTable(fixture.pane);
+                var items = table.getItems();
+                var columns = List.copyOf(table.getColumns());
+                assertEquals("列（3/3）", columnMenu(fixture.pane).getText());
+                assertFalse(columnItem(fixture.pane, "sql-result-column-0").isMnemonicParsing());
+                assertFalse(columnItem(fixture.pane, "sql-result-column-0").getText()
+                        .equals(columnItem(fixture.pane, "sql-result-column-1").getText()));
+                columnItem(fixture.pane, "sql-result-column-0").fire();
+                columnItem(fixture.pane, "sql-result-column-1").fire();
+                assertEquals("列（1/3）", columnMenu(fixture.pane).getText());
+                assertTrue(columnItem(fixture.pane, "sql-result-column-2").isDisable());
+                columnItem(fixture.pane, "sql-result-column-2").fire();
+                assertTrue(columns.get(3).isVisible());
+                assertTrue(columns.get(0).isVisible());
+                assertEquals(List.of("last"), fixture.pane.captureResultExportSnapshot().columns());
+                columnItem(fixture.pane, "sql-result-columns-show-all").fire();
+                assertEquals("列（3/3）", columnMenu(fixture.pane).getText());
+                assertTrue(columns.stream().allMatch(TableColumn::isVisible));
+                assertSame(items, table.getItems());
+                assertEquals(List.of(List.of("A", "B", "C")), table.getItems());
+                return null;
+            });
+        }
+    }
+
+    @Test
+    void columnMenuPersistsThroughSearchAndExportsBothScopes() throws Exception {
+        try (PaneFixture fixture = new PaneFixture(null, null)) {
+            ResultExportSnapshot snapshot = FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, QueryResult.query(List.of("name", "score", "hidden"),
+                        List.of(List.of("Ada", 1, "secret1"), List.of("Ada", 3, "secret2"),
+                                List.of("Bob", 9, "secret3")), 1), "select demo");
+                var table = resultTable(fixture.pane);
+                var seq = table.getColumns().get(0);
+                var name = table.getColumns().get(1);
+                var score = table.getColumns().get(2);
+                var hidden = table.getColumns().get(3);
+                table.getColumns().setAll(List.of(seq, score, name, hidden));
+                score.setPrefWidth(211);
+                score.setSortType(TableColumn.SortType.DESCENDING);
+                table.getSortOrder().setAll(score);
+                table.sort();
+                columnItem(fixture.pane, "sql-result-column-2").fire();
+                var search = (TextField) fixture.pane.getNode().lookup("#sql-result-search");
+                search.setText("Ada");
+                search.fireEvent(new ActionEvent());
+                assertEquals(List.of(seq, score, name, hidden), table.getColumns());
+                assertFalse(hidden.isVisible());
+                assertEquals(211, score.getPrefWidth());
+                assertEquals(List.of(score), table.getSortOrder());
+                assertEquals(List.of(3, 1), table.getItems().stream().map(row -> row.get(1)).toList());
+                return fixture.pane.captureResultExportSnapshot();
+            });
+            Path current = directory.resolve("visible-current.csv");
+            Path all = directory.resolve("visible-all.csv");
+            com.datacube.export.QueryResultFileWriter.write(current,
+                    com.datacube.export.QueryResultFileWriter.Format.CSV, snapshot,
+                    ResultExportScope.CURRENT_FILTERED, false, null,
+                    new com.datacube.export.ResultExportOperation());
+            com.datacube.export.QueryResultFileWriter.write(all,
+                    com.datacube.export.QueryResultFileWriter.Format.CSV, snapshot,
+                    ResultExportScope.ALL_LOADED, false, null,
+                    new com.datacube.export.ResultExportOperation());
+            assertEquals(List.of("score,name", "3,Ada", "1,Ada"), csvLines(current));
+            assertEquals(List.of("score,name", "1,Ada", "3,Ada", "9,Bob"), csvLines(all));
+            FxUiTestSupport.call(() -> {
+                ((Button) fixture.pane.getNode().lookup("#sql-result-clear-filter")).fire();
+                assertEquals("列（2/3）", columnMenu(fixture.pane).getText());
+                assertEquals(List.of(9, 3, 1), resultTable(fixture.pane).getItems()
+                        .stream().map(row -> row.get(1)).toList());
+                return null;
+            });
+        }
+    }
+
+    @Test
+    void columnMenuResetsForNewResultAndIgnoresOldItems() throws Exception {
+        try (PaneFixture fixture = new PaneFixture(null, null)) {
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, QueryResult.query(List.of("a", "b"), List.of(List.of(1, 2)), 1), "select old");
+                var old = columnItem(fixture.pane, "sql-result-column-0");
+                old.fire();
+                showQuery(fixture.pane, QueryResult.query(List.of("a", "b"), List.of(), 1), "select new");
+                old.fire();
+                assertFalse(columnMenu(fixture.pane).isDisabled());
+                assertEquals("列（2/2）", columnMenu(fixture.pane).getText());
+                assertEquals(List.of("a", "b"), fixture.pane.captureResultExportSnapshot().columns());
+                invoke(fixture.pane, "showError", new Class<?>[]{String.class, long.class}, "synthetic", 1L);
+                assertTrue(columnMenu(fixture.pane).isDisabled());
+                return null;
+            });
+        }
+    }
+
+    @Test
+    void columnMenuPreservesItsViewAcrossDebounceAndConditionTransitions() throws Exception {
+        try (PaneFixture fixture = new PaneFixture(null, null)) {
+            FxUiTestSupport.call(() -> {
+                showQuery(fixture.pane, QueryResult.query(List.of("name", "score", "hidden"),
+                        List.of(List.of("Ada", 1, "secret1"), List.of("Ada", 3, "secret2"),
+                                List.of("Bob", 9, "secret3")), 1), "select demo");
+                var table = resultTable(fixture.pane);
+                var seq = table.getColumns().get(0);
+                var name = table.getColumns().get(1);
+                var score = table.getColumns().get(2);
+                var hidden = table.getColumns().get(3);
+                table.getColumns().setAll(seq, score, name, hidden);
+                score.setSortType(TableColumn.SortType.DESCENDING);
+                table.getSortOrder().setAll(score);
+                table.sort();
+                columnItem(fixture.pane, "sql-result-column-2").fire();
+                ((TextField) fixture.pane.getNode().lookup("#sql-result-search")).setText("Ada");
+                return null;
+            });
+            awaitFxDelay(javafx.util.Duration.millis(200));
+            FxUiTestSupport.call(() -> {
+                var table = resultTable(fixture.pane);
+                assertEquals(List.of("#", "score", "name", "hidden"),
+                        table.getColumns().stream().map(TableColumn::getText).toList());
+                assertFalse(table.getColumns().get(3).isVisible());
+                assertEquals(List.of(table.getColumns().get(1)), table.getSortOrder());
+                state(fixture.pane).appendCondition(new FilterCondition(
+                        1, FilterConnector.AND, FilterOperator.GT, 1));
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+                assertEquals(1, state(fixture.pane).snapshot().conditions().size());
+                assertFalse(table.getColumns().get(3).isVisible());
+                ((Button) fixture.pane.getNode().lookup("#sql-result-filter-remove-0")).fire();
+                assertTrue(state(fixture.pane).snapshot().conditions().isEmpty());
+                assertEquals(List.of(table.getColumns().get(1)), table.getSortOrder());
+                return null;
+            });
+        }
+    }
+
+    @Test
     void exportFlushKeepsSortColumnOrderAndUsesFrozenVisibleRows() throws Exception {
         try (PaneFixture fixture = new PaneFixture(null, null)) {
             ResultExportSnapshot captured = FxUiTestSupport.call(() -> {
@@ -1062,22 +1203,22 @@ class SqlEditorResultFilterContractTest {
                 table.getSelectionModel().clearAndSelect(0, filteredName);
                 assertEquals(1, table.getSelectionModel().getSelectedCells().size());
                 copy.getItems().get(2).fire();
-                assertEquals("Ada\t7\t2026-08-29 10:11:12",
+                assertEquals("2026-08-29 10:11:12\tAda\t7",
                         clipboard.get(),
-                        "copy must use only the currently visible local-filter subset");
+                        "copy must use the current visible columns and local-filter subset");
 
                 state(fixture.pane).setSearchText("");
                 invoke(fixture.pane, "renderResultFilterSnapshot");
                 table.applyCss();
                 table.layout();
-                TableColumn<ObservableList<Object>, ?> sortedScore = table.getColumns().get(2);
+                TableColumn<ObservableList<Object>, ?> sortedScore = table.getColumns().get(3);
                 sortedScore.setSortType(TableColumn.SortType.DESCENDING);
                 table.getSortOrder().setAll(sortedScore);
                 table.sort();
                 table.getSelectionModel().clearAndSelect(0, table.getColumns().get(1));
                 assertEquals(1, table.getSelectionModel().getSelectedCells().size());
                 copy.getItems().get(2).fire();
-                assertEquals("Bob\t9\t2026-08-29 11:12:13",
+                assertEquals("2026-08-29 11:12:13\tBob\t9",
                         clipboard.get(),
                         "copy must follow the TableView's current sorted row order");
                 return null;
@@ -1574,6 +1715,26 @@ class SqlEditorResultFilterContractTest {
     @SuppressWarnings("unchecked")
     private static TableView<ObservableList<Object>> resultTable(SqlEditorPane pane) throws Exception {
         return (TableView<ObservableList<Object>>) field(pane, "resultTable");
+    }
+
+    private static MenuButton columnMenu(SqlEditorPane pane) {
+        var menu = (MenuButton) pane.getNode().lookup("#sql-result-columns");
+        assertNotNull(menu, "result column menu must be visible in the toolbar");
+        return menu;
+    }
+
+    private static javafx.scene.control.MenuItem columnItem(SqlEditorPane pane, String id) {
+        return columnMenu(pane).getItems().stream().filter(item -> id.equals(item.getId()))
+                .findFirst().orElseThrow();
+    }
+
+    private static List<String> csvLines(Path file) throws java.io.IOException {
+        List<String> lines = Files.readAllLines(file);
+        if (!lines.isEmpty() && lines.getFirst().startsWith("\ufeff")) {
+            lines = new ArrayList<>(lines);
+            lines.set(0, lines.getFirst().substring(1));
+        }
+        return lines;
     }
 
     private static String labelText(SqlEditorPane pane, String name) throws Exception {

@@ -161,7 +161,9 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlResultExportCoordinator resultExports;
     private long resultStatusRevision;
     private SqlResultToolbar resultToolbar;
+    private SqlResultColumnMenu resultColumnMenu;
     private TableView<ObservableList<Object>> resultTable;
+    private QueryResult displayedResult;
     private TextArea planArea;
     private TitledPane resultPane;
     private Label statusLabel;
@@ -912,6 +914,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private VBox resultContainer() {
         resultTable = new TableView<>();
+        resultColumnMenu = new SqlResultColumnMenu(resultTable);
         resultTable.setPlaceholder(new Label("（无结果）"));
         // UNCONSTRAINED：保留列自然宽度与底部横向滚动条（宽表友好）。
         resultTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
@@ -948,7 +951,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 this::onRemoveResultFilterCondition,
                 this::onApplyDatabaseFilter,
                 this::onClearResultFilters,
-                this::copyResultSelection));
+                this::copyResultSelection), resultColumnMenu.getNode());
         renderResultFilterToolbar();
         VBox box = new VBox(resultToolbar.getNode(), resultPane);
         VBox.setVgrow(resultPane, Priority.ALWAYS);
@@ -1826,7 +1829,14 @@ public final class SqlEditorPane implements AutoCloseable {
         resultStatusRevision++;
         resultRowIndexes.clear();
         QueryResult active = snapshot.activeResult();
-        resultTable.getColumns().clear();
+        boolean rebuildColumns = active != displayedResult;
+        List<TableColumn<ObservableList<Object>, ?>> sorting =
+                rebuildColumns ? List.of() : new ArrayList<>(resultTable.getSortOrder());
+        Map<TableColumn<ObservableList<Object>, ?>, TableColumn.SortType> sortTypes =
+                new IdentityHashMap<>();
+        for (var column : sorting) sortTypes.put(column, column.getSortType());
+        if (rebuildColumns) resultTable.getColumns().clear();
+        displayedResult = active;
         resultTable.getItems().clear();
         if (active == null || active.kind != QueryResult.Kind.QUERY) {
             exportResultBtn.setDisable(true);
@@ -1835,15 +1845,17 @@ public final class SqlEditorPane implements AutoCloseable {
             return;
         }
         useTable();
-        resultTable.getColumns().add(buildSeqColumn());
-        List<String> labels = orderedLabels(active);
-        List<String> comments = active.columnComments;
-        for (int i = 0; i < labels.size(); i++) {
-            String name = labels.get(i);
-            String comment = (comments != null && i < comments.size()) ? comments.get(i) : null;
-            TableColumn<ObservableList<Object>, Object> col = buildQueryColumn(name, comment, i);
-            col.setPrefWidth(estimateColumnWidth(name, active.rows, i));
-            resultTable.getColumns().add(col);
+        if (rebuildColumns) {
+            resultTable.getColumns().add(buildSeqColumn());
+            List<String> labels = orderedLabels(active);
+            List<String> comments = active.columnComments;
+            for (int i = 0; i < labels.size(); i++) {
+                String name = labels.get(i);
+                String comment = (comments != null && i < comments.size()) ? comments.get(i) : null;
+                TableColumn<ObservableList<Object>, Object> col = buildQueryColumn(name, comment, i);
+                col.setPrefWidth(estimateColumnWidth(name, active.rows, i));
+                resultTable.getColumns().add(col);
+            }
         }
         ObservableList<ObservableList<Object>> data = FXCollections.observableArrayList();
         for (int rowIndex : snapshot.visibleRowIndexes()) {
@@ -1853,6 +1865,11 @@ public final class SqlEditorPane implements AutoCloseable {
             data.add(row);
         }
         resultTable.setItems(data);
+        if (!sorting.isEmpty()) {
+            sortTypes.forEach(TableColumn::setSortType);
+            resultTable.getSortOrder().setAll(sorting);
+        }
+        resultTable.sort();
         exportResultBtn.setDisable(active.rows.isEmpty());
         copyInsertBtn.setDisable(active.rows.isEmpty());
         renderResultFilterToolbar(snapshot);
@@ -1864,6 +1881,10 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void renderResultFilterToolbar(ResultFilterState.Snapshot snapshot) {
         if (resultToolbar != null) resultToolbar.render(snapshot);
+        if (resultColumnMenu != null) {
+            QueryResult active = snapshot.activeResult();
+            resultColumnMenu.refresh(active != null && active.kind == QueryResult.Kind.QUERY);
+        }
     }
 
     private void clearResultFilterState() {
@@ -1871,6 +1892,7 @@ public final class SqlEditorPane implements AutoCloseable {
         resultRowIndexes.clear();
         resultFilterState.clearAll();
         lastQuerySql = null;
+        displayedResult = null;
         renderResultFilterToolbar();
     }
 

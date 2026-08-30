@@ -67,9 +67,13 @@ public final class SqlResultToolbar {
     private String committedSearch = "";
 
     public SqlResultToolbar(Actions actions) {
+        this(actions, null);
+    }
+
+    SqlResultToolbar(Actions actions, MenuButton columnMenu) {
         this.actions = Objects.requireNonNull(actions, "actions");
         configureControls();
-        composeLayout();
+        composeLayout(columnMenu);
     }
 
     public Parent getNode() {
@@ -154,8 +158,9 @@ public final class SqlResultToolbar {
         summary.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
     }
 
-    private void composeLayout() {
+    private void composeLayout(MenuButton columnMenu) {
         HBox actionsRow = new HBox(6, search, addCondition, applyDatabase, copy, clear);
+        if (columnMenu != null) actionsRow.getChildren().add(3, columnMenu);
         actionsRow.setAlignment(Pos.CENTER_LEFT);
         root.setPadding(new Insets(4, 0, 4, 0));
         root.getStyleClass().add("sql-result-toolbar");
