@@ -2,6 +2,8 @@
 
 ## Active plan: SQL draft recovery (2026-08-30)
 
+- Manager review Needs fixes: Important plan-mandated abort listener retention. SqlDraftRecoveryTabs resource-only abort never calls SqlEditorPane FX finalizer on initializer/install failure; settings retains pane/rawSQL. Root verified exactsource afterCodeGraph stale-worktree banner, revised plan under standing user design waiver: complete backgroundresource+awaitFXfinalization beforeabortbarrier. Twofailuretests assertuiFinalized beforefixturecleanup, actualRED required. New plan2026-08-31-sql-draft-manager-abort-fix.md/briefready; processacceptance remains pending. Minor existinguncheckednote rolls tofinalreview.
+
 - Root fresh full69717 atmanagerffb2ba9 exit0/40s/8tasks, XML149suites1358total1355passed0fail/errors3original live skips; envrestored. draft_manager_review(sol) ACTIVE on frozen review-ca91d07..ffb2ba9.diff with full brief/report, concrete outside-diff abort-listener lifetime risk. No root Gradle. Process acceptance brief updated overlapping second JVM+isolateduser.home, NOT dispatched until clean manager review. Main untouched, no push/tag.
 
 - Manager implementation ffb2ba9 exact13source/test files delivered; root actual XML149suites1358total1355passed0fail/errors3original live skips checked. Root fresh full session69717 active. Frozen task review package review-ca91d07..ffb2ba9.diff ready, report still being written; not task-complete until independent review/fresh run. Process plan extended with explicit child user.home and overlapping locked-probe JVM; not executed yet. Main merge/push/tag unchanged.
