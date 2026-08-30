@@ -1,6 +1,10 @@
 # Subagent-Driven Development Progress
 
-## Active plan: product continuity / Windows CI path contract (2026-08-30)
+## Active plan: SQL draft recovery (2026-08-30)
+
+- Previous goal turn made progress: column controls plus header regression fixed, reviewed and merged main0c4ecb9. Do not repeat. New worktree D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery branch codex/sql-draft-recovery base0c4ecb9; old release worktree/assets preserved. Fresh forced nonheadless baselineexit0/38s,XML138suites1216total1213passed0fail/errors3live skips,env restored. User routine-design confirmation waiver remains active, no push/tag/realDB/privatehistory/.testagent access. P1 design specifies independent exact bounded drafts, strict local preferences, single writer, explicit connection-free recovery, staged plans; draft_lifecycle_analysis read-only analysis in progress. No draft production code yet.
+
+## Previous increment: product continuity / Windows CI path contract (2026-08-30)
 
 - Column increment LOCAL DONE: final re-review edce8a2..20d4b16 Approved0remainingfindings; main FFedce8a2→20d4b16, root fresh merged forced nonheadless testexit0/54s/8executed,XML138suites1216total1213passed0fail/errors3live skips,envrestored.15relative doclinks+diffcheck passed. Only documentation closeout follows; no push/tag/release. Retain merged release-acceptance worktree and generated isolated acceptance assets for unfinished release checks; root .testagent unchanged/unread. Next useful product work P1 draft-recovery design→taskplan→TDD implementation, user waived routine confirmation; do not redispatch column task or treat release authorization as blocking local next-stage design. Product roadmap goal remains active, P1/P2 not implemented.
 
