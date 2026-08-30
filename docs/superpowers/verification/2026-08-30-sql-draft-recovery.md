@@ -4,7 +4,7 @@
 
 工作树：`D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery`；分支：`codex/sql-draft-recovery`；起点：`main@0c4ecb9`。
 
-P1 尚未完成。当前实现为草稿值/格式基础，文件存储、保存调度、恢复界面与重启验收仍在后续阶段；不将格式测试当成用户可用恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
+P1 尚未完成。当前已完成草稿值/格式及文件边界，存储策略、保存调度、恢复界面与重启验收仍在后续阶段；不将基础测试当成用户可用恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
 
 设计见[SQL 草稿恢复设计](../specs/2026-08-30-sql-draft-recovery-design.md)。执行计划：
 
@@ -50,11 +50,11 @@ exit $draftTestExit
 
 主代理在提交`4548dd6`上再次执行完整强制非headless回归：exit0、29秒、8 tasks全部执行；139 suites / 1236 tests / 1233 passed / 0 failures / 0 errors / 3相同live skips。环境恢复；4个新增文档相对链接检查通过。P1.1格式任务完成，不代表P1整体恢复功能完成；下一步执行独立文件边界计划。
 
-## P1.2文件边界（审查中）
+## P1.2文件边界（已完成）
 
 提交`045a5dd`只包含SqlDraftDirectory及对应测试。编译成功后stub RED17项全部失败；实现后focused目录+格式GREEN exit0、27秒。完整强制非headlessGREEN exit0、30秒，140 suites / 1253 tests / 1250 passed / 0 failures / 0 errors / 3原live skips；原JAVA_TOOL_OPTIONS已恢复。主代理另行核对XML总数、17项文件测试均通过，并逐字核对生产/测试代码与计划一致。
 
-实际运行（非跳过）：独立Java子进程抢锁/释放后成功、Windows符号链接拒绝、大小写别名保护。原子移动不支持、写入失败、清理失败、目标变化与目录条目上限也已通过。审查范围`0eb3957..045a5dd`进行中；尚未实现SqlDraftStore策略及应用保存/恢复入口。
+实际运行（非跳过）：独立Java子进程抢锁/释放后成功、Windows符号链接拒绝、大小写别名保护。原子移动不支持、写入失败、清理失败、目标变化与目录条目上限也已通过。审查范围`0eb3957..045a5dd`已Approved，无任务内阻塞问题；已披露的基线unchecked编译说明作为非阻塞后续事项保留给整体审查，不额外修改无关测试。尚未实现SqlDraftStore策略及应用保存/恢复入口。
 
 ## Requirement | Evidence
 
