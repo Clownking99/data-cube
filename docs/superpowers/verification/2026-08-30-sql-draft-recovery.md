@@ -4,7 +4,7 @@
 
 工作树：`D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery`；分支：`codex/sql-draft-recovery`；起点：`main@0c4ecb9`。
 
-P1 尚未完成。当前已完成草稿值/格式及文件边界，存储策略实现已通过回归、正在独立审查；保存调度、恢复界面与重启验收仍在后续阶段，不将基础测试当成用户可用恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
+P1 尚未完成。当前已完成草稿值/格式、文件边界和存储策略，保存调度、恢复界面与重启验收仍在后续阶段，不将基础测试当成用户可用恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
 
 设计见[SQL 草稿恢复设计](../specs/2026-08-30-sql-draft-recovery-design.md)。执行计划：
 
@@ -59,11 +59,13 @@ exit $draftTestExit
 
 实际运行（非跳过）：独立Java子进程抢锁/释放后成功、Windows符号链接拒绝、大小写别名保护。原子移动不支持、写入失败、清理失败、目标变化与目录条目上限也已通过。审查范围`0eb3957..045a5dd`已Approved，无任务内阻塞问题；已披露的基线unchecked编译说明作为非阻塞后续事项保留给整体审查，不额外修改无关测试。尚未实现SqlDraftStore策略及应用保存/恢复入口。
 
-## P1.2存储策略（审查中）
+## P1.2存储策略（已完成）
 
 提交`82c54b1`只包含SqlDraftStore及对应测试。编译成功后RED11项全部失败，主代理实际读取XML核实；完整实现后的Store/Directory/Codec focused回归exit0，完整强制非headless回归exit0，141 suites / 1264 tests / 1261 passed / 0 failures / 0 errors / 3相同live skips，环境恢复。主代理独立读取最终XML，并逐字核对两份文件与完整计划代码块一致。
 
-已验证严格启停、有效草稿重开、异常设置/未知文件保留、100条与32MiB边界、7天过期规则和打开草稿保护；尚未运行应用内自动保存/恢复。冻结审查范围`3192384..82c54b1`（另含控制器保存状态计划文档），任务源代码审查进行中。基线unchecked编译说明仍保留，不宣称构建输出零警告。
+已验证严格启停、有效草稿重开、异常设置/未知文件保留、100条与32MiB边界、7天过期规则和打开草稿保护；尚未运行应用内自动保存/恢复。冻结审查范围`3192384..82c54b1`（另含控制器保存状态计划文档）已Approved，无Critical/Important；Minor保留至整体审查：为clear/prune的部分删除失败补充定向注入测试。审查标注的应用启动/管理页调用prune并传入全部打开ID，属于后续整合验收项，不在同步Store内伪称已完成。基线unchecked编译说明仍保留，不宣称构建输出零警告。
+
+主代理在未改变生产代码的`92091b2`上独立执行完整强制非headless回归：exit0、37秒、8 tasks执行；XML141 suites / 1264 tests / 1261 passed / 0 failures / 0 errors / 3原live skips。环境已恢复，7个文档相对链接和diff whitespace检查通过。
 
 ## Requirement | Evidence
 

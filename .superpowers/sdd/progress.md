@@ -2,6 +2,8 @@
 
 ## Active plan: SQL draft recovery (2026-08-30)
 
+- Store task COMPLETE3192384..82c54b1, draft_store_review spec compliant/Approved,0Critical/Important. Track Minor partial clear/prune delete-failure injection gap for final broad review; application startup/manage-page pruning with all open IDs remains explicit future integration gate (not a Store defect or completed UI claim). Root fresh full at92091b2 exit0/37s/8executed141suites1264tests1261passed0fail/error3live skips, envrestored;7doclinks/diffcheck pass. Next state brief419lines ready; write-queue executable plan drafted for subsequent task, not implemented. Store/format/directory must not be re-dispatched.
+
 - Store implementation82c54b1 complete, NOT yet gate-complete: focused GREENexit0 + fullforcednonheadlessXML141suites1264tests1261passed0fail/error3live skips, envrestored. Root independently read actual XML + literal source/test match True/True. draft_store_review reviewing frozen review-3192384..82c54b1.diff; no state implementation dispatched before verdict. Runtime contract added from current AppShell/SqlEditorPane close source: gate draft failure before destructive best-effort cleanup, retain mandatory rollback/no-transaction-dialog contract; no UI implementation claim.
 
 - Store task in progress via draft_store_impl, base3192384, brief store-task-1-brief.md510lines, report store-task-1-report.md. RED independently XML-confirmed11tests/11fail/0errors/0skips against compiled stub. Controller prepared complete save-state plan35349fd and unique save-state-task-1-brief.md419lines; not dispatched until store review passes. P1.3 state is only deterministic timing/tickets; actual worker/barriers, UI and acceptance still required.
