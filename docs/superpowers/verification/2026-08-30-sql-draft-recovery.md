@@ -227,7 +227,7 @@ Counter边界：session计数来自真实ConnectionManager调用provider.sqlRunn
 
 独立审查核实两处session立即归属与缺失连接拒绝路径；没有扩大验证范围。非阻塞Minor纳入最终P1审查：补充孤立CR及仅更换连接后保存的原始SQL换行组合。当前CRLF/LF、Schema-only和实际SQL编辑分别已有通过证据，不以此宣称所有组合均覆盖。
 
-## P1.5 草稿管理与标签恢复（实现完成，任务审查中）
+## P1.5 草稿管理与标签恢复（本任务已完成）
 
 2026-08-31，完整任务基线`ca91d07`，源代码提交`ffb2ba9`，严格13个源码/测试文件。增加SQL历史旁的“SQL 草稿”入口、显式预览和恢复、连接重选、普通及恢复标签UUID定位、删除/清空/启停与真实失败状态。管理页关闭只解除观察，不停止应用writer。实现计划见[草稿管理](../plans/2026-08-31-sql-draft-manager.md)。
 
@@ -238,3 +238,5 @@ Counter边界：session计数来自真实ConnectionManager调用provider.sqlRunn
 测试过程保留真实问题：首次缺API编译失败后曾过早写实现，不能当作行为RED。按要求退回可编译stub；manager15项UOE由主代理观察。第一次recovery9项中8项是Fixture.ready超时，判为无效RED并修正前置观察器。修正后主代理实际读取2026-08-30T16:41:24.841Z的9/9 UOE、0 errors/skips，无readiness超时。另一个新增换行回归3项中孤立CR失败由实施代理观察，主代理只读到后续GREEN，不追认独立RED。修复仅规范TextArea显示，不改存储原文。
 
 独立任务审查正在进行。下一门槛为[独立进程验收](../plans/2026-08-31-sql-draft-process-acceptance.md)、[桌面及P1完整清单](2026-08-31-sql-draft-acceptance-checklist.md)、打包与整分支审查，完成前不本地合并main；无推送、tag或发布。
+
+任务审查发现原计划的resource-only abort没有解除应用设置监听，失败的恢复编辑器可能被继续引用。按常规设计自主推进授权完成[修订](../plans/2026-08-31-sql-draft-manager-abort-fix.md)：提交`8ecd521`让两处abort回调在既有后台线程关闭资源，再等待FX finalizer；资源失败仍尝试释放监听，错误不被吞掉。主代理修复前读取真实RED：9项中上述初始化/安装失败2项uiFinalized断言失败；修复后56项覆盖测试通过。最终独立复审Spec compliant / Approved，0 Critical/Important。主代理最终完整回归session30832 exit0、40秒、8任务，XML149 suites /1358 total /1355 passed /0 failures/errors /3原live skips，环境恢复。此管理任务完成不代表P1进程/桌面/打包/整分支门槛完成。
