@@ -2,6 +2,8 @@
 
 ## Active plan: SQL draft recovery (2026-08-30)
 
+- Root fresh full69717 atmanagerffb2ba9 exit0/40s/8tasks, XML149suites1358total1355passed0fail/errors3original live skips; envrestored. draft_manager_review(sol) ACTIVE on frozen review-ca91d07..ffb2ba9.diff with full brief/report, concrete outside-diff abort-listener lifetime risk. No root Gradle. Process acceptance brief updated overlapping second JVM+isolateduser.home, NOT dispatched until clean manager review. Main untouched, no push/tag.
+
 - Manager implementation ffb2ba9 exact13source/test files delivered; root actual XML149suites1358total1355passed0fail/errors3original live skips checked. Root fresh full session69717 active. Frozen task review package review-ca91d07..ffb2ba9.diff ready, report still being written; not task-complete until independent review/fresh run. Process plan extended with explicit child user.home and overlapping locked-probe JVM; not executed yet. Main merge/push/tag unchanged.
 
 - Finisher corrected recovery RED root-verified XML16:41:24.841Z9tests9fail0errors/skips: eight restore UOE, one dialog UOE, no Fixture.ready timeout. New preview LF/CR/CRLF regression agent-reported3tests1fail(loneCR) before assignment change; root XML was already GREEN18/0 at16:43:24Z, so no independent preview-RED claim. Plan/brief normalized TextArea presentation only; raw checkpoints unchanged. Manager implementation/full/report/commit and independent review still pending; root no Gradle.

@@ -226,3 +226,15 @@ Counter边界：session计数来自真实ConnectionManager调用provider.sqlRunn
 当前完整XML中上述focused五类合计41项均通过、0跳过（recovery7 + editor16 + owner1 + session contract13 + admission4）。三个原有跳过名称保持为：`RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle`、`SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas`、`SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas`。原unchecked编译说明仍存在。管理页、实际执行按钮、重复恢复、重启和完整P1合并门槛仍未完成。
 
 独立审查核实两处session立即归属与缺失连接拒绝路径；没有扩大验证范围。非阻塞Minor纳入最终P1审查：补充孤立CR及仅更换连接后保存的原始SQL换行组合。当前CRLF/LF、Schema-only和实际SQL编辑分别已有通过证据，不以此宣称所有组合均覆盖。
+
+## P1.5 草稿管理与标签恢复（实现完成，任务审查中）
+
+2026-08-31，完整任务基线`ca91d07`，源代码提交`ffb2ba9`，严格13个源码/测试文件。增加SQL历史旁的“SQL 草稿”入口、显式预览和恢复、连接重选、普通及恢复标签UUID定位、删除/清空/启停与真实失败状态。管理页关闭只解除观察，不停止应用writer。实现计划见[草稿管理](../plans/2026-08-31-sql-draft-manager.md)。
+
+主代理独立完整强制非headless回归session69717：exit0、40秒、8任务全部执行。实际XML149 suites /1358 total /1355 passed /0 failures /0 errors /3原有live skips。新增manager18和recovery9共27项全部通过且没有新跳过；原unchecked编译说明仍存在。
+
+新增行为覆盖显式选择后完整只读预览、LF/CR/CRLF逻辑行与原始记录分别断言、管理忙期间事件guard、默认取消、部分清理实际幸存项、启停失败准确状态、晚到回调、重复定位、关闭拒绝与成功释放、真实安装失败后的abort、显式重选连接不产生provider/session/metadata/network调用。连接重选测试保存原始CRLF及孤立CR，补齐上节对应组合。AppShell入口目前仅源码/编译核实，不能冒充桌面验收。
+
+测试过程保留真实问题：首次缺API编译失败后曾过早写实现，不能当作行为RED。按要求退回可编译stub；manager15项UOE由主代理观察。第一次recovery9项中8项是Fixture.ready超时，判为无效RED并修正前置观察器。修正后主代理实际读取2026-08-30T16:41:24.841Z的9/9 UOE、0 errors/skips，无readiness超时。另一个新增换行回归3项中孤立CR失败由实施代理观察，主代理只读到后续GREEN，不追认独立RED。修复仅规范TextArea显示，不改存储原文。
+
+独立任务审查正在进行。下一门槛为[独立进程验收](../plans/2026-08-31-sql-draft-process-acceptance.md)、[桌面及P1完整清单](2026-08-31-sql-draft-acceptance-checklist.md)、打包与整分支审查，完成前不本地合并main；无推送、tag或发布。
