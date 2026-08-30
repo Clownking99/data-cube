@@ -96,12 +96,16 @@ public final class QueryResultFileWriter {
         var rows = guardedRows(snapshot, scope, operation, format != Format.SQL);
         List<String> columns = snapshot.columns();
         switch (format) {
-            case XLSX -> XlsxWriter.write(temporary.toFile(), columns, sink -> {
-                for (List<Object> row : rows) {
-                    operation.check();
-                    sink.row(row);
-                }
-            });
+            case XLSX -> {
+                XlsxLayout layout = QueryXlsxLayoutEstimator.estimate(columns, originalRows, operation::check);
+                operation.check();
+                XlsxWriter.write(temporary.toFile(), columns, sink -> {
+                    for (List<Object> row : rows) {
+                        operation.check();
+                        sink.row(row);
+                    }
+                }, layout);
+            }
             case SQL -> Files.writeString(temporary,
                     InsertSqlGenerator.generate(table, columns, rows), StandardCharsets.UTF_8);
             default -> {
