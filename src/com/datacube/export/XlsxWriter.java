@@ -8,6 +8,7 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -34,33 +35,71 @@ public final class XlsxWriter {
      * @param feed    数据行来源
      */
     public static void write(File out, List<String> columns, RowFeed feed) throws Exception {
+        writePackage(out, columns, feed, null);
+    }
+
+    public static void write(File out, List<String> columns, RowFeed feed,
+                             XlsxLayout layout) throws Exception {
+        Objects.requireNonNull(layout);
+        if (layout.widths().size() != columns.size()) {
+            throw new IllegalArgumentException("XLSX layout column count mismatch");
+        }
+        writePackage(out, columns, feed, layout);
+    }
+
+    private static void writePackage(File out, List<String> columns, RowFeed feed,
+                                     XlsxLayout layout) throws Exception {
+        boolean styled = layout != null;
         try (ZipOutputStream zip = new ZipOutputStream(
                 new BufferedOutputStream(new FileOutputStream(out)))) {
-
-            putEntry(zip, "[Content_Types].xml", contentTypes());
+            String types = contentTypes();
+            String relationships = workbookRels();
+            String workbookXml = workbook();
+            if (styled) {
+                workbookXml = workbookXml.replace("<sheets>",
+                        "<bookViews><workbookView/></bookViews><sheets>");
+                types = types.replace("</Types>",
+                        "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/></Types>");
+                relationships = relationships.replace("</Relationships>",
+                        "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>");
+            }
+            putEntry(zip, "[Content_Types].xml", types);
             putEntry(zip, "_rels/.rels", rootRels());
-            putEntry(zip, "xl/workbook.xml", workbook());
-            putEntry(zip, "xl/_rels/workbook.xml.rels", workbookRels());
-
-            // sheet 需要流式写，单独处理
+            putEntry(zip, "xl/workbook.xml", workbookXml);
+            putEntry(zip, "xl/_rels/workbook.xml.rels", relationships);
+            if (styled) putEntry(zip, "xl/styles.xml", styles());
             zip.putNextEntry(new ZipEntry("xl/worksheets/sheet1.xml"));
-            Writer w = new OutputStreamWriter(zip, StandardCharsets.UTF_8);
-            writeSheet(w, columns, feed);
-            w.flush();
+            Writer writer = new OutputStreamWriter(zip, StandardCharsets.UTF_8);
+            writeSheet(writer, columns, feed, layout);
+            writer.flush();
             zip.closeEntry();
         }
     }
 
-    private static void writeSheet(Writer w, List<String> columns, RowFeed feed) throws Exception {
+    private static void writeSheet(Writer w, List<String> columns, RowFeed feed,
+                                   XlsxLayout layout) throws Exception {
         w.write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
         w.write("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
+        if (layout != null) {
+            w.write("<sheetViews><sheetView workbookViewId=\"0\"><pane ySplit=\"1\" topLeftCell=\"A2\" activePane=\"bottomLeft\" state=\"frozen\"/>"
+                    + "<selection pane=\"bottomLeft\" activeCell=\"A2\" sqref=\"A2\"/></sheetView></sheetViews>");
+            if (!layout.widths().isEmpty()) {
+                w.write("<cols>");
+                for (int c = 0; c < layout.widths().size(); c++) {
+                    int column = c + 1;
+                    w.write("<col min=\"" + column + "\" max=\"" + column
+                            + "\" width=\"" + layout.widths().get(c) + "\" customWidth=\"1\"/>");
+                }
+                w.write("</cols>");
+            }
+        }
         w.write("<sheetData>");
 
         // 第 1 行：表头
         int rowNum = 1;
         w.write("<row r=\"" + rowNum + "\">");
         for (int c = 0; c < columns.size(); c++) {
-            writeInlineString(w, cellRef(c, rowNum), columns.get(c));
+            writeInlineString(w, cellRef(c, rowNum), columns.get(c), layout == null ? "" : " s=\"1\"");
         }
         w.write("</row>");
 
@@ -71,7 +110,7 @@ public final class XlsxWriter {
             try {
                 w.write("<row r=\"" + r + "\">");
                 for (int c = 0; c < values.size(); c++) {
-                    writeCell(w, cellRef(c, r), values.get(c));
+                    writeCell(w, cellRef(c, r), values.get(c), layout != null);
                 }
                 w.write("</row>");
             } catch (IOException e) {
@@ -82,7 +121,7 @@ public final class XlsxWriter {
         w.write("</sheetData></worksheet>");
     }
 
-    private static void writeCell(Writer w, String ref, Object value) throws IOException {
+    private static void writeCell(Writer w, String ref, Object value, boolean styled) throws IOException {
         if (value == null) {
             return; // 空单元格：不写即可
         }
@@ -91,14 +130,39 @@ public final class XlsxWriter {
         } else if (value instanceof Boolean b) {
             w.write("<c r=\"" + ref + "\" t=\"b\"><v>" + (b ? 1 : 0) + "</v></c>");
         } else {
-            writeInlineString(w, ref, value.toString());
+            writeInlineString(w, ref, value.toString(), styled ? " s=\"2\"" : "");
         }
     }
 
-    private static void writeInlineString(Writer w, String ref, String text) throws IOException {
-        w.write("<c r=\"" + ref + "\" t=\"inlineStr\"><is><t xml:space=\"preserve\">");
+    private static void writeInlineString(Writer w, String ref, String text, String style) throws IOException {
+        w.write("<c r=\"" + ref + "\"" + style + " t=\"inlineStr\"><is><t xml:space=\"preserve\">");
         w.write(xml(text == null ? "" : text));
         w.write("</t></is></c>");
+    }
+
+    private static String styles() {
+        return """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                  <fonts count="2">
+                    <font><sz val="11"/><name val="Calibri"/></font>
+                    <font><b/><sz val="11"/><color rgb="FF1F2937"/><name val="Calibri"/></font>
+                  </fonts>
+                  <fills count="3">
+                    <fill><patternFill patternType="none"/></fill>
+                    <fill><patternFill patternType="gray125"/></fill>
+                    <fill><patternFill patternType="solid"><fgColor rgb="FFE8EEF7"/><bgColor indexed="64"/></patternFill></fill>
+                  </fills>
+                  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+                  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+                  <cellXfs count="3">
+                    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+                    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
+                    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
+                  </cellXfs>
+                  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+                </styleSheet>
+                """;
     }
 
     /** 列索引(0起)+行号 → A1 式引用。 */
