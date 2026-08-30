@@ -326,7 +326,7 @@ final class SqlDraftManagerPane implements AutoCloseable {
         sql.setEditable(false);
         sql.setPromptText("选择草稿后预览完整 SQL；恢复不会自动连接数据库。");
         list.getSelectionModel().selectedItemProperty().addListener((observable, before, after) -> {
-            sql.setText(after == null ? "" : after.sql());
+            sql.setText(after == null ? "" : after.sql().replace("\r\n", "\n").replace("\r", "\n"));
             renderControls();
         });
         status.setId("draft-manager-status");
@@ -669,6 +669,22 @@ class SqlDraftManagerTest {
                 assertEquals(f.newer.sql().replace("\r", ""), f.sql().getText());
                 assertEquals("select 1;\r\n-- raw\n", f.newer.sql(), "display normalization must not change checkpoint");
                 assertFalse(f.button("restore").isDisabled());
+            });
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"\n", "\r", "\r\n"})
+    void fullPreviewPreservesLogicalLinesWithoutChangingRawCheckpoint(String ending) throws Exception {
+        try (Fixture f = new Fixture(true, true, true)) {
+            SqlDraft raw = draft(100_001L, "select 1;" + ending + "-- second");
+            f.probe.records.clear();
+            f.probe.records.add(raw);
+            f.fx(() -> f.button("refresh").fire());
+            f.settle();
+            f.fx(() -> {
+                f.list().getSelectionModel().select(raw);
+                assertEquals("select 1;\n-- second", f.sql().getText());
+                assertEquals("select 1;" + ending + "-- second", f.list().getSelectionModel().getSelectedItem().sql());
             });
         }
     }
