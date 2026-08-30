@@ -74,6 +74,8 @@ public final class AppShell {
             this::shutdownRemaining,
             AppShell::reportShutdownFailure);
     private final LazyValue<MigrationPane> migrationPane = new LazyValue<>(() -> new MigrationPane(tasks));
+    private final LazyValue<SqlDraftUi> sqlDrafts = new LazyValue<>(() ->
+            new SqlDraftUi(java.nio.file.Path.of(System.getProperty("user.home"), ".datacube", "sql-drafts")));
     private final LazyValue<UpdateService> updateService =
             new LazyValue<>(() -> new UpdateService(tasks::submit, Platform::runLater));
     private final SqlHistoryStore sqlHistory = new SqlHistoryStore();
@@ -220,6 +222,7 @@ public final class AppShell {
 
     private void shutdownRemaining() {
         BestEffortCloseSequence.run(
+                () -> sqlDrafts.ifInitialized(SqlDraftUi::closeFromBackground),
                 connectionTree::close,
                 () -> migrationPane.ifInitialized(MigrationPane::shutdown),
                 () -> updateService.ifInitialized(UpdateService::close),
@@ -271,7 +274,7 @@ public final class AppShell {
         contentTabs.openManagedTab(title, binding -> ManagedTabFactorySequence.create(
                 factory,
                 pane -> binding.bind(pane::closeResources),
-                initialize,
+                pane -> { initialize.accept(pane); sqlDrafts.get().bind(pane); },
                 pane -> new ContentTabPane.ManagedTabSpec(
                         pane.getNode(), pane::requestClose,
                         pane::requestMandatoryClose,

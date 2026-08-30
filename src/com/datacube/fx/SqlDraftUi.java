@@ -1,0 +1,7 @@
+package com.datacube.fx;
+import com.datacube.config.SqlDraftCoordinator; import java.nio.file.Path; import java.util.*; import java.util.concurrent.*; import javafx.animation.*; import javafx.application.Platform; import javafx.util.Duration;
+final class SqlDraftUi { private final ExecutorService writer=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"sql-draft-writer");t.setDaemon(true);return t;}); private final Set<SqlDraftEditorBinding> bindings=new LinkedHashSet<>(); private final SqlDraftCoordinator runtime; private final Timeline timer;
+ SqlDraftUi(Path directory){long started=System.nanoTime();runtime=new SqlDraftCoordinator(directory,writer,Platform::runLater,Platform::isFxApplicationThread,()->TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started),System::currentTimeMillis);timer=new Timeline(new KeyFrame(Duration.millis(250),e->{runtime.pulse();List.copyOf(bindings).forEach(SqlDraftEditorBinding::refresh);}));timer.setCycleCount(Timeline.INDEFINITE);timer.play();}
+ void bind(SqlEditorPane pane){bindings.add(pane.bindDraft(runtime,UUID.randomUUID(),null,bindings::remove));}
+ void closeFromBackground(){if(Platform.isFxApplicationThread())throw new IllegalStateException("Draft shutdown must be awaited off FX");CompletableFuture<Void> drained=new CompletableFuture<>();Platform.runLater(()->{try{timer.stop();runtime.shutdown().whenComplete((u,f)->{if(f==null)drained.complete(null);else drained.completeExceptionally(f);});}catch(Throwable f){drained.completeExceptionally(f);}});try{drained.join();}finally{writer.shutdown();}}
+}

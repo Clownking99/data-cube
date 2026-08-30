@@ -123,6 +123,7 @@ final class SqlAutoComplete {
     }
 
     private void maybeShow() {
+        if (!area.isEditable() || area.isDisabled()) { hide(); return; }
         int caret = area.getCaretPosition();
         int start = wordStart(caret);
         String prefix = caret <= start ? "" : area.getText(start, caret);
@@ -202,6 +203,7 @@ final class SqlAutoComplete {
     }
 
     private void applySelection() {
+        if (!area.isEditable() || area.isDisabled()) { hide(); return; }
         String sel = list.getSelectionModel().getSelectedItem();
         if (sel == null) { hide(); return; }
         int caret = area.getCaretPosition();

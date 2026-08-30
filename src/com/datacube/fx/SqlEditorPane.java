@@ -5,6 +5,8 @@ import com.datacube.config.AppSettings.CommentMode;
 import com.datacube.config.ShortcutAction;
 import com.datacube.config.ShortcutSettings;
 import com.datacube.config.SqlHistoryStore;
+import com.datacube.config.SqlDraft;
+import com.datacube.config.SqlDraftCoordinator;
 import com.datacube.export.QueryResultFileWriter.Format;
 import com.datacube.fx.task.FxSerialTaskQueue;
 import com.datacube.fx.task.SerialSessionOperationQueue;
@@ -190,6 +192,27 @@ public final class SqlEditorPane implements AutoCloseable {
     private final AsyncTabCloseGuard mandatoryCloseGuard;
     /** 最近一次单条查询的原 SQL（用于安全重查与「复制 INSERT」解析目标表）。 */
     private String lastQuerySql;
+    private SqlDraftEditorBinding draftBinding;
+
+    SqlDraftEditorBinding bindDraft(SqlDraftCoordinator runtime, java.util.UUID id, Long savedAt,
+            java.util.function.Consumer<SqlDraftEditorBinding> detached) {
+        if (draftBinding != null) throw new IllegalStateException("Draft already bound");
+        draftBinding = new SqlDraftEditorBinding(runtime, id, savedAt, editorArea, schemaField,
+                new SqlDraftCoordinator.Source() {
+                    public boolean hasText() { return editorArea.getLength() != 0; }
+                    public SqlDraft capture(java.util.UUID draftId, long at) {
+                        ConnConfig connection = currentConn();
+                        return new SqlDraft(draftId, at, connection == null ? null : connection.id(),
+                                connection == null ? null : connection.type(),
+                                connection == null ? null : connection.name(), schemaField.getText(), editorArea.getText());
+                    }
+                }, detached);
+        try { root.getChildren().add(draftBinding.getNode()); }
+        catch (RuntimeException failure) { draftBinding.close(); throw failure; }
+        return draftBinding;
+    }
+    private boolean draftEditingBlocked() { return draftBinding != null && draftBinding.closing(); }
+    private void draftEdited() { if (draftBinding != null) draftBinding.edited(); }
 
     public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
                          AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
@@ -229,6 +252,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 if (admission.pinned() == null) {
                     if (connection != null && connection.type() != DbType.REDIS) prewarm(connection);
                     renderDisconnectedCandidate(connection);
+                    draftEdited();
                 }
             };
             construction.own(() -> settings.commentModeProperty().removeListener(commentModeListener));
@@ -256,7 +280,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** 载入指定 SQL 文本到编辑区（用于历史“找回”）。 */
     public void setSqlText(String sql) {
-        if (sql == null || editorArea == null) return;
+        if (draftEditingBlocked() || sql == null || editorArea == null) return;
         editorArea.replaceText(sql);
         applyHighlighting(sql);
     }
@@ -296,6 +320,7 @@ public final class SqlEditorPane implements AutoCloseable {
         editorConnection = pinned;
         if (jdbcSession == null) connectionBadge.setText("🔗 " + pinned.name() + " · 未连接");
         renderConnectionGuidance();
+        draftEdited();
         return pinned;
     }
 
@@ -343,6 +368,10 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
     void closeResources() {
+        if (draftBinding != null) {
+            if (Platform.isFxApplicationThread()) draftBinding.close();
+            else { CompletableFuture<Void> detached = new CompletableFuture<>(); Platform.runLater(() -> { try { draftBinding.close(); detached.complete(null); } catch (Throwable failure) { detached.completeExceptionally(failure); } }); detached.join(); }
+        }
         if (resourcesClosed.get()) return;
         if (resultExports != null) resultExports.close();
         admission.beginClosing();
@@ -361,6 +390,7 @@ public final class SqlEditorPane implements AutoCloseable {
     /** Lightweight JavaFX phase; callers invoke this only on the FX Application Thread. */
     void finalizeCloseOnFx() {
         if (!uiFinalized.compareAndSet(false, true)) return;
+        if (draftBinding != null) draftBinding.close();
         resultRowIndexes.clear();
         resultFilterState.clearAll();
         renderResultFilterToolbar();
@@ -394,6 +424,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private CompletionStage<CloseGuardOutcome> startCloseAttempt() {
         CompletableFuture<CloseGuardOutcome> result = new CompletableFuture<>();
+        if (draftBinding != null) draftBinding.freeze();
         admission.beginClosing();
         SerialSessionOperationQueue.Snapshot operationSnapshot = sessionOperations.snapshot();
         CompletionStage<Void> idle = sessionOperations.stopAcceptingAndCancelQueued();
@@ -419,6 +450,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private CompletionStage<CloseGuardOutcome> startMandatoryCloseAttempt() {
         CompletableFuture<CloseGuardOutcome> result = new CompletableFuture<>();
+        if (draftBinding != null) draftBinding.freeze();
         ClosePlan plan;
         try {
             ConnConfig connection = currentConn();
@@ -430,7 +462,7 @@ public final class SqlEditorPane implements AutoCloseable {
             admission.beginClosing();
             sessionOperations.stopAcceptingAndCancelQueued();
             sessionOperations.suppressCallbacks();
-            Thread.startVirtualThread(() -> result.complete(closeMandatoryInBackground(plan)));
+            continueAfterDraftFlush(true, result, () -> Thread.startVirtualThread(() -> result.complete(closeMandatoryInBackground(plan))));
         } catch (Throwable failure) {
             reportMandatoryCloseFailure(failure);
             result.complete(CloseGuardOutcome.FAILED_PARTIAL);
@@ -456,8 +488,7 @@ public final class SqlEditorPane implements AutoCloseable {
             result.complete(CloseGuardOutcome.REJECTED);
             return;
         }
-        sessionOperations.suppressCallbacks();
-        try {
+        continueAfterDraftFlush(false, result, () -> { sessionOperations.suppressCallbacks(); try {
             Thread.startVirtualThread(() -> {
                 try {
                     closeInBackground(plan);
@@ -472,7 +503,15 @@ public final class SqlEditorPane implements AutoCloseable {
         } catch (Throwable startupFailure) {
             reopenAfterRejectedClose();
             result.completeExceptionally(startupFailure);
-        }
+        }});
+    }
+
+    private void continueAfterDraftFlush(boolean mandatory, CompletableFuture<CloseGuardOutcome> result, Runnable continuation) {
+        if (draftBinding == null) { continuation.run(); return; }
+        draftBinding.prepareClose(mandatory).whenComplete((allowed, failure) -> {
+            if (failure != null || !Boolean.TRUE.equals(allowed)) { reopenAfterRejectedClose(); if (failure != null) result.completeExceptionally(failure); else result.complete(CloseGuardOutcome.REJECTED); return; }
+            try { continuation.run(); } catch (Throwable startupFailure) { reopenAfterRejectedClose(); result.completeExceptionally(startupFailure); }
+        });
     }
 
     private void finishRetryableCloseFailure(
@@ -533,6 +572,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void reopenAfterRejectedClose() {
+        if (draftBinding != null) draftBinding.reopen();
         admission.reopen();
         sessionOperations.reopen();
         running = sessionOperations.snapshot().pending();
@@ -689,6 +729,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
         clearBtn = new Button("清空");
         clearBtn.setOnAction(e -> {
+            if (draftEditingBlocked()) return;
             editorArea.clear();
             resultTable.getItems().clear();
             resultTable.getColumns().clear();
@@ -874,6 +915,7 @@ public final class SqlEditorPane implements AutoCloseable {
         // 语法高亮：文本变化后单遍正则重算样式区间并应用到富文本
         editorArea.textProperty().addListener((obs, o, n) -> applyHighlighting(n));
         editorArea.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+            if (draftEditingBlocked()) { e.consume(); return; }
             if (shortcuts.get(ShortcutAction.SQL_EXECUTE).match(e)) {
                 e.consume();
                 onExecute();
@@ -968,6 +1010,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void onFormat() {
+        if (draftEditingBlocked()) return;
         String sql = editorArea.getText();
         if (sql.trim().isEmpty()) return;
         try {
@@ -2286,6 +2329,7 @@ public final class SqlEditorPane implements AutoCloseable {
      * 否则每行行首加 {@code -- }。空行在添加时跳过，判定时忽略。
      */
     private void toggleLineComment() {
+        if (draftEditingBlocked()) return;
         IndexRange sel = editorArea.getSelection();
         int startPar = editorArea.offsetToPosition(sel.getStart(), TwoDimensional.Bias.Forward).getMajor();
         int endPar = editorArea.offsetToPosition(sel.getEnd(), TwoDimensional.Bias.Backward).getMajor();
@@ -2329,6 +2373,7 @@ public final class SqlEditorPane implements AutoCloseable {
      * 无选区在光标处插入 {@code /*  *}{@code /} 并将光标置于中间。
      */
     private void toggleBlockComment() {
+        if (draftEditingBlocked()) return;
         IndexRange sel = editorArea.getSelection();
         if (sel.getLength() > 0) {
             String text = editorArea.getSelectedText();
