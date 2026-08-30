@@ -8,6 +8,8 @@
 
 **Tech Stack:** Existing Java25, JavaFX25, RichTextFX0.11.6, Gradle9.2, JUnit5.11.3; no new dependencies.
 
+**Review amendment:** The initial resource-only recovery abort examples below are superseded by [complete abort finalization](2026-08-31-sql-draft-manager-abort-fix.md). Both early binding and the ManagedTabSpec abort callback must finish resource cleanup and FX finalization before the abort barrier completes. Historical examples remain for implementation provenance; the amendment is authoritative.
+
 ## Global Constraints
 
 - Work only in `D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery`, branch `codex/sql-draft-recovery`; no main merge until entire P1 acceptance and broad review.
