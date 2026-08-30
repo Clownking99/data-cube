@@ -5,8 +5,7 @@ import com.datacube.config.AppSettings.CommentMode;
 import com.datacube.config.ShortcutAction;
 import com.datacube.config.ShortcutSettings;
 import com.datacube.config.SqlHistoryStore;
-import com.datacube.export.ResultExporter;
-import com.datacube.export.XlsxWriter;
+import com.datacube.export.QueryResultFileWriter.Format;
 import com.datacube.fx.task.FxSerialTaskQueue;
 import com.datacube.fx.task.SerialSessionOperationQueue;
 import com.datacube.fx.task.FxTaskRunner;
@@ -14,7 +13,6 @@ import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.JdbcEditorSession;
 import com.datacube.service.ObjectTreeService;
-import com.datacube.sqleditor.InsertSqlGenerator;
 import com.datacube.sqleditor.SqlFormatter;
 import com.datacube.sqleditor.SqlSafetyAnalyzer;
 import com.datacube.sqleditor.SqlSafetyPolicy;
@@ -57,7 +55,6 @@ import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
 import javafx.stage.Window;
 import javafx.util.Duration;
 import org.fxmisc.flowless.VirtualizedScrollPane;
@@ -65,11 +62,6 @@ import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.LineNumberFactory;
 import org.fxmisc.richtext.model.TwoDimensional;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -166,6 +158,8 @@ public final class SqlEditorPane implements AutoCloseable {
     private final ResultFilterState resultFilterState = new ResultFilterState();
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
     private ClipboardWriter clipboardWriter = SqlEditorPane::writeSystemClipboard;
+    private SqlResultExportCoordinator resultExports;
+    private long resultStatusRevision;
     private SqlResultToolbar resultToolbar;
     private TableView<ObservableList<Object>> resultTable;
     private TextArea planArea;
@@ -238,6 +232,15 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(() -> settings.commentModeProperty().removeListener(commentModeListener));
             construction.own(() -> session.activeConnectionProperty().removeListener(activeConnectionListener));
             build();
+            resultExports = new SqlResultExportCoordinator(tasks, this::captureResultExportSnapshot,
+                    () -> resultStatusRevision, (text, error) -> {
+                        statusLabel.setText(text);
+                        statusLabel.setStyle(error
+                                ? "-fx-text-fill: -status-error; -fx-font-size: 12px;"
+                                : "-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
+                    }, this::writeClipboard,
+                    () -> root.getScene() == null ? null : root.getScene().getWindow());
+            construction.own(resultExports::close);
             if (initialSchema != null && !initialSchema.isBlank()) {
                 schemaField.setText(initialSchema.trim());
             }
@@ -339,6 +342,7 @@ public final class SqlEditorPane implements AutoCloseable {
     /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
     void closeResources() {
         if (resourcesClosed.get()) return;
+        if (resultExports != null) resultExports.close();
         admission.beginClosing();
         sessionOperations.stopAcceptingAndCancelQueued();
         sessionOperations.suppressCallbacks();
@@ -696,7 +700,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
         exportResultBtn = new MenuButton("导出结果");
         exportResultBtn.setDisable(true);
-        for (ExportFormat fmt : ExportFormat.values()) {
+        for (Format fmt : Format.values()) {
             MenuItem item = new MenuItem(fmt.label);
             item.setOnAction(e -> exportAs(fmt));
             exportResultBtn.getItems().add(item);
@@ -954,6 +958,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private Node statusBar() {
         statusLabel = new Label("就绪");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
+        statusLabel.textProperty().addListener((observable, before, after) -> resultStatusRevision++);
         HBox box = new HBox(statusLabel);
         box.setPadding(new Insets(4, 0, 0, 0));
         return box;
@@ -1818,6 +1823,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void renderResultFilterSnapshot(ResultFilterState.Snapshot snapshot) {
+        resultStatusRevision++;
         resultRowIndexes.clear();
         QueryResult active = snapshot.activeResult();
         resultTable.getColumns().clear();
@@ -1861,6 +1867,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void clearResultFilterState() {
+        resultStatusRevision++;
         resultRowIndexes.clear();
         resultFilterState.clearAll();
         lastQuerySql = null;
@@ -1936,132 +1943,12 @@ public final class SqlEditorPane implements AutoCloseable {
         return effectiveSchema == null ? "原查询默认 Schema" : "原查询 Schema: " + effectiveSchema;
     }
 
-    /** 导出格式：菜单标签 + FileChooser 过滤器描述/后缀 + 默认文件名。 */
-    private enum ExportFormat {
-        XLSX("Excel (.xlsx)", "Excel 文件", "*.xlsx", "query_result.xlsx"),
-        CSV("CSV (.csv)", "CSV 文件", "*.csv", "query_result.csv"),
-        SQL("SQL 插入脚本 (.sql)", "SQL 脚本", "*.sql", "query_result.sql"),
-        HTML("HTML (.html)", "HTML 文件", "*.html", "query_result.html"),
-        XML("XML (.xml)", "XML 文件", "*.xml", "query_result.xml");
-
-        final String label;
-        final String filterDesc;
-        final String filterExt;
-        final String defaultName;
-
-        ExportFormat(String label, String filterDesc, String filterExt, String defaultName) {
-            this.label = label;
-            this.filterDesc = filterDesc;
-            this.filterExt = filterExt;
-            this.defaultName = defaultName;
-        }
+    private void exportAs(Format format) {
+        if (resultExports != null) resultExports.export(format);
     }
 
-    /** 将当前查询结果导出为指定格式的文件（PL/SQL Developer 风格多格式导出）。 */
-    private void exportAs(ExportFormat fmt) {
-        QueryResult r = resultFilterState.snapshot().activeResult();
-        if (r == null || r.kind != QueryResult.Kind.QUERY || r.rows.isEmpty()) {
-            showAlert("没有可导出的查询结果");
-            return;
-        }
-        // SQL 格式需先定目标表（可能弹框，须在 FX 线程）；取消则中止
-        final String table;
-        if (fmt == ExportFormat.SQL) {
-            table = resolveInsertTable();
-            if (table == null) return;
-        } else {
-            table = null;
-        }
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("导出结果 - " + fmt.label);
-        File initDir = FxFiles.defaultSaveDir();
-        if (initDir != null) chooser.setInitialDirectory(initDir);
-        chooser.setInitialFileName(fmt.defaultName);
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(fmt.filterDesc, fmt.filterExt));
-        Window owner = root.getScene() == null ? null : root.getScene().getWindow();
-        File out = chooser.showSaveDialog(owner);
-        if (out == null) return;
-
-        final List<String> columns = r.columns;
-        final List<List<Object>> rows = r.rows;
-        statusLabel.setText("导出中...");
-        statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
-        tasks.submit(() -> {
-            try {
-                writeExportFile(fmt, out, table, columns, rows);
-            } catch (Exception error) {
-                try {
-                    java.nio.file.Files.deleteIfExists(out.toPath());
-                } catch (Exception ignored) {
-                    // 保留原始导出错误
-                }
-                throw error;
-            }
-            return null;
-        }, ignored -> {
-            statusLabel.setText("已导出: " + out.getAbsolutePath());
-            statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
-        }, failure -> {
-            statusLabel.setText("导出失败: " + message(failure));
-            statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
-        });
-    }
-
-    /** 后台线程按格式写出文件；XLSX 走 XlsxWriter，文本类格式统一 UTF-8。 */
-    private static void writeExportFile(ExportFormat fmt, File out, String table,
-                                        List<String> columns, List<List<Object>> rows) throws Exception {
-        switch (fmt) {
-            case XLSX -> XlsxWriter.write(out, columns, sink -> {
-                for (List<Object> row : rows) sink.row(row);
-            });
-            case SQL -> java.nio.file.Files.writeString(out.toPath(),
-                    InsertSqlGenerator.generate(table, columns, rows), StandardCharsets.UTF_8);
-            default -> {
-                try (Writer w = new OutputStreamWriter(
-                        new java.io.BufferedOutputStream(new FileOutputStream(out)), StandardCharsets.UTF_8)) {
-                    switch (fmt) {
-                        case CSV -> ResultExporter.writeCsv(w, columns, rows);
-                        case HTML -> ResultExporter.writeHtml(w, "查询结果", columns, rows);
-                        case XML -> ResultExporter.writeXml(w, columns, rows);
-                        default -> throw new IllegalStateException("未知格式: " + fmt);
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * 解析 INSERT 目标表：优先从最近查询 SQL 解析单表来源；解析不出
-     * （JOIN/子查询/UNION 等）时弹框由用户指定；取消返回 {@code null}。
-     */
-    private String resolveInsertTable() {
-        String table = InsertSqlGenerator.singleTableName(lastQuerySql);
-        if (table != null) return table;
-        TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle("指定目标表");
-        dialog.setHeaderText("无法从 SQL 解析出单一来源表（可能含 JOIN/子查询/UNION）。\n请输入 INSERT 目标表名（可带 schema 前缀）：");
-        dialog.setContentText("表名:");
-        Window owner = root.getScene() == null ? null : root.getScene().getWindow();
-        if (owner != null) dialog.initOwner(owner);
-        return dialog.showAndWait().map(String::trim).filter(s -> !s.isEmpty()).orElse(null);
-    }
-
-    /** 将当前查询结果生成 INSERT 语句复制到剪贴板；目标表解析见 {@link #resolveInsertTable()}。 */
     private void onCopyInsert() {
-        QueryResult r = resultFilterState.snapshot().activeResult();
-        if (r == null || r.kind != QueryResult.Kind.QUERY || r.rows.isEmpty()) {
-            showAlert("没有可生成的查询结果");
-            return;
-        }
-        String table = resolveInsertTable();
-        if (table == null) return;
-        String script = InsertSqlGenerator.generate(table, r.columns, r.rows);
-        if (!writeClipboard(script)) {
-            showClipboardWriteFailure();
-            return;
-        }
-        statusLabel.setText("已复制 " + r.rows.size() + " 条 INSERT 语句（目标表 " + table + "）");
-        statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
+        if (resultExports != null) resultExports.copyInsert();
     }
 
     void setClipboardWriterForTesting(ClipboardWriter writer) {

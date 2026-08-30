@@ -294,6 +294,7 @@ class SqlEditorResultFilterContractTest {
     @Test
     void clipboardFailureNeverClaimsSuccessAndInsertCopyUsesTheSameSeam() throws Exception {
         AtomicReference<String> captured = new AtomicReference<>("unchanged");
+        AtomicInteger confirmations = new AtomicInteger();
         try (PaneFixture fixture = new PaneFixture(null, null)) {
             FxUiTestSupport.call(() -> {
                 showQuery(fixture.pane, result(false,
@@ -309,7 +310,9 @@ class SqlEditorResultFilterContractTest {
                 assertEquals("复制失败：无法写入系统剪贴板",
                         labelText(fixture.pane, "statusLabel"));
 
-                invoke(fixture.pane, "onCopyInsert");
+                confirmNextResultExport(confirmations);
+                ((Button) field(fixture.pane, "copyInsertBtn")).fire();
+                assertEquals(1, confirmations.get());
                 assertEquals("unchanged", captured.get());
                 assertEquals("复制失败：无法写入系统剪贴板",
                         labelText(fixture.pane, "statusLabel"));
@@ -318,12 +321,29 @@ class SqlEditorResultFilterContractTest {
                     captured.set(text);
                     return true;
                 });
-                invoke(fixture.pane, "onCopyInsert");
+                confirmNextResultExport(confirmations);
+                table.getContextMenu().getItems().get(1).fire();
+                assertEquals(2, confirmations.get());
                 assertTrue(captured.get().startsWith("INSERT INTO people"));
                 assertTrue(labelText(fixture.pane, "statusLabel").startsWith("已复制 1 条 INSERT"));
                 return null;
             });
         }
+    }
+
+    private static void confirmNextResultExport(AtomicInteger confirmations) {
+        javafx.application.Platform.runLater(() -> {
+            for (javafx.stage.Window window : List.copyOf(javafx.stage.Window.getWindows())) {
+                if (window.getScene() == null) continue;
+                javafx.scene.Node node = window.getScene().getRoot().lookup("#result-export-continue");
+                if (node instanceof Button button && !button.isDisabled()) {
+                    confirmations.incrementAndGet();
+                    button.fire();
+                    return;
+                }
+            }
+            throw new AssertionError("Expected enabled result export confirmation");
+        });
     }
 
     @Test
