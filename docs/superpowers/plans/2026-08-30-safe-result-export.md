@@ -8,9 +8,11 @@
 
 **Tech Stack:** 现有 Java 25、JavaFX、Gradle Wrapper、JUnit Jupiter 5.11.3、Java NIO；不增加依赖，不改变共享 writer 的其他调用方。
 
+**实施状态（2026-08-30）：** Tasks 1–7 及 Task 8 的代码、故障回归、说明文档和最终代码审查已完成。主代理在 `e74b29c` 后独立运行完整 non-headless `clean test`：1196 项，1193 通过，0 失败/错误，3 项明确的 live 环境跳过。桌面窗口启动后控制工具两次拒绝访问，交互/视觉验收仍未验证，故下方最后验收步骤保留未勾选。详见 `docs/superpowers/verification/2026-08-30-safe-result-export.md`。
+
 ## Global Constraints
 
-- 设计依据：`docs/superpowers/specs/2026-08-30-safe-result-export-design.md`，用户已认可书面设计；本文件是尚未执行的实施计划，不是完成报告。
+- 设计依据：`docs/superpowers/specs/2026-08-30-safe-result-export-design.md`，用户已认可书面设计；代码已实施，桌面待补验，完成情况以验证记录和任务检查项为准。
 - 实施基线：`c543140b1602d5d41b3c6d9c0b68f71b32c24c48`；分支 `codex/safe-result-export`。
 - “当前筛选结果（默认）”：当前 TableView 中全部可见行，遵循当前排序；不是仅选中的行。
 - “全部已加载行（加载顺序）”：本次活动结果快照的全部保留行，使用加载顺序，忽略本地条件和搜索。
@@ -33,6 +35,8 @@
 ---
 
 ## 文件职责与实施顺序
+
+2026-08-30 执行补充（用户已认可）：Task 2 测试发现共享 CLOB 冻结会将截断预览退化成普通字符串。将 `ImmutableResultValue` 的 CLOB 完整性标记与相关回归纳入本轮前置修复；复用有界内存的文本表示和资源清理，在首次读取阶段保留标记。导出仍不补取 JDBC 大字段，不修改共享格式 writer 或 TSV 选区复制规则。
 
 所有路径相对于仓库根目录 `D:\Projects\朝花夕拾`。实施前用 `git status --short --branch` 核对分支与用户改动；有 `.codegraph/` 时先用 `codegraph explore` 定位符号，再精读必要片段。
 
@@ -73,7 +77,7 @@ $env:JAVA_TOOL_OPTIONS='-Djava.awt.headless=false'
 - Produces: `ResultExportSnapshot.capture(QueryResult, String, List<Integer>, List<Column>)`；`columns()`；`rows(ResultExportScope)`；`originalSql()`；`truncated()`；`Column(int index, String label)`。
 - `visibleRows` 由 FX 侧传入活动结果中的位置，不用 `List.indexOf` 按内容查找。
 
-- [ ] **Step 1: 新建精确矩阵测试**
+- [x] **Step 1: 新建精确矩阵测试**
 
 ```java
 package com.datacube.sqleditor.result;
@@ -122,11 +126,11 @@ class ResultExportSnapshotTest {
 }
 ```
 
-- [ ] **Step 2: 跑 RED**
+- [x] **Step 2: 跑 RED**
 
 Run: `./gradlew test --tests com.datacube.sqleditor.result.ResultExportSnapshotTest --no-daemon --console=plain`。Expected: 缺少 `ResultExportSnapshot` / `ResultExportScope`。
 
-- [ ] **Step 3: 新建范围枚举和投影类**
+- [x] **Step 3: 新建范围枚举和投影类**
 
 `ResultExportScope.java`：
 
@@ -209,7 +213,7 @@ public final class ResultExportSnapshot {
 
 嵌套只读列表是位置视图，不复制已有值。空列在模型可表达，由确认/请求层禁止提交；不引入表头-only 模式。
 
-- [ ] **Step 4: 跑 GREEN 并提交**
+- [x] **Step 4: 跑 GREEN 并提交**
 
 Run: `./gradlew test --tests com.datacube.sqleditor.result.ResultExportSnapshotTest --no-daemon --console=plain`。Expected: 两项通过。
 
@@ -231,7 +235,7 @@ git commit -m "feat(export): capture immutable result scope projections"
 - Produces: `isCompleteScalar(Object)`、`displayValue(Object)`、`assess(List<List<Object>>)` → `Assessment(long displayOnlyCells)`、`Assessment.sqlAllowed()`。
 - SQL allowlist 是当前生成器可明确表达的值类型；`Enum`、任意 `Number` 子类、任意 `TemporalAccessor` 不因接口匹配自动放行。
 
-- [ ] **Step 1: 写类型边界测试**
+- [x] **Step 1: 写类型边界测试**
 
 ```java
 package com.datacube.sqleditor.result;
@@ -276,11 +280,11 @@ class ResultExportValuePolicyTest {
 }
 ```
 
-- [ ] **Step 2: 跑 RED**
+- [x] **Step 2: 跑 RED**
 
 Run: `./gradlew test --tests com.datacube.sqleditor.result.ResultExportValuePolicyTest --no-daemon --console=plain`。Expected: 缺少策略类。
 
-- [ ] **Step 3: 加入保守 allowlist**
+- [x] **Step 3: 加入保守 allowlist**
 
 ```java
 package com.datacube.sqleditor.result;
@@ -324,7 +328,7 @@ public final class ResultExportValuePolicy {
 
 非有限数转展示字符串后才给 XLSX，不能产生 `<v>NaN</v>`。普通数字/布尔保留对象类型。日期保持既有 writer 的 `toString`，不用只保留秒的 UI formatter 改写普通时间精度。未知对象只能经确认作展示；来自 QueryResult 的未知值已经冻结。
 
-- [ ] **Step 4: 跑 GREEN 并提交**
+- [x] **Step 4: 跑 GREEN 并提交**
 
 Run: `./gradlew test --tests com.datacube.sqleditor.result.ResultExportValuePolicyTest --no-daemon --console=plain`。Expected: 三项通过。
 
@@ -352,7 +356,7 @@ git commit -m "feat(export): distinguish scalar values from display-only cells"
 - 测试 seam：包内构造器 `SafeResultFilePublisher(AtomicMover, TempCleaner, Consumer<Path>)`；`AtomicMover.move(Path, Path) throws IOException`、`TempCleaner.delete(Path) throws IOException`。
 - `Failure.stage()`、`Failure.temporaryPath()`；阶段 `PREPARE / TARGET_CHANGED / TARGET_BUSY / WRITE / PUBLISH / CLEANUP`。不携带原始异常 cause。
 
-- [ ] **Step 1: 写终态和 session 测试**
+- [x] **Step 1: 写终态和 session 测试**
 
 ```java
 package com.datacube.export;
@@ -392,11 +396,11 @@ class ResultExportSessionTest {
 }
 ```
 
-- [ ] **Step 2: 跑 RED**
+- [x] **Step 2: 跑 RED**
 
 Run: `./gradlew test --tests com.datacube.export.ResultExportSessionTest --no-daemon --console=plain`。Expected: 缺少操作/session 类。
 
-- [ ] **Step 3: 实现两个小型所有权对象**
+- [x] **Step 3: 实现两个小型所有权对象**
 
 `ResultExportOperation.java`：
 
@@ -452,11 +456,11 @@ public final class ResultExportSession implements AutoCloseable {
 }
 ```
 
-- [ ] **Step 4: 跑 session GREEN**
+- [x] **Step 4: 跑 session GREEN**
 
 Run: `./gradlew test --tests com.datacube.export.ResultExportSessionTest --no-daemon --console=plain`。Expected: 两项通过。
 
-- [ ] **Step 5: 写发布失败与覆盖竞态测试**
+- [x] **Step 5: 写发布失败与覆盖竞态测试**
 
 ```java
 package com.datacube.export;
@@ -543,11 +547,11 @@ class SafeResultFilePublisherTest {
 }
 ```
 
-- [ ] **Step 6: 跑 publisher RED**
+- [x] **Step 6: 跑 publisher RED**
 
 Run: `./gradlew test --tests com.datacube.export.SafeResultFilePublisherTest --no-daemon --console=plain`。Expected: 缺少发布器。
 
-- [ ] **Step 7: 实现唯一临时文件和原子发布器**
+- [x] **Step 7: 实现唯一临时文件和原子发布器**
 
 ```java
 package com.datacube.export;
@@ -686,7 +690,7 @@ public final class SafeResultFilePublisher {
 
 `Files.move` 仅在同一门禁内使用 `ATOMIC_MOVE`，原子覆盖不被支持就失败；不用 `ConnectionStore` 的非原子 fallback。测试 seam 的 mover 必须“抛出前不移动”，对应受支持 NIO 原子移动契约；无法承诺恶意外进程 TOCTOU 与断电持久性。锁 key 使用真实父目录 + 文件名，在 Windows Path 等价规则下互斥；不承诺检测不同硬链接名称指向同一 inode。
 
-- [ ] **Step 8: 跑 GREEN 并提交**
+- [x] **Step 8: 跑 GREEN 并提交**
 
 Run: `./gradlew test --tests com.datacube.export.ResultExportSessionTest --tests com.datacube.export.SafeResultFilePublisherTest --no-daemon --console=plain`。Expected: 全部通过；unsupported 原子注入测试不得被 skip。
 
@@ -710,7 +714,7 @@ git commit -m "feat(export): publish result files atomically with cancellation o
 - Produces: `insert(ResultExportSnapshot, ResultExportScope, String)` → String。
 - boolean 参数名 `displayConfirmed`；SQL 无论此值如何都拒绝特殊值，不能借确认绕过。
 
-- [ ] **Step 1: 写内容和拒绝测试**
+- [x] **Step 1: 写内容和拒绝测试**
 
 ```java
 package com.datacube.export;
@@ -783,11 +787,11 @@ class QueryResultFileWriterTest {
 }
 ```
 
-- [ ] **Step 2: 跑 RED**
+- [x] **Step 2: 跑 RED**
 
 Run: `./gradlew test --tests com.datacube.export.QueryResultFileWriterTest --no-daemon --console=plain`。Expected: 缺少格式适配类。
 
-- [ ] **Step 3: 实现格式适配**
+- [x] **Step 3: 实现格式适配**
 
 ```java
 package com.datacube.export;
@@ -885,7 +889,7 @@ public final class QueryResultFileWriter {
 
 共享文本 writer 在 for-each 取下一行时触发取消检查；不用大范围改成新接口。writer 成功返回代表流已关闭；关闭流异常会由外层发布器归类为 WRITE 并清理临时文件。所有格式只接收 publisher 提供的临时路径，单元测试允许直接给独占测试路径。
 
-- [ ] **Step 4: 跑 GREEN 与既有格式回归并提交**
+- [x] **Step 4: 跑 GREEN 与既有格式回归并提交**
 
 Run: `./gradlew test --tests com.datacube.export.QueryResultFileWriterTest --tests com.datacube.export.ResultExporterTest --tests com.datacube.sqleditor.InsertSqlGeneratorTest --no-daemon --console=plain`。Expected: 新旧测试均通过。
 
@@ -907,7 +911,7 @@ git commit -m "feat(export): adapt existing formats to scoped cancellable snapsh
 - Produces: 包内 `create(Window, ResultExportSnapshot, boolean sql)` → `Dialog<Selection>`，`Selection(ResultExportScope scope, boolean displayConfirmed)`。
 - 每次 create 都建立新默认范围；调用方使用 `showAndWait()`，取消返回 empty，不创建 worker。
 
-- [ ] **Step 1: 写零行及特殊值确认测试**
+- [x] **Step 1: 写零行及特殊值确认测试**
 
 ```java
 package com.datacube.fx;
@@ -961,11 +965,11 @@ class ResultExportOptionsDialogTest {
 }
 ```
 
-- [ ] **Step 2: 跑 RED**
+- [x] **Step 2: 跑 RED**
 
 Run: `./gradlew test --tests com.datacube.fx.ResultExportOptionsDialogTest --no-daemon --console=plain`。Expected: 缺少 dialog。
 
-- [ ] **Step 3: 实现确认组件**
+- [x] **Step 3: 实现确认组件**
 
 ```java
 package com.datacube.fx;
@@ -1063,7 +1067,7 @@ final class ResultExportOptionsDialog {
 }
 ```
 
-- [ ] **Step 4: 跑 GREEN 并提交**
+- [x] **Step 4: 跑 GREEN 并提交**
 
 Run: `./gradlew test --tests com.datacube.fx.ResultExportOptionsDialogTest --no-daemon --console=plain`。Expected: 两项通过且未因 headless 跳过。
 
@@ -1087,7 +1091,7 @@ git commit -m "feat(export): confirm result scope and display-only values"
 - Produces: 包内 `SqlEditorPane.captureResultExportSnapshot()` → nullable `ResultExportSnapshot`，仅 FX 线程。
 - 映射：`IdentityHashMap<ObservableList<Object>, Integer> resultRowIndexes`，每个 TableView 行对象对应活动结果位置。
 
-- [ ] **Step 1: 在现有 Pane 契约测试类加入展示测试**
+- [x] **Step 1: 在现有 Pane 契约测试类加入展示测试**
 
 新增 import：
 
@@ -1136,7 +1140,7 @@ void exportFlushKeepsSortColumnOrderAndUsesFrozenVisibleRows() throws Exception 
 }
 ```
 
-- [ ] **Step 2: 在 Toolbar 测试类加入防抖次数测试**
+- [x] **Step 2: 在 Toolbar 测试类加入防抖次数测试**
 
 ```java
 @Test
@@ -1170,11 +1174,11 @@ void explicitExportFlushCommitsOnceAndCancelsPendingDebounce() throws Exception 
 
 这是对防抖时间本身的 FX 定时测试，不使用线程 sleep；平台等待有 5 秒上限。该类已导入所需 AtomicReference/PauseTransition/Duration/CountDownLatch。
 
-- [ ] **Step 3: 跑 RED**
+- [x] **Step 3: 跑 RED**
 
 Run: `./gradlew test --tests "*SqlEditorResultFilterContractTest.exportFlushKeepsSortColumnOrderAndUsesFrozenVisibleRows" --tests "*SqlResultToolbarTest.explicitExportFlushCommitsOnceAndCancelsPendingDebounce" --no-daemon --console=plain`。Expected: 缺少两个公开/包内方法；补齐方法后必须实际执行矩阵断言。
 
-- [ ] **Step 4: 加入 flush 和位置映射**
+- [x] **Step 4: 加入 flush 和位置映射**
 
 在 `SqlResultToolbar` 的 `commitSearchInput` 前加入：
 
@@ -1215,7 +1219,7 @@ for (int rowIndex : snapshot.visibleRowIndexes()) {
 resultRowIndexes.clear();
 ```
 
-- [ ] **Step 5: 加入捕获方法，原列对象和排序定义都保留**
+- [x] **Step 5: 加入捕获方法，原列对象和排序定义都保留**
 
 ```java
 ResultExportSnapshot captureResultExportSnapshot() {
@@ -1259,7 +1263,7 @@ ResultExportSnapshot captureResultExportSnapshot() {
 
 只在 flush 确实刷新结果时恢复旧列对象；无待提交搜索时不动列、排序或选择。不是按显示字符串重建类型，不修改 SQL 选区复制。过滤匹配导致某行自然消失时不承诺保留该行选择。
 
-- [ ] **Step 6: 跑 GREEN 与筛选回归并提交**
+- [x] **Step 6: 跑 GREEN 与筛选回归并提交**
 
 Run: `./gradlew test --tests com.datacube.fx.SqlEditorResultFilterContractTest --tests com.datacube.fx.SqlResultToolbarTest --no-daemon --console=plain`。Expected: 全部通过且无新的 skip。
 
@@ -1286,7 +1290,7 @@ git commit -m "fix(export): preserve presentation while flushing pending result 
 - `FileJob.write(Request, ResultExportOperation) throws Exception` → Path；`Request` 保存固定 target/format/snapshot/selection/table，并使用不含 SQL/数据的 `toString`。
 - 仅 FX 调用 export/copyInsert；close 可被后台关闭守卫调用，不碰 FX 控件。
 
-- [ ] **Step 1: 写取消、剪贴板和新结果隔离测试**
+- [x] **Step 1: 写取消、剪贴板和新结果隔离测试**
 
 ```java
 package com.datacube.fx;
@@ -1401,11 +1405,11 @@ class SqlResultExportCoordinatorTest {
 }
 ```
 
-- [ ] **Step 2: 跑 RED**
+- [x] **Step 2: 跑 RED**
 
 Run: `./gradlew test --tests com.datacube.fx.SqlResultExportCoordinatorTest --no-daemon --console=plain`。Expected: 缺少协调器。
 
-- [ ] **Step 3: 实现协调器及固定提示**
+- [x] **Step 3: 实现协调器及固定提示**
 
 ```java
 package com.datacube.fx;
@@ -1623,11 +1627,11 @@ final class SqlResultExportCoordinator implements AutoCloseable {
 
 注意：保存对话框的原生覆盖提示不能代替本次明确确认；版本 stamp 在自定义确认之前捕获，不能在后台重新 capture 后把已变化的文件视为被用户确认。
 
-- [ ] **Step 4: 跑协调器 GREEN**
+- [x] **Step 4: 跑协调器 GREEN**
 
 Run: `./gradlew test --tests com.datacube.fx.SqlResultExportCoordinatorTest --no-daemon --console=plain`。Expected: 两项通过。返回 Future 只为可控等待/测试，事件调用方不在 FX 线程阻塞等待。
 
-- [ ] **Step 5: 用协调器替换 Pane 内巨型事件处理器**
+- [x] **Step 5: 用协调器替换 Pane 内巨型事件处理器**
 
 新增 import：
 
@@ -1708,7 +1712,7 @@ rg -n "ResultExporter|XlsxWriter|InsertSqlGenerator|FileChooser|FileOutputStream
 
 这是机械 import 清理，不修改其他引用或共享格式实现。
 
-- [ ] **Step 6: 跑集成 GREEN 并提交**
+- [x] **Step 6: 跑集成 GREEN 并提交**
 
 在运行前，替换旧测试 `clipboardFailureNeverClaimsSuccessAndInsertCopyUsesTheSameSeam`，让其明确确认新增弹窗，并实际覆盖顶部/右键两个入口；不能让原来的反射调用在未处理的模态对话框中超时。加入 helper：
 
@@ -1783,7 +1787,7 @@ git commit -m "feat(sql-editor): share safe export flow across files and INSERT 
 - 消费前述所有已定义接口；不增加生产接口。
 - 产出：实际的精确文件字节、终态、回调次数、格式内容和测试统计证据。下列是加在已定义测试类中的完整测试方法，不另行复制 fixture。
 
-- [ ] **Step 1: 发布器增加关闭流失败、锁冲突和清理失败用例**
+- [x] **Step 1: 发布器增加关闭流失败、锁冲突和清理失败用例**
 
 加入 `SafeResultFilePublisherTest`：
 
@@ -1876,7 +1880,7 @@ git commit -m "feat(sql-editor): share safe export flow across files and INSERT 
 
 链接测试可因明确的账户/平台能力跳过，必须记录；不能因此跳过目录、目标变化或原子失败测试。JUnit 仅清理自己创建的 `@TempDir`，不扫描用户目录。
 
-- [ ] **Step 2: 验证取消和发布真正并发时的门禁**
+- [x] **Step 2: 验证取消和发布真正并发时的门禁**
 
 加入 `ResultExportSessionTest`：
 
@@ -1916,7 +1920,7 @@ git commit -m "feat(sql-editor): share safe export flow across files and INSERT 
 }
 ```
 
-- [ ] **Step 3: 新增活动结果/截断、HTML/XML 回归**
+- [x] **Step 3: 新增活动结果/截断、HTML/XML 回归**
 
 加入 `ResultExportSnapshotTest`：
 
@@ -1964,7 +1968,7 @@ git commit -m "feat(sql-editor): share safe export flow across files and INSERT 
 }
 ```
 
-- [ ] **Step 4: 协调器增加拒绝恢复、关闭取消和剪贴板失败证据**
+- [x] **Step 4: 协调器增加拒绝恢复、关闭取消和剪贴板失败证据**
 
 加入 `SqlResultExportCoordinatorTest`，复用其中 Ui/snapshot/directory：
 
@@ -2060,7 +2064,7 @@ git commit -m "feat(sql-editor): share safe export flow across files and INSERT 
 }
 ```
 
-- [ ] **Step 5: 跑所有新增边界测试**
+- [x] **Step 5: 跑所有新增边界测试**
 
 ```powershell
 ./gradlew test --tests com.datacube.export.SafeResultFilePublisherTest --tests com.datacube.export.ResultExportSessionTest --tests com.datacube.export.QueryResultFileWriterTest --tests com.datacube.fx.SqlResultExportCoordinatorTest --tests com.datacube.sqleditor.result.ResultExportSnapshotTest --no-daemon --console=plain
@@ -2068,7 +2072,7 @@ git commit -m "feat(sql-editor): share safe export flow across files and INSERT 
 
 Expected: 全部通过，链接能力 skip 单独记录。若出现行为失败，先保留失败证据、定位根因，再修实现；不能删断言或扩大超时掩盖竞态。纯回归新增测试可以直接通过，但不得称其为已观察到 RED 的 TDD 用例。
 
-- [ ] **Step 6: 更新产品说明及建立验收记录**
+- [x] **Step 6: 更新产品说明及建立验收记录**
 
 README “导出”原功能条目替换为以下两行：
 
@@ -2109,7 +2113,7 @@ README “导出”原功能条目替换为以下两行：
 - 本阶段不自动推送、合并或打 tag。
 ```
 
-- [ ] **Step 7: 完整 non-headless 回归并统计 XML**
+- [x] **Step 7: 完整 non-headless 回归并统计 XML**
 
 ```powershell
 $env:JAVA_TOOL_OPTIONS='-Djava.awt.headless=false'
@@ -2135,6 +2139,8 @@ git diff --check
 
 - [ ] **Step 8: 桌面检查、最终审查并提交**
 
+执行记录：最终全分支代码审查已通过，无未解决发现；代码及文档保留为本地提交。桌面尝试遇到 `GetCursorPos` 拒绝访问，未执行输入操作，不将该项记为通过；待可交互桌面恢复后补验。
+
 使用 synthetic fixture 和临时目录验证上面的桌面清单；若使用真实桌面控制工具，先读取并遵守 `computer-use` 技能。不能为验收打开公司连接。无可用展示环境时明确记“未验证”，不要伪造截图或通过结论。
 
 最终核对：本轮是否仍有直接写目标或失败删除目标、背景线程读取 TableView/当前 SQL、旧完成覆盖新状态、SQL preview 被转换成 NULL、非原子 fallback。只检查 SQL 编辑器新路径，不借机修改排除的整表导出。
@@ -2153,14 +2159,14 @@ git commit -m "test(export): verify failure safety and document result export bo
 
 | 已批准设计 | 对应任务与断言 |
 | --- | --- |
-| `3.1 两范围、当前排序、列隐藏/重排、重复与短行 | 1 的矩阵/零行；5 的默认范围；6 的实际 TableView 顺序 |
-| `3.1 活动结果而非缓存原结果、取消与捕获 SQL | 8 活动/原始对照；7 取消零工作和剪贴板精确 SQL |
-| `3.2 行截断、特殊值、无损 SQL 限制 | 2 类型 allowlist；5 独立提示/确认；8 截断来源固定 |
-| `3.2 常规格式与精度 | 4 CSV/INSERT/XLSX；8 HTML/XML/纳秒时间；既有格式回归 |
-| `3.3 防抖与展示、后台不读 UI | 6 flush 计数及列/排序保持；1 快照；7 阻塞后台/新查询状态 |
-| `4.1 文件所有权、原子发布与目标版本 | 3 旧字节/外部目标变更/unsupported；8 close、cleanup、同路径、目录/链接 |
-| `4.2 关闭、取消和完成、任务拒绝 | 3 单任务/session；8 并发门禁、关闭抑制和 rejected 重试 |
-| `5 边界 | 纯模型、发布器、格式适配、dialog、coordinator 分文件；Pane 只接线 |
-| `6 验收 | 8 fresh full non-headless、XML 统计、桌面清单及未验证记录 |
+| 3.1 两范围、当前排序、列隐藏/重排、重复与短行 | 1 的矩阵/零行；5 的默认范围；6 的实际 TableView 顺序 |
+| 3.1 活动结果而非缓存原结果、取消与捕获 SQL | 8 活动/原始对照；7 取消零工作和剪贴板精确 SQL |
+| 3.2 行截断、特殊值、无损 SQL 限制 | 2 类型 allowlist；5 独立提示/确认；8 截断来源固定 |
+| 3.2 常规格式与精度 | 4 CSV/INSERT/XLSX；8 HTML/XML/纳秒时间；既有格式回归 |
+| 3.3 防抖与展示、后台不读 UI | 6 flush 计数及列/排序保持；1 快照；7 阻塞后台/新查询状态 |
+| 4.1 文件所有权、原子发布与目标版本 | 3 旧字节/外部目标变更/unsupported；8 close、cleanup、同路径、目录/链接 |
+| 4.2 关闭、取消和完成、任务拒绝 | 3 单任务/session；8 并发门禁、关闭抑制和 rejected 重试 |
+| 5 边界 | 纯模型、发布器、格式适配、dialog、coordinator 分文件；Pane 只接线 |
+| 6 验收 | 8 fresh full non-headless、XML 统计、桌面清单及未验证记录 |
 
 自审还需确认代码块之间接口一致、旧方法全部移除、每个新增生产文件都有测试、没有把“计划里的代码”当成“已运行实现”。实施者遇到基线漂移应先列出差异再调整，不盲贴失效的上下文。
