@@ -4,7 +4,7 @@
 
 工作树：`D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery`；分支：`codex/sql-draft-recovery`；起点：`main@0c4ecb9`。
 
-P1 尚未完成。存储、调度、编辑器保护、离线恢复、管理页和重复恢复生命周期实现及任务审查已完成；源码8ecd521的完整非headless回归、隔离跨进程验收与jlink/jpackageImage已通过。整分支审查发现两项Important反馈缺口（保存失败分类、清空后保护文件残留提示），正在按补丁计划处理，修改源码后会重跑验证。桌面捕获/访问被系统拒绝，实际暗亮主题与交互验收未通过。全部P1门槛完成后才本地合并，未推送/打tag/发布。下方按时间保留各阶段证据，旧阶段状态不代表当前状态。
+P1 尚未完成。存储、调度、编辑器保护、离线恢复、管理页和重复恢复生命周期实现及任务审查已完成。整分支审查两项Important反馈缺口已在7d17728实现修订，主代理最新完整非headless回归1365项无失败、3项原有live跳过，跨进程恢复和jlink/jpackageImage重新验证通过；反馈修订正在独立复审。桌面捕获/访问被系统拒绝，实际暗亮主题与交互验收未通过。全部P1门槛完成后才本地合并，未推送/打tag/发布。下方按时间保留各阶段证据，旧阶段状态不代表当前状态。
 
 设计见[SQL 草稿恢复设计](../specs/2026-08-30-sql-draft-recovery-design.md)。执行计划：
 
@@ -256,3 +256,19 @@ Counter边界：session计数来自真实ConnectionManager调用provider.sqlRunn
 主代理独立命令`./gradlew.bat -I .superpowers/sdd/draft-acceptance.init.gradle verifySqlDraftProcesses jpackageImage --no-daemon --console=plain`，session61680，exit0、56秒、17任务（9执行/8 up-to-date）。八个顶层进程退出码和PROCESS_ACCEPTANCE_PASS由主代理直接读取；新独占目录`C:/Users/hetia/AppData/Local/Temp/datacube-draft-process-8454722275964971643`保留。`jlink`及`jpackageImage`实际执行成功；有当前JDK关于jmods/java.base与JEP493的构建提示。构建成功不代表安装、升级或打包程序桌面运行通过。
 
 随后只读检查实际镜像：`jimage list build/jpackage/DataCube/runtime/lib/modules` exit0，包含本轮SqlDraft生产类，没有SqlDraftAcceptanceLauncher或DraftManagementProbe匹配项。运行时modules文件SHA-256为`8E8C3EAC994659336CE6E878924473023B2AA270EF4F42051D182C02D54F8938`；cfg主入口为`com.datacube/com.datacube.DataCubeFx`且没有测试user.home覆盖。默认版本`3.0.0`仅为本地构建配置，不是新发布版本。未启动此发行入口。
+
+## P1 整分支审查与反馈修订
+
+独立整分支审查使用冻结范围`0c4ecb9..6d52bfc`（54提交，812535字节差异包），结论Ready No。两项Important为：保存失败被折叠为通用WRITE/不可用，遗漏容量、输入限制及CLEANUP敏感SQL临时文件风险；编辑器清空成功只判断succeeded，未展示snapshot中仍受保护的损坏/未知文件。修复计划见[失败反馈修订](../plans/2026-08-31-sql-draft-failure-feedback.md)，任务基线`ce5acd0`，由单独实施代理处理。此处为发现与执行记录，不代表修复已验证。
+
+按已有自主设计授权统一CLEANUP语义为检查修复本机目录后重启，本会话保持不可用，无自动重试/重新启用。普通容量/输入失败提示先复制文本另存；清空提示不得宣称受保护文件已删除。所有提示只用固定安全分类，不显示异常原文、SQL或路径。
+
+非阻塞事项保留：管理列表当前缺失/类型改变提示可在桌面验收阶段评估，恢复后的编辑器已做稳定ID/类型验证且保持离线；Store实际删除循环故障注入及Queue inline/第二轮空闲调度测试建议未冒充已有覆盖。旧compiler/CSS/JDK提示继续披露。源码改变后完整回归、进程和镜像证据须重新生成；桌面限制与代码审查问题分别跟踪。
+
+反馈修订首轮RED：编译成功后43 tests /6 failures /0 errors /0 skips，Gradle exit1。主代理在GREEN前独立读取2026-08-30T17:24:24.876Z起三份XML；Coordinator20项中CLEANUP分类1失败，新反馈6项中四种分类均为null而失败，编辑器17项中保护文件残留提示1失败。生产差异只有编译接口形状，尚无行为修复。已有重试/旧revision行为用例通过，未将其误报为新RED；测试输出的CSS警告及对话框helper清理NPE另外排查，不当作功能RED证据。
+
+源码修订`7d17728`严格8个源码/测试文件。实际对话框helper在关闭后访问已脱离的Window导致清理NPE，最小修复为提前保存Window并将清理异常传播到测试调用者；不改变产品确认逻辑。定向GREEN首次70/1为旧“失败”文案断言；第一次误改CAPTURE仍失败，核对4097字符Schema实际走Store INVALID_DRAFT后，改为同时断言该类型及固定安全提示，保留所有强制关闭拒绝/flags/资源/后续保存断言。此过程不冒充额外产品RED。
+
+主代理独立最终完整回归session50022：`test --rerun-tasks --no-daemon --console=plain`，仅本次命令JAVA_TOOL_OPTIONS追加非headless，随后恢复；exit0、41秒、8任务全执行。实际XML150 suites /1365 tests /1362 passed /0 failures /0 errors /3原有live skips（名称同上），新增7项无跳过。原unchecked编译提示仍存在。进程与打包复验单独记录，桌面仍未验收。
+
+源码7d17728跨进程/打包复验session21608：同前述组合命令，exit0、52秒、17任务（9执行/8 up-to-date），jlink/jpackageImage实际执行。8个顶层子进程和锁内第二实例均通过，受控异常进程退出37符合预期，独占目录`C:/Users/hetia/AppData/Local/Temp/datacube-draft-process-12929717576398861958`保留。root直接读取检查点及locked-probe0日志。新镜像modules SHA-256为`94C5724987520D1982B71881039DEB60F248B86184A392BB9460C49FE7AD8E9C`；jimage检查有草稿生产类而无验收launcher/probe，cfg仍为真实DataCubeFx入口，无测试user.home覆盖。默认3.0.0不代表发布；原JDK/JEP493提示仍存在，未启动/安装此发行入口。

@@ -27,6 +27,7 @@
 - Modify `test/com/datacube/config/DraftManagementProbe.java`.
 - Modify `test/com/datacube/config/SqlDraftCoordinatorTest.java`.
 - Modify `test/com/datacube/fx/SqlEditorDraftIntegrationTest.java`.
+- Modify `test/com/datacube/fx/SqlDraftManagerTest.java` only its actual-dialog response cleanup helper, as amended below after RED evidence.
 - Create `test/com/datacube/fx/SqlDraftFailureFeedbackTest.java` using the complete code below.
 - Append report `.superpowers/sdd/draft-p1-feedback-fix-report.md`; controller owns all tracked docs and remaining Minor decisions.
 
@@ -341,6 +342,56 @@ Do not claim corrupt files were deleted, clear them automatically, or include th
 - [ ] **Step 5: Verify, self-review, commit exact files.** Run the same focused command plus `--tests '*SqlDraftManagerTest' --tests '*SqlDraftRecoveryTabsTest'`. Then full forced nonheadless regression. Report actual XML totals/skips, commands, exit codes and RED attribution; no weakened assertions or new skips. Root will independently rerun after commit. Exact source/test commit `fix: expose safe draft failure and cleanup feedback`; do not stage root docs. Append/report at the named path and return concise status/commit/concerns. Broader process/package checks become stale after source edits and must be rerun before P1 completion.
 
 ## Self-review and Minor decisions
+
+### Evidence-led fixture correction after initial RED
+
+Existing close-guard test compatibility: writeFailureRefusesMandatoryCloseAndRestoresExactFlagsThenSavesNewEdit sets a 4097-character schema, so the real Store rejects it as INVALID_DRAFT. Replace only its old generic status substring assertion, retaining close outcome, resource/editability flags and later-save assertions:
+
+```java
+Object binding = field(f.pane, "draftBinding");
+var handle = (SqlDraftCoordinator.Handle) field(binding, "handle");
+assertEquals(SqlDraftCoordinator.FailureReason.INVALID_DRAFT, handle.status().failureReason());
+String statusText = f.label("status").getText();
+assertTrue(statusText.contains("草稿内容无法保存"), statusText);
+```
+
+The first attempted CAPTURE replacement was an incorrect diagnosis and failed again; it must not be described as a product regression or a passing run. Typed status plus safe UI text is the corrected evidence.
+
+The initial RED exposed an existing asynchronous cleanup NPE in respondToDialog: closing the actual dialog can detach its Scene from its Window before finally dereferences it. Preserve the Window captured before response instead of creating another helper. Replace the existing method completely with the following; its purpose is reliable actual-dialog cleanup, not a production behavior change. A cleanup exception is now propagated to the test caller rather than escaping unnoticed from Platform.runLater. Initial six functional failures remain the valid RED; this diagnostic is separately recorded.
+
+```java
+static void respondToDialog(Runnable open, Consumer<DialogPane> response) {
+    AtomicReference<Throwable> failure = new AtomicReference<>();
+    Platform.runLater(() -> {
+        DialogPane dialog = null;
+        Window dialogWindow = null;
+        try {
+            dialog = Window.getWindows().stream().filter(Window::isShowing)
+                    .map(window -> window.getScene().getRoot()).filter(DialogPane.class::isInstance)
+                    .map(DialogPane.class::cast).findFirst().orElseThrow();
+            dialogWindow = dialog.getScene().getWindow();
+            response.accept(dialog);
+        } catch (Throwable problem) {
+            failure.set(problem);
+        } finally {
+            try {
+                if (dialogWindow != null && dialogWindow.isShowing()) {
+                    var cancel = dialog.lookupButton(ButtonType.CANCEL);
+                    if (cancel == null) cancel = dialog.lookupButton(ButtonType.CLOSE);
+                    if (cancel instanceof Button button) button.fire();
+                    else dialogWindow.hide();
+                }
+            } catch (Throwable cleanup) {
+                Throwable previous = failure.get();
+                if (previous == null) failure.set(cleanup);
+                else if (previous != cleanup) previous.addSuppressed(cleanup);
+            }
+        }
+    });
+    open.run();
+    if (failure.get() != null) throw new AssertionError("Dialog assertion failed", failure.get());
+}
+```
 
 Two Important findings have direct runtime/UI tests. Protected-file clear uses a real owned corrupt draft file and checks its bytes survive. Fault-classification tests use real coordinator/binding controls with a controlled backend and FX callback queue; these supplement, not replace, existing filesystem fault injection. Stale-ticket and successful-retry cases prevent sticky ordinary error labels; CLEANUP alone remains application-sticky. Failure text is a fixed enum mapping, never raw exception content.
 
