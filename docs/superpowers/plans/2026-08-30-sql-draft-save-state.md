@@ -36,7 +36,7 @@
 - Owner remains responsible for eligibility: an initial empty editor is not passed as a qualifying edit; clearing an already captured/saved draft is qualifying. The runtime must call clear for a newly emptied never-captured editor. Schema-only changes qualify when there is text or a checkpoint. Initial restoration uses the constructor timestamp, not edited, and therefore does not update mtime.
 - Structural directory failures (including CLEANUP) are owner-level unavailability, not ordinary failed(ticket): the coordinator must call pause(true) for affected sessions even if the failed write's UI ticket became stale. Serialized clear/delete/disable operations remain required; this class alone does not prevent disk resurrection.
 
-- [ ] **Step 1: Add compilable stub and complete deterministic tests.**
+- [x] **Step 1: Add compilable stub and complete deterministic tests.**
 
 `src/com/datacube/config/SqlDraftSaveState.java`:
 
@@ -273,7 +273,7 @@ class SqlDraftSaveStateTest {
 }
 ```
 
-- [ ] **Step 2: Run RED before replacing stub.**
+- [x] **Step 2: Run RED before replacing stub.**
 
 ```powershell
 .\gradlew.bat test --tests com.datacube.config.SqlDraftSaveStateTest --rerun-tasks --no-daemon --console=plain
@@ -281,7 +281,7 @@ class SqlDraftSaveStateTest {
 
 Expected exit1 with behavior assertion failures after successful compilation. Record exact failures; no timer sleeps or arbitrary timeouts are needed.
 
-- [ ] **Step 3: Implement state transitions.**
+- [x] **Step 3: Implement state transitions.**
 
 `src/com/datacube/config/SqlDraftSaveState.java`:
 
@@ -405,7 +405,7 @@ final class SqlDraftSaveState {
 }
 ```
 
-- [ ] **Step 4: Run focused GREEN and full forced regression.**
+- [x] **Step 4: Run focused GREEN and full forced regression.**
 
 ```powershell
 .\gradlew.bat test --tests com.datacube.config.SqlDraftSaveStateTest --tests com.datacube.config.SqlDraftStoreTest --tests com.datacube.config.SqlDraftDirectoryTest --tests com.datacube.config.SqlDraftCodecTest --rerun-tasks --no-daemon --console=plain
@@ -425,7 +425,7 @@ exit $draftTestExit
 
 Expected exit0; record exact XML totals and named skips. Existing unrelated unchecked compiler note is not a new regression or pristine output.
 
-- [ ] **Step 5: Compare complete code, self-review and commit only owned files.**
+- [x] **Step 5: Compare complete code, self-review and commit only owned files.**
 
 ```powershell
 git diff --check

@@ -12,6 +12,7 @@ P1 尚未完成。当前已完成草稿值/格式、文件边界和存储策略�
 - [P1.2 文件边界](../plans/2026-08-30-sql-draft-directory.md)
 - [P1.2 存储策略](../plans/2026-08-30-sql-draft-store.md)
 - [P1.3 保存状态](../plans/2026-08-30-sql-draft-save-state.md)
+- [P1.3 有界写入队列](../plans/2026-08-30-sql-draft-write-queue.md)
 
 异步运行时边界另见[运行时整合约束](../specs/2026-08-30-sql-draft-runtime-contract.md)，该文档是后续设计约束，不是实现证据。
 
@@ -67,6 +68,12 @@ exit $draftTestExit
 
 主代理在未改变生产代码的`92091b2`上独立执行完整强制非headless回归：exit0、37秒、8 tasks执行；XML141 suites / 1264 tests / 1261 passed / 0 failures / 0 errors / 3原live skips。环境已恢复，7个文档相对链接和diff whitespace检查通过。
 
+## P1.3保存状态（审查中）
+
+提交`5da7b9c`只包含SqlDraftSaveState及对应12项纯状态测试。实施代理记录编译后stub RED12/12失败，focused GREEN exit0；随后完整强制非headless回归exit0，142 suites / 1276 tests / 1273 passed / 0 failures / 0 errors / 3原live skips。主代理读取最终XML并逐字核对生产/测试代码与计划一致；主代理未在覆盖前单独读取本次RED XML，因此RED来源为实施报告，不追溯声称独立验证。报告总数与跳过数正确，实施代理短摘要的“1276/1276”不能理解为全部通过。
+
+已覆盖1秒静默、10秒持续输入、写入期间新编辑、旧成功/失败回调、同revision重试的attempt、清空/暂停失效和时钟边界。这只是无SQL/无线程/无I/O的状态契约；实际异步队列、存储屏障和恢复界面尚未实现。独立审查范围`8c85c51..5da7b9c`进行中。
+
 ## Requirement | Evidence
 
 | Requirement | Evidence / 当前边界 |
@@ -86,7 +93,10 @@ exit $draftTestExit
 | 严格启停与损坏偏好保护 | `disableIsPersistedExactlyAndKeepsRecoverableDrafts`、`invalidPreferenceNeverDefaultsOnOrHidesValidDrafts`、`atomicFailureKeepsOldDraftAndPreference`；GREEN |
 | 总容量与旧版本保留 | `countLimitAllowsReplacementButNeverEvictsOtherDrafts`、`totalByteBoundaryUsesPublishedBytesAndRetainsOldVersion`、`invalidNewSnapshotNeverReplacesLastSuccessfulBytes`、`externallyOverfullDirectoryIsPreservedAndCanStillPersistDisable`；GREEN |
 | 过期规则与异常条目保护 | `expiryUsesEmbeddedTimeAndPreservesOpenFutureAndInvalidEntries`、`corruptUnknownAndMismatchedFilesArePreservedWithValidNeighbors`、`unreadableOversizeEntryDisablesSavingWithoutHidingNeighbor`；GREEN |
-| 自动保存、关闭/清空/禁用竞态 | 尚未实现/验收 |
+| 静默/持续输入保存期限 | `SqlDraftSaveStateTest.idleDeadlineMovesWithInputAndOnlyPublicationMarksSaved`、`continuousInputCannotPostponeCapturePastTenSeconds`；纯状态GREEN |
+| 旧回调与重试失效 | `inputDuringPublicationStartsNewWindowAndRejectsOldSuccess`、`oldFailureAndRepeatedCompletionCannotOverwriteNewResult`、`ordinaryFailureWaitsForExplicitRetryWithANewAttemptTicket`；纯状态GREEN |
+| 清空/暂停后的状态规则 | `clearInvalidatesTicketsAndCloseCannotResurrectUneditedText`、`disableCancelsPendingAndEditsDoNotImplicitlyResume`、`unavailableRequiresOwnerRecoveryAndCanResumeWithoutSavingEmptyText`；纯状态GREEN，不代表磁盘屏障 |
+| 真实自动保存、关闭/清空/禁用并发顺序 | 尚未实现/验收 |
 | 离线恢复零DB调用、连接身份安全 | 生命周期代码分析完成，尚未实现/验收 |
 | 重启、异常退出、桌面可见状态 | 尚未验收 |
 
