@@ -274,7 +274,10 @@ public final class AppShell {
         contentTabs.openManagedTab(title, binding -> ManagedTabFactorySequence.create(
                 factory,
                 pane -> binding.bind(pane::closeResources),
-                pane -> { initialize.accept(pane); sqlDrafts.get().bind(pane); },
+                pane -> {
+                    initialize.accept(pane);
+                    sqlDrafts.get().bind(pane);
+                },
                 pane -> new ContentTabPane.ManagedTabSpec(
                         pane.getNode(), pane::requestClose,
                         pane::requestMandatoryClose,

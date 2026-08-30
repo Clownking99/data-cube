@@ -211,8 +211,13 @@ public final class SqlEditorPane implements AutoCloseable {
         catch (RuntimeException failure) { draftBinding.close(); throw failure; }
         return draftBinding;
     }
-    private boolean draftEditingBlocked() { return draftBinding != null && draftBinding.closing(); }
-    private void draftEdited() { if (draftBinding != null) draftBinding.edited(); }
+    private boolean draftEditingBlocked() {
+        return draftBinding != null && draftBinding.closing();
+    }
+
+    private void draftEdited() {
+        if (draftBinding != null) draftBinding.edited();
+    }
 
     public SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
                          AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
@@ -368,10 +373,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
     void closeResources() {
-        if (draftBinding != null) {
-            if (Platform.isFxApplicationThread()) draftBinding.close();
-            else { CompletableFuture<Void> detached = new CompletableFuture<>(); Platform.runLater(() -> { try { draftBinding.close(); detached.complete(null); } catch (Throwable failure) { detached.completeExceptionally(failure); } }); detached.join(); }
-        }
+        detachDraftFromAnyThread();
         if (resourcesClosed.get()) return;
         if (resultExports != null) resultExports.close();
         admission.beginClosing();
@@ -425,6 +427,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private CompletionStage<CloseGuardOutcome> startCloseAttempt() {
         CompletableFuture<CloseGuardOutcome> result = new CompletableFuture<>();
         if (draftBinding != null) draftBinding.freeze();
+        if (autoComplete != null) autoComplete.hide();
         admission.beginClosing();
         SerialSessionOperationQueue.Snapshot operationSnapshot = sessionOperations.snapshot();
         CompletionStage<Void> idle = sessionOperations.stopAcceptingAndCancelQueued();
@@ -451,6 +454,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private CompletionStage<CloseGuardOutcome> startMandatoryCloseAttempt() {
         CompletableFuture<CloseGuardOutcome> result = new CompletableFuture<>();
         if (draftBinding != null) draftBinding.freeze();
+        if (autoComplete != null) autoComplete.hide();
         ClosePlan plan;
         try {
             ConnConfig connection = currentConn();
@@ -461,8 +465,10 @@ public final class SqlEditorPane implements AutoCloseable {
                     CloseDecision.CANCEL_ROLLBACK);
             admission.beginClosing();
             sessionOperations.stopAcceptingAndCancelQueued();
-            sessionOperations.suppressCallbacks();
-            continueAfterDraftFlush(true, result, () -> Thread.startVirtualThread(() -> result.complete(closeMandatoryInBackground(plan))));
+            continueAfterDraftFlush(true, result, () -> {
+                sessionOperations.suppressCallbacks();
+                Thread.startVirtualThread(() -> result.complete(closeMandatoryInBackground(plan)));
+            });
         } catch (Throwable failure) {
             reportMandatoryCloseFailure(failure);
             result.complete(CloseGuardOutcome.FAILED_PARTIAL);
@@ -472,6 +478,21 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void continueCloseDecisionOnFx(CompletableFuture<CloseGuardOutcome> result) {
         if (result.isDone()) return;
+        continueAfterDraftFlush(false, result, () -> continueTransactionCloseDecisionOnFx(result));
+    }
+
+    private void detachDraftFromAnyThread() {
+        if (draftBinding == null) return;
+        if (Platform.isFxApplicationThread()) { draftBinding.close(); return; }
+        CompletableFuture<Void> detached = new CompletableFuture<>();
+        Platform.runLater(() -> {
+            try { draftBinding.close(); detached.complete(null); }
+            catch (Throwable failure) { detached.completeExceptionally(failure); }
+        });
+        detached.join();
+    }
+
+    private void continueTransactionCloseDecisionOnFx(CompletableFuture<CloseGuardOutcome> result) {
         ClosePlan plan;
         try {
             if (!Platform.isFxApplicationThread()) {
@@ -488,7 +509,8 @@ public final class SqlEditorPane implements AutoCloseable {
             result.complete(CloseGuardOutcome.REJECTED);
             return;
         }
-        continueAfterDraftFlush(false, result, () -> { sessionOperations.suppressCallbacks(); try {
+        sessionOperations.suppressCallbacks();
+        try {
             Thread.startVirtualThread(() -> {
                 try {
                     closeInBackground(plan);
@@ -503,14 +525,21 @@ public final class SqlEditorPane implements AutoCloseable {
         } catch (Throwable startupFailure) {
             reopenAfterRejectedClose();
             result.completeExceptionally(startupFailure);
-        }});
+        }
     }
 
-    private void continueAfterDraftFlush(boolean mandatory, CompletableFuture<CloseGuardOutcome> result, Runnable continuation) {
+    private void continueAfterDraftFlush(boolean mandatory, CompletableFuture<CloseGuardOutcome> result,
+            Runnable continuation) {
         if (draftBinding == null) { continuation.run(); return; }
         draftBinding.prepareClose(mandatory).whenComplete((allowed, failure) -> {
-            if (failure != null || !Boolean.TRUE.equals(allowed)) { reopenAfterRejectedClose(); if (failure != null) result.completeExceptionally(failure); else result.complete(CloseGuardOutcome.REJECTED); return; }
-            try { continuation.run(); } catch (Throwable startupFailure) { reopenAfterRejectedClose(); result.completeExceptionally(startupFailure); }
+            if (failure != null || !Boolean.TRUE.equals(allowed)) {
+                reopenAfterRejectedClose();
+                if (failure != null) result.completeExceptionally(failure);
+                else result.complete(CloseGuardOutcome.REJECTED);
+                return;
+            }
+            try { continuation.run(); }
+            catch (Throwable startupFailure) { reopenAfterRejectedClose(); result.completeExceptionally(startupFailure); }
         });
     }
 
