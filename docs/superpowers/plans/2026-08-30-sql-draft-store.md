@@ -142,7 +142,8 @@ class SqlDraftStoreTest {
     @Test void invalidPreferenceNeverDefaultsOnOrHidesValidDrafts() throws Exception {
         SqlDraft saved = draft(1, NOW, "select 1");
         try (SqlDraftStore store = SqlDraftStore.open(root())) { store.save(saved); }
-        byte[][] invalid = { {}, {1}, ByteBuffer.allocate(9).putInt(0x44434450).putInt(2).put((byte) 1).array(),
+        byte[][] invalid = { {}, {1}, ByteBuffer.allocate(9).putInt(0).putInt(1).put((byte) 1).array(),
+                ByteBuffer.allocate(9).putInt(0x44434450).putInt(2).put((byte) 1).array(),
                 ByteBuffer.allocate(9).putInt(0x44434450).putInt(1).put((byte) 2).array(),
                 ByteBuffer.allocate(10).putInt(0x44434450).putInt(1).put((byte) 1).array() };
         for (byte[] bytes : invalid) {
@@ -153,6 +154,7 @@ class SqlDraftStoreTest {
                 assertEquals(List.of(saved), snapshot.drafts());
                 assertTrue(snapshot.problems().stream().anyMatch(p -> p.code() == SqlDraftStore.ProblemCode.INVALID_PREFERENCES));
                 assertCode(SqlDraftStore.FailureCode.PREFERENCE_CORRUPT, () -> store.setEnabled(true));
+                assertCode(SqlDraftStore.FailureCode.PREFERENCE_CORRUPT, () -> store.setEnabled(false));
                 assertCode(SqlDraftStore.FailureCode.UNAVAILABLE, () -> store.save(saved));
                 assertArrayEquals(bytes, Files.readAllBytes(root().resolve("preferences.bin")));
             }
