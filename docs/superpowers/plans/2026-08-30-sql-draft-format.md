@@ -85,8 +85,10 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -252,6 +254,37 @@ class SqlDraftCodecTest {
                 () -> SqlDraftCodec.decode(wire("private-id", "private-unknown-type", null, null, "private-sql")));
         assertEquals("Invalid SQL draft format", error.getMessage());
         assertNull(error.getCause());
+    }
+
+    @Test
+    void oversizedTextIsRejectedBeforeAllocatingEncodingBuffer() throws Exception {
+        Path java = Path.of(System.getProperty("java.home"), "bin",
+                System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
+        String mainClasses = Path.of(SqlDraft.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
+        String testClasses = Path.of(EncodingBudgetProbe.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
+        Process process = new ProcessBuilder(java.toString(), "-Xmx48m", "-cp",
+                mainClasses + System.getProperty("path.separator") + testClasses,
+                EncodingBudgetProbe.class.getName())
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+        try {
+            assertTrue(process.waitFor(15, TimeUnit.SECONDS), "synthetic encoding probe timed out");
+            assertEquals(0, process.exitValue(), "42=fixture allocation failed, 43=oversize accepted, 44=encoding allocated before limit check");
+        } finally {
+            if (process.isAlive()) process.destroyForcibly();
+        }
+    }
+
+    public static final class EncodingBudgetProbe {
+        public static void main(String[] args) {
+            String oversized;
+            try { oversized = "x".repeat(32 * 1024 * 1024); }
+            catch (OutOfMemoryError fixtureFailure) { System.exit(42); return; }
+            try {
+                SqlDraftCodec.encode(new SqlDraft(new UUID(0, 1), 0, null, null, null, null, oversized));
+                System.exit(43);
+            } catch (IOException expected) { System.exit(0); }
+            catch (OutOfMemoryError allocationFailure) { System.exit(44); }
+        }
     }
 
     private static byte[] wire(String id, String type, String name, String schema, String sql) throws IOException {
@@ -464,3 +497,7 @@ Report actual RED/GREEN command/output, full suite totals, file list, commit, de
 ## Plan self-review
 
 P1.1 coverage: exact independent wire fixture; nullable/empty/Unicode identity; before/at/after SQL and each user metadata byte limit; maximum simultaneous fields; invalid headers, every truncation, trailing data, null and oversized input, malicious lengths; invalid identity/enum/SQL; malformed UTF-8/UTF-16; redacted diagnostics. No external resources or dependency changes. P1.2-P1.5 remain separate planned subsystems in the design, not completed by this task.
+
+### Review repair checkpoint
+
+Implementation97dab37 abbreviated the supplied code and omitted the pre-encoder `text.length()` guard plus some planned assertions. Root verified current source after CodeGraph reported the new worktree files absent from the root index; no indexing was performed. Task reviewer initially Approved with a surrogate-test Minor, but root treats unbounded encoder allocation as Important. Add the complete test source above (including the new isolated48MiB-JVM/32MiB-string probe) against current production first and observe probe exit44/RED; exit42 would be fixture failure, not proof. Then restore the exact complete SqlDraft and SqlDraftCodec implementation above and rerun focused GREEN/full. The added probe and restored assertions are post-original-implementation regression additions; do not misrepresent them as part of the original19-test RED. Preserve original report and append fix evidence. No product-policy change or user confirmation is required: this enforces the existing allocation limit.
