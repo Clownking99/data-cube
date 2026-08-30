@@ -246,6 +246,35 @@ class QueryResultMetadataTest {
     }
 
     @Test
+    void clobStreamsBoundedTextAndFreesTheLocatorAtThePreviewBoundary() throws Exception {
+        String longText = "x".repeat(501);
+        AtomicInteger getCharacterStreamCalls = new AtomicInteger();
+        AtomicBoolean freed = new AtomicBoolean();
+        Clob clob = proxy(Clob.class, (method, args) -> switch (method.getName()) {
+            case "getCharacterStream" -> {
+                getCharacterStreamCalls.incrementAndGet();
+                yield new StringReader(longText);
+            }
+            case "free" -> {
+                freed.set(true);
+                yield null;
+            }
+            case "length", "getSubString" -> throw new AssertionError(
+                    "CLOB must stream instead of using its length or substring APIs");
+            default -> defaultValue(method.getReturnType());
+        });
+
+        QueryResult result = QueryResult.fromResultSet(singleRowResultSet(List.of(
+                new JdbcCell("note", Types.CLOB, "CLOB", clob))), 1, 0);
+
+        assertTrue(freed.get());
+        assertEquals(1, getCharacterStreamCalls.get());
+        assertBoundedTextSnapshot(result.rows.getFirst().getFirst(), longText.length());
+        assertInstanceOf(String.class, ImmutableResultValue.freeze(
+                new javax.sql.rowset.serial.SerialClob("x".repeat(500).toCharArray())));
+    }
+
+    @Test
     void oversizedJdbcArraysAndStructsRetainBoundedFingerprintedSnapshots() throws Exception {
         Object[] first = new Object[1_000];
         Object[] second = new Object[1_000];
@@ -415,7 +444,7 @@ class QueryResultMetadataTest {
 
     @Test
     void primaryReadFailureIsPreservedAndEveryResourceCleanupStillRuns() throws Exception {
-        assertPrimaryFailureStillFrees(Clob.class, Types.CLOB, "CLOB", "getSubString");
+        assertPrimaryFailureStillFrees(Clob.class, Types.CLOB, "CLOB", "getCharacterStream");
         assertPrimaryFailureStillFrees(java.sql.Blob.class, Types.BLOB, "BLOB", "getBinaryStream");
         assertPrimaryFailureStillFrees(java.sql.Array.class, Types.ARRAY, "ARRAY", "getResultSet");
         assertPrimaryFailureStillFrees(SQLXML.class, Types.SQLXML, "SQLXML", "getCharacterStream");

@@ -301,11 +301,7 @@ public final class ImmutableResultValue {
     }
 
     private static Object readAndFreeClob(Clob clob) throws SQLException {
-        return readAndCleanup(() -> {
-            long length = clob.length();
-            String text = clob.getSubString(1, (int) Math.min(500, length));
-            return text + (length > 500 ? "..." : "");
-        }, clob::free);
+        return readAndCleanup(() -> readBoundedText(clob.getCharacterStream()), clob::free);
     }
 
     private static Object readAndFreeBlob(Blob blob) throws SQLException {
