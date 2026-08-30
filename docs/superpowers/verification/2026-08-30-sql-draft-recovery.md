@@ -68,11 +68,11 @@ exit $draftTestExit
 
 主代理在未改变生产代码的`92091b2`上独立执行完整强制非headless回归：exit0、37秒、8 tasks执行；XML141 suites / 1264 tests / 1261 passed / 0 failures / 0 errors / 3原live skips。环境已恢复，7个文档相对链接和diff whitespace检查通过。
 
-## P1.3保存状态（审查中）
+## P1.3保存状态（已完成）
 
 提交`5da7b9c`只包含SqlDraftSaveState及对应12项纯状态测试。实施代理记录编译后stub RED12/12失败，focused GREEN exit0；随后完整强制非headless回归exit0，142 suites / 1276 tests / 1273 passed / 0 failures / 0 errors / 3原live skips。主代理读取最终XML并逐字核对生产/测试代码与计划一致；主代理未在覆盖前单独读取本次RED XML，因此RED来源为实施报告，不追溯声称独立验证。报告总数与跳过数正确，实施代理短摘要的“1276/1276”不能理解为全部通过。
 
-已覆盖1秒静默、10秒持续输入、写入期间新编辑、旧成功/失败回调、同revision重试的attempt、清空/暂停失效和时钟边界。这只是无SQL/无线程/无I/O的状态契约；实际异步队列、存储屏障和恢复界面尚未实现。独立审查范围`8c85c51..5da7b9c`进行中。
+已覆盖1秒静默、10秒持续输入、写入期间新编辑、旧成功/失败回调、同revision重试的attempt、清空/暂停失效和时钟边界。这只是无SQL/无线程/无I/O的状态契约；实际异步队列、存储屏障和恢复界面尚未实现。独立审查范围`8c85c51..5da7b9c`已Approved，0 Critical/Important/Minor；审查列出的协调器串行化、计时器替换、结构性失败和恢复零DB访问继续作为整合验收项，不以此纯模型替代。
 
 ## Requirement | Evidence
 

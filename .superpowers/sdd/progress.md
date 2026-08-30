@@ -2,6 +2,8 @@
 
 ## Active plan: SQL draft recovery (2026-08-30)
 
+- Save-state task COMPLETE8c85c51..5da7b9c, draft_save_state_review Approved0Critical/Important/Minor. Cross-task timer/worker serialization, structural failure stop and zeroDB recovery remain required coordinator/UI gates, explicitly not claimed. Next write-queue brief464lines ready for sequential dispatch; root initialization/close contract added: initializing/unavailable is not saved or deliberately disabled, retain dirty editor on failed flush before cleanup.
+
 - Save-state implementation5da7b9c (exact2files, literal True/True) now under draft_save_state_review, frozen review-8c85c51..5da7b9c.diff. Report RED12/12 compiled stub; root saw GREEN XML only (do not retroclaim independent RED). Focused/full exit0,142suites1276total1273passed0fail/error3live skips; short agent summary1276/1276 is total not passed, report counts correct. No worker/UI yet. Source code unchanged after runs; next queue only after review gate.
 
 - Save-state task ACTIVE via draft_save_state_impl (luna, complete-code task), BASE8c85c51; brief save-state-task-1-brief.md419lines; report save-state-task-1-report.md. Root observed current focused XML12passed/0fail/error/skip but earlier RED evidence/report still awaited; do not mark complete before report and independent review. Next bounded queue plan8c85c51/brief write-queue-task-1-brief.md464lines includes unexpected Error future settlement; not dispatched. Root docs alone modified, root main still0c4ecb9 with only protected .testagent untracked/unread.
