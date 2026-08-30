@@ -157,8 +157,46 @@ exit $draftTestExit
 | 取消/屏障与正在写入的顺序 | `clearCancelsPendingAndPostBarrierSaveCannotMoveBeforeAction`、`targetedDeleteKeepsOtherIdsAndSerializesNewTargetSnapshotAfterIt`、`clearDuringRunningWriteWaitsForItAndCancelsOnlyPendingVersion`；可控交错GREEN |
 | 排空、执行器拒绝与异常结算 | `closeDrainsAcceptedJobsAndRejectsNewJobsWithoutClosingExternalExecutor`、`rejectedExecutorSettlesQueueAndDoesNotLeakItsErrorMessage`、`unexpectedWriterErrorStillSettlesSaveAndDrainFutures`；GREEN |
 | 真实文件清空后旧排队文本不再写回 | `isolatedRealStoreClearCannotResurrectOldQueuedText`；隔离Store GREEN，非完整编辑器流程 |
-| 真实自动保存、关闭/清空/禁用并发顺序 | 尚未实现/验收 |
+| 真实自动保存、关闭/清空/禁用并发顺序 | P1.4实际FX/临时Store/应用timer测试已通过；最终桌面及重启验收仍待完成 |
 | 离线恢复零DB调用、连接身份安全 | 生命周期代码分析完成，尚未实现/验收 |
 | 重启、异常退出、桌面可见状态 | 尚未验收 |
 
 未报告覆盖率百分比；没有用真实数据库跳过项或未实现界面充当通过证据。
+
+## P1.4 编辑器自动保存接入（本任务已完成）
+
+实施基线：`8d81dc4`，独立 worktree `codex/sql-draft-recovery`。本轮主代理强制非 headless 完整基线回归 exit0、46秒、8 tasks执行；XML144 suites /1307 tests /1304 passed /0 failures /0 errors /3原live skips。与此前协调器结果分别记录，不把基线通过写成新界面已通过。
+
+完整实施计划：[编辑器接入](../plans/2026-08-30-sql-draft-editor-integration.md)。主代理已独立读取新增测试 RED XML：`SqlEditorDraftIntegrationTest`12项全部因缺少bindDraft失败；`SqlDraftUiTest`1项因缺少应用owner类失败；0 errors/0 skips。补全弹窗的冻结旁路另需行为RED，不由缺方法RED代替。
+
+| 用户边界 | 本轮实际通过的行为测试 |
+| --- | --- |
+| 原文、Schema、查询状态互不覆盖 | `autoSavePreservesRawTextSchemaAndIndependentQueryStatus` |
+| 初始空编辑器不落盘 | `newEmptyEditorDoesNotCreateCheckpoint` |
+| 初始化赋值后安装订阅、恢复句柄保持干净 | `historyInitializationQualifiesButRestoredCheckpointStartsClean`；仅句柄初始化，不是完整恢复入口证据 |
+| 最后快照期间冻结文本、格式化、注释、补全 | `closingWaitsForLatestSnapshotAndBlocksProgrammaticEditingActions` |
+| 最新编辑比排队快照更新 | `closingCapturesEditNewerThanAlreadyQueuedAutosave` |
+| 初始化期间关闭拒绝后继续保存 | `initializationRefusesMandatoryCloseAndRetainsSubscriptions` |
+| 保存失败保留标签及准确恢复控件状态 | `writeFailureRefusesMandatoryCloseAndRestoresExactFlagsThenSavesNewEdit` |
+| 清空后关闭不复活旧文本 | `clearDoesNotResurrectUneditedTextOnClose` |
+| 显式禁用不同于保存失败 | `explicitDisableAllowsCloseWithoutClaimingLatestSaved` |
+| 阻塞构造中止解除订阅及句柄 | `constructionAbortDetachesHandleAndSubscriptions`；完整managed-tab安装失败路径另验收 |
+| 显式连接绑定保存稳定身份 | `explicitAdmissionUpdatesStoredStableConnectionIdentity`；并非恢复零DB调用证据 |
+| 取消关闭/显式放弃仅作用本次、保留旧版本 | `interactiveCancelKeepsEditorAndExplicitDiscardKeepsPreviousCheckpoint` |
+| 真实应用定时器、writer排空与锁释放 | `SqlDraftUiTest.applicationTimerSavesAndBackgroundShutdownReleasesStoreLock` |
+
+尚未完成恢复管理页、显式无连接恢复、实际provider/session/metadata计数、合成重启/异常退出和桌面验收；这些仍是完整P1合并main之前的门槛。
+
+初版接入提交`f41e1d5`：实施代理报告13项focused GREEN、补全旁路1项行为RED后GREEN、完整1320项回归通过。主代理实际读到了13项初始RED和13项GREEN XML；补全专用RED只引用实施报告，不追溯声称独立读取。
+
+任务审查要求修复关闭期间的回调丢失、草稿保护前的关闭决策对话框、源代码与测试可读性，并补齐弹窗隐藏/默认取消。按用户常规设计授权，采用“先完成草稿保护，再进入原事务决策”的顺序；不改变commit/rollback语义。对应[修订计划](../plans/2026-08-30-sql-draft-editor-review-amendment.md)。
+
+修复前新增断言RED由主代理实际核实：16项编辑器集成测试中5项失败、0 errors/0 skips。分别为结果回调未到达、过早出现关闭决策对话框、交互/强制关闭时补全弹窗仍显示，以及取消按钮非默认。随后主代理读取focused GREEN XML：16项编辑器+1项真实timer测试+5项原Pane lifecycle+13项原Session contract均通过（35项，0失败/错误/跳过）。该GREEN是修复过程证据，最终提交/全量/复审另记。
+
+主代理在初版`f41e1d5`上再次强制非headless完整回归：exit0、46秒、8 tasks全部执行，XML146 suites /1320 tests /1317 passed /0 failures /0 errors /3相同live skips，环境恢复。这是初版历史证据，不是后续修复的通过结论。
+
+修复提交`89f6f00`后，主代理独立完整强制非headless回归exit0、37秒、8 tasks全部执行；XML146 suites /1324 tests /1321 passed /0 failures /0 errors /3原Redis/Oracle/PostgreSQL live skips，环境恢复。复审正在核实此前全部发现；当前自动化成功尚不代表复审通过，更不代表恢复管理页或完整P1已经验收。
+
+最终窄修复`24d5e42`补齐测试断言失败时的finally取消及discard安全默认断言，去除重复补全guard。此项是测试清理/行为保持整理，没有新增产品行为RED，不虚构red-green证据。独立复审Spec compliant / Approved，此接入任务此前发现全部关闭。主代理最终完整强制非headless回归exit0、36秒、8 tasks全部执行；XML146 suites /1324 tests /1321 passed /0 failures /0 errors /3相同live skips。原unchecked编译说明仍存在，环境恢复。
+
+恢复factory下一任务另有[完整计划](../plans/2026-08-30-sql-draft-offline-editor.md)，尚未实施。该任务与恢复管理页/重复恢复/重启验收分别记录，不能将本节自动保存完成解释为P1整体完成或已合并main。
