@@ -36,7 +36,7 @@
 - Size limits are bytes, not Java chars. Reject malformed UTF-8/unpaired surrogates, unknown magic/version/type, invalid lengths, truncated data and trailing bytes. Invalid input uses sanitized IOException; record validation messages and toString never include SQL or metadata.
 - No filesystem, session, provider, network, logging, or crypto dependency in these classes.
 
-- [ ] **Step 1: Establish compilable RED baseline and write complete tests.**
+- [x] **Step 1: Establish compilable RED baseline and write complete tests.**
 
 Add the following intentionally behaviorless stubs (record accessors are generated). They exist only so RED failures measure behavior rather than missing symbols; replace them in Step3.
 
@@ -280,7 +280,7 @@ class SqlDraftCodecTest {
 }
 ```
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
 ```powershell
 .\gradlew.bat test --tests com.datacube.config.SqlDraftCodecTest --rerun-tasks --no-daemon --console=plain
@@ -288,7 +288,7 @@ class SqlDraftCodecTest {
 
 Expected exit1: assertions for exact bytes, decoded fields and exception rejection fail against stubs. Compilation must succeed. Capture actual failing counts and representative output before any Step3 implementation; no invented RED evidence.
 
-- [ ] **Step 3: Replace the stubs with complete implementation.**
+- [x] **Step 3: Replace the stubs with complete implementation.**
 
 `src/com/datacube/config/SqlDraft.java`:
 
@@ -429,7 +429,7 @@ final class SqlDraftCodec {
 }
 ```
 
-- [ ] **Step 4: Verify focused GREEN then full fresh regression.**
+- [x] **Step 4: Verify focused GREEN then full fresh regression.**
 
 ```powershell
 .\gradlew.bat test --tests com.datacube.config.SqlDraftCodecTest --rerun-tasks --no-daemon --console=plain
@@ -451,7 +451,7 @@ exit $draftTestExit
 
 Expected exit0; baseline is138 suites/1216 tests/0 failures/3 live-service skips. Report actual new XML totals and distinct skips, not an inferred new count. Existing compiler note in `SqlEditorResultFilterContractTest` is baseline evidence, not a new warning fix mandate. No coverage percentage claim without measurement.
 
-- [ ] **Step 5: Self-review, commit exact files, and report evidence.**
+- [x] **Step 5: Self-review, commit exact files, and report evidence.**
 
 ```powershell
 git diff --check
