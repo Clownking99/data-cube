@@ -37,7 +37,7 @@
 - Produces package-private `SqlEditorPane.recoverDraft(SessionContext, ConnectionManager, ObjectTreeService, AppSettings, BiConsumer<String,TableRef>, SqlDraft, SqlHistoryStore, ShortcutSettings, FxTaskRunner)` and `boolean chooseRecoveryConnection(ConnConfig)` for the following managed recovery UI.
 - `chooseRecoveryConnection` changes intent only, returning false when normal/pinned/closing/invalid. It does not resolve a provider or open a session. The following UI supplies a choice from an in-memory snapshot, not a credentials-file reload.
 
-- [ ] **Step 1: Add the complete isolated fixture and recovery tests.**
+- [x] **Step 1: Add the complete isolated fixture and recovery tests.**
 
 `test/com/datacube/config/DraftTestCipher.java`:
 
@@ -295,12 +295,18 @@ class SqlEditorDraftRecoveryTest {
                 assertFalse(FxUiTestSupport.call(() -> pane.chooseRecoveryConnection(saved)));
                 assertEquals("schema", FxUiTestSupport.call(() -> ((TextField) field(pane, "schemaField")).getText()));
                 FxUiTestSupport.call(() -> {
+                    new Scene((Parent) pane.getNode(), 1000, 700);
+                    pane.getNode().applyCss();
+                    ((Parent) pane.getNode()).layout();
                     pane.setSqlText("select 1;\r\nselect 2;\n");
                     assertEquals("select 1;\nselect 2;\n",
                             ((CodeArea) pane.getNode().lookup("#sql-editor")).getText());
                     return null;
                 });
-            } finally { pane.closeResources(); }
+            } finally {
+                pane.closeResources();
+                FxUiTestSupport.call(() -> { pane.finalizeCloseOnFx(); return null; });
+            }
         } finally { probe.manager.closeAll(); }
     }
 
@@ -397,7 +403,7 @@ class SqlEditorDraftRecoveryTest {
 }
 ```
 
-- [ ] **Step 2: Run RED against compilation-capable stubs.**
+- [x] **Step 2: Run RED against compilation-capable stubs.**
 
 Add factory and chooser stubs to `SqlEditorPane` so the tests compile; do not count a compiler error as RED:
 
@@ -428,7 +434,7 @@ exit $draftExit
 
 Expected: recovery cases fail due to the explicit factory stub. The normal-constructor case also probes CRLF input/highlighting against the baseline; record its actual behavior, not an assumed failure. Record actual XML and exit status.
 
-- [ ] **Step 3: Implement the recovery intent and exact pane changes.**
+- [x] **Step 3: Implement the recovery intent and exact pane changes.**
 
 `src/com/datacube/fx/SqlDraftRecoveryIntent.java`:
 
@@ -616,7 +622,7 @@ Insert these exact early returns as the first executable line in each named meth
 
 Keep the existing nested pinned guard in the global-selection listener so source-contract tests still prove normal-editor pinning. No new broad cleanup/refactoring or session opening API is part of this step.
 
-- [ ] **Step 4: Verify focused GREEN, then full regression.**
+- [x] **Step 4: Verify focused GREEN, then full regression.**
 
 Use Step2 environment wrapper, with this focused command:
 
@@ -632,7 +638,7 @@ Expected zero failures/errors/skips in these focused tests. Full command:
 
 Record actual XML totals and the three original live Redis/Oracle/PostgreSQL skipped cases separately. Reflection here drives real pane/service code and observes counters, not source-text assertions. `sessions` counts `sqlRunner` requests on the real manager session-construction path; `network` is a rejecting factory-access counter, not evidence of a real socket. The explicit admission/ensure-session test does not claim the final UI execution action has been tested.
 
-- [ ] **Step 5: Commit the exact five source/test files and report.**
+- [x] **Step 5: Commit the exact five source/test files and report.**
 
 ```powershell
 git add src/com/datacube/fx/SqlDraftRecoveryIntent.java src/com/datacube/fx/SqlEditorPane.java test/com/datacube/config/DraftTestCipher.java test/com/datacube/service/DraftConnectionProbe.java test/com/datacube/fx/SqlEditorDraftRecoveryTest.java
@@ -640,3 +646,5 @@ git commit -m "feat: restore SQL drafts without passive database access"
 ```
 
 Report to `.superpowers/sdd/offline-editor-task-1-report.md`: commit, changes, commands, real RED/GREEN observations, counts/skips, concerns. Root performs independent review and final verification. Recovery manager installation/duplicate focus, visible connection chooser, exact restart recovery and whole-P1 merge remain following tasks, not evidence supplied by this factory.
+
+Task complete at `4087945`, independent review Spec compliant / Approved, no Critical/Important findings. Root fresh full:147 suites /1331 total /1328 passed /0 failures/errors /3 original live skips,37s. First RED contained six intended stub failures plus one test-fixture lookup NPE; the latter was repaired with Scene/CSS/layout and is not product-bug evidence. Nonblocking final-P1 follow-up: lone-CR and connection-only edit combinations. Actual manager/chooser/duplicate/restart acceptance remains separate.

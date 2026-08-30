@@ -4,7 +4,7 @@
 
 工作树：`D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery`；分支：`codex/sql-draft-recovery`；起点：`main@0c4ecb9`。
 
-P1 尚未完成。当前已完成草稿值/格式、文件边界、存储策略、纯保存状态、有界写入队列和应用级协调器；编辑器接入、恢复界面与重启验收仍在后续阶段，不将运行时测试当成用户可用恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
+P1 尚未完成。当前已完成草稿值/格式、文件边界、存储策略、纯保存状态、有界写入队列、应用级协调器、编辑器自动保存/安全关闭及离线恢复factory；恢复管理页、重复恢复生命周期与重启验收尚待完成，不将底层恢复能力当成用户可用的完整恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
 
 设计见[SQL 草稿恢复设计](../specs/2026-08-30-sql-draft-recovery-design.md)。执行计划：
 
@@ -14,12 +14,14 @@ P1 尚未完成。当前已完成草稿值/格式、文件边界、存储策略�
 - [P1.3 保存状态](../plans/2026-08-30-sql-draft-save-state.md)
 - [P1.3 有界写入队列](../plans/2026-08-30-sql-draft-write-queue.md)
 - [P1.3 应用协调器](../plans/2026-08-30-sql-draft-coordinator.md)
+- [P1.4 编辑器自动保存](../plans/2026-08-30-sql-draft-editor-integration.md)
+- [P1.4 离线恢复factory](../plans/2026-08-30-sql-draft-offline-editor.md)
 
 异步运行时边界另见[运行时整合约束](../specs/2026-08-30-sql-draft-runtime-contract.md)，该文档是后续设计约束，不是实现证据。
 
 仅使用合成数据与隔离测试目录，不读取真实连接凭据或SQL历史，`.testagent/`未读取/修改。
 
-## 当前协调器任务（实现与任务审查完成）
+## P1.3 协调器任务（实现与任务审查完成）
 
 协调器实现 `533210c` 仅新增运行时源文件与测试文件；与修订后的完整计划代码逐字规范化比对，两项均一致。`draft_coordinator_review` 独立审查结论为 Spec compliant / Approved，0 Critical / 0 Important。原有 unchecked 编译说明作为非阻塞事项保留，未宣称输出无提示。
 
@@ -199,4 +201,28 @@ exit $draftTestExit
 
 最终窄修复`24d5e42`补齐测试断言失败时的finally取消及discard安全默认断言，去除重复补全guard。此项是测试清理/行为保持整理，没有新增产品行为RED，不虚构red-green证据。独立复审Spec compliant / Approved，此接入任务此前发现全部关闭。主代理最终完整强制非headless回归exit0、36秒、8 tasks全部执行；XML146 suites /1324 tests /1321 passed /0 failures /0 errors /3相同live skips。原unchecked编译说明仍存在，环境恢复。
 
-恢复factory下一任务另有[完整计划](../plans/2026-08-30-sql-draft-offline-editor.md)，尚未实施。该任务与恢复管理页/重复恢复/重启验收分别记录，不能将本节自动保存完成解释为P1整体完成或已合并main。
+恢复factory另有[完整计划](../plans/2026-08-30-sql-draft-offline-editor.md)，进度见下节。该任务与恢复管理页/重复恢复/重启验收分别记录，不能将本节自动保存完成解释为P1整体完成或已合并main。
+
+## P1.4 离线恢复factory（本任务已完成）
+
+2026-08-31继续执行，基线`3e7fb7b`；提交`4087945`仅包含五个源代码/测试文件。下列7项行为测试已通过，独立任务差异审查Spec compliant / Approved，0 Critical/Important：
+
+| 边界 | 指定实际行为测试 |
+| --- | --- |
+| 匹配原连接仍然离线；文本、补全、Ctrl-click、全局切换和关闭 | `matchingRestoreKeepsExactTextAndAllPassivePathsOffline`：真实FX控件、真实ConnectionManager、拒绝网络的provider/session/metadata计数 |
+| 删除原ID不能用同名或当前连接替换 | `deletedIntentCannotFallBackToGlobalOrSameName` |
+| 类型改变拒绝、同ID同类型更新采用最新快照、准入后会话固定 | `changedTypeIsRejectedButCurrentMatchingSnapshotIsAdmitted`：实际创建synthetic session，无SQL执行或网络 |
+| 重新选择仅改变意图，执行准入前再校验 | `explicitReplacementIsIntentOnlyAndIsRevalidated` |
+| 目标缺失时继续编辑保存不丢原身份/Schema | `savingEditedMissingTargetRetainsOriginalIdentityAndRawSchema`：临时真实Store写回 |
+| Schema编辑不改写未编辑SQL的原始换行 | `schemaOnlyEditPreservesRecoveredOriginalLineEndings` |
+| 普通构造兼容及CRLF高亮 | `normalBoundConstructorStillOwnsItsEagerSession` |
+
+Counter边界：session计数来自真实ConnectionManager调用provider.sqlRunner的构造路径；network计数为拒绝连接工厂访问，不是已打开socket数。恢复显示使用RichTextFX的LF段落，未经SQL编辑的持久化原文保留原CRLF/CR；不将显示LF声称为逐字节相同。factory测试不代表最终管理页按钮、安装失败、重复标签、重启或桌面已通过。
+
+首轮可编译RED exit1，主代理在GREEN覆盖前实际读取XML：7 tests /7 failures /0 errors /0 skips，时间2026-08-30T16:04:19Z。六项恢复测试因显式factory stub失败；普通构造测试失败为未挂Scene/CSS就lookup控件的测试夹具NPE，不能计作产品CRLF缺陷。计划/brief已更正为读取实际editorArea字段并增加finalizer；后续GREEN、完整回归和复审另行记录。
+
+最终夹具选择先安装Scene/CSS/layout再使用lookup（主控允许的另一种修正），而不是字段方案；计划/brief已同步，保留真实CodeArea文本断言及finalizer。实施报告focused GREEN和完整1331项通过。主代理随后在`4087945`独立重跑完整强制非headless回归，exit0、37秒、8 tasks执行；XML147 suites /1331 tests /1328 passed /0 failures /0 errors /3原有live skips，环境恢复。
+
+当前完整XML中上述focused五类合计41项均通过、0跳过（recovery7 + editor16 + owner1 + session contract13 + admission4）。三个原有跳过名称保持为：`RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle`、`SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas`、`SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas`。原unchecked编译说明仍存在。管理页、实际执行按钮、重复恢复、重启和完整P1合并门槛仍未完成。
+
+独立审查核实两处session立即归属与缺失连接拒绝路径；没有扩大验证范围。非阻塞Minor纳入最终P1审查：补充孤立CR及仅更换连接后保存的原始SQL换行组合。当前CRLF/LF、Schema-only和实际SQL编辑分别已有通过证据，不以此宣称所有组合均覆盖。
