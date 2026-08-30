@@ -28,7 +28,7 @@
 
 **Decisions:** An unavailable runtime is fail-closed until application restart; ordinary save errors support `Handle.retry()`. Management results contain the actual refreshed snapshot (nullable if unreadable) plus success, never raw exception text. Recovery UI disables restored-tab creation while management is pending, closing the prune/restore race; normal new editors remain available. The backend factory is a package seam for deterministic fault injection, not a database abstraction. Shutdown uses the common pool solely to release the backend after queue termination, including writer-executor rejection; it never submits SQL there. Caller-owned UI and writer executors are not closed by this class.
 
-- [ ] **Step 1: Write the tests below and this intentionally failing compiled API.** Do not install real behavior yet.
+- [x] **Step 1: Write the tests below and this intentionally failing compiled API.** Do not install real behavior yet.
 
 ```java
 package com.datacube.config;
@@ -289,6 +289,20 @@ class SqlDraftCoordinatorTest {
         }
     }
 
+    @Test void managementCompletionQueuesOwnerStateBeforeConsumerUiAction() throws Exception {
+        try (Fixture f = new Fixture()) {
+            f.ready(); var disable = f.runtime.setEnabled(false);
+            int[] observed = {0};
+            disable.thenRun(() -> f.ui.add(() -> {
+                assertEquals(DISABLED, f.runtime.mode());
+                assertTrue(f.runtime.lastManagementResult().succeeded());
+                observed[0]++;
+            }));
+            f.disk(); assertTrue(disable.isDone()); assertEquals(0, observed[0]);
+            f.ui(); assertEquals(1, observed[0]);
+        }
+    }
+
     @Test void ordinaryWriteFailureKeepsCheckpointAndOnlyRetriesOnRequest() throws Exception {
         try (Fixture f = new Fixture()) {
             f.ready(); var source = f.new Source("old"); var handle = f.attach(1, source);
@@ -423,15 +437,15 @@ class SqlDraftCoordinatorTest {
 }
 ```
 
-- [ ] **Step 2: Run RED.**
+- [x] **Step 2: Run RED.**
 
 ```powershell
 .\gradlew.bat test --tests com.datacube.config.SqlDraftCoordinatorTest --rerun-tasks --no-daemon --console=plain
 ```
 
-Expected: 19 tests fail with the intentional constructor exception, not compilation errors. Record exact XML counts and one relevant failure before replacing the stub.
+Expected: 20 tests fail with the intentional constructor exception, not compilation errors. Record exact XML counts and one relevant failure before replacing the stub.
 
-- [ ] **Step 3: Replace stub with the complete implementation.**
+- [x] **Step 3: Replace stub with the complete implementation.**
 
 ```java
 package com.datacube.config;
@@ -654,9 +668,10 @@ public final class SqlDraftCoordinator {
         Callable<ManagementResult> operation = () -> inspect(action);
         CompletableFuture<ManagementResult> result = enabled != null || resetIds == null
                 ? queue.barrierAll(operation) : queue.barrier(resetIds, operation);
+        CompletableFuture<ManagementResult> exposed = new CompletableFuture<>();
         result.whenComplete((outcome, failure) -> {
             if (failure != null) stop();
-            post(() -> {
+            boolean posted = post(() -> {
                 busy = false; lastManagementResult = outcome;
                 if (enabled != null && failure == null && outcome.succeeded() && outcome.snapshot() != null
                         && outcome.snapshot().writable() && outcome.snapshot().protectionEnabled() == enabled && !faulted.get()) {
@@ -668,11 +683,10 @@ public final class SqlDraftCoordinator {
                     handles.values().forEach(handle -> handle.state.pause(false));
                 }
             });
+            if (failure != null || !posted) exposed.completeExceptionally(new Failure(FailureReason.UNAVAILABLE));
+            else exposed.complete(outcome);
         });
-        return result.handle((value, failure) -> {
-            if (failure != null) throw new CompletionException(new Failure(FailureReason.UNAVAILABLE));
-            return value;
-        });
+        return exposed.copy();
     }
 
     public CompletableFuture<Void> shutdown() {
@@ -714,9 +728,9 @@ public final class SqlDraftCoordinator {
         admitted.set(false);
         if (faulted.compareAndSet(false, true)) queue.barrierAll(() -> null);
     }
-    private void post(Runnable action) {
-        try { ui.execute(() -> { if (!closing) { owner(); action.run(); } }); }
-        catch (RuntimeException rejected) { stop(); }
+    private boolean post(Runnable action) {
+        try { ui.execute(() -> { if (!closing) { owner(); action.run(); } }); return true; }
+        catch (RuntimeException rejected) { stop(); return false; }
     }
     private FailureReason modeReason() {
         return switch (mode()) {
@@ -748,7 +762,7 @@ public final class SqlDraftCoordinator {
 }
 ```
 
-- [ ] **Step 4: Focused GREEN and full regression.**
+- [x] **Step 4: Focused GREEN and full regression.**
 
 ```powershell
 .\gradlew.bat test --tests 'com.datacube.config.SqlDraft*Test' --rerun-tasks --no-daemon --console=plain
@@ -763,7 +777,7 @@ exit $draftTestExit
 
 Expected: focused draft suites pass; full suite exit 0, with only the existing three opt-in live integration skips. Disclose existing unchecked compiler note and Gradle informational notices rather than claiming pristine output. Record exact XML tests/passed/failures/errors/skips and all skipped names. No coverage percentage claim.
 
-- [ ] **Step 5: Self-review, exact two-file commit and report.**
+- [x] **Step 5: Self-review, exact two-file commit and report.**
 
 ```powershell
 git diff --check
@@ -774,6 +788,8 @@ git commit -m "feat: coordinate SQL draft capture and lifecycle barriers"
 Report RED/GREEN commands/output, full XML counts, exact files/commit, requirement-to-test matrix, concerns and UI integration still outstanding. Do not stage controller documentation or mark the complete P1 feature done.
 
 ## Self-review and acceptance boundary
+
+Task complete: `6de52ab..533210c`, independent `draft_coordinator_review` Approved, no Critical/Important findings. Root fresh forced full regression: 144 suites, 1307 total, 1304 passed, 0 failures/errors, 3 existing live skips, exit0/39s. Source and test match the amended implementation/test blocks exactly. Known compiler informational note remains disclosed. No editor/UI/P1 completion claim.
 
 - Timing, coalescing, clear/delete generations, close flush, strict disable/enable, startup, fault stop, management snapshots, pruning, resource release and owner confinement are exercised above with the real state/queue/store plus controllable dispatchers. Fault injection is confined to the backend boundary.
 - The UI timer, editor text/schema listeners, close transaction integration, privacy copy, manager preview, connection-free restoration and actual FX/provider call-counter acceptance are separate next integration work, not proof claimed by these runtime tests.

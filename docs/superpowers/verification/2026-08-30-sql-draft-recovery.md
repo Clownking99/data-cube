@@ -4,7 +4,7 @@
 
 工作树：`D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery`；分支：`codex/sql-draft-recovery`；起点：`main@0c4ecb9`。
 
-P1 尚未完成。当前已完成草稿值/格式、文件边界、存储策略、纯保存状态和有界写入队列；应用级协调器、编辑器/恢复界面与重启验收仍在后续阶段，不将基础测试当成用户可用恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
+P1 尚未完成。当前已完成草稿值/格式、文件边界、存储策略、纯保存状态、有界写入队列和应用级协调器；编辑器接入、恢复界面与重启验收仍在后续阶段，不将运行时测试当成用户可用恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
 
 设计见[SQL 草稿恢复设计](../specs/2026-08-30-sql-draft-recovery-design.md)。执行计划：
 
@@ -13,10 +13,52 @@ P1 尚未完成。当前已完成草稿值/格式、文件边界、存储策略�
 - [P1.2 存储策略](../plans/2026-08-30-sql-draft-store.md)
 - [P1.3 保存状态](../plans/2026-08-30-sql-draft-save-state.md)
 - [P1.3 有界写入队列](../plans/2026-08-30-sql-draft-write-queue.md)
+- [P1.3 应用协调器](../plans/2026-08-30-sql-draft-coordinator.md)
 
 异步运行时边界另见[运行时整合约束](../specs/2026-08-30-sql-draft-runtime-contract.md)，该文档是后续设计约束，不是实现证据。
 
 仅使用合成数据与隔离测试目录，不读取真实连接凭据或SQL历史，`.testagent/`未读取/修改。
+
+## 当前协调器任务（实现与任务审查完成）
+
+协调器实现 `533210c` 仅新增运行时源文件与测试文件；与修订后的完整计划代码逐字规范化比对，两项均一致。`draft_coordinator_review` 独立审查结论为 Spec compliant / Approved，0 Critical / 0 Important。原有 unchecked 编译说明作为非阻塞事项保留，未宣称输出无提示。
+
+审查中标为跨任务未验证的FX计时器/编辑器接入、拒绝关闭保持订阅、恢复零provider调用等均已明确列入下一阶段，不能作为本任务完成的产品能力；测试运行证据由主代理独立复跑及XML核对补充。底层Store的部分删除故障注入测试缺口和Queue的直接inline-executor测试建议仍交由最终P1整体审查评估；本任务的部分清理测试证明协调器刷新实际结果，不冒充底层删除循环的故障注入证明。
+
+- RED19：主代理直接读取当时XML确认19 tests / 19 failures / 0 errors / 0 skipped，均为刻意保留的未实现异常；编译成功。
+- 修订后RED20：子代理报告20 tests / 20 failures / 0 errors / 0 skipped；主代理未在覆盖前直接读取该次XML，不将其描述为独立核验。
+- GREEN：子代理报告聚焦草稿测试 exit0；完整强制非headless exit0、40秒。主代理直接核验对应XML：144 suites / 1307 tests / 1304 passed / 0 failures / 0 errors / 3 live skipped。
+- 主代理在同一代码 `533210c` 另行强制完整回归：exit0、39秒、8项任务执行，环境已恢复；直接XML复核同为144 suites / 1307 tests / 1304 passed / 0 failures / 0 errors / 3原有live skipped。
+
+本轮修改前的主代理强制完整基线：exit0、38秒；143 suites / 1287 tests / 1284 passed / 0 failures / 0 errors / 3 live skipped。原有 unchecked 编译说明和 Gradle 信息提示仍存在。此数字不是新增协调器的完成结果。
+
+后续真正的界面验收必须覆盖：独立草稿状态不覆盖查询/导出状态、关闭期间文本冻结、取消后继续保存、恢复不创建会话/不访问元数据、启动及管理失败仍显示实际可恢复记录。运行时的假时钟/可控调度器不能替代这些真实FX行为验证。
+
+### 协调器 Requirement | Evidence
+
+以下测试均位于 `test/com/datacube/config/SqlDraftCoordinatorTest.java`；测试使用真实状态/队列/临时存储，后台故障与UI调度通过显式边界控制。
+
+| Requirement | Evidence |
+| --- | --- |
+| 初始化期间不承诺保存、不逐键捕获全文 | `initializationKeepsOnlyLatestInputAndNeverPromisesAFlush` |
+| 连续编辑10秒捕获，只有最新版本显示已保存 | `continuousEditsCaptureAtTenSecondsAndSavedStatusWaitsForLatestRevision` |
+| flush不依赖UI状态回调，调用者取消不取消写入 | `flushSharesPendingPublicationAndExternalCancellationCannotCancelIt` |
+| 初始空文本不写，已有快照后清空应覆盖 | `emptyBeforeFirstCaptureDoesNotSaveButEmptyAfterOfferReplacesOldText` |
+| 清空后关闭不复活旧文本，清空后新编辑正确排序，删除只影响目标 | `clearCancelsOldSnapshotsAndCloseDoesNotRecreateUneditedText`, `postClearEditIsOrderedAfterClearAndDeleteOnlyInvalidatesTarget` |
+| 管理完成通知先排入内部UI状态更新 | `managementCompletionQueuesOwnerStateBeforeConsumerUiAction` |
+| 禁用失败保持本次暂停，成功启用才重新捕获 | `failedDisableStaysPausedUntilExplicitSuccessfulEnableRecapturesText` |
+| 永久禁用必须有持久化证据 | `successfulDisablePersistsAndAllowsCloseWithoutClaimingSaved` |
+| 普通失败保留旧检查点，不循环重试 | `ordinaryWriteFailureKeepsCheckpointAndOnlyRetriesOnRequest` |
+| 结构性失败在UI回调前阻断后续写入 | `structuralFailureCancelsOtherWritesBeforeUiProcessesAnyCallbacks` |
+| 捕获失败脱敏且不触及存储 | `captureFailureIsSanitizedAndDoesNotTouchStorage` |
+| 部分清理失败返回实际幸存记录，管理操作互斥 | `partialManagementFailureReturnsActualSurvivorsAndRejectsOverlap` |
+| 启动/刷新清理保护全部已打开ID | `startupAndRefreshPruneExpiredWhileProtectingAllOpenIds` |
+| 拒绝调度仍结算flush，关闭释放锁 | `rejectedWriterSettlesFlushAndShutdownStillReleasesLock` |
+| 启动部分清理失败可见记录且不宣称成功 | `startupPartialPruneKeepsActualSurvivorsVisibleWithoutSuccessClaim` |
+| 恢复检查点及外部禁用不隐式写入 | `restoredCheckpointAndExternalDisableNeverTriggerImplicitWrite` |
+| 退出排空已接受写入并阻止新捕获 | `shutdownDrainsAcceptedSaveAndPreventsNewCaptureWhileCallbacksArePending` |
+| 初始化失败及UI所有权约束 | `openFailureNeverClaimsSavedAndOwnerThreadIsEnforced` |
+| 新配置父目录在后台任务执行时创建 | `publicFactoryCreatesFreshParentOnlyWhenBackgroundWorkRuns` |
 
 ## 基线与首轮证据
 
