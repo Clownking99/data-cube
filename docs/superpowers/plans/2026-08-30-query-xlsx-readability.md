@@ -28,7 +28,7 @@
 
 ## 执行约定与上下文
 
-批准设计：`docs/superpowers/specs/2026-08-30-query-xlsx-readability-design.md`。计划基于 `24ba0f7`；本计划尚未执行，下面的预期结果不是已完成验证。
+批准设计：`docs/superpowers/specs/2026-08-30-query-xlsx-readability-design.md`。计划基于 `24ba0f7`，实施基线为 `c73224c`。三项实现及任务审查完成；下面保留原计划步骤，真实结果见 `../verification/2026-08-30-query-xlsx-readability.md`。Step 6 按查看器受限分支记录，不能据此声称真实 Excel 交互通过。
 
 所有相对路径均以 `D:/Projects/朝花夕拾` 为根。执行时先使用 using-git-worktrees 技能检查当前 checkout；不得丢失现有 `codex/safe-result-export` 上的工作。`.testagent/` 属于用户，不读取、不修改、不暂存。只按文件名暂存本任务文件，不运行 `git add .`。本任务不含推送、合并或 tag。
 
@@ -63,7 +63,7 @@
 - Produces: `public static XlsxLayout QueryXlsxLayoutEstimator.estimate(List<String> columns, List<List<Object>> rows, Runnable check)`。
 - `widths` 不可变，每项为 12–60 的整数；空列布局可构造，查询层仍拒绝无列导出。
 
-- [ ] **Step 1: 添加以下失败测试。**
+- [x] **Step 1: 添加以下失败测试。**
 
 ```java
 package com.datacube.export;
@@ -170,7 +170,7 @@ class QueryXlsxLayoutEstimatorTest {
 }
 ```
 
-- [ ] **Step 2: 运行红灯；若缺少 API，添加仅返回固定宽度的可编译入口，再次运行，确认中文、表头或取样断言失败。**
+- [x] **Step 2: 运行红灯；若缺少 API，添加仅返回固定宽度的可编译入口，再次运行，确认中文、表头或取样断言失败。**
 
 ```powershell
 ./gradlew test --tests com.datacube.export.QueryXlsxLayoutEstimatorTest --no-daemon --console=plain
@@ -193,7 +193,7 @@ public final class QueryXlsxLayoutEstimator {
 }
 ```
 
-- [ ] **Step 3: 实现不可变布局和有限估计。**
+- [x] **Step 3: 实现不可变布局和有限估计。**
 
 `src/com/datacube/export/XlsxLayout.java`：
 
@@ -284,8 +284,8 @@ public final class QueryXlsxLayoutEstimator {
 
 CRLF 连续重置行宽与一次换行得到相同最大值；扫描预算仍按实际码点计算，不绕过 256 上限。未知值返回常数，不调用 formatter 或 JDBC。
 
-- [ ] **Step 4: 重跑 Step 2 命令，预期全部通过；检查测试确实执行且不是 UP-TO-DATE 旧报告。**
-- [ ] **Step 5: 检查差异并提交本任务。**
+- [x] **Step 4: 重跑 Step 2 命令，预期全部通过；检查测试确实执行且不是 UP-TO-DATE 旧报告。**
+- [x] **Step 5: 检查差异并提交本任务。**
 
 ```powershell
 git diff --check
@@ -304,7 +304,7 @@ git commit -m "feat(export): estimate bounded query XLSX column widths"
 - 原三参数 `write` 不要求布局；新入口拒绝 null 布局和列数不匹配，校验发生在打开输出文件前。
 - Test support: `static Document XlsxTestDocuments.read(Path path, String entry)`、`static String value(Document document, String expression)`、`static int count(Document document, String expression)`。
 
-- [ ] **Step 1: 添加 XML 测试助手与样式/旧接口断言。**
+- [x] **Step 1: 添加 XML 测试助手与样式/旧接口断言。**
 
 `test/com/datacube/export/XlsxTestDocuments.java`：
 
@@ -474,7 +474,7 @@ class XlsxWriterLayoutTest {
 }
 ```
 
-- [ ] **Step 2: 运行红灯。**
+- [x] **Step 2: 运行红灯。**
 
 ```powershell
 ./gradlew test --tests com.datacube.export.XlsxWriterLayoutTest --no-daemon --console=plain
@@ -489,7 +489,7 @@ public static void write(File out, List<String> columns, RowFeed feed,
 }
 ```
 
-- [ ] **Step 3: 实现可选样式，保持旧生成逻辑。**
+- [x] **Step 3: 实现可选样式，保持旧生成逻辑。**
 
 在 `XlsxWriter.java` 增加 `import java.util.Objects;`。用以下方法替换原 `write`、`writeSheet`、`writeCell`、`writeInlineString`；保留原 `cellRef`、`xml`、`putEntry`、`contentTypes`、`rootRels`、`workbook` 和 `workbookRels` 不动。
 
@@ -621,13 +621,13 @@ private static String styles() {
 
 只有样式入口在原工作簿 XML 的 sheets 前增加一个 `workbookView`，让 `sheetView` 的视图 0 引用有明确目标；不改变默认 sheet 名或旧入口输出。实际查看器验收须检查冻结功能，不只检查文件可解压。样式编号 0 为默认、1 为表头、2 为正文文本；数值和布尔仍用默认样式。
 
-- [ ] **Step 4: 运行全部 export 单元测试，预期新旧入口及现有文件保护测试均通过。**
+- [x] **Step 4: 运行全部 export 单元测试，预期新旧入口及现有文件保护测试均通过。**
 
 ```powershell
 ./gradlew test --tests 'com.datacube.export.*' --no-daemon --console=plain
 ```
 
-- [ ] **Step 5: 确认 `TableExporter.java` 没有改动，提交本任务。**
+- [x] **Step 5: 确认 `TableExporter.java` 没有改动，提交本任务。**
 
 ```powershell
 git diff -- src/com/datacube/export/TableExporter.java
@@ -646,7 +646,7 @@ git commit -m "feat(export): add opt-in XLSX header and worksheet layout"
 - Consumes: 现有 `SafeResultFilePublisher.publish(Target, ResultExportOperation, TempWriter)`、`capture(Path)`；无需改签名。
 - Produces: 现有 `QueryResultFileWriter.write` 的 XLSX 输出自动启用新布局；其他格式保持原行为。
 
-- [ ] **Step 1: 写查询接入和安全边界测试。**
+- [x] **Step 1: 写查询接入和安全边界测试。**
 
 `test/com/datacube/export/QueryXlsxExportTest.java`：
 
@@ -799,13 +799,13 @@ class QueryXlsxExportTest {
 }
 ```
 
-- [ ] **Step 2: 运行接入测试，预期范围测试因缺少列宽失败；已有特殊值和发布保护测试不应出现无关失败。**
+- [x] **Step 2: 运行接入测试，预期范围测试因缺少列宽失败；已有特殊值和发布保护测试不应出现无关失败。**
 
 ```powershell
 ./gradlew test --tests com.datacube.export.QueryXlsxExportTest --no-daemon --console=plain
 ```
 
-- [ ] **Step 3: 仅替换 XLSX case，使用原始值估计、现有显示视图写入。**
+- [x] **Step 3: 仅替换 XLSX case，使用原始值估计、现有显示视图写入。**
 
 `QueryResultFileWriter.write` 中的 `originalRows` 已存在且已完成 `validate`；保留其余方法和 switch 分支原样：
 
@@ -822,13 +822,13 @@ case XLSX -> {
 }
 ```
 
-- [ ] **Step 4: 重跑接入和导出定向测试，预期通过。**
+- [x] **Step 4: 重跑接入和导出定向测试，预期通过。**
 
 ```powershell
 ./gradlew test --tests 'com.datacube.export.*' --tests com.datacube.fx.SqlResultExportCoordinatorTest --no-daemon --console=plain
 ```
 
-- [ ] **Step 5: 运行完整测试并汇总本次 XML，不复用旧计数。**
+- [x] **Step 5: 运行完整测试并汇总本次 XML，不复用旧计数。**
 
 在 Windows 本地保持 JavaFX 可用；命令只临时追加 headless 属性，结束恢复进程环境变量：
 
@@ -857,7 +857,7 @@ $xlsxTotals
 
 预期 Gradle 退出 0、failures/errors 为 0；跳过项目单独列明，不计入通过。若遇到失败，使用 systematic-debugging 技能定位，不扩大修改范围以掩盖问题。
 
-- [ ] **Step 6: 生成本轮合成文件并检查真实输出。**
+- [x] **Step 6: 生成本轮合成文件并检查真实输出。**（文件/渲染通过；真实 Excel 交互受限，按下述降级记录要求保留未验收项。）
 
 以下使用 JDK 25 `jshell`，不连接数据库、不写用户文件。它创建唯一临时目录，打印路径，并生成新旧入口文件用于比较；没有自动删除行为：
 
@@ -882,7 +882,7 @@ System.out.println("XLSX_ARTIFACT_DIRECTORY=" + directory);
 
 核对控制台无 Java 异常、两个文件均存在。使用 spreadsheets 技能检查新文件内容并生成预览；若操作真实表格应用，先读取对应 computer-use 或 excel-live-control 技能。只能打开本步骤生成的合成文件，不能访问用户数据库、凭证、剪贴板或已有业务文档。核对：中文/时间列可读、浅色加粗表头、长说明换行；在可用查看器中向下滚动确认首行冻结。无法使用交互查看器时，在验收记录明确写“冻结/自动行高仅验证 OOXML，未验证真实 Excel 交互”。静态预览不能替代这项结论。
 
-- [ ] **Step 7: 保存真实验收记录、审查并提交。**
+- [x] **Step 7: 保存真实验收记录、审查并提交。**（独立最终审查无阻断项；两项 Minor 与真实 Excel 未验收明确留存。）
 
 在 `docs/superpowers/verification/2026-08-30-query-xlsx-readability.md` 记录代码提交基线、红绿命令与结果、全套通过/失败/跳过数、合成文件绝对路径与 SHA-256、使用的查看器/渲染器及未验收项。逐项对应批准设计第 7 节，不将任何未做检查写成通过。不要写入真实凭证或业务数据。
 
@@ -897,6 +897,6 @@ git status --short
 
 ## 计划自审与交接
 
-覆盖映射：设计 1–3 → 本计划目标及全局约束；4–5 → Task 1、Task 3；6 → Task 2；7.1 → Task 1 及 Task 3 范围测试；7.2 → Task 2、Task 3 发布保护及全套测试；7.3 → Task 3 Step 6–7；8 → 当前只提交计划，执行方式待确认。
+覆盖映射：设计 1–3 → 本计划目标及全局约束；4–5 → Task 1、Task 3；6 → Task 2；7.1 → Task 1 及 Task 3 范围测试；7.2 → Task 2、Task 3 发布保护及全套测试；7.3 → Task 3 Step 6–7；8 → 用户批准后子代理实施，本地保留分支，不推送、合并或打 tag。
 
 本计划采用少量明确接口，未引入新的任务生命周期、数据源或布局框架。代码块是实施内容，不代表已经进入源码或测试通过。执行中发现与实际代码不符时先记录并纠正计划，不能跳过取消、兼容或内容断言。

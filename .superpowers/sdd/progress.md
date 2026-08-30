@@ -1,6 +1,28 @@
 # Subagent-Driven Development Progress
 
-## Active plan: safe result export (2026-08-30)
+## Active plan: query XLSX readability (2026-08-30)
+
+- Plan: `docs/superpowers/plans/2026-08-30-query-xlsx-readability.md`; design approved, implementation authorized with subagents.
+- Branch: `codex/safe-result-export`; execution base: `c73224c`. Prior in-place preference remains in force; `.testagent/` untouched. No merge/push/tag.
+- Preflight: 3 task briefs generated as `xlsx-task-N-brief.md`; no unresolved plan conflicts identified. Full-code plan is a starting implementation, subject to behavioral review.
+- Fresh baseline: non-headless `./gradlew clean test --no-daemon --console=plain`, exit0/25s; 135 suites,1196 tests,1193 passed,0 failures/errors,3 live skips. Existing unchecked note in SqlEditorResultFilterContractTest remains.
+- Task1 in progress (base c73224c); Task2/Task3/final review and artifact acceptance pending.
+- Task1: complete (commits c73224c..5ff2d1a, review xlsx_review1 Approved/spec compliant). Root XML confirms136 suites/1201 tests/1198passed/0fail/error/3skips. Future integration/styling constraints assigned to Tasks2/3; no writes outside Task1 files.
+- Minor awaiting user direction: estimator counts DEL/C1 controls, matching plan code but ambiguous against visible-character prose. Async question sent: recommend ignoring nonprinting controls for width only, preserve actual cell serialization. No fix authorized yet; carry into final review.
+- Task2 in progress (base5ff2d1a); Task3/final review/artifact acceptance pending.
+- Task2 implementation committed033de19: focused4/export37 passing, task review xlsx_review2 running. Root supplied missing project-wide fresh run: `gradlew test --no-daemon --console=plain` nonheadless exit0/19s;137 suites/1205 tests/1202passed/0fail/error/3skips.
+- Artifact preparation: .superpowers/sdd/xlsx-fixture.jsh; read-only inspector at C:/Users/hetia/AppData/Local/Temp/datacube-xlsx-check-985872924f2e49718a5f81c9befa66fb/inspect-xlsx.mjs with bundled node_modules junction. Source XLSX not generated yet.
+- Excel started using Computer Use for forthcoming synthetic-file validation; returned window66586394 appMicrosoft.Office.EXCEL.EXE.15, startup screen only. No user document opened; owned app must be closed after checks.
+- Task2: complete (commits5ff2d1a..033de19, xlsx_review2 spec compliant/Approved,0 findings). Query integration delegated Task3; actual viewer checks owned by root. TableExporter unchanged and still calls3arg writer (CodeGraph verified40/61-71).
+- Task3 in progress (base033de19). Root owns Step6 artifact/UI checks and final review; Task3 implementer owns code/tests/fullsuite and initial verification documentation updates. No concurrent Gradle runs.
+- Task3 complete (commits033de19..bebab8b, xlsx_review3 spec compliant/Approved). Child fresh clean full suite:138suites/1209tests/1206passed/0fail/error/3skips. Minor for final triage: sampling failure test composes publisher+estimator rather than invoking the query writer boundary directly (QueryXlsxExportTest:80-112).
+- Synthetic fixture generated from current production entry points at C:/Users/hetia/AppData/Local/Temp/datacube-xlsx-readability-1001545991734689139. Read-only spreadsheet import and rendered previews passed: identical values/types/order, Chinese/nanoseconds visible, long text wrapped in styled output. SHA256 unchanged by inspector; see verification doc.
+- Real Excel acceptance stopped: file-dialog screenshot/accessibility refresh was rejected for potential exposure of unrelated private file metadata. No synthetic or user workbook opened, no workaround attempted. Dialog dismissed; owned Excel startup window closed with Alt+F4 and list_windows confirms no Excel window. Freeze/autoheight in real Excel remain unverified.
+- Final stage in progress: root fresh clean suite, whole-branch independent review, documentation closeout. DEL/C1 clarification still unanswered; preserve current approved plan behavior until directed otherwise.
+- Root final clean test at bebab8b: nonheadless exit0/26s,138suites/1209total/1206passed/0fail/error/3explicit live Redis/Oracle/PostgreSQL skips. Diff whitespace check passed. Final reviewer xlsx_final_review has full package c811802..bebab8b; docs changes are closeout evidence only.
+- Final broad review xlsx_final_review complete: Ready Yes from code-review perspective,0Critical/Important,2nonblockingMinors retained. DEL/C1 cosmetic/spec mismatch awaits user direction; composition-only sampling failure coverage is a follow-up without production injection seam. Whole-branch review range c811802..bebab8b; no product changes after fresh full suite. Local closeout only; Excel interactive freeze/autoheight remain unverified, artifact import/render passed. Tasks1-3 DONE; do not repeat implementation. Keep branch/workspace, no merge/push/tag.
+
+## Archived plan: safe result export (2026-08-30)
 
 - Plan: `docs/superpowers/plans/2026-08-30-safe-result-export.md`
 - Branch: `codex/safe-result-export`; execution base: `6041be8`.
