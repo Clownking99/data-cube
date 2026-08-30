@@ -2,7 +2,7 @@
 
 日期：2026-08-30
 
-状态：已按用户认可的设计完成代码实施、自动化回归及最终代码审查；桌面已补验筛选、列重排及升降序 CSV、零行提示、CLOB 确认、顶部 INSERT/SQL 文件特殊值阻止及深浅主题核心路径。完整交互清单仍有待补验项，右键 INSERT 被工具安全检查拒绝，未绕过。实施计划见 `docs/superpowers/plans/2026-08-30-safe-result-export.md`，实际证据及限制见 `docs/superpowers/verification/2026-08-30-safe-result-export.md`。
+状态：已按用户认可的设计完成代码实施、自动化回归及最终代码审查；桌面已补验五种格式实际保存、筛选/列重排/升降序 CSV、零行/预览值保护与深浅主题。用户授权后顶部/右键 INSERT 实际文本及取消保护通过，最新完整回归仍为 1193 通过、3 个 live 跳过、0 失败/错误。范围切换、列隐藏、弹窗键盘及立即防抖仍待桌面补验；既有 XLSX 默认列宽可读性问题留作单独改进，未附带修改共享 writer。实施计划见 `docs/superpowers/plans/2026-08-30-safe-result-export.md`，实际证据及限制见 `docs/superpowers/verification/2026-08-30-safe-result-export.md`。
 
 设计基线：`c811802ce89884af551193b37947e35bac21243e`。设计分支：`codex/safe-result-export`。
 
