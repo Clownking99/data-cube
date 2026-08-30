@@ -274,3 +274,43 @@ Counter边界：session计数来自真实ConnectionManager调用provider.sqlRunn
 源码7d17728跨进程/打包复验session21608：同前述组合命令，exit0、52秒、17任务（9执行/8 up-to-date），jlink/jpackageImage实际执行。8个顶层子进程和锁内第二实例均通过，受控异常进程退出37符合预期，独占目录`C:/Users/hetia/AppData/Local/Temp/datacube-draft-process-12929717576398861958`保留。root直接读取检查点及locked-probe0日志。新镜像modules SHA-256为`94C5724987520D1982B71881039DEB60F248B86184A392BB9460C49FE7AD8E9C`；jimage检查有草稿生产类而无验收launcher/probe，cfg仍为真实DataCubeFx入口，无测试user.home覆盖。默认3.0.0不代表发布；原JDK/JEP493提示仍存在，未启动/安装此发行入口。
 
 最终复审冻结范围`6d52bfc..694ccb9`（5提交、105272字节），独立审查完整差异、报告和修订计划后结论Spec-compliant / code review approved；两项原Important均关闭，无新增Critical/Important。清单末尾原“尚未执行”的历史文字已同步为真实进程验收状态。非阻塞管理行提示及低层额外测试建议继续保留。整体合并门槛仍为No，仅因必需桌面/主题/入口发现性验收受限；不将自动化证据替代桌面证据。按分支收尾流程保留工作树，main仍为0c4ecb9，未合并/推送/tag/发布。
+
+## 2026-08-31 桌面会话恢复后的实际验收
+
+此节更新当前状态；前述访问拒绝为历史失败记录，不再是当前环境阻塞。恢复后的任务重新开始阻塞审计，07:06 起受支持的 `@oai/sky` 成功取得截图、控件树并执行逐步交互，没有调整权限或使用其他自动化绕过限制。
+
+源码仍为`7d17728`，当时分支文档HEAD为`d1b29b9`。主代理重新完整检查隔离启动器和Gradle脚本后，创建唯一目录`C:/Users/hetia/AppData/Local/Temp/datacube-draft-ui-9902939ae9cc4a1db847d93b54abadb9`及测试标记；在JVM启动前设置独占user.home。使用真实AppShell、ThemeManager及正常关闭流程，不调用DataCubeFx外层更新检查。这是实际AppShell隔离验收，不是完整发行入口离线启动验收。
+
+命令两次相同：
+
+```powershell
+.\gradlew.bat -I .superpowers/sdd/draft-acceptance.init.gradle runSqlDraftDesktop '-PdraftAcceptanceHome=C:/Users/hetia/AppData/Local/Temp/datacube-draft-ui-9902939ae9cc4a1db847d93b54abadb9' --no-daemon --console=plain
+```
+
+第一JVM PID22936、Gradle session52399：
+
+- 顶栏“SQL 草稿”入口可见；首次管理页先显示初始化，完成后1条预置合成记录。未选择时正文空白、恢复/删除禁用，选择后显示中文、缩进与完整逻辑行。
+- “删除所选”明确只删除本机恢复记录、不清空编辑器，默认取消；点击取消后记录仍为1。“清空草稿”明确之后新修改仍会保存，默认取消；取消前后文件SHA一致。没有点击任何确认删除或隐私开关。
+- 明暗主题管理列表、选择后正文及按钮无重叠；发现暗色空预览提示过暗，列入后续修正，不能据此宣称视觉门槛已全部通过。
+- 恢复预置已删除连接草稿：实际编辑器为“未绑定连接”“尚未创建专用会话”，执行/执行计划/提交/回滚禁用，显示重新选择连接提示。没有触发连接或执行操作；零provider计数的证据来自已有自动化探针，不将桌面观察冒充插桩网络统计。
+- 无连接时点击普通“新建 SQL”，确实创建独立未绑定空标签。在真实编辑区域输入合成文本 `-- desktop synthetic 草稿\nselect 'draft-only' as note;\n`，观察“草稿待保存”到“草稿已保存于07:12:52”。
+- 再开管理页为2条；恢复该普通标签的草稿只聚焦原标签，仍为2个标签而不是3个。此时发现未绑定行拼接出`null`及空`Schema:`，列入显示层修正，不属于记录丢失。
+- 经实际标题栏正常关闭，Gradle exit0、9m39s、9任务（1执行/8 up-to-date），未强杀进程。关闭前后两份草稿SHA不变。
+
+第二JVM PID10588、Gradle session14427：
+
+- 使用同一独占目录重新启动，新进程没有自动恢复标签。管理页仍为2条，必须显式选择后才显示完整SQL；恢复新建草稿后只有1个恢复标签，SQL中文及末尾空行可见，仍未绑定且执行/事务按钮禁用。
+- 在恢复标签中仅将空Schema输入为合成`desktop_schema`，再次观察待保存到“草稿已保存于07:20:49”，SQL未编辑。
+- 实际标题栏正常关闭，Gradle exit0、5m13s、9任务（1执行/8 up-to-date）。随后读取仅本轮合成检查点，UTF-8字节后缀与首次输入（含末尾LF）逐字节相等；Schema更新未改变SQL原文。
+
+文件证据（位于上述隔离目录的`.datacube/sql-drafts/`）：
+
+| 文件 | 检查阶段 | SHA-256 |
+| --- | --- | --- |
+| `9310c1cf-279a-4d54-aa2b-4178a485ce95.draft` | 清空取消前后、首次正常关闭前后、第二次关闭后均相同 | `901DFF1BE8CF687045A6696E430F9F842B378BC0D2ECCB44EFEC25D662ADFE94` |
+| `bc388dad-2b3e-4dab-a7be-8e39cd898a0a.draft` | 首次保存及正常关闭前后 | `D65C8ADF708CFB6725B52068D457C4B85C4AF37B3CD87A9ACDC2D0AECCF5EDE5` |
+| 同上 | 第二次仅Schema修改并正常关闭后 | `C3C49D300FC59ED9C4BD456DD68C60854C11EEB04D9EAA16B05E07574F10EAED` |
+
+删除取消没有测量独立的操作前哈希，仅记录UI条数及后续文件存在，不扩大证据。没有访问真实连接、SQL历史、密码或`.testagent/`。两次受控进程均正常结束，临时产物保留。实际桌面首次使用是已有预置合成记录下新建普通SQL；完全空目录首次保存由既有自动化测试覆盖，不混称为空目录桌面验收。
+
+后续只需[局部呈现修正](../plans/2026-08-31-sql-draft-presentation.md)、审查及最终源码复验，再按授权本地合并main。当前尚未合并，不推送/tag/安装/发布。

@@ -110,7 +110,7 @@
 | `src/com/datacube/config/SqlDraftCoordinator.java`、`SqlDraftSaveState.java`、`SqlDraftWriteQueue.java` | 已完成编辑事件防抖、串行写入、最新版本判定、状态通知及关闭生命周期 |
 | `src/com/datacube/fx/SqlEditorPane.java` | 只捕获编辑状态与呈现保存状态，不在 FX 线程执行磁盘 I/O |
 | `src/com/datacube/fx/SqlDraftEditorBinding.java`、`SqlDraftUi.java` | 已完成独立状态/隐私/严格启停和清空入口、应用timer/writer及已安装标签身份映射 |
-| `src/com/datacube/fx/AppShell.java` | 已接自动保存owner与显式SQL草稿入口；离线恢复、连接重选和管理页完成，桌面观察仍待验收 |
+| `src/com/datacube/fx/AppShell.java` | 已接自动保存owner与显式SQL草稿入口；离线恢复、连接重选和管理页完成，实际隔离桌面已验证核心恢复流程，局部呈现修正待复验 |
 | `test/com/datacube/config/SqlDraftStoreTest.java`、`SqlDraftCoordinatorTest.java`及`test/com/datacube/fx/SqlEditorDraftIntegrationTest.java` | 持久化失败、版本竞争、清理竞争、实际FX关闭生命周期；恢复零数据库副作用另行验收 |
 
 设计及细分计划已落地，见[草稿设计](../specs/2026-08-30-sql-draft-recovery-design.md)和[持续更新的验收记录](../verification/2026-08-30-sql-draft-recovery.md)。独立严格草稿偏好没有复用AppSettings的best-effort保存；不再把最初拟定类路径当成当前代码。
@@ -127,7 +127,7 @@
 - [x] 自动化验证普通保存、未执行文本、快速连续编辑、写入失败、异常退出、损坏恢复、多实例、关闭/清空竞态；离线恢复provider/session/metadata/network探针为零。独立进程、单元和FX集成分别记录，不代替桌面验收。
 - [ ] 交付本地验收版本，明确自动保存窗口与已保存状态含义，不宣传绝对不丢数据。
 
-恢复交互为SQL历史旁的显式“SQL 草稿”入口，不一启动就重建所有编辑器。管理页、真正无连接恢复和重复定位已完成任务审查；2026-08-31整分支审查两项Important已按[修复计划](2026-08-31-sql-draft-failure-feedback.md)在7d17728补齐，完整回归、进程恢复及免安装包构建重新验证通过，独立复审无剩余Critical/Important。桌面工具返回捕获/访问拒绝，入口发现性、明暗主题及实际恢复交互保持未验收，不提前合并main。详情见[草稿验证记录](../verification/2026-08-30-sql-draft-recovery.md)。
+恢复交互为SQL历史旁的显式“SQL 草稿”入口，不一启动就重建所有编辑器。管理页、真正无连接恢复和重复定位已完成任务审查；2026-08-31整分支审查两项Important已按[修复计划](2026-08-31-sql-draft-failure-feedback.md)在7d17728补齐，完整回归、进程恢复及免安装包构建重新验证通过，独立复审无剩余Critical/Important。07:06后桌面环境恢复，两次真实AppShell隔离启动已验证入口、显式预览、安全取消、未绑定SQL保存、重复定位和新JVM恢复。发现元数据空值文案及空预览提示色两项局部呈现问题，按[收尾计划](2026-08-31-sql-draft-presentation.md)修正后再做最终验收，不提前合并main。详情见[草稿验证记录](../verification/2026-08-30-sql-draft-recovery.md)。
 
 ## 7. P2：工作区恢复
 
