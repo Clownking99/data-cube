@@ -289,4 +289,4 @@ if (resultColumnMenu != null) {
 - [x] Inspect actual diff and XML; independent task review complete; historical TDD deviation retained, no current code defect found.
 - [x] Supported computer-use synthetic UI: hiding, last-column guard, Show All, search preservation, CSV summary, compact/light layout, new-result reset and normal exit observed. No desktop file saved; denied Excel path not retried.
 - [x] Update candidate notes and acceptance records, preserving historical failed/blocked attempts.
-- [ ] Complete broad branch review, locally fast-forward main if clean/ancestry permits, then run merged full regression. Release gates remain open; no automatic push/tag.
+- [x] Broad branch re-review `edce8a2..20d4b16` approved with0remainingfindings; main fast-forwarded to20d4b16. Root merged full forced regressionexit0/54s:1213passed,3live skipped,0failures/errors. Only documentation bookkeeping follows; release gates remain open, no push/tag. Retain the merged worktree's isolated acceptance artifacts for unfinished P0.2 rather than deleting them.

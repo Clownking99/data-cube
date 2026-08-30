@@ -171,6 +171,8 @@
 
 本轮 P0.1 本地部分已完成：根因复现、`da3dee9` 最小测试修复、验收文档复审与整体审查，随后本地快进合并至 `6793c9f`。主代理在合并后的 `main` 上使用新建 Windows 短路径临时目录完整重跑，26 秒、1208 passed、3 live skipped、0 failures/errors；另有 `jlink` 35 秒通过。远端 CI 尚待推送授权，P0.2 桌面/打包验收与后续新功能仍未完成；详细证据见 `../verification/2026-08-30-windows-ci-path-contract.md`。
 
+后续列控制增量及表头注释兼容修复已完成，整分支复审0剩余发现，本地 main 快进至 `20d4b16`；合并后54秒完整强制回归1213 passed、3 live skipped、0 failures/errors。详见[列控制验收](../verification/2026-08-30-result-column-visibility.md)。P0.2 发布门槛继续保留；下一独立产品增量为 P1 SQL 草稿恢复，按最新授权自主细化设计，不重复等待常规选型确认。
+
 ### 自审
 
 - 全链路覆盖：可靠发布、文本保护、工作上下文、复用、真实反馈分别有独立交付和退出条件。
