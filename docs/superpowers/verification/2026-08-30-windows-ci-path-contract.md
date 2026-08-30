@@ -130,3 +130,12 @@ The three skips are existing environment-dependent/live tests; no new skip or de
 - Root ran `.\gradlew.bat jlink --no-daemon --console=plain`: exit 0, 35 seconds, 6 tasks executed. The toolchain emitted its JEP 493/module-location notice; the build completed successfully. This is linked-runtime validation, not an installer or desktop acceptance pass.
 - Remote Verify still refers to the failing original `151a64a` run until a separately authorized push creates a new run. No remote pass is claimed.
 - Full product rollout, packaged install/upgrade, outstanding export interactions, and real Excel scrolling/row-height checks remain under P0.2 of the roadmap. SQL draft/workspace features are planned, not implemented by this repair.
+
+## Local integration and fresh merged-result verification
+
+- User authorized the isolated worktree and local merge. Root fast-forwarded `main` from `a3fb53d` to `6793c9f` after independent review. No push, tag or Release was performed.
+- Root created a new exclusive temporary directory, `datacube-merged-ci-ktqqahhn.al2`, obtained its actual COM short alias `DATACU~1.AL2`, and reran the entire merged suite under that alias rather than reusing the ordinary-path run.
+- Command: `.\gradlew.bat clean test --no-daemon --console=plain`, with temporary `JAVA_TOOL_OPTIONS` additions `-Djava.io.tmpdir="C:\Users\hetia\AppData\Local\Temp\DATACU~1.AL2" -Djava.awt.headless=false`; previous options restored in `finally` and restoration checked. This path identifies the recorded run, not a reusable hard-coded configuration.
+- Result: exit 0, `BUILD SUCCESSFUL`, 26 seconds. Root read all new XML reports: **138 suites, 1211 tests, 1208 passed, 0 failures, 0 errors, 3 skipped**. Skipped names remain the three explicit live tests above.
+- Existing unchecked-operation compiler note in `SqlEditorResultFilterContractTest` remains; no production or unrelated test change was made to suppress it. `git diff --check` passed.
+- Only documentation/status recording follows this verification; production code and the repaired test remain unchanged. Remote CI still requires separately authorized push and inspection of the resulting run.

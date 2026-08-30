@@ -161,7 +161,7 @@ git commit -m "test(export): handle canonical paths in publisher contract"
 ## Task 2: 本地合并与远端验收（仅本地合并已授权）
 
 - [x] 用户授权独立 worktree 开发，完成后本地合并回 `main`。
-- [ ] 独立审查与本地验证完成后，核对 `main` 未发生冲突变更，执行本地合并并重跑合并后的测试；不删除用户文件或其他分支。
+- [x] 独立审查与本地验证完成后，核对 `main` 未发生冲突变更并快进合并至 `6793c9f`；合并后在新建 Windows 短路径环境完整重跑，26 秒、1208 passed、3 live skipped、0 failures/errors。没有删除用户文件或其他已有分支。
 - [ ] 另获推送授权后，重新 fetch 并核对双方差异，不 force、不改变其他分支或 tags。
 - [ ] 推送后读取新 SHA 的 Verify run；确认 Windows/Linux 单测、Redis 集成、wrapper validation 及 Windows jlink 成功。
 - [ ] 失败则记录确切测试/步骤并继续诊断，不自动重跑直至偶然通过。
@@ -173,3 +173,4 @@ git commit -m "test(export): handle canonical paths in publisher contract"
 - Windows 短路径的环境复现、跨平台 `.` 回归与最小修复已完成，修复提交 `da3dee9`；全量结果为 138 suites、1211 tests、1208 passed、3 skipped、0 failures/errors。
 - 用户已确认独立 worktree，完成后本地合并回 `main`；普通路径对照运行 1 项通过、14 秒。修复与审查结果记录到独立验收文件。
 - 完成条件同时要求本地证据和经授权取得的远端证据，不能因写完计划或测试数量不变而标记完成。
+- 本地修复、审查、合并和合并后完整验证已完成；远端 CI gate 仍未完成，不因本地合并而勾选远端项。
