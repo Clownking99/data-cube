@@ -273,19 +273,27 @@ class SqlDraftManagerTest {
         AtomicReference<Throwable> failure = new AtomicReference<>();
         Platform.runLater(() -> {
             DialogPane dialog = null;
+            Window window = null;
             try {
-                dialog = Window.getWindows().stream().filter(Window::isShowing)
-                        .map(window -> window.getScene().getRoot()).filter(DialogPane.class::isInstance)
-                        .map(DialogPane.class::cast).findFirst().orElseThrow();
+                window = Window.getWindows().stream().filter(Window::isShowing)
+                        .filter(candidate -> candidate.getScene().getRoot() instanceof DialogPane)
+                        .findFirst().orElseThrow();
+                dialog = (DialogPane) window.getScene().getRoot();
                 response.accept(dialog);
             } catch (Throwable problem) {
                 failure.set(problem);
             } finally {
-                if (dialog != null && dialog.getScene().getWindow().isShowing()) {
-                    var cancel = dialog.lookupButton(ButtonType.CANCEL);
-                    if (cancel == null) cancel = dialog.lookupButton(ButtonType.CLOSE);
-                    if (cancel instanceof Button button) button.fire();
-                    else dialog.getScene().getWindow().hide();
+                try {
+                    if (dialog != null && window != null && window.isShowing()) {
+                        var cancel = dialog.lookupButton(ButtonType.CANCEL);
+                        if (cancel == null) cancel = dialog.lookupButton(ButtonType.CLOSE);
+                        if (cancel instanceof Button button) button.fire();
+                        else window.hide();
+                    }
+                } catch (Throwable cleanupFailure) {
+                    Throwable original = failure.get();
+                    if (original == null) failure.set(cleanupFailure);
+                    else original.addSuppressed(cleanupFailure);
                 }
             }
         });

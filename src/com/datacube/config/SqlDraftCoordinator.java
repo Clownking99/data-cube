@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 
@@ -13,8 +14,8 @@ import java.util.function.LongSupplier;
 public final class SqlDraftCoordinator {
     public enum Mode { INITIALIZING, ENABLED, DISABLED, PAUSED, UNAVAILABLE, CLOSED }
     public enum SaveStatus { EMPTY, WAITING, SAVING, SAVED, FAILED }
-    public enum FailureReason { INITIALIZING, PAUSED, UNAVAILABLE, CLOSED, BUSY, CAPTURE, WRITE, SHUTDOWN }
-    public record Status(Mode mode, SaveStatus saveStatus, Long savedAt) { }
+    public enum FailureReason { INITIALIZING, PAUSED, UNAVAILABLE, CLOSED, BUSY, CAPTURE, WRITE, CAPACITY, INVALID_DRAFT, CLEANUP, SHUTDOWN }
+    public record Status(Mode mode, SaveStatus saveStatus, Long savedAt, FailureReason failureReason) { }
     public record ManagementResult(boolean succeeded, SqlDraftStore.Snapshot snapshot) { }
     public static final class Failure extends IOException {
         private final FailureReason reason;
@@ -53,6 +54,7 @@ public final class SqlDraftCoordinator {
     private final Map<UUID, Handle> handles = new LinkedHashMap<>();
     private final Set<UUID> openIds = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean admitted = new AtomicBoolean(), faulted = new AtomicBoolean();
+    private final AtomicReference<FailureReason> unavailableFailure = new AtomicReference<>(FailureReason.UNAVAILABLE);
     private Backend backend;
     private Mode mode = Mode.INITIALIZING;
     private ManagementResult lastManagementResult;
@@ -79,7 +81,7 @@ public final class SqlDraftCoordinator {
             backend = factory.open();
             return inspect(() -> { backend.prune(wall.getAsLong(), Set.copyOf(openIds)); return null; });
         }).whenComplete((result, failure) -> {
-            if (failure != null) stop();
+            if (failure != null) stop(failure);
             post(() -> {
                 busy = false; lastManagementResult = result;
                 if (failure != null || result.snapshot() == null || !result.snapshot().writable()) { stop(); return; }
@@ -95,6 +97,8 @@ public final class SqlDraftCoordinator {
         owner();
         return closing ? Mode.CLOSED : faulted.get() ? Mode.UNAVAILABLE : mode;
     }
+
+    public FailureReason unavailableReason() { owner(); return unavailableFailure.get(); }
 
     public ManagementResult lastManagementResult() { owner(); return lastManagementResult; }
 
@@ -125,6 +129,7 @@ public final class SqlDraftCoordinator {
         private final Source source;
         private final SqlDraftSaveState state;
         private boolean eligible, offered, changed, detached;
+        private FailureReason saveFailure;
         private CompletableFuture<Void> inFlight;
         private Handle(UUID id, Long savedAt, Source source) {
             this.id = id; this.source = source; eligible = offered = savedAt != null;
@@ -140,11 +145,14 @@ public final class SqlDraftCoordinator {
                 case FAILED -> SaveStatus.FAILED;
                 default -> SaveStatus.EMPTY;
             };
-            return new Status(mode(), saved, state.savedAt().isPresent() ? state.savedAt().getAsLong() : null);
+            Mode currentMode = mode();
+            return new Status(currentMode, saved, state.savedAt().isPresent() ? state.savedAt().getAsLong() : null,
+                    currentMode == Mode.UNAVAILABLE ? unavailableReason() : saveFailure);
         }
         public void edited() {
             attached();
             if (!offered && !source.hasText()) { reset(); return; }
+            saveFailure = null;
             eligible = changed = true; state.edited(elapsed.getAsLong());
         }
         public void retry() { attached(); state.retry(elapsed.getAsLong()); }
@@ -163,7 +171,7 @@ public final class SqlDraftCoordinator {
             active(); if (detached) throw new IllegalStateException("Draft handle detached");
         }
         private void reset() {
-            state.clear(); eligible = offered = changed = false; inFlight = null;
+            state.clear(); eligible = offered = changed = false; saveFailure = null; inFlight = null;
         }
         private CompletableFuture<Void> capture(boolean force) {
             SqlDraftSaveState.Ticket ticket = state.capture(elapsed.getAsLong(), force);
@@ -173,21 +181,26 @@ public final class SqlDraftCoordinator {
                 long at = wall.getAsLong(); draft = source.capture(id, at);
                 if (draft == null || !id.equals(draft.id()) || draft.modifiedAt() != at) throw new IllegalArgumentException();
             } catch (RuntimeException invalid) {
-                state.failed(ticket); changed = true; inFlight = refused(FailureReason.CAPTURE); return inFlight;
+                state.failed(ticket); changed = true; saveFailure = FailureReason.CAPTURE;
+                inFlight = refused(FailureReason.CAPTURE); return inFlight;
             }
             offered = true; changed = false;
             CompletableFuture<Void> publication = queue.save(draft);
             inFlight = publication.handle((unused, failure) -> {
                 if (failure != null) {
-                    if (structural(failure)) stop();
-                    throw new CompletionException(new Failure(FailureReason.WRITE));
+                    if (structural(failure)) stop(failure);
+                    throw new CompletionException(new Failure(classify(failure)));
                 }
                 return null;
             });
             publication.whenComplete((unused, failure) -> post(() -> {
                 if (detached) return;
-                if (failure == null) state.succeeded(ticket, draft.modifiedAt());
-                else if (state.failed(ticket)) changed = true;
+                if (failure == null) {
+                    if (state.succeeded(ticket, draft.modifiedAt())) saveFailure = null;
+                } else if (state.failed(ticket)) {
+                    changed = true;
+                    saveFailure = classify(failure);
+                }
             }));
             return inFlight;
         }
@@ -222,7 +235,7 @@ public final class SqlDraftCoordinator {
                 ? queue.barrierAll(operation) : queue.barrier(resetIds, operation);
         CompletableFuture<ManagementResult> exposed = new CompletableFuture<>();
         result.whenComplete((outcome, failure) -> {
-            if (failure != null) stop();
+            if (failure != null) stop(failure);
             boolean posted = post(() -> {
                 busy = false; lastManagementResult = outcome;
                 if (enabled != null && failure == null && outcome.succeeded() && outcome.snapshot() != null
@@ -257,10 +270,10 @@ public final class SqlDraftCoordinator {
     private ManagementResult inspect(Callable<Void> action) {
         boolean success = !faulted.get();
         if (success) try { action.call(); }
-        catch (Exception failure) { success = false; if (structural(failure)) stop(); }
+        catch (Exception failure) { success = false; if (structural(failure)) stop(failure); }
         SqlDraftStore.Snapshot snapshot = null;
         try { snapshot = backend.snapshot(); if (!snapshot.writable()) { success = false; stop(); } }
-        catch (IOException failure) { success = false; if (structural(failure)) stop(); }
+        catch (IOException failure) { success = false; if (structural(failure)) stop(failure); }
         return new ManagementResult(success, snapshot);
     }
 
@@ -274,7 +287,21 @@ public final class SqlDraftCoordinator {
     private void write(SqlDraft draft) throws IOException {
         if (!admitted.get()) throw new Failure(FailureReason.UNAVAILABLE);
         try { backend.save(draft); }
-        catch (IOException | RuntimeException failure) { if (structural(failure)) stop(); throw failure; }
+        catch (IOException | RuntimeException failure) { if (structural(failure)) stop(failure); throw failure; }
+    }
+    private static FailureReason classify(Throwable error) {
+        if (error instanceof CompletionException && error.getCause() != null) return classify(error.getCause());
+        if (error instanceof SqlDraftDirectory.Failure failure && failure.stage() == SqlDraftDirectory.Stage.CLEANUP)
+            return FailureReason.CLEANUP;
+        if (error instanceof SqlDraftStore.Failure failure) {
+            if (failure.code() == SqlDraftStore.FailureCode.CAPACITY) return FailureReason.CAPACITY;
+            if (failure.code() == SqlDraftStore.FailureCode.INVALID_DRAFT) return FailureReason.INVALID_DRAFT;
+        }
+        return FailureReason.WRITE;
+    }
+    private void stop(Throwable failure) {
+        if (classify(failure) == FailureReason.CLEANUP) unavailableFailure.set(FailureReason.CLEANUP);
+        stop();
     }
     private void stop() {
         admitted.set(false);
@@ -282,7 +309,7 @@ public final class SqlDraftCoordinator {
     }
     private boolean post(Runnable action) {
         try { ui.execute(() -> { if (!closing) { owner(); action.run(); } }); return true; }
-        catch (RuntimeException rejected) { stop(); return false; }
+        catch (RuntimeException rejected) { stop(rejected); return false; }
     }
     private FailureReason modeReason() {
         return switch (mode()) {

@@ -78,6 +78,42 @@ class SqlEditorDraftIntegrationTest {
   }
 
   @Test
+  void successfulEditorClearWarnsAboutProtectedCorruptFiles() throws Exception {
+    try (Fixture f = new Fixture("select 'synthetic';", null, true)) {
+      f.tick(1000);
+      assertEquals(1, f.snapshot().drafts().size());
+      Path corrupt = directory.resolve("drafts").resolve(UUID.randomUUID() + ".draft");
+      byte[] retained = new byte[] {1, 2, 3, 4};
+      java.nio.file.Files.write(corrupt, retained);
+      f.fx(
+          () ->
+              SqlDraftManagerTest.respondToDialog(
+                  () -> ((Button) f.pane.getNode().lookup("#sql-draft-clear")).fire(),
+                  dialog -> {
+                    ButtonType accept =
+                        dialog.getButtonTypes().stream()
+                            .filter(type -> type != ButtonType.CANCEL)
+                            .findFirst()
+                            .orElseThrow();
+                    ((Button) dialog.lookupButton(accept)).fire();
+                  }));
+      f.drain();
+      f.fx(
+          () -> {
+            var result = f.runtime.lastManagementResult();
+            assertTrue(result.succeeded());
+            assertTrue(result.snapshot().drafts().isEmpty());
+            assertFalse(result.snapshot().problems().isEmpty());
+            assertTrue(f.label("notice").getText().contains("仍保留"));
+            assertTrue(f.label("notice").getText().contains("SQL"));
+            assertTrue(f.label("notice").isVisible());
+            assertEquals("select 'synthetic';", f.editor().getText());
+          });
+      assertArrayEquals(retained, java.nio.file.Files.readAllBytes(corrupt));
+    }
+  }
+
+  @Test
   void closingWaitsForLatestSnapshotAndBlocksProgrammaticEditingActions() throws Exception {
     try (Fixture f = new Fixture("select 1", null, true)) {
       var close = f.beginClose(true);
@@ -157,7 +193,11 @@ class SqlEditorDraftIntegrationTest {
             assertFalse(f.editor().isEditable());
             assertTrue(f.schema().isDisable());
             assertFalse(((AtomicBoolean) field(f.pane, "resourcesClosed")).get());
-            assertTrue(f.label("status").getText().contains("失败"));
+            Object binding = field(f.pane, "draftBinding");
+            var handle = (SqlDraftCoordinator.Handle) field(binding, "handle");
+            assertEquals(SqlDraftCoordinator.FailureReason.INVALID_DRAFT, handle.status().failureReason());
+            String statusText = f.label("status").getText();
+            assertTrue(statusText.contains("草稿内容无法保存"), statusText);
             f.editor().setEditable(true);
             f.schema().setDisable(false);
             f.schema().setText("valid");

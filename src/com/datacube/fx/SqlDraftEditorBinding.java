@@ -53,6 +53,7 @@ final class SqlDraftEditorBinding implements AutoCloseable {
     this.schema = schema;
     this.detached = detached;
     status.setId("sql-draft-status");
+    status.setWrapText(true);
     retry.setId("sql-draft-retry");
     toggle.setId("sql-draft-toggle");
     clear.setId("sql-draft-clear");
@@ -119,7 +120,7 @@ final class SqlDraftEditorBinding implements AutoCloseable {
           case INITIALIZING -> "草稿保护初始化中，尚未确认保存";
           case DISABLED -> "草稿保护已关闭";
           case PAUSED -> "本次已暂停，关闭设置未保存，下次启动可能恢复";
-          case UNAVAILABLE -> "草稿保护不可用，请检查本地目录后重启";
+          case UNAVAILABLE -> failureMessage(snapshot.failureReason());
           case CLOSED -> "草稿保护已停止";
           case ENABLED ->
               switch (snapshot.saveStatus()) {
@@ -127,7 +128,7 @@ final class SqlDraftEditorBinding implements AutoCloseable {
                 case WAITING -> "草稿待保存";
                 case SAVING -> "正在保存草稿";
                 case SAVED -> "草稿已保存于 " + TIME.format(Instant.ofEpochMilli(snapshot.savedAt()));
-                case FAILED -> "草稿保存失败，最新修改尚未保存";
+                case FAILED -> failureMessage(snapshot.failureReason());
               };
         };
     status.setText(text);
@@ -148,6 +149,18 @@ final class SqlDraftEditorBinding implements AutoCloseable {
     notice.setManaged(notice.isVisible());
   }
 
+  static String failureMessage(SqlDraftCoordinator.FailureReason reason) {
+    if (reason == null) return "草稿保存失败，最新修改尚未保存，可重试";
+    return switch (reason) {
+      case CLEANUP -> "草稿保护不可用：可能残留含敏感 SQL 的临时文件。请检查本机草稿目录，修复后重启；不会自动重试。";
+      case CAPACITY -> "草稿容量不足（最多100条、合计32 MiB），最新修改尚未保存。请先复制文本另存，再清理不需要的草稿或重试。";
+      case INVALID_DRAFT -> "草稿内容无法保存（SQL最多1 MiB UTF-8、每项元数据最多4096字节，需有效Unicode）。请先复制文本另存并检查长度和字符；原记录保留。";
+      case CAPTURE -> "无法获取草稿快照，最新修改尚未保存。请先复制文本另存，再重试。";
+      case UNAVAILABLE -> "草稿保护不可用，请检查本地目录后重启";
+      default -> "草稿保存失败，最新修改尚未保存，可重试";
+    };
+  }
+
   private void manage(CompletableFuture<SqlDraftCoordinator.ManagementResult> operation) {
     managementPending = true;
     notice.setText("");
@@ -158,8 +171,11 @@ final class SqlDraftEditorBinding implements AutoCloseable {
                 () -> {
                   if (closed) return;
                   managementPending = false;
-                  if (failure != null || !result.succeeded())
-                    notice.setText("草稿操作未完成，已有可恢复草稿可能仍然保留。");
+                  if (failure != null || result == null || !result.succeeded() || result.snapshot() == null) {
+                    notice.setText("草稿操作未完成，已有可恢复草稿及其他文件可能仍然保留。");
+                  } else if (!result.snapshot().problems().isEmpty()) {
+                    notice.setText("可恢复草稿操作已完成；仍保留损坏、未知或不可读取的文件，可能包含敏感 SQL。本次未删除这些文件，请检查本机草稿目录。");
+                  }
                   refresh();
                 }));
   }

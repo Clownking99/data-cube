@@ -69,6 +69,7 @@ final class SqlDraftManagerPane implements AutoCloseable {
             renderControls();
         });
         status.setId("draft-manager-status");
+        status.setWrapText(true);
         notice.setId("draft-manager-notice");
         notice.setWrapText(true);
         recover.setId("draft-manager-restore");
@@ -170,7 +171,7 @@ final class SqlDraftManagerPane implements AutoCloseable {
             case ENABLED -> "草稿保护已开启";
             case DISABLED -> "草稿保护已关闭，已有草稿仍可恢复";
             case PAUSED -> "本次已暂停，设置未保存，下次启动可能恢复";
-            case UNAVAILABLE -> "草稿保护不可用；仍可恢复已读取的草稿，请检查本地目录后重启";
+            case UNAVAILABLE -> SqlDraftEditorBinding.failureMessage(runtime.unavailableReason()) + "；仍可恢复已读取的草稿";
             case CLOSED -> "草稿保护已停止";
         };
         status.setText(state + (pending || runtime.managementPending() ? " · 处理中" : "")

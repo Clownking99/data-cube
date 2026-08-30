@@ -233,6 +233,8 @@ class SqlDraftCoordinatorTest {
             var a = one.flush(); var b = two.flush(); f.disk();
             assertTrue(a.isCompletedExceptionally()); assertTrue(b.isCompletedExceptionally());
             assertEquals(1, f.backend.writes); assertEquals(UNAVAILABLE, f.runtime.mode());
+            assertEquals(SqlDraftCoordinator.FailureReason.CLEANUP, f.runtime.unavailableReason());
+            assertEquals(SqlDraftCoordinator.FailureReason.CLEANUP, one.status().failureReason());
             one.edited(); f.elapsed = 20000; f.runtime.pulse(); f.disk();
             assertEquals(1, f.backend.writes); assertTrue(one.flush().isCompletedExceptionally());
         }
