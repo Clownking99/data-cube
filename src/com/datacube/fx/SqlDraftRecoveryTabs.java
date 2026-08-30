@@ -2,7 +2,9 @@ package com.datacube.fx;
 
 import com.datacube.config.SqlDraft;
 import com.datacube.config.SqlDraftCoordinator;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
+import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.control.Tab;
 
@@ -27,15 +29,34 @@ final class SqlDraftRecoveryTabs {
         if (existing != null) return tabs.selectExistingContent(existing);
         Tab opened = tabs.openManagedTab("SQL - 恢复草稿", abort -> ManagedTabFactorySequence.create(
                 () -> factory.apply(draft),
-                pane -> abort.bind(pane::closeResources),
+                pane -> abort.bind(() -> abortPane(pane)),
                 pane -> {
                     initialize.accept(pane);
                     drafts.bind(pane, draft);
                 },
                 pane -> new ContentTabPane.ManagedTabSpec(pane.getNode(), pane::requestClose,
-                        pane::requestMandatoryClose, pane::finalizeCloseOnFx, pane::closeResources)));
+                        pane::requestMandatoryClose, pane::finalizeCloseOnFx, () -> abortPane(pane))));
         if (opened == null) return false;
         drafts.installed(opened.getContent());
         return true;
+    }
+
+    /** Mandatory abort runs on its existing worker and completes only after FX disposal. */
+    private static void abortPane(SqlEditorPane pane) {
+        if (Platform.isFxApplicationThread()) {
+            throw new IllegalStateException("Recovery abort cleanup must run off the FX Application Thread");
+        }
+        BestEffortCloseSequence.run(pane::closeResources, () -> {
+            CompletableFuture<Void> finalized = new CompletableFuture<>();
+            Platform.runLater(() -> {
+                try {
+                    pane.finalizeCloseOnFx();
+                    finalized.complete(null);
+                } catch (Throwable failure) {
+                    finalized.completeExceptionally(failure);
+                }
+            });
+            finalized.join();
+        });
     }
 }

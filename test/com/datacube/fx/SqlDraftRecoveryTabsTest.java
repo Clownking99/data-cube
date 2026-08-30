@@ -168,6 +168,11 @@ class SqlDraftRecoveryTabsTest {
                 assertTrue(f.tabPane().getTabs().isEmpty());
                 assertEquals(0, ((Map<?, ?>) fieldUnchecked(f.owner, "boundContent")).size());
                 assertEquals(0, ((Map<?, ?>) fieldUnchecked(f.owner.runtime(), "handles")).size());
+                assertTrue(((java.util.concurrent.atomic.AtomicBoolean)
+                        fieldUnchecked(f.created.getFirst(), "resourcesClosed")).get());
+                assertTrue(((java.util.concurrent.atomic.AtomicBoolean)
+                        fieldUnchecked(f.created.getFirst(), "uiFinalized")).get(),
+                        "abort barrier must include FX finalization before fixture cleanup");
             });
             f.offline();
         }
@@ -185,6 +190,9 @@ class SqlDraftRecoveryTabsTest {
                 assertTrue(f.tabPane().getTabs().isEmpty());
                 assertTrue(((java.util.concurrent.atomic.AtomicBoolean)
                         fieldUnchecked(f.created.getFirst(), "resourcesClosed")).get());
+                assertTrue(((java.util.concurrent.atomic.AtomicBoolean)
+                        fieldUnchecked(f.created.getFirst(), "uiFinalized")).get(),
+                        "abort barrier must include FX finalization before fixture cleanup");
             });
             f.offline();
         }
