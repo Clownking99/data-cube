@@ -240,3 +240,17 @@ Counter边界：session计数来自真实ConnectionManager调用provider.sqlRunn
 独立任务审查正在进行。下一门槛为[独立进程验收](../plans/2026-08-31-sql-draft-process-acceptance.md)、[桌面及P1完整清单](2026-08-31-sql-draft-acceptance-checklist.md)、打包与整分支审查，完成前不本地合并main；无推送、tag或发布。
 
 任务审查发现原计划的resource-only abort没有解除应用设置监听，失败的恢复编辑器可能被继续引用。按常规设计自主推进授权完成[修订](../plans/2026-08-31-sql-draft-manager-abort-fix.md)：提交`8ecd521`让两处abort回调在既有后台线程关闭资源，再等待FX finalizer；资源失败仍尝试释放监听，错误不被吞掉。主代理修复前读取真实RED：9项中上述初始化/安装失败2项uiFinalized断言失败；修复后56项覆盖测试通过。最终独立复审Spec compliant / Approved，0 Critical/Important。主代理最终完整回归session30832 exit0、40秒、8任务，XML149 suites /1358 total /1355 passed /0 failures/errors /3原live skips，环境恢复。此管理任务完成不代表P1进程/桌面/打包/整分支门槛完成。
+
+## P1.6 独立进程与桌面验收（进行中）
+
+2026-08-31，受控验收启动器与Gradle init脚本均为`.superpowers/sdd/`忽略产物，不进入发行包。实施代理在`f353d12`执行`verifySqlDraftProcesses`，exit0、28秒；主代理已检查完整脚本和独占目录的实际日志标记。八个顶层进程结果为normal0、restore0、abrupt37、restore0、disable0、verify-disabled0、lock-holder0、restore0；嵌套locked-probe0发生于写锁持有期间。异常退出只在确认检查点后触发，未保存尾部不被误当作可恢复内容。真实FX路径的provider/session/metadata/network探针为0，正常与异常退出后锁均释放，禁用偏好跨进程保留。
+
+首轮保留目录：`C:/Users/hetia/AppData/Local/Temp/datacube-draft-process-15294609357667274564`。日志有无Stage的非headless测试夹具产生的JavaFX CSS查找/转换警告，包括caught Paint转换ClassCastException；无测试断言失败，但不称输出纯净。它不是桌面视觉验收。主代理随后独立重跑进程验收与`jpackageImage`，结果另记。
+
+实际AppShell隔离启动使用`C:/Users/hetia/AppData/Local/Temp/datacube-draft-ui-3135239206dc40a9887289e64f6e85ed`、标记文件、启动前独占user.home和合成缺失连接草稿。JavaExec输出PID4136和正确目录，窗口标题“DataCube SQL草稿隔离验收”被Computer Use返回。启动器没有调用DataCubeFx外层公共更新检查，因此不代表完整发布入口离线验证。
+
+桌面观察受系统阻断：首次capture报`IGraphicsCaptureItemInterop.CreateForMonitor ... 0x80070057`；按技能重新定位并重试一次后报`GetCursorPos failed: 拒绝访问 (0x80070005)`。未获取有效截图/控件树，未点击或输入；停止桌面路径并通知维护者恢复可交互会话。随后核对PID4136命令行包含本轮launcher、desktop模式和独占目录，只终止该可丢弃JVM，保留所有临时文件。该清理导致JavaExec退出-1、Gradle exit1（2m17s）；不是正常退出验收，也不是应用断言失败。
+
+入口可发现性、实际明暗主题、管理页与恢复编辑器的桌面观察仍为**未验收**。目前不合并main，不将工具限制转写为产品通过；其他构建和审查继续进行。
+
+主代理独立命令`./gradlew.bat -I .superpowers/sdd/draft-acceptance.init.gradle verifySqlDraftProcesses jpackageImage --no-daemon --console=plain`，session61680，exit0、56秒、17任务（9执行/8 up-to-date）。八个顶层进程退出码和PROCESS_ACCEPTANCE_PASS由主代理直接读取；新独占目录`C:/Users/hetia/AppData/Local/Temp/datacube-draft-process-8454722275964971643`保留。`jlink`及`jpackageImage`实际执行成功；有当前JDK关于jmods/java.base与JEP493的构建提示。构建成功不代表安装、升级或打包程序桌面运行通过。

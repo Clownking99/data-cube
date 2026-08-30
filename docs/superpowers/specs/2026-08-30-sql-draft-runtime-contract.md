@@ -81,7 +81,7 @@ The current editor result status label is also the result-export revision signal
 | Duplicate restore | Same UUID selects the still-open tab; rejected close retains mapping; successful finalization removes mapping; installation failure does not leave an invisible handle/mapping. |
 | Close stability | Actual FX events cannot edit/format/comment during the final snapshot/flush interval. Failed/cancelled close restores editability and continued autosave; no transaction is resolved or resource destroyed because a draft flush failed. |
 | Mandatory close | Retain non-interactive rollback contract. A draft failure rejects close and keeps the editor; an explicit interactive discard path is separate, not silent mandatory data loss. |
-| Construction abort | Keep the existing early `pane -> binding.bind(pane::closeResources)` resource ownership binding. Blocking abort must also dispatch/await draft detachment safely; no FX join and no leaked subscribed handle if tab installation fails after binding. |
+| Construction abort | Bind recovery abort ownership before initialization; its existing background worker must complete resource cleanup and await FX finalization/listener removal. No FX join and no leaked subscribed handle or settings listener if initialization/installation fails. The [review amendment](../plans/2026-08-31-sql-draft-manager-abort-fix.md) supersedes the initial resource-only callback example. |
 | Status separation | Autosave changes its own status row, not the result status label or result-export revision; privacy copy states history is independent. |
 
 This matrix refines the next executable editor/UI plan; it is not a claim that the editor already implements these paths.

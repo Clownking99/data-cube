@@ -100,7 +100,7 @@
 
 [下一版本候选变更说明](../../releases/next.md)已编写并完成独立任务审查；它不是发布公告，最终版本号和发布授权仍待维护者确认。
 
-## 6. P1：SQL 草稿恢复（设计完成，分步实施中）
+## 6. P1：SQL 草稿恢复（实现与任务审查完成，整体验收中）
 
 **设计落地后的职责边界：**
 
@@ -109,8 +109,8 @@
 | `src/com/datacube/config/SqlDraftStore.java`、`SqlDraftCodec.java`、`SqlDraftDirectory.java` | 已完成版本化、有限额的草稿持久化与加载结果；支持注入测试目录 |
 | `src/com/datacube/config/SqlDraftCoordinator.java`、`SqlDraftSaveState.java`、`SqlDraftWriteQueue.java` | 已完成编辑事件防抖、串行写入、最新版本判定、状态通知及关闭生命周期 |
 | `src/com/datacube/fx/SqlEditorPane.java` | 只捕获编辑状态与呈现保存状态，不在 FX 线程执行磁盘 I/O |
-| `src/com/datacube/fx/SqlDraftEditorBinding.java`、`SqlDraftUi.java` | 已完成独立状态/隐私/严格启停和清空入口、应用timer/writer；恢复管理整合继续推进 |
-| `src/com/datacube/fx/AppShell.java` | 已接自动保存owner；恢复入口待整合，不得在恢复时调用元数据或连接探测 |
+| `src/com/datacube/fx/SqlDraftEditorBinding.java`、`SqlDraftUi.java` | 已完成独立状态/隐私/严格启停和清空入口、应用timer/writer及已安装标签身份映射 |
+| `src/com/datacube/fx/AppShell.java` | 已接自动保存owner与显式SQL草稿入口；离线恢复、连接重选和管理页完成，桌面观察仍待验收 |
 | `test/com/datacube/config/SqlDraftStoreTest.java`、`SqlDraftCoordinatorTest.java`及`test/com/datacube/fx/SqlEditorDraftIntegrationTest.java` | 持久化失败、版本竞争、清理竞争、实际FX关闭生命周期；恢复零数据库副作用另行验收 |
 
 设计及细分计划已落地，见[草稿设计](../specs/2026-08-30-sql-draft-recovery-design.md)和[持续更新的验收记录](../verification/2026-08-30-sql-draft-recovery.md)。独立严格草稿偏好没有复用AppSettings的best-effort保存；不再把最初拟定类路径当成当前代码。
@@ -123,11 +123,11 @@
 - [x] 确认生命周期：首次启用、用户主动关标签、正常退出、异常退出、恢复后再次编辑、清空、关闭自动保存分别定义是否留存，防止清空后后台旧任务又写回来。
 - [x] 确认多实例策略：单写者文件锁；第二实例不得覆盖恢复文件。
 - [x] 确认写入失败、损坏、未知版本、超限、存储禁用等状态；失败可见但不阻断继续编辑，不能虚假显示已保存。
-- [x] 设计评审后分步写独立实现计划，按“存储 → 调度 → UI 接入 → 恢复/清理”拆成各自可测试的任务；前三部分及离线恢复factory已通过任务审查，管理页计划继续细化。
-- [ ] 验证普通保存、未执行文本、快速连续编辑、写入失败、异常退出、损坏恢复、多实例、关闭/清空竞态；恢复前后数据库连接/执行调用计数为零。
+- [x] 设计评审后分步写独立实现计划，按“存储 → 调度 → UI 接入 → 恢复/清理”拆成各自可测试的任务；全部实现任务与恢复abort监听释放修复已通过任务审查。
+- [x] 自动化验证普通保存、未执行文本、快速连续编辑、写入失败、异常退出、损坏恢复、多实例、关闭/清空竞态；离线恢复provider/session/metadata/network探针为零。独立进程、单元和FX集成分别记录，不代替桌面验收。
 - [ ] 交付本地验收版本，明确自动保存窗口与已保存状态含义，不宣传绝对不丢数据。
 
-恢复交互已选定为SQL历史旁的显式“SQL 草稿”入口，不一启动就重建所有编辑器；新手发现性和重启提示在桌面验收时检查。管理页及真正无连接恢复仍需实施/审查，不用已通过的自动保存测试替代。
+恢复交互为SQL历史旁的显式“SQL 草稿”入口，不一启动就重建所有编辑器。管理页、真正无连接恢复和重复定位已完成任务审查；2026-08-31进程验收及免安装包构建通过。桌面工具返回捕获/访问拒绝，入口发现性、明暗主题及实际恢复交互保持未验收；整分支审查继续推进，不提前合并main。详情见[草稿验证记录](../verification/2026-08-30-sql-draft-recovery.md)。
 
 ## 7. P2：工作区恢复
 
