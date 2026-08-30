@@ -781,6 +781,43 @@ class SqlDraftManagerTest {
         }
     }
 
+    @Test void successfulClearEmptiesOnlyRecoveryList() throws Exception {
+        try (Fixture f = new Fixture(true, true, true)) {
+            f.fx(() -> {
+                f.list().getSelectionModel().select(f.newer);
+                respondToDialog(() -> f.button("clear").fire(), SqlDraftManagerTest::confirmDialog);
+            });
+            f.settle();
+            f.fx(() -> {
+                assertTrue(f.list().getItems().isEmpty());
+                assertEquals("", f.sql().getText());
+                assertTrue(f.button("restore").isDisabled());
+                assertTrue(f.label("status").getText().contains("共 0 份"));
+            });
+            assertEquals(1, f.probe.clears);
+            assertEquals(0, f.probe.deletions);
+        }
+    }
+
+    @Test void explicitDisableThenEnableUpdatesPreferenceAndRetainsRecords() throws Exception {
+        try (Fixture f = new Fixture(true, true, true)) {
+            f.fx(() -> f.button("toggle").fire());
+            f.settle();
+            assertFalse(f.probe.enabled);
+            f.fx(() -> {
+                assertEquals(SqlDraftCoordinator.Mode.DISABLED, f.runtime.mode());
+                assertEquals(2, f.list().getItems().size());
+                f.button("toggle").fire();
+            });
+            f.settle();
+            assertTrue(f.probe.enabled);
+            f.fx(() -> {
+                assertEquals(SqlDraftCoordinator.Mode.ENABLED, f.runtime.mode());
+                assertEquals(2, f.list().getItems().size());
+            });
+        }
+    }
+
     @Test void failedDisableSaysPausedNotPersistedDisabled() throws Exception {
         try (Fixture f = new Fixture(true, true, true)) {
             f.probe.failPreference = true;
