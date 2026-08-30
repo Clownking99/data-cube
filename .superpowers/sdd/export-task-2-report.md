@@ -9,7 +9,7 @@ Implemented `ResultExportValuePolicy` with an explicit SQL scalar allowlist. `nu
 - RED command: `$env:JAVA_TOOL_OPTIONS='-Djava.awt.headless=false'; ./gradlew test --tests com.datacube.sqleditor.result.ResultExportValuePolicyTest --no-daemon --console=plain`
   - Expected failure: compilation failed because `ResultExportValuePolicy` did not yet exist (8 unresolved symbols).
 - GREEN command: same focused command after implementation.
-  - `BUILD SUCCESSFUL`; 2 tests completed, 0 failures.
+  - `BUILD SUCCESSFUL`; `build/test-results/test/TEST-com.datacube.sqleditor.result.ResultExportValuePolicyTest.xml` reports 2 tests, 0 failures, 0 errors, 0 skipped.
 - Full suite command (run once, after focused GREEN): `$env:JAVA_TOOL_OPTIONS='-Djava.awt.headless=false'; ./gradlew test --no-daemon --console=plain`
   - `BUILD SUCCESSFUL`; 130 XML suites, 1163 tests, 0 failures, 0 errors, 3 skipped.
 
@@ -18,6 +18,7 @@ Implemented `ResultExportValuePolicy` with an explicit SQL scalar allowlist. `nu
 - `src/com/datacube/sqleditor/result/ResultExportValuePolicy.java`
 - `test/com/datacube/sqleditor/result/ResultExportValuePolicyTest.java`
 - Implementation commit: `59e4757` (`feat(export): distinguish scalar values from display-only cells`)
+- Report commit: `1b2b609` (`docs(export): report value policy verification`)
 
 ## Self-review and concern
 
