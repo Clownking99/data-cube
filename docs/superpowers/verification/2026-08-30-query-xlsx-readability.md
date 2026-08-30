@@ -1,6 +1,6 @@
 # 查询结果 XLSX 可读性验收
 
-日期：2026-08-30。实施基线：`c73224c`。当前状态：三项实现、独立任务审查、整分支最终审查及主代理最终全量测试完成；合成文件只读导入/渲染通过。真实 Excel 交互未验收，保留两项非阻断 Minor。
+日期：2026-08-30。实施基线：`c73224c`，审查收尾基线：`4eb2e8c`。当前状态：实现、审查与最新全量测试完成，DEL/C1 计宽问题已修复。上轮合成文件只读导入/渲染通过；真实 Excel 交互未验收，仍保留一项非阻断测试覆盖限制。最新结果见“审查收尾验证”。
 
 ## 基线与已完成检查
 
@@ -58,13 +58,24 @@ Task 2 提交 `033de19`：可选样式入口的 RED 运行 4 项中 2 项失败�
 - Excel 文件对话框的截图/可访问性树刷新被安全检查拒绝，原因是可能暴露无关私人文件元数据。主代理停止这条交互路径，未尝试绕过；没有打开工作簿。已退出对话框并关闭本轮启动的 Excel，窗口列表确认无 Excel 窗口。
 - 冻结首行仅验证 OOXML；未设置固定行高、文本换行及渲染器自适应高度已经验证，但真实 Excel 滚动冻结和自动行高未验证。
 - 没有访问数据库、真实凭证、已有业务文件内容及 `.testagent/`；Excel 启动页曾呈现无关最近文件元数据，未用于任务、未复制进本记录。没有推送、合并或创建 tag。
-- 控制字符歧义：当前示例实现对 DEL/C1 计宽，与“可见字符”文字存在歧义；建议仅在宽度估计中排除，不改变单元格输出。等待用户决定。
-- Task 3 独立审查设计符合、质量 Approved；非阻断测试建议：采样异常测试直接组合发布器与估计器，未来可补查询 writer 边界的注入失败用例。
+- 原控制字符计宽问题已在 `aeaa37e` 修复，只调整布局估计，不修改单元格输出；下方保留最初审查历史。
+- Task 3 的采样异常测试仍直接组合发布器与估计器；本轮核实未找到符合现有冻结快照契约的可靠公开输入注入方式。保留为非阻断覆盖限制，不标记为已完成 writer 级故障验收。
 
-## 整分支最终审查与交付
+## 初次整分支审查与交付（历史）
 
 - 独立最终审查范围：`c811802ce89884af551193b37947e35bac21243e..bebab8b`，覆盖 23 次提交和此前安全导出集成；最新 XLSX 实现范围为 `c73224c..bebab8b`。
 - 结论：代码审查角度 Ready to merge，0 Critical、0 Important、2 非阻断 Minor。该结论不表示已合并，也不表示真实 Excel 交互通过。
 - Minor 1：DEL/C1 被计入列宽是外观/规范解释问题，不影响单元格实际内容或文件保护；等待用户确认后可仅调整估计器并补控制字符回归。
 - Minor 2：采样失败测试是发布器与估计器的组合级证据；查询接入另有布局/范围集成测试，但失败注入本身没有贯穿 writer。保留为测试增强，不为此增加产品测试后门。
 - 按原授权保留本地 `codex/safe-result-export` 和现有工作区；没有合并、推送、tag 或清理用户 `.testagent/`。合成产物留在上述新建临时目录，便于人工 Excel 验收。
+
+## 审查收尾验证
+
+- 用户认可继续后，本轮只处理上述两项审查意见。修复提交：`aeaa37e fix(export): ignore DEL and C1 in XLSX width estimates`。产品差异仅在 `QueryXlsxLayoutEstimator` 的字符判断；旧 writer、发布器、UI 及其他导出格式未改。
+- 新增 `QueryXlsxLayoutEstimatorTest.ignoresDelAndC1ControlsInHeadersAndValuesWithinTheScanBudget`：控制字符表头/正文宽度 12；11 个 U+007E 宽度 13、6 个 U+00A0 宽度 14，混合文本宽度 15；256 个 DEL 后的长可见后缀不影响宽度。可见边界断言高于最小列宽，避免被宽度下限掩盖。
+- 新增 `QueryXlsxExportTest.isoControlsDoNotWidenQueryXlsxButRemainInSerializedText`：通过真实查询 writer 生成 XLSX，断言单列宽度 12、两格原始控制字符文本逐字保留。没有因为排版修复清洗或截断内容。
+- TDD：原定向基线 13 项通过；新增回归后强制执行 15 项，2 项宽度断言按预期失败；仅修改判断后强制执行同一组 15 项全部通过，0 failures/errors/skipped。命令：`./gradlew test --tests com.datacube.export.QueryXlsxLayoutEstimatorTest --tests com.datacube.export.QueryXlsxExportTest --tests com.datacube.export.XlsxWriterLayoutTest --rerun-tasks --no-daemon --console=plain`。临时非 headless 环境变量运行后恢复。
+- 测试缺口核实：`QueryResult.queryWithMetadata/freezeRows` 复制并冻结普通行集合，`ResultExportSnapshot` 复制且校验索引/投影；估计器只格式化明确列出的不可变标量，其他值使用固定宽度。因此没有找到可维护的公开输入用例，在快照成功建立之后专门触发非取消类采样异常。没有添加反射、Unsafe、静态 mock、新依赖或产品测试后门，也没有将这个缺口写成已覆盖。原组合级采样失败测试及真实 writer 序列化取消/文件保护测试继续保留。
+- 独立最终复审范围更新为 `c811802..aeaa37e`：计宽 Minor 已关闭，采样失败直连覆盖 Minor 暂缓且非阻断；0 Critical、0 Important，无新问题，代码审查角度 Ready to merge。
+- 主代理在 `aeaa37e` 上重新运行 `./gradlew clean test --no-daemon --console=plain`，临时追加 `-Djava.awt.headless=false` 后恢复；退出码 0，28 秒。最新 XML 为 **138 suites、1211 tests、1208 passed、0 failures、0 errors、3 skipped**。跳过仍为上文 Redis/Oracle/PostgreSQL 三项真实环境测试，未计入通过。
+- 既有 `SqlEditorResultFilterContractTest` 未检查操作编译提示仍在；`git diff --check` 通过。本轮未重新执行 Excel UI 或旧预览验收，不改变相应限制。仅本地提交，保留当前分支和用户 `.testagent/`。

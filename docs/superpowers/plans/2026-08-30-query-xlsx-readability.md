@@ -272,7 +272,8 @@ public final class QueryXlsxLayoutEstimator {
                 line = 0;
             } else if (cp == '\t') {
                 line += 4;
-            } else if (cp >= 0x20 && cp != 0xFFFE && cp != 0xFFFF) {
+            } else if (cp >= 0x20 && (cp < 0x7F || cp >= 0xA0)
+                    && cp != 0xFFFE && cp != 0xFFFF) {
                 line += cp < 0x80 ? 1 : 2;
             }
             if (line >= 58) return 58;
@@ -896,6 +897,14 @@ git status --short
 ```
 
 ## 计划自审与交接
+
+### 审查收尾续办（基线 `4eb2e8c`）
+
+用户认可继续后，仅收尾上一轮两项 Minor，不重复 Task 1–3、不扩展新功能：
+
+- [x] 先用控制字符回归暴露 DEL/C1 的列宽高估，再仅修改估计判断；覆盖相邻可见码点、表头/正文、扫描预算，并验证实际 XLSX 文本不变。修复 `aeaa37e`。
+- [x] 核实通过真实查询 writer 触发采样失败的可维护用例；不增加生产后门、反射或不可能的公开输入。未找到可靠公开输入注入方式，源代码证据已记录，直连失败覆盖仍明确保留。
+- [x] 独立复审、主代理最新完整测试、本地提交；保留真实 Excel 交互限制，不合并、不推送、不打 tag。最新 1208 passed、3 skipped、0 failures/errors。
 
 覆盖映射：设计 1–3 → 本计划目标及全局约束；4–5 → Task 1、Task 3；6 → Task 2；7.1 → Task 1 及 Task 3 范围测试；7.2 → Task 2、Task 3 发布保护及全套测试；7.3 → Task 3 Step 6–7；8 → 用户批准后子代理实施，本地保留分支，不推送、合并或打 tag。
 
