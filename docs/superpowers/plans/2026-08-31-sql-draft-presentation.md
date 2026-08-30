@@ -117,10 +117,17 @@ private static void assertReadablePreviewText(TextArea area, String expected) {
     Color foreground = assertInstanceOf(Color.class, rendered.getFill());
     assertEquals(1.0, foreground.getOpacity(), 0.0001);
     Region content = assertInstanceOf(Region.class, area.lookup(".content"));
-    Color background = assertInstanceOf(Color.class, content.getBackground().getFills().getLast().getFill());
-    double a = luminance(foreground), b = luminance(background);
-    double contrast = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-    assertTrue(contrast >= 4.5, "Preview contrast=" + contrast + ", text=" + expected);
+    javafx.scene.paint.Paint background = content.getBackground().getFills().getLast().getFill();
+    List<Color> backgroundColors = background instanceof Color color ? List.of(color)
+            : assertInstanceOf(javafx.scene.paint.LinearGradient.class, background).getStops().stream()
+                    .map(javafx.scene.paint.Stop::getColor).toList();
+    assertFalse(backgroundColors.isEmpty());
+    for (Color color : backgroundColors) {
+        assertEquals(1.0, color.getOpacity(), 0.0001);
+        double a = luminance(foreground), b = luminance(color);
+        double contrast = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+        assertTrue(contrast >= 4.5, "Preview contrast=" + contrast + ", text=" + expected);
+    }
 }
 
 private static double luminance(Color color) {
