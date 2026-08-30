@@ -24,6 +24,7 @@ import com.datacube.sqleditor.result.FilterConnector;
 import com.datacube.sqleditor.result.RenderedFilterQuery;
 import com.datacube.sqleditor.result.ResultFilterSqlRenderer;
 import com.datacube.sqleditor.result.ResultFilterState;
+import com.datacube.sqleditor.result.ResultExportSnapshot;
 import com.datacube.sqleditor.result.ResultValueFormatter;
 import com.datacube.sqleditor.result.SafeSelectEligibility;
 import com.datacube.sqleditor.result.TsvClipboardFormatter;
@@ -76,6 +77,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -162,6 +164,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private CodeArea editorArea;
     private SqlAutoComplete autoComplete;
     private final ResultFilterState resultFilterState = new ResultFilterState();
+    private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
     private ClipboardWriter clipboardWriter = SqlEditorPane::writeSystemClipboard;
     private SqlResultToolbar resultToolbar;
     private TableView<ObservableList<Object>> resultTable;
@@ -352,6 +355,7 @@ public final class SqlEditorPane implements AutoCloseable {
     /** Lightweight JavaFX phase; callers invoke this only on the FX Application Thread. */
     void finalizeCloseOnFx() {
         if (!uiFinalized.compareAndSet(false, true)) return;
+        resultRowIndexes.clear();
         resultFilterState.clearAll();
         renderResultFilterToolbar();
         if (resultToolbar != null) resultToolbar.getNode().setDisable(true);
@@ -1814,6 +1818,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void renderResultFilterSnapshot(ResultFilterState.Snapshot snapshot) {
+        resultRowIndexes.clear();
         QueryResult active = snapshot.activeResult();
         resultTable.getColumns().clear();
         resultTable.getItems().clear();
@@ -1837,7 +1842,9 @@ public final class SqlEditorPane implements AutoCloseable {
         ObservableList<ObservableList<Object>> data = FXCollections.observableArrayList();
         for (int rowIndex : snapshot.visibleRowIndexes()) {
             if (rowIndex < 0 || rowIndex >= active.rows.size()) continue;
-            data.add(FXCollections.observableArrayList(active.rows.get(rowIndex)));
+            ObservableList<Object> row = FXCollections.observableArrayList(active.rows.get(rowIndex));
+            resultRowIndexes.put(row, rowIndex);
+            data.add(row);
         }
         resultTable.setItems(data);
         exportResultBtn.setDisable(active.rows.isEmpty());
@@ -1854,9 +1861,48 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void clearResultFilterState() {
+        resultRowIndexes.clear();
         resultFilterState.clearAll();
         lastQuerySql = null;
         renderResultFilterToolbar();
+    }
+
+    ResultExportSnapshot captureResultExportSnapshot() {
+        if (!Platform.isFxApplicationThread())
+            throw new IllegalStateException("Export capture requires FX thread");
+        var before = resultFilterState.snapshot();
+        QueryResult active = before.activeResult();
+        if (active == null || active.kind != QueryResult.Kind.QUERY) return null;
+        List<TableColumn<ObservableList<Object>, ?>> columns =
+                new ArrayList<>(resultTable.getColumns());
+        List<TableColumn<ObservableList<Object>, ?>> sorting =
+                new ArrayList<>(resultTable.getSortOrder());
+        Map<TableColumn<ObservableList<Object>, ?>, TableColumn.SortType> sortTypes =
+                new IdentityHashMap<>();
+        for (var column : sorting) sortTypes.put(column, column.getSortType());
+        boolean flushed = resultToolbar.flushPendingSearch();
+        var state = resultFilterState.snapshot();
+        if (state.activeResult() != active)
+            throw new IllegalStateException("Result changed during export capture");
+        if (flushed) {
+            resultTable.getColumns().setAll(columns);
+            sortTypes.forEach(TableColumn::setSortType);
+            resultTable.getSortOrder().setAll(sorting);
+            resultTable.sort();
+        }
+        List<Integer> rowPositions = new ArrayList<>();
+        for (var row : resultTable.getItems()) {
+            Integer position = resultRowIndexes.get(row);
+            if (position == null) throw new IllegalStateException("Missing result row identity");
+            rowPositions.add(position);
+        }
+        List<ResultExportSnapshot.Column> projection = new ArrayList<>();
+        for (var column : resultTable.getVisibleLeafColumns()) {
+            if (column.getUserData() instanceof Integer position && position >= 0)
+                projection.add(new ResultExportSnapshot.Column(position,
+                        Objects.toString(column.getProperties().get("sql-result-label"), "")));
+        }
+        return ResultExportSnapshot.capture(active, state.originalSql(), rowPositions, projection);
     }
 
     private String databaseFilterUnavailableReason(String sql, QueryResult result) {

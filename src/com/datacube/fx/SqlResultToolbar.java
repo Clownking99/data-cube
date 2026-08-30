@@ -176,6 +176,12 @@ public final class SqlResultToolbar {
         actions.searchChanged().accept(current);
     }
 
+    public boolean flushPendingSearch() {
+        boolean changed = !Objects.equals(committedSearch, search.getText());
+        commitSearchInput();
+        return changed;
+    }
+
     private void rebuildConditionChips(ResultFilterState.Snapshot snapshot, boolean hasQuery) {
         conditions.getChildren().clear();
         List<ResultColumn> columns = resultColumns(snapshot);

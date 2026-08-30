@@ -54,6 +54,34 @@ class SqlResultToolbarTest {
             new ResultColumn(5, "ID", Types.BIGINT, "BIGINT"));
 
     @Test
+    void explicitExportFlushCommitsOnceAndCancelsPendingDebounce() throws Exception {
+        AtomicInteger searches = new AtomicInteger();
+        AtomicReference<SqlResultToolbar> reference = new AtomicReference<>();
+        FxUiTestSupport.call(() -> {
+            SqlResultToolbar toolbar = toolbar(searches, new AtomicInteger());
+            reference.set(toolbar);
+            ((TextField) toolbar.getNode().lookup("#sql-result-search")).setText("pending");
+            assertTrue(toolbar.flushPendingSearch());
+            assertFalse(toolbar.flushPendingSearch());
+            assertEquals(1, searches.get());
+            return null;
+        });
+        CountDownLatch elapsed = new CountDownLatch(1);
+        FxUiTestSupport.call(() -> {
+            PauseTransition delay = new PauseTransition(Duration.millis(250));
+            delay.setOnFinished(event -> elapsed.countDown());
+            delay.play();
+            return null;
+        });
+        assertTrue(elapsed.await(5, TimeUnit.SECONDS));
+        FxUiTestSupport.call(() -> {
+            assertEquals(1, searches.get());
+            assertFalse(reference.get().flushPendingSearch());
+            return null;
+        });
+    }
+
+    @Test
     void compactToolbarReflectsLocalPreviewAndDoesNotApplyDatabaseImplicitly() throws Exception {
         AtomicInteger searchRequests = new AtomicInteger();
         AtomicInteger databaseRequests = new AtomicInteger();

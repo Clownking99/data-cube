@@ -27,6 +27,8 @@ import com.datacube.sqleditor.result.FilterOperator;
 import com.datacube.sqleditor.result.RenderedFilterQuery;
 import com.datacube.sqleditor.result.ResultFilterSqlRenderer;
 import com.datacube.sqleditor.result.ResultFilterState;
+import com.datacube.sqleditor.result.ResultExportScope;
+import com.datacube.sqleditor.result.ResultExportSnapshot;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -83,6 +85,42 @@ class SqlEditorResultFilterContractTest {
             new ResultColumn(2, "CREATED_AT", Types.TIMESTAMP, "timestamp"));
 
     @TempDir Path directory;
+
+    @Test
+    void exportFlushKeepsSortColumnOrderAndUsesFrozenVisibleRows() throws Exception {
+        try (PaneFixture fixture = new PaneFixture(null, null)) {
+            ResultExportSnapshot captured = FxUiTestSupport.call(() -> {
+                QueryResult active = QueryResult.query(List.of("name", "score", "hidden"),
+                        List.of(List.of("Ada", 1, "private"), List.of("Ada", 3, "private"),
+                                List.of("Bob", 9, "private")), 1);
+                showQuery(fixture.pane, active, "select name, score, hidden from export_source");
+                TableView<ObservableList<Object>> table = resultTable(fixture.pane);
+                var sequence = table.getColumns().get(0);
+                var name = table.getColumns().get(1);
+                var score = table.getColumns().get(2);
+                var hidden = table.getColumns().get(3);
+                hidden.setVisible(false);
+                table.getColumns().setAll(sequence, score, name, hidden);
+                score.setSortType(TableColumn.SortType.DESCENDING);
+                table.getSortOrder().setAll(score);
+                table.sort();
+                ((TextField) fixture.pane.getNode().lookup("#sql-result-search")).setText("Ada");
+                ResultExportSnapshot snapshot = fixture.pane.captureResultExportSnapshot();
+                assertEquals(List.of(score, name), table.getVisibleLeafColumns().stream()
+                        .filter(column -> column.getUserData() instanceof Integer).toList());
+                assertEquals(List.of(score), table.getSortOrder());
+                assertEquals(TableColumn.SortType.DESCENDING, score.getSortType());
+                assertEquals(List.of(List.of(3, "Ada"), List.of(1, "Ada")),
+                        snapshot.rows(ResultExportScope.CURRENT_FILTERED));
+                showQuery(fixture.pane, QueryResult.query(List.of("other"), List.of(List.of(99)), 1),
+                        "select other from newer_source");
+                return snapshot;
+            });
+            assertEquals("select name, score, hidden from export_source", captured.originalSql());
+            assertEquals(List.of(List.of(1, "Ada"), List.of(3, "Ada"), List.of(9, "Bob")),
+                    captured.rows(ResultExportScope.ALL_LOADED));
+        }
+    }
 
     @Test
     void preparedFailureUiMessageRejectsUntrustedDriverTextButKeepsSafeCodes() throws Exception {
