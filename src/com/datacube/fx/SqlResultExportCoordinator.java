@@ -76,6 +76,7 @@ final class SqlResultExportCoordinator implements AutoCloseable {
         latest = operation;
         boolean submitted = false;
         long ownerRevision = revision.getAsLong();
+        long submissionRevision = Long.MIN_VALUE;
         try {
             ResultExportSnapshot snapshot = capture.get();
             ownerRevision = revision.getAsLong();
@@ -100,7 +101,8 @@ final class SqlResultExportCoordinator implements AutoCloseable {
             var request = new Request(target, format, snapshot, selection.get(), table);
             boolean statusOwned = ownsStatus(operation, ownerRevision);
             if (statusOwned) status.accept("导出中...", false);
-            final long completionRevision = statusOwned ? revision.getAsLong() : Long.MIN_VALUE;
+            submissionRevision = statusOwned ? revision.getAsLong() : Long.MIN_VALUE;
+            final long completionRevision = submissionRevision;
             Future<?> future = tasks.submit(() -> {
                 try { return job.write(request, operation); }
                 finally { session.finish(operation); }
@@ -114,7 +116,8 @@ final class SqlResultExportCoordinator implements AutoCloseable {
             submitted = true;
             return future;
         } catch (RejectedExecutionException rejected) {
-            if (open() && latest == operation) status.accept("导出任务未能启动，请重试", true);
+            if (ownsStatus(operation, submissionRevision))
+                status.accept("导出任务未能启动，请重试", true);
             return null;
         } catch (CancellationException cancelled) {
             return null;

@@ -24,12 +24,14 @@ class SqlResultExportCoordinatorTest {
     private final class Ui implements SqlResultExportCoordinator.Ui {
         boolean cancelScope, cancelFile, overwrite = true;
         String capturedSql;
+        Runnable beforeChooseFile = () -> {};
         @Override public Optional<ResultExportOptionsDialog.Selection> chooseScope(
                 ResultExportSnapshot snapshot, boolean sql) {
             return cancelScope ? Optional.empty() : Optional.of(
                     new ResultExportOptionsDialog.Selection(ResultExportScope.CURRENT_FILTERED, false));
         }
         @Override public Path chooseFile(QueryResultFileWriter.Format format) {
+            beforeChooseFile.run();
             return cancelFile ? null : directory.resolve("result.csv");
         }
         @Override public String chooseTable(String sql) {
@@ -102,6 +104,38 @@ class SqlResultExportCoordinatorTest {
                 });
             } finally {
                 release.countDown();
+                coordinator.close();
+                tasks.close();
+            }
+        }
+    }
+
+    @Test void rejectedSubmissionKeepsNewerStatusButAllowsRetryToReportItsOwnStartupFailure()
+            throws Exception {
+        try (FxTaskRunner runner = new FxTaskRunner()) {
+            FxTaskScope tasks = runner.scope();
+            Ui ui = new Ui();
+            AtomicLong revision = new AtomicLong();
+            AtomicReference<String> status = new AtomicReference<>("ready");
+            var coordinator = new SqlResultExportCoordinator(tasks, this::snapshot, revision::get,
+                    (text, error) -> { status.set(text); revision.incrementAndGet(); },
+                    text -> true, ui, (request, operation) -> request.target().path());
+            try {
+                FxUiTestSupport.call(() -> {
+                    ui.beforeChooseFile = () -> {
+                        status.set("new query");
+                        revision.incrementAndGet();
+                        runner.close();
+                    };
+                    assertNull(coordinator.export(QueryResultFileWriter.Format.CSV));
+                    assertFalse(tasks.isClosed());
+                    assertEquals("new query", status.get());
+                    ui.beforeChooseFile = () -> {};
+                    assertNull(coordinator.export(QueryResultFileWriter.Format.CSV));
+                    assertEquals("导出任务未能启动，请重试", status.get());
+                    return null;
+                });
+            } finally {
                 coordinator.close();
                 tasks.close();
             }
