@@ -1,6 +1,6 @@
 # 查询结果列控制验收
 
-日期：2026-08-30；生产/测试提交：`719685b`；worktree：`codex/release-acceptance`。
+日期：2026-08-30；首轮生产/测试提交：`719685b`；表头兼容修复：`fade258`；worktree：`codex/release-acceptance`。
 
 ## 结论与范围
 
@@ -39,6 +39,7 @@ exit $columnTestExit
 | 防抖实际触发及增删条件后保留列视图 | `columnMenuPreservesItsViewAcrossDebounceAndConditionTransitions` |
 | 无结果禁用、零行查询可用、新结果重置、旧菜单不影响新列 | `columnMenuResetsForNewResultAndIgnoresOldItems` |
 | 复制按保留后的用户列顺序，不回到初始列顺序 | `allCopyModesFollowVisibleColumnOrderAndHandleRaggedRowsAndShortcut` |
+| 设置 OFF→INLINE→HOVER→OFF 后已有表头即时变化，同时保留列对象/顺序/隐藏/宽度/排序 | `commentModeChangesRefreshExistingHeadersWithoutResettingColumnView` |
 
 CSV 测试实际调用现有写入器并读取临时文件，仅去掉写入器原有 UTF-8 BOM 后比较确切表头与行序；不是只断言内存快照。当前范围为 `score,name / 3,Ada / 1,Ada`，全部已加载为 `score,name / 1,Ada / 3,Ada / 9,Bob`，隐藏数据均不输出。原复制测试在筛选后期待重置列顺序，与新需求冲突；现保留精确行/单元格断言，改为期望用户选择的 `CREATED_AT, NAME, SCORE`。
 
@@ -60,4 +61,7 @@ CSV 测试实际调用现有写入器并读取临时文件，仅去掉写入器�
 
 - 任务审查范围 `ca3a157..719685b`，`column_controls_review`：当前行为符合设计，质量 Approved，0 Critical/Important/Minor；历史 TDD 偏差单独保留如上。
 - 主代理核对生产差异、XML、实际桌面操作与退出；没有依据工具延迟或旧断言推断数据库故障。
-- 整分支只读审查、本地快进合并及合并后完整回归待记录。用户已授权本地集成完成增量；不自动推送、打 tag、安装或发布。
+- 首次整分支审查 `edce8a2..31e59f6` 发现1项 Important：同一结果保留列后，原 `commentModeListener` 不能再通过重建列刷新注释；另有1项 Minor：路线图旧状态仍称入口缺失。主代理亦在 CodeGraph 调用边界检查中发现相同表头风险。
+- `fade258` 最小修复为直接更新现有数据列表头（包括隐藏列），不重建列/行。新增测试在修复前运行34项、1项预期断言失败，修复后34/34通过。路线图旧状态已改正，设计/计划补充表现设置刷新规则。
+- 主代理在 `fade258` 后按上方临时非 headless 方式执行完整 `test --rerun-tasks`：退出码0、33秒、8任务全执行；重新读取138 suites、1216 tests、**1213 passed、0 failures/errors、3 live skipped**。当前 XML 为这次运行，前面的1215总数为首轮历史证据；桌面观察仍明确对应719685b，未把新表头修复描述为重新桌面验收。
+- 修复复审、本地快进合并及合并后完整回归待记录。用户已授权本地集成完成增量；不自动推送、打 tag、安装或发布。

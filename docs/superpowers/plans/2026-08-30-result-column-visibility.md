@@ -284,6 +284,8 @@ if (resultColumnMenu != null) {
 
 ## Controller closeout
 
+整分支审查修复：`fade258` 将既有 commentModeListener 改为刷新当前列表头，不走身份保留的行渲染路径。新增 `commentModeChangesRefreshExistingHeadersWithoutResettingColumnView` 在修复前失败、修复后通过；验证 OFF→INLINE→HOVER→OFF 与列对象/顺序/隐藏/211px宽度/排序保留。主代理后续完整强制回归1213 passed、3 live skipped、0 failures/errors。此项补充设计遗漏的既有表现设置兼容，不扩展新功能范围。
+
 - [x] Inspect actual diff and XML; independent task review complete; historical TDD deviation retained, no current code defect found.
 - [x] Supported computer-use synthetic UI: hiding, last-column guard, Show All, search preservation, CSV summary, compact/light layout, new-result reset and normal exit observed. No desktop file saved; denied Excel path not retried.
 - [x] Update candidate notes and acceptance records, preserving historical failed/blocked attempts.
