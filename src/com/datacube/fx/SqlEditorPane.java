@@ -193,6 +193,8 @@ public final class SqlEditorPane implements AutoCloseable {
     /** 最近一次单条查询的原 SQL（用于安全重查与「复制 INSERT」解析目标表）。 */
     private String lastQuerySql;
     private SqlDraftEditorBinding draftBinding;
+    private SqlDraftRecoveryIntent recoveryIntent;
+    private String recoveredUneditedSql;
 
     SqlDraftEditorBinding bindDraft(SqlDraftCoordinator runtime, java.util.UUID id, Long savedAt,
             java.util.function.Consumer<SqlDraftEditorBinding> detached) {
@@ -201,10 +203,11 @@ public final class SqlEditorPane implements AutoCloseable {
                 new SqlDraftCoordinator.Source() {
                     public boolean hasText() { return editorArea.getLength() != 0; }
                     public SqlDraft capture(java.util.UUID draftId, long at) {
-                        ConnConfig connection = currentConn();
-                        return new SqlDraft(draftId, at, connection == null ? null : connection.id(),
-                                connection == null ? null : connection.type(),
-                                connection == null ? null : connection.name(), schemaField.getText(), editorArea.getText());
+                        SqlDraftRecoveryIntent identity = recoveryPassive()
+                                ? recoveryIntent : SqlDraftRecoveryIntent.from(currentConn());
+                        return new SqlDraft(draftId, at, identity.connectionId(), identity.connectionType(),
+                                identity.connectionName(), schemaField.getText(),
+                                recoveredUneditedSql == null ? editorArea.getText() : recoveredUneditedSql);
                     }
                 }, detached);
         try { root.getChildren().add(draftBinding.getNode()); }
@@ -223,6 +226,23 @@ public final class SqlEditorPane implements AutoCloseable {
                          AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
                          ConnConfig boundConn, String initialSchema, SqlHistoryStore history,
                          ShortcutSettings shortcuts, FxTaskRunner runner) {
+        this(session, connections, treeSvc, settings, openDesigner, boundConn, initialSchema,
+                history, shortcuts, runner, null);
+    }
+
+    static SqlEditorPane recoverDraft(SessionContext session, ConnectionManager connections,
+            ObjectTreeService treeSvc, AppSettings settings,
+            java.util.function.BiConsumer<String, TableRef> openDesigner, SqlDraft draft,
+            SqlHistoryStore history, ShortcutSettings shortcuts, FxTaskRunner runner) {
+        java.util.Objects.requireNonNull(draft, "draft");
+        return new SqlEditorPane(session, connections, treeSvc, settings, openDesigner, null,
+                draft.schema(), history, shortcuts, runner, draft);
+    }
+
+    private SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
+                         AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
+                         ConnConfig boundConn, String initialSchema, SqlHistoryStore history,
+                         ShortcutSettings shortcuts, FxTaskRunner runner, SqlDraft recoveredDraft) {
         this.session = session;
         this.connections = connections;
         this.treeSvc = treeSvc;
@@ -232,6 +252,8 @@ public final class SqlEditorPane implements AutoCloseable {
         this.editorConnection = boundConn;
         this.history = history;
         this.shortcuts = shortcuts;
+        this.recoveryIntent = recoveredDraft == null ? null : new SqlDraftRecoveryIntent(
+                recoveredDraft.connectionId(), recoveredDraft.connectionType(), recoveredDraft.connectionName());
         ConstructionOwner construction = new ConstructionOwner();
         try {
             this.tasks = runner.scope();
@@ -254,6 +276,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 refreshResultColumnHeaders(snapshot.activeResult());
             };
             this.activeConnectionListener = (obs, oldConnection, connection) -> {
+                if (recoveryIntent != null) return;
                 if (admission.pinned() == null) {
                     if (connection != null && connection.type() != DbType.REDIS) prewarm(connection);
                     renderDisconnectedCandidate(connection);
@@ -272,7 +295,13 @@ public final class SqlEditorPane implements AutoCloseable {
                     }, this::writeClipboard,
                     () -> root.getScene() == null ? null : root.getScene().getWindow());
             construction.own(resultExports::close);
-            if (initialSchema != null && !initialSchema.isBlank()) {
+            if (recoveredDraft != null) {
+                schemaField.setText(initialSchema == null ? "" : initialSchema);
+                setSqlText(recoveredDraft.sql());
+                if (!recoveredDraft.sql().equals(editorArea.getText())) {
+                    recoveredUneditedSql = recoveredDraft.sql();
+                }
+            } else if (initialSchema != null && !initialSchema.isBlank()) {
                 schemaField.setText(initialSchema.trim());
             }
             settings.commentModeProperty().addListener(commentModeListener);
@@ -287,7 +316,7 @@ public final class SqlEditorPane implements AutoCloseable {
     public void setSqlText(String sql) {
         if (draftEditingBlocked() || sql == null || editorArea == null) return;
         editorArea.replaceText(sql);
-        applyHighlighting(sql);
+        applyHighlighting(editorArea.getText());
     }
 
     /** Captures history data on FX; persistence itself always runs on a virtual thread. */
@@ -315,17 +344,37 @@ public final class SqlEditorPane implements AutoCloseable {
     private ConnConfig currentConn() {
         ConnConfig pinned = admission.pinned();
         if (pinned != null) return pinned;
+        if (recoveryIntent != null) return recoveryIntent.resolve(connections::config);
         ConnConfig candidate = session.getActiveConnection();
         return candidate == null || candidate.type() == DbType.REDIS ? null : candidate;
     }
 
+    private boolean recoveryPassive() {
+        return recoveryIntent != null && admission.pinned() == null;
+    }
+
+    boolean chooseRecoveryConnection(ConnConfig choice) {
+        if (!recoveryPassive() || draftEditingBlocked() || !sessionOperations.snapshot().accepting()
+                || choice == null || choice.id() == null || choice.id().isBlank()
+                || (choice.type() != DbType.POSTGRESQL && choice.type() != DbType.ORACLE)) return false;
+        recoveryIntent = SqlDraftRecoveryIntent.from(choice);
+        renderDisconnectedCandidate(currentConn());
+        draftEdited();
+        return true;
+    }
+
     /** FX admission point: pin before safety/schema/oracle decisions or worker submission. */
     private ConnConfig admitCurrentConnection() {
-        ConnConfig pinned = admission.admit(currentConn());
+        ConnConfig candidate = currentConn();
+        if (recoveryPassive() && candidate == null) {
+            throw new IllegalStateException("草稿连接不可用，请重新选择连接");
+        }
+        ConnConfig pinned = admission.admit(candidate);
         editorConnection = pinned;
         if (jdbcSession == null) connectionBadge.setText("🔗 " + pinned.name() + " · 未连接");
         renderConnectionGuidance();
         draftEdited();
+        if (recoveryIntent != null) prewarm(pinned);
         return pinned;
     }
 
@@ -817,15 +866,20 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private SqlConnectionGuidance guidance() {
-        return SqlConnectionGuidance.from(admission.pinned(), session.getActiveConnection());
+        return SqlConnectionGuidance.from(admission.pinned(),
+                recoveryIntent == null ? session.getActiveConnection() : currentConn());
     }
 
     private void renderConnectionGuidance() {
         if (connectionGuidance == null) return;
         SqlConnectionGuidance state = guidance();
-        connectionGuidance.setText(state.text());
-        connectionGuidance.setVisible(!state.text().isEmpty());
-        connectionGuidance.setManaged(!state.text().isEmpty());
+        String text = recoveryPassive()
+                ? (state.hasConnection() ? "草稿已恢复，尚未连接；执行时将绑定原连接。"
+                    : "草稿连接不可用，请为此草稿重新选择连接后执行。")
+                : state.text();
+        connectionGuidance.setText(text);
+        connectionGuidance.setVisible(!text.isEmpty());
+        connectionGuidance.setManaged(!text.isEmpty());
         environmentBadge.setVisible(state.hasConnection());
         environmentBadge.setManaged(state.hasConnection());
         readOnlyBadge.setVisible(state.hasConnection());
@@ -942,7 +996,10 @@ public final class SqlEditorPane implements AutoCloseable {
         // 行号栏
         editorArea.setParagraphGraphicFactory(LineNumberFactory.get(editorArea));
         // 语法高亮：文本变化后单遍正则重算样式区间并应用到富文本
-        editorArea.textProperty().addListener((obs, o, n) -> applyHighlighting(n));
+        editorArea.textProperty().addListener((obs, oldText, newText) -> {
+            recoveredUneditedSql = null;
+            applyHighlighting(newText);
+        });
         editorArea.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
             if (draftEditingBlocked()) { e.consume(); return; }
             if (shortcuts.get(ShortcutAction.SQL_EXECUTE).match(e)) {
@@ -1373,6 +1430,7 @@ public final class SqlEditorPane implements AutoCloseable {
      * 后台校验表是否存在，存在则回主线程打开表设计器。
      */
     private void onCtrlClick(javafx.scene.input.MouseEvent e) {
+        if (recoveryPassive()) return;
         if (openDesigner == null) return;
         ConnConfig active = currentConn();
         if (active == null) return;
@@ -2192,6 +2250,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** 预热元数据名称（每连接一次）：绑定连接只预热它；未绑定时监听全局活动连接变化。 */
     private void installMetadataPrewarm() {
+        if (recoveryPassive()) return;
         if (editorConnection != null) {
             prewarm(editorConnection);
             return;
@@ -2206,6 +2265,7 @@ public final class SqlEditorPane implements AutoCloseable {
      * 若并发冲突或失败则静默跳过并允许下次重试，不影响关键字补全。
      */
     private void prewarm(ConnConfig cfg) {
+        if (recoveryPassive()) return;
         if (tasks.isClosed() || cfg == null || cfg.type() == DbType.REDIS) return;
         final String connId = cfg.id();
         final String database = cfg.database();
@@ -2240,6 +2300,7 @@ public final class SqlEditorPane implements AutoCloseable {
      * 后台加载并先返回空，加载完成后回调 {@link SqlAutoComplete#refresh()}。
      */
     private Collection<String> membersFor(String qualifier) {
+        if (recoveryPassive()) return List.of();
         if (tasks.isClosed()) return List.of();
         ConnConfig active = currentConn();
         if (active == null) return List.of();
@@ -2271,6 +2332,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** 后台加载指定表的列名并入缓存，成功后触发补全刷新。 */
     private void loadColumnsAsync(String connId, String schema, String tableName, String key) {
+        if (recoveryPassive()) return;
         if (tasks.isClosed()) return;
         if (!columnLoading.add(key)) return;
         metadataTasks.submit(() -> {
