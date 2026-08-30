@@ -72,6 +72,22 @@ class QueryXlsxExportTest {
                 snapshot, ResultExportScope.CURRENT_FILTERED, "synthetic"));
     }
 
+    @Test void isoControlsDoNotWidenQueryXlsxButRemainInSerializedText() throws Exception {
+        String controls = "\u007f".repeat(200) + "\u0080".repeat(28) + "\u009f".repeat(27);
+        var snapshot = ResultExportSnapshot.capture(QueryResult.query(
+                List.of("hidden", controls, "rank"), List.of(List.of("h", controls, 1)), 1),
+                "select synthetic", List.of(0),
+                List.of(new ResultExportSnapshot.Column(1, controls)));
+        Path path = directory.resolve("controls.xlsx");
+        write(path, snapshot, ResultExportScope.ALL_LOADED, false, new ResultExportOperation());
+        var sheet = read(path, SHEET);
+        assertEquals(1, count(sheet, "//*[local-name()='col']"));
+        assertEquals("12", value(sheet, "//*[local-name()='col']/@width"));
+        assertEquals(2, count(sheet, CELL));
+        assertEquals(controls, value(sheet, CELL + "[@r='A1']"));
+        assertEquals(controls, value(sheet, CELL + "[@r='A2']"));
+    }
+
     @Test void samplingFailureAndCancellationPreserveOldFileAndCleanTemporary() throws Exception {
         for (boolean cancel : List.of(false, true)) {
             Path path = directory.resolve(cancel ? "cancel.xlsx" : "failure.xlsx");

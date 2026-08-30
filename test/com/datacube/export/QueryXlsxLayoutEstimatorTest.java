@@ -36,6 +36,16 @@ class QueryXlsxLayoutEstimatorTest {
         assertEquals(14, width("n", "\n".repeat(250) + "😀".repeat(7)));
     }
 
+    @Test void ignoresDelAndC1ControlsInHeadersAndValuesWithinTheScanBudget() {
+        String controls = "\u007f".repeat(200) + "\u0080".repeat(28) + "\u009f".repeat(27);
+        assertEquals(12, width(controls, null));
+        assertEquals(12, width("n", controls));
+        assertEquals(13, width("n", "\u007e".repeat(11)));
+        assertEquals(14, width("n", "\u00a0".repeat(6)));
+        assertEquals(15, width("n", "\u007e".repeat(11) + "\u007f\u0080\u009f\u00a0"));
+        assertEquals(12, width("n", "\u007f".repeat(256) + "x".repeat(100)));
+    }
+
     @Test void limitsRowsWithoutReadingThe101st() {
         AtomicInteger reads = new AtomicInteger();
         List<List<Object>> rows = new AbstractList<>() {

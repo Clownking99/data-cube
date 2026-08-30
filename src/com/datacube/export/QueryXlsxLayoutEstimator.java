@@ -55,7 +55,8 @@ public final class QueryXlsxLayoutEstimator {
                 line = 0;
             } else if (cp == '\t') {
                 line += 4;
-            } else if (cp >= 0x20 && cp != 0xFFFE && cp != 0xFFFF) {
+            } else if (cp >= 0x20 && (cp < 0x7F || cp >= 0xA0)
+                    && cp != 0xFFFE && cp != 0xFFFF) {
                 line += cp < 0x80 ? 1 : 2;
             }
             if (line >= 58) return 58;
