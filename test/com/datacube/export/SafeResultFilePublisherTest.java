@@ -2,6 +2,7 @@ package com.datacube.export;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -47,12 +48,16 @@ class SafeResultFilePublisherTest {
                 }));
         assertEquals(SafeResultFilePublisher.Stage.TARGET_CHANGED, failure.stage());
         assertEquals("external change", Files.readString(target));
+        var moverCalls = new AtomicInteger();
         var unsupported = new SafeResultFilePublisher((source, destination) -> {
+            moverCalls.incrementAndGet();
             throw new AtomicMoveNotSupportedException(source.toString(), destination.toString(), "test");
         }, path -> Files.deleteIfExists(path), path -> fail("cleanup"));
-        assertThrows(SafeResultFilePublisher.Failure.class, () -> unsupported.publish(
+        var atomicFailure = assertThrows(SafeResultFilePublisher.Failure.class, () -> unsupported.publish(
                 SafeResultFilePublisher.capture(target), new ResultExportOperation(),
                 (path, operation) -> Files.writeString(path, "new")));
+        assertEquals(SafeResultFilePublisher.Stage.PUBLISH, atomicFailure.stage());
+        assertEquals(1, moverCalls.get());
         assertEquals("external change", Files.readString(target));
     }
 
@@ -83,5 +88,89 @@ class SafeResultFilePublisherTest {
                     cancelled.cancel();
                 }));
         assertEquals("new", Files.readString(target));
+    }
+
+    @Test void streamCloseFailurePreservesTarget() throws Exception {
+        Path target = Files.writeString(directory.resolve("result.csv"), "old");
+        var failure = assertThrows(SafeResultFilePublisher.Failure.class, () -> publisher().publish(
+                SafeResultFilePublisher.capture(target), new ResultExportOperation(), (path, operation) -> {
+                    try (var writer = new java.io.FilterWriter(Files.newBufferedWriter(path)) {
+                        @Override public void close() throws IOException {
+                            super.close();
+                            throw new IOException("close sentinel");
+                        }
+                    }) { writer.write("new"); }
+                }));
+        assertEquals(SafeResultFilePublisher.Stage.WRITE, failure.stage());
+        assertEquals("old", Files.readString(target));
+    }
+
+    @Test void sameCanonicalTargetIsExclusiveAndLockIsReleased() throws Exception {
+        Path target = directory.resolve("result.csv");
+        var selected = SafeResultFilePublisher.capture(target);
+        var alias = SafeResultFilePublisher.capture(directory.resolve(".").resolve("result.csv"));
+        var started = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var worker = new java.util.concurrent.FutureTask<Path>(() -> publisher().publish(selected,
+                new ResultExportOperation(), (path, operation) -> {
+                    Files.writeString(path, "first");
+                    started.countDown();
+                    assertTrue(release.await(5, java.util.concurrent.TimeUnit.SECONDS));
+                }));
+        Thread.ofVirtual().start(worker);
+        try {
+            assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            var failure = assertThrows(SafeResultFilePublisher.Failure.class, () -> publisher().publish(alias,
+                    new ResultExportOperation(), (path, operation) -> fail("Second writer must not start")));
+            assertEquals(SafeResultFilePublisher.Stage.TARGET_BUSY, failure.stage());
+            release.countDown();
+            worker.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            publisher().publish(SafeResultFilePublisher.capture(target), new ResultExportOperation(),
+                    (path, operation) -> Files.writeString(path, "second"));
+            assertEquals("second", Files.readString(target));
+        } finally {
+            release.countDown();
+            worker.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        }
+    }
+
+    @Test void cleanupFailureReportsOnlyOwnedPathAndFixedStage() throws Exception {
+        Path target = Files.writeString(directory.resolve("result.csv"), "old");
+        var owned = new AtomicReference<Path>();
+        var diagnosed = new AtomicReference<Path>();
+        var brokenCleaner = new SafeResultFilePublisher((source, destination) ->
+                fail("Failed writer cannot publish"),
+                path -> { throw new IOException("private cleanup text"); }, diagnosed::set);
+        var failure = assertThrows(SafeResultFilePublisher.Failure.class, () -> brokenCleaner.publish(
+                SafeResultFilePublisher.capture(target), new ResultExportOperation(), (path, operation) -> {
+                    owned.set(path);
+                    Files.writeString(path, "partial");
+                    throw new IOException("private row value");
+                }));
+        assertEquals(SafeResultFilePublisher.Stage.CLEANUP, failure.stage());
+        assertEquals(owned.get(), diagnosed.get());
+        assertEquals(owned.get(), failure.temporaryPath());
+        assertTrue(Files.exists(owned.get()));
+        assertEquals("old", Files.readString(target));
+        assertFalse(failure.getMessage().contains("private"));
+        assertNull(failure.getCause());
+    }
+
+    @Test void directoriesAreRejected() {
+        assertThrows(SafeResultFilePublisher.Failure.class,
+                () -> SafeResultFilePublisher.capture(directory));
+    }
+
+    @Test void symbolicLinkTargetIsRejectedWithoutTouchingDestination() throws Exception {
+        Path actual = Files.writeString(directory.resolve("actual.csv"), "old");
+        Path link = directory.resolve("link.csv");
+        try {
+            Files.createSymbolicLink(link, actual);
+        } catch (UnsupportedOperationException | java.nio.file.FileSystemException unavailable) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false,
+                    "Symbolic link creation unavailable for this test account");
+        }
+        assertThrows(SafeResultFilePublisher.Failure.class, () -> SafeResultFilePublisher.capture(link));
+        assertEquals("old", Files.readString(actual));
     }
 }

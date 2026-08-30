@@ -141,4 +141,95 @@ class SqlResultExportCoordinatorTest {
             }
         }
     }
+
+    @Test void rejectedSubmissionReleasesBusyStateAndUsesFixedMessage() throws Exception {
+        FxTaskRunner runner = new FxTaskRunner();
+        FxTaskScope tasks = runner.scope();
+        runner.close();
+        var messages = new ArrayList<String>();
+        var coordinator = new SqlResultExportCoordinator(tasks, this::snapshot, () -> 0L,
+                (text, error) -> messages.add(text), text -> true, new Ui(),
+                (request, operation) -> { fail("Closed runner cannot start work"); return null; });
+        try {
+            FxUiTestSupport.call(() -> {
+                assertNull(coordinator.export(QueryResultFileWriter.Format.CSV));
+                assertNull(coordinator.export(QueryResultFileWriter.Format.CSV));
+                assertEquals(2, messages.stream().filter("导出任务未能启动，请重试"::equals).count());
+                return null;
+            });
+        } finally {
+            coordinator.close();
+            tasks.close();
+        }
+    }
+
+    @Test void closeCancelsUnpublishedFileAndSuppressesCompletionUi() throws Exception {
+        try (FxTaskRunner runner = new FxTaskRunner()) {
+            FxTaskScope tasks = runner.scope();
+            CountDownLatch started = new CountDownLatch(1), release = new CountDownLatch(1);
+            AtomicInteger callbacks = new AtomicInteger();
+            var coordinator = new SqlResultExportCoordinator(tasks, this::snapshot, () -> 0L,
+                    (text, error) -> callbacks.incrementAndGet(), text -> true, new Ui(),
+                    (request, operation) -> new SafeResultFilePublisher().publish(
+                            request.target(), operation, (temporary, token) -> {
+                                Files.writeString(temporary, "partial");
+                                started.countDown();
+                                assertTrue(release.await(5, TimeUnit.SECONDS));
+                                token.check();
+                            }));
+            try {
+                Future<?> future = FxUiTestSupport.call(
+                        () -> coordinator.export(QueryResultFileWriter.Format.CSV));
+                assertTrue(started.await(5, TimeUnit.SECONDS));
+                int beforeClose = callbacks.get();
+                coordinator.close();
+                release.countDown();
+                future.get(5, TimeUnit.SECONDS);
+                FxUiTestSupport.call(() -> {
+                    assertEquals(beforeClose, callbacks.get());
+                    assertNull(coordinator.export(QueryResultFileWriter.Format.CSV));
+                    assertFalse(coordinator.copyInsert());
+                    return null;
+                });
+                assertFalse(Files.exists(directory.resolve("result.csv")));
+                try (var paths = Files.list(directory)) {
+                    assertEquals(0, paths.count());
+                }
+            } finally {
+                release.countDown();
+                coordinator.close();
+                tasks.close();
+            }
+        }
+    }
+
+    @Test void clipboardFailureNeverReportsSuccessAndBlockedValuesNeverReachWriter() throws Exception {
+        try (FxTaskRunner runner = new FxTaskRunner()) {
+            FxTaskScope tasks = runner.scope();
+            AtomicInteger writes = new AtomicInteger();
+            AtomicReference<String> message = new AtomicReference<>();
+            var active = new AtomicReference<>(snapshot());
+            var coordinator = new SqlResultExportCoordinator(tasks, active::get, () -> 0L,
+                    (text, error) -> message.set(text), text -> { writes.incrementAndGet(); return false; },
+                    new Ui(), (request, operation) -> { fail("No file export requested"); return null; });
+            try {
+                FxUiTestSupport.call(() -> {
+                    assertFalse(coordinator.copyInsert());
+                    assertEquals("复制失败：无法写入系统剪贴板", message.get());
+                    assertEquals(1, writes.get());
+                    active.set(ResultExportSnapshot.capture(
+                            QueryResult.query(List.of("id"), List.of(List.of(Double.NaN)), 1),
+                            "select id from t", List.of(0),
+                            List.of(new ResultExportSnapshot.Column(0, "id"))));
+                    assertFalse(coordinator.copyInsert());
+                    assertEquals(1, writes.get());
+                    assertEquals("当前范围或值类型不能生成 INSERT", message.get());
+                    return null;
+                });
+            } finally {
+                coordinator.close();
+                tasks.close();
+            }
+        }
+    }
 }

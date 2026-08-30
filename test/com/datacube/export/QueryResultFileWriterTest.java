@@ -152,4 +152,21 @@ class QueryResultFileWriterTest {
         assertEquals("\uFEFFrank,name\r\n30,three\r\n10,one\r\n", Files.readString(current));
         assertEquals("\uFEFFrank,name\r\n10,one\r\n20,two\r\n30,three\r\n", Files.readString(all));
     }
+
+    @Test void htmlAndXmlRetainEscapingUnicodeAndFullScalarTime() throws Exception {
+        var timestamp = java.time.LocalDateTime.of(2026, 8, 30, 12, 34, 56, 123456789);
+        var snapshot = snapshot(List.of(timestamp, true, "甲<&\"\n乙"));
+        Path html = directory.resolve("result.html");
+        Path xml = directory.resolve("result.xml");
+        QueryResultFileWriter.write(html, QueryResultFileWriter.Format.HTML, snapshot,
+                ResultExportScope.CURRENT_FILTERED, false, null, new ResultExportOperation());
+        QueryResultFileWriter.write(xml, QueryResultFileWriter.Format.XML, snapshot,
+                ResultExportScope.CURRENT_FILTERED, false, null, new ResultExportOperation());
+        for (Path path : List.of(html, xml)) {
+            String text = Files.readString(path);
+            assertTrue(text.contains("2026-08-30T12:34:56.123456789"));
+            assertTrue(text.contains("甲&lt;&amp;&quot;\n乙"));
+            assertFalse(text.contains("甲<&\""));
+        }
+    }
 }

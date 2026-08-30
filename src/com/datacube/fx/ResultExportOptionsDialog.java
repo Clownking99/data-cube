@@ -44,6 +44,9 @@ final class ResultExportOptionsDialog {
                 + "\n全部已加载不代表数据库全量，不会重新查询。");
         Label truncated = new Label(snapshot.truncated()
                 ? "仅包含已加载结果，数据库中可能还有更多行" : "");
+        truncated.setId("result-export-truncated");
+        truncated.setVisible(snapshot.truncated());
+        truncated.setManaged(snapshot.truncated());
         Label values = new Label();
         values.setId("result-export-values");
         CheckBox consent = new CheckBox("我理解并同意导出当前展示");

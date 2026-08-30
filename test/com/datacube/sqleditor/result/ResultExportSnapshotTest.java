@@ -41,4 +41,27 @@ class ResultExportSnapshotTest {
         assertThrows(IllegalArgumentException.class,
                 () -> ResultExportSnapshot.capture(QueryResult.update(1, 1), "", List.of(), columns));
     }
+
+    @Test void allLoadedMeansActiveNotCachedOriginalAndTruncationIsCaptured() {
+        var columns = List.of(new com.datacube.spi.model.ResultColumn(0, "id",
+                java.sql.Types.INTEGER, "int4"));
+        var original = QueryResult.queryWithMetadata(columns,
+                List.of(List.of(1), List.of(2), List.of(3)), 1, false);
+        var active = QueryResult.queryWithMetadata(columns, List.of(List.of(2)), 1, true);
+        var state = new ResultFilterState();
+        state.showOriginal(original, "select id from t", null);
+        state.appendCondition(new FilterCondition(0, FilterConnector.AND,
+                FilterOperator.IS_NOT_NULL, null));
+        var request = state.databaseRequest();
+        assertTrue(state.databaseApplied(request.generation(), active));
+        var current = state.snapshot();
+        var captured = ResultExportSnapshot.capture(current.activeResult(), current.originalSql(),
+                current.visibleRowIndexes(), List.of(new ResultExportSnapshot.Column(0, "id")));
+        assertSame(original, current.originalResult());
+        assertEquals(List.of(List.of(2)), captured.rows(ResultExportScope.ALL_LOADED));
+        assertTrue(captured.truncated());
+        state.showOriginal(original, "select id from other", null);
+        assertTrue(captured.truncated());
+        assertEquals(1, captured.rows(ResultExportScope.ALL_LOADED).size());
+    }
 }

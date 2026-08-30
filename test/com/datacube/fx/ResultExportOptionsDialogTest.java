@@ -46,4 +46,15 @@ class ResultExportOptionsDialogTest {
             return null;
         });
     }
+    @Test void nonTruncatedSnapshotDoesNotReserveTruncationSpace() throws Exception {
+        FxUiTestSupport.call(() -> {
+            var dialog = ResultExportOptionsDialog.create(null, snapshot(List.of(0), 1), false);
+            var content = (javafx.scene.Parent) ((ScrollPane) dialog.getDialogPane().getContent())
+                    .getContent();
+            Label truncated = (Label) content.lookup("#result-export-truncated");
+            assertFalse(truncated.isVisible());
+            assertFalse(truncated.isManaged());
+            return null;
+        });
+    }
 }
