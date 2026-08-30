@@ -223,7 +223,7 @@ public final class SqlEditorPane implements AutoCloseable {
             this.mandatoryCloseGuard = AsyncTabCloseGuards.retryable(this::startMandatoryCloseAttempt);
             this.commentModeListener = (obs, oldMode, newMode) -> {
                 ResultFilterState.Snapshot snapshot = resultFilterState.snapshot();
-                if (snapshot.activeResult() != null) renderResultFilterSnapshot(snapshot);
+                refreshResultColumnHeaders(snapshot.activeResult());
             };
             this.activeConnectionListener = (obs, oldConnection, connection) -> {
                 if (admission.pinned() == null) {
@@ -2035,6 +2035,19 @@ public final class SqlEditorPane implements AutoCloseable {
         });
         applyColumnHeader(c, name, comment);
         return c;
+    }
+
+    /** Applies the comment-display preference to existing result columns without rebuilding their view state. */
+    private void refreshResultColumnHeaders(QueryResult result) {
+        if (result == null || result.kind != QueryResult.Kind.QUERY || resultTable == null) return;
+        List<String> labels = orderedLabels(result);
+        List<String> comments = result.columnComments;
+        for (TableColumn<ObservableList<Object>, ?> column : resultTable.getColumns()) {
+            if (!(column.getUserData() instanceof Integer index)
+                    || index < 0 || index >= labels.size()) continue;
+            String comment = comments != null && index < comments.size() ? comments.get(index) : null;
+            applyColumnHeader(column, labels.get(index), comment);
+        }
     }
 
     /** 根据当前注释显示模式设置列头（纯文本 / 悬停 Tooltip / 固定两行）。 */

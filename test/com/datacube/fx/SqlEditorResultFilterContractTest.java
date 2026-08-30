@@ -1,6 +1,7 @@
 package com.datacube.fx;
 
 import com.datacube.config.AppSettings;
+import com.datacube.config.AppSettings.CommentMode;
 import com.datacube.config.CredentialCipher;
 import com.datacube.config.ShortcutSettings;
 import com.datacube.config.SqlHistoryStore;
@@ -85,6 +86,50 @@ class SqlEditorResultFilterContractTest {
             new ResultColumn(2, "CREATED_AT", Types.TIMESTAMP, "timestamp"));
 
     @TempDir Path directory;
+
+    @Test
+    void commentModeChangesRefreshExistingHeadersWithoutResettingColumnView() throws Exception {
+        try (PaneFixture fixture = new PaneFixture(null, null)) {
+            FxUiTestSupport.call(() -> {
+                fixture.settings.setCommentMode(CommentMode.OFF);
+                QueryResult result = QueryResult.query(List.of("name", "score", "hidden"),
+                        List.of(List.of("Ada", 3, "secret")), 1)
+                        .withColumnComments(List.of("person name", "result score", "private value"));
+                showQuery(fixture.pane, result, "select demo");
+                var table = resultTable(fixture.pane);
+                var seq = table.getColumns().get(0);
+                var name = table.getColumns().get(1);
+                var score = table.getColumns().get(2);
+                var hidden = table.getColumns().get(3);
+                table.getColumns().setAll(seq, score, name, hidden);
+                score.setPrefWidth(211);
+                score.setSortType(TableColumn.SortType.DESCENDING);
+                table.getSortOrder().setAll(score);
+                table.sort();
+                columnItem(fixture.pane, "sql-result-column-2").fire();
+                List<TableColumn<ObservableList<Object>, ?>> expectedColumns = List.copyOf(table.getColumns());
+                assertEquals("name", name.getText());
+                assertNull(name.getGraphic());
+
+                fixture.settings.setCommentMode(CommentMode.INLINE);
+                assertEquals("", name.getText());
+                assertInstanceOf(javafx.scene.layout.VBox.class, name.getGraphic());
+                assertCommentModeView(expectedColumns, table, hidden, score);
+
+                fixture.settings.setCommentMode(CommentMode.HOVER);
+                assertEquals("", name.getText());
+                assertInstanceOf(javafx.scene.control.Label.class, name.getGraphic());
+                assertNotNull(((javafx.scene.control.Label) name.getGraphic()).getTooltip());
+                assertCommentModeView(expectedColumns, table, hidden, score);
+
+                fixture.settings.setCommentMode(CommentMode.OFF);
+                assertEquals("name", name.getText());
+                assertNull(name.getGraphic());
+                assertCommentModeView(expectedColumns, table, hidden, score);
+                return null;
+            });
+        }
+    }
 
     @Test
     void columnMenuGuardsLastColumnAndRestoresAllWithoutChangingRows() throws Exception {
@@ -1735,6 +1780,17 @@ class SqlEditorResultFilterContractTest {
             lines.set(0, lines.getFirst().substring(1));
         }
         return lines;
+    }
+
+    private static void assertCommentModeView(
+            List<TableColumn<ObservableList<Object>, ?>> expectedColumns,
+            TableView<ObservableList<Object>> table,
+            TableColumn<ObservableList<Object>, ?> hidden,
+            TableColumn<ObservableList<Object>, ?> score) {
+        assertEquals(expectedColumns, table.getColumns());
+        assertFalse(hidden.isVisible());
+        assertEquals(211, score.getPrefWidth());
+        assertEquals(List.of(score), table.getSortOrder());
     }
 
     private static String labelText(SqlEditorPane pane, String name) throws Exception {
