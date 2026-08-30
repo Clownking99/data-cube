@@ -2,6 +2,8 @@
 
 ## Active plan: SQL draft recovery (2026-08-30)
 
+- P1 lifecycle analysis complete (read-only draft_lifecycle_analysis): isolate constructor/prewarm/global fallback plus async member completion/ctrl-click; preserve raw schema, close rejection/retry and construction-abort cleanup. P1.1 executable format plan written and self-reviewed; Task1 not yet dispatched, no production code. P1.2 store then P1.3 scheduler then P1.4 UI and P1.5 acceptance remain required; routine confirmations waived, not a blocker.
+
 - Previous goal turn made progress: column controls plus header regression fixed, reviewed and merged main0c4ecb9. Do not repeat. New worktree D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery branch codex/sql-draft-recovery base0c4ecb9; old release worktree/assets preserved. Fresh forced nonheadless baselineexit0/38s,XML138suites1216total1213passed0fail/errors3live skips,env restored. User routine-design confirmation waiver remains active, no push/tag/realDB/privatehistory/.testagent access. P1 design specifies independent exact bounded drafts, strict local preferences, single writer, explicit connection-free recovery, staged plans; draft_lifecycle_analysis read-only analysis in progress. No draft production code yet.
 
 ## Previous increment: product continuity / Windows CI path contract (2026-08-30)
