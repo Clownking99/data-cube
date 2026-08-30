@@ -38,11 +38,17 @@ try {
 exit $draftTestExit
 ```
 
-## 审查与纠偏（未关闭）
+## 审查与纠偏（P1.1已关闭）
 
 任务审查范围`1af69b8..97dab37`初评Approved、1项Minor：连接ID和Schema的非法代理字符测试缺失。主代理对照完整计划检查当前工作树，额外发现Important：`writeText`漏掉编码前长度检查，超限大字符串仍可能先分配UTF-8缓冲区。首轮19项通过不能证明这一内存边界。
 
 修复按原计划恢复完整代码/断言，并新增受限48MiB JVM测试32MiB合成字符串：退出码44代表编码先分配导致OOM，42代表测试输入本身分配失败（不能作为有效RED），0代表在分配编码缓冲区之前显式拒绝。修复、实际RED/GREEN及复审证据完成后追加于此。恢复的断言和新探针是首轮实现之后添加，不追溯计入原19项RED。
+
+修复前新增回归RED已观察：focused Gradle编译成功、exit1，20 tests / 1 failure / 0 errors / 0 skips。唯一失败为`oversizedTextIsRejectedBeforeAllocatingEncodingBuffer`，主代理读取XML确认`expected: <0> but was: <44>`，不是样本分配失败42。该证据确认原代码存在编码前额外分配；随后才恢复生产长度检查。GREEN与复审尚待记录。
+
+修复提交`4548dd6`：恢复原计划的编码前长度检查、完整断言与可读代码。focused GREEN exit0、20秒、20 tests / 0 failures / 0 skips；完整强制非headlessGREEN exit0、36秒、139 suites / 1236 tests / 1233 passed / 0 failures / 0 errors / 3原live skips，环境已恢复。主代理独立核对XML；两份生产文件与计划代码块逐字匹配，测试除一处空行外代码一致。复审范围`966003d..4548dd6`已Approved，0 Critical/Important/Minor，无剩余待核实项。
+
+主代理在提交`4548dd6`上再次执行完整强制非headless回归：exit0、29秒、8 tasks全部执行；139 suites / 1236 tests / 1233 passed / 0 failures / 0 errors / 3相同live skips。环境恢复；4个新增文档相对链接检查通过。P1.1格式任务完成，不代表P1整体恢复功能完成；下一步执行独立文件边界计划。
 
 ## Requirement | Evidence
 
@@ -50,11 +56,11 @@ exit $draftTestExit
 | --- | --- |
 | 精确格式、Unicode/空白、独立字节夹具 | `writesExactVersionOneBytesAndReadsIndependentFixture`；首轮通过 |
 | 空串与null元数据、稳定连接身份 | `distinguishesNullMetadataEmptyMetadataAndEmptySql`、`retainsIdentityAcrossSupportedTypesWithoutNameMatching`；首轮通过 |
-| SQL/元数据UTF-8容量边界 | `sqlByteLimitRejectsOnlyAboveBoundary`、`everyMetadataFieldUsesUtf8ByteLimit`；首轮通过，遗漏断言正在补回 |
+| SQL/元数据UTF-8容量边界 | `sqlByteLimitRejectsOnlyAboveBoundary`、`everyMetadataFieldUsesUtf8ByteLimit`；修复GREEN，遗漏断言已补回 |
 | 有界输入、损坏格式、尾部数据拒绝 | `maximumCombinedPayloadIsAcceptedAndWholeFileLimitIsBounded`、`rejectsBadHeadersEveryTruncationAndTrailingData`、`rejectsInvalidLengthsBeforeReadingPayload`；首轮通过 |
-| 身份、类型与UTF-8/UTF-16拒绝 | `rejectsInvalidIdentityTypeAndNullSqlOnWire`、`rejectsMalformedUtf8AndUnpairedSurrogatesWithoutSubstitution`；首轮通过但ID/Schema代理字符用例缺失正在补回 |
+| 身份、类型与UTF-8/UTF-16拒绝 | `rejectsInvalidIdentityTypeAndNullSqlOnWire`、`rejectsMalformedUtf8AndUnpairedSurrogatesWithoutSubstitution`；修复GREEN，ID/Schema代理字符用例已补回 |
 | 日志/异常不暴露SQL或连接详情 | `valueValidationAndDiagnosticsNeverExposePrivateText`；首轮通过 |
-| 编码前内存上限 | `oversizedTextIsRejectedBeforeAllocatingEncodingBuffer`；新增回归，尚未记录修复通过 |
+| 编码前内存上限 | `oversizedTextIsRejectedBeforeAllocatingEncodingBuffer`；修复前RED退出44，修复后GREEN退出0 |
 | 文件持久化、单写者、偏好、过期 | 已有完整计划，尚未实现/验收 |
 | 自动保存、关闭/清空/禁用竞态 | 尚未实现/验收 |
 | 离线恢复零DB调用、连接身份安全 | 生命周期代码分析完成，尚未实现/验收 |
