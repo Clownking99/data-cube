@@ -34,6 +34,7 @@
 - Directory parent must already exist; resolve trusted parent once, create only the named child if absent, reject symbolic/non-directory child. Keep root identity and lock-file identity; recheck before operations. This is defense against accidental replacement, not a sandbox against a hostile same-user process that can rename directories between checks.
 - Publish checks the old target identity/size/timestamps again after writing the temporary file; a changed target is not overwritten. File bytes are forced before rename. No directory-fsync/power-loss guarantee.
 - Failure exposes only a stage enum, no raw exception cause, SQL, connection metadata or full paths. Cleanup failure supersedes original stage because leftover SQL bytes require visible handling. Failed temporary artifacts are not automatically swept at startup by this layer.
+- Reject noncanonical case aliases before reading, publishing or deleting: a preexisting uppercase UUID filename or `Preferences.bin` is not implicitly adopted/overwritten through the canonical lowercase name on Windows. Detect aliases from bounded direct entry names on all platforms.
 - Preference parsing, unknown/corrupt same-ID preservation, 100 drafts/32MiB, 7-day expiry, clear barriers, availability UI and close/drain ordering are SqlDraftStore/coordinator work, not responsibilities of this I/O task.
 
 - [ ] **Step 1: Create compilable stubs and complete tests.**
@@ -211,6 +212,22 @@ class SqlDraftDirectoryTest {
             assertStage(SqlDraftDirectory.Stage.UNSAFE, () -> directory.read(name, 10));
             assertStage(SqlDraftDirectory.Stage.UNSAFE, () -> directory.delete(name));
             assertEquals(1, directory.entries().size());
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"00112233-4455-6677-8899-AABBCCDDEEFF.draft", "Preferences.bin"})
+    void rejectsCaseAliasesWithoutOverwritingOrDeletingExistingBytes(String alias) throws Exception {
+        Path root = temp.resolve("drafts");
+        try (SqlDraftDirectory directory = SqlDraftDirectory.open(root)) {
+            assertNotNull(directory);
+            Files.write(root.resolve(alias), OLD);
+            String canonical = alias.equals("Preferences.bin") ? "preferences.bin" : NAME;
+            assertStage(SqlDraftDirectory.Stage.UNSAFE, () -> directory.read(canonical, 10));
+            assertStage(SqlDraftDirectory.Stage.UNSAFE, () -> directory.publish(canonical, NEW));
+            assertStage(SqlDraftDirectory.Stage.UNSAFE, () -> directory.delete(canonical));
+            assertArrayEquals(OLD, Files.readAllBytes(root.resolve(alias)));
+            assertEquals(2, directory.entries().size());
         }
     }
 
@@ -464,14 +481,18 @@ final class SqlDraftDirectory implements AutoCloseable {
         catch (IOException | RuntimeException error) { throw new Failure(Stage.UNSAFE); }
     }
 
-    private Path target(String name) throws Failure {
-        if ("preferences.bin".equals(name)) return root.resolve(name);
+    private Path target(String name) throws IOException {
+        boolean allowed = "preferences.bin".equals(name);
         if (name != null && name.endsWith(".draft")) {
             String id = name.substring(0, name.length() - 6);
-            try { if (UUID.fromString(id).toString().equals(id)) return root.resolve(name); }
+            try { allowed = UUID.fromString(id).toString().equals(id); }
             catch (IllegalArgumentException invalid) { }
         }
-        throw new Failure(Stage.UNSAFE);
+        if (!allowed) throw new Failure(Stage.UNSAFE);
+        for (String existing : entries()) {
+            if (existing.equalsIgnoreCase(name) && !existing.equals(name)) throw new Failure(Stage.UNSAFE);
+        }
+        return root.resolve(name);
     }
 
     private static BasicFileAttributes attributes(Path path) throws IOException {
