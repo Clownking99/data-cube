@@ -2,6 +2,10 @@
 
 ## Active plan: product continuity / Windows CI path contract (2026-08-30)
 
+- P0.2 continuation: new isolated worktree `D:/Projects/朝花夕拾/.worktrees/release-acceptance`, branch `codex/release-acceptance`, base `edce8a2`. Prior P0.1 local work is DONE; do not redispatch. Root owns build/desktop evidence; p02_release_notes owns only candidate release notes, review pending. No push/tag/release authority.
+- P0.2 fresh `clean test jpackageImage` exit0/54s, actual jlink/image tasks passed. First XML138suites1211total0fail/errors93skips (not full desktop coverage); root corrected environment via temporary nonheadless option and forced full rerun exit0/27s,138suites1211total1208passed0fail/errors3named live skips. Env restored. Existing unchecked compiler and JEP493 notices recorded.
+- P0.2 desktop blocked this attempt: owned empty user.home directory and generated cfg override prepared, but sky.launch_app failed GetCursorPos accessdenied0x80070005 twice with window refresh between; stopped UI per computer-use skill, no alternative UI path. No observed DataCube startup, no Excel attempt, no synthetic config retention/export UI pass claims. See `docs/superpowers/verification/2026-08-30-release-acceptance.md` for artifact hashes, isolation path and open matrix. Preserve worktree/artifacts for continuation; stage and review docs only. Goal remains active, P0.2 not complete.
+
 - User authorized a complete product plan and stepwise delivery, then explicitly approved an isolated worktree and merging completed work back to main. No push, tag or release authorization for this increment.
 - Worktree: `D:/Projects/朝花夕拾/.worktrees/product-continuity`; branch `codex/product-continuity`; feature base `a3fb53d`, original product base `151a64a`; plan commit `f3f4abc`.
 - Plans: `docs/superpowers/plans/2026-08-30-product-continuity-roadmap.md` and `2026-08-30-windows-ci-path-contract.md`. Only local P0.1 repair executes now; later product increments require their own design confirmation. Remote CI gate remains pending until authorized push.

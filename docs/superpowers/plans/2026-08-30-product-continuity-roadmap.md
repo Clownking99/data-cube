@@ -81,17 +81,19 @@
 
 **关联文件：** `.github/workflows/verify.yml`、`.github/workflows/release.yml`、`build.gradle`、`README.md`、`docs/superpowers/verification/2026-08-30-safe-result-export.md`、`docs/superpowers/verification/2026-08-30-query-xlsx-readability.md`。
 
-- [ ] 先读取上述最新验收记录，只补未验证项，不把历史失败尝试或已修复问题重新当作当前缺陷。
+- [x] 先读取上述最新验收记录，只补未验证项，不把历史失败尝试或已修复问题重新当作当前缺陷。
 - [ ] 生成合成结果，验证“当前筛选”与“全部已加载”分别保存的行数、排序、可见列；隐藏列确实不进入输出，零匹配不扩大范围。
 - [ ] 验证输入筛选后立即导出，以及确认弹窗的 Tab/Enter/Esc；取消后不写文件、不改变既有导出范围。
 - [ ] 在真实 Excel 中用本次合成工作簿验证首行冻结、长文本换行和自动行高；工具拒绝时停止该路径，保留“未验收”，不用静态 OOXML 检查替代。
-- [ ] 运行 `./gradlew.bat jlink --no-daemon --console=plain` 与 `./gradlew.bat jpackageImage --no-daemon --console=plain`，核对退出码与本次产物，不能只检查旧文件是否存在。
+- [x] 运行 `./gradlew.bat clean test jpackageImage --no-daemon --console=plain`，其中 `jlink` 与 `jpackageImage` 均实际执行；54 秒退出码 0。随后非 headless 强制重跑完整测试，1208 passed、3 live skipped、0 failures/errors。详情见本轮验收记录。
 - [ ] 在隔离用户数据环境验证打包程序首次启动；用合成旧连接与设置验证升级保留，不读取真实用户数据、不自动执行安装器或卸载旧版本。
 - [ ] 编写变更说明：用户可见变化、筛选作用于已加载结果、预览值的限制、未完成项、回退方式。发布前明确最终版本号，不沿用本地默认 `3.0.0` 作为新发布号。
 - [ ] 发布 gate：关键功能通过、无未解决的数据破坏/误执行风险、CI 同 SHA 全绿；安装包/更新路径未验证时不能宣称已验证升级。
 - [ ] 用户确认版本与发布动作后才 tag/Release；核对 tag 对应提交、资源校验值、下载及启动。
 
 若后续加入 CI 失败报告归档，应单独审查 `.github/workflows/verify.yml` 的最小变更，仅上传合成单测报告，设置短保留期，不上传工作区、环境变量、配置或真实集成日志。
+
+本轮 P0.2 记录：[Windows 发布前验收](../verification/2026-08-30-release-acceptance.md)。免安装包构建完成；隔离启动连续两次遇到桌面工具 `GetCursorPos` 访问拒绝，停止 UI 路径，剩余交互保持未验收。P0.2 及发布 gate 未完成；不得用本地构建成功替代桌面、安装升级或远端 CI 验证。
 
 ## 6. P1：SQL 草稿恢复（先设计，再独立实现）
 
