@@ -82,7 +82,10 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.*;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -129,6 +132,40 @@ class SqlDraftDirectoryTest {
         assertStage(SqlDraftDirectory.Stage.CLOSED, () -> first.publish(NAME, NEW));
         try (SqlDraftDirectory second = SqlDraftDirectory.open(root)) {
             assertArrayEquals(OLD, second.read(NAME, 3));
+        }
+    }
+
+    @Test void operatingSystemLockRejectsAnotherProcessUntilClose() throws Exception {
+        Path root = temp.resolve("drafts");
+        try (SqlDraftDirectory directory = SqlDraftDirectory.open(root)) {
+            assertNotNull(directory);
+            assertEquals(23, probeLock(root.resolve(".writer.lock")));
+            directory.publish(NAME, OLD);
+            assertArrayEquals(OLD, directory.read(NAME, 3));
+        }
+        assertEquals(0, probeLock(root.resolve(".writer.lock")));
+    }
+
+    private static int probeLock(Path lockPath) throws Exception {
+        Path java = Path.of(System.getProperty("java.home"), "bin", System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
+        String classes = Path.of(LockProbe.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
+        Process process = new ProcessBuilder(java.toString(), "-cp", classes, LockProbe.class.getName(), lockPath.toString()).start();
+        try {
+            assertTrue(process.waitFor(10, TimeUnit.SECONDS), "synthetic lock probe timed out");
+            return process.exitValue();
+        } finally {
+            if (process.isAlive()) process.destroyForcibly();
+        }
+    }
+
+    public static final class LockProbe {
+        public static void main(String[] args) throws IOException {
+            int exit;
+            try (FileChannel channel = FileChannel.open(Path.of(args[0]), StandardOpenOption.WRITE);
+                 FileLock lock = channel.tryLock()) {
+                exit = lock == null ? 23 : 0;
+            }
+            System.exit(exit);
         }
     }
 
