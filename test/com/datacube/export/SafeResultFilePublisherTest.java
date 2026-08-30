@@ -73,11 +73,13 @@ class SafeResultFilePublisherTest {
     }
 
     @Test void successfulPublishAndCancellationHaveDifferentTerminalEffects() throws Exception {
-        Path target = directory.resolve("result.csv");
+        // A chosen path can contain aliases; publication returns the real parent path.
+        Path target = directory.resolve(".").resolve("result.csv");
         var operation = new ResultExportOperation();
         Path published = publisher().publish(SafeResultFilePublisher.capture(target), operation,
                 (path, token) -> Files.writeString(path, "new"));
-        assertEquals(target, published);
+        assertEquals(directory.toRealPath().resolve("result.csv"), published);
+        assertTrue(Files.isSameFile(target, published));
         assertTrue(operation.published());
         assertFalse(operation.cancel());
         assertEquals("new", Files.readString(target));
