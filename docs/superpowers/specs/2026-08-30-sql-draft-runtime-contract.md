@@ -106,6 +106,8 @@ The installed RichTextFX0.11.6 `ReadOnlyStyledDocument.fromString` splits CRLF/C
 
 ### Managed recovery UI implementation handoff
 
+Final-review feedback refinement (2026-08-31): expose only typed sanitized failure categories, never raw causes/paths/SQL. CAPACITY and INVALID_DRAFT explain the existing limits and manual-copy fallback. CLEANUP is immediately sticky on the writer path and both editor/manager warn about sensitive temporary-file residues and repair plus restart; stale UI tickets cannot clear it. Ordinary stale failures cannot annotate a newer revision. A successful editor clear must still inspect snapshot problems and disclose protected corrupt/unknown/unreadable files which remain; no automatic deletion is added.
+
 The duplicate rule covers every live SQL draft ID, including a normally opened editor which has just autosaved, not only tabs originally opened through recovery. `SqlDraftUi` currently holds bindings only, while `AppShell.openSqlTab` discards the returned managed Tab. Extend ownership bookkeeping so both normal and restored editors publish ID-to-content only after `ContentTabPane.openManagedTab` returns a successfully installed tab. Detachment removes both binding and installed mapping; refusal leaves both. Do not register an already-open normal editor a second time merely because it is shown in the stored-drafts list.
 
 Add a narrow `ContentTabPane.selectExistingContent(Node)` boolean operation which only selects a currently present tab. Existing `openSingletonTab` creates an unmanaged tab when no match is found and is therefore unsuitable. A mapped-but-unselectable content reference must produce a visible failure rather than a replacement unmanaged tab or second handle.

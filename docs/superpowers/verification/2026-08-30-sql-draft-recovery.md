@@ -4,7 +4,7 @@
 
 工作树：`D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery`；分支：`codex/sql-draft-recovery`；起点：`main@0c4ecb9`。
 
-P1 尚未完成。当前已完成草稿值/格式、文件边界、存储策略、纯保存状态、有界写入队列、应用级协调器、编辑器自动保存/安全关闭及离线恢复factory；恢复管理页、重复恢复生命周期与重启验收尚待完成，不将底层恢复能力当成用户可用的完整恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
+P1 尚未完成。存储、调度、编辑器保护、离线恢复、管理页和重复恢复生命周期实现及任务审查已完成；源码8ecd521的完整非headless回归、隔离跨进程验收与jlink/jpackageImage已通过。整分支审查发现两项Important反馈缺口（保存失败分类、清空后保护文件残留提示），正在按补丁计划处理，修改源码后会重跑验证。桌面捕获/访问被系统拒绝，实际暗亮主题与交互验收未通过。全部P1门槛完成后才本地合并，未推送/打tag/发布。下方按时间保留各阶段证据，旧阶段状态不代表当前状态。
 
 设计见[SQL 草稿恢复设计](../specs/2026-08-30-sql-draft-recovery-design.md)。执行计划：
 
@@ -254,3 +254,5 @@ Counter边界：session计数来自真实ConnectionManager调用provider.sqlRunn
 入口可发现性、实际明暗主题、管理页与恢复编辑器的桌面观察仍为**未验收**。目前不合并main，不将工具限制转写为产品通过；其他构建和审查继续进行。
 
 主代理独立命令`./gradlew.bat -I .superpowers/sdd/draft-acceptance.init.gradle verifySqlDraftProcesses jpackageImage --no-daemon --console=plain`，session61680，exit0、56秒、17任务（9执行/8 up-to-date）。八个顶层进程退出码和PROCESS_ACCEPTANCE_PASS由主代理直接读取；新独占目录`C:/Users/hetia/AppData/Local/Temp/datacube-draft-process-8454722275964971643`保留。`jlink`及`jpackageImage`实际执行成功；有当前JDK关于jmods/java.base与JEP493的构建提示。构建成功不代表安装、升级或打包程序桌面运行通过。
+
+随后只读检查实际镜像：`jimage list build/jpackage/DataCube/runtime/lib/modules` exit0，包含本轮SqlDraft生产类，没有SqlDraftAcceptanceLauncher或DraftManagementProbe匹配项。运行时modules文件SHA-256为`8E8C3EAC994659336CE6E878924473023B2AA270EF4F42051D182C02D54F8938`；cfg主入口为`com.datacube/com.datacube.DataCubeFx`且没有测试user.home覆盖。默认版本`3.0.0`仅为本地构建配置，不是新发布版本。未启动此发行入口。
