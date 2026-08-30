@@ -4,7 +4,7 @@
 
 工作树：`D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery`；分支：`codex/sql-draft-recovery`；起点：`main@0c4ecb9`。
 
-P1 尚未完成。存储、调度、编辑器保护、离线恢复、管理页和重复恢复生命周期实现及任务审查已完成。整分支审查两项Important反馈缺口已在7d17728实现修订，主代理最新完整非headless回归1365项无失败、3项原有live跳过，跨进程恢复和jlink/jpackageImage重新验证通过；反馈修订正在独立复审。桌面捕获/访问被系统拒绝，实际暗亮主题与交互验收未通过。全部P1门槛完成后才本地合并，未推送/打tag/发布。下方按时间保留各阶段证据，旧阶段状态不代表当前状态。
+P1 尚未完成。存储、调度、编辑器保护、离线恢复、管理页和重复恢复生命周期实现及任务审查已完成。整分支审查两项Important反馈缺口已在7d17728修订并独立复审通过，无剩余Critical/Important；主代理最新完整非headless回归1365项无失败、3项原有live跳过，跨进程恢复和jlink/jpackageImage重新验证通过。桌面捕获/访问被系统拒绝，实际暗亮主题与交互验收未通过。全部P1门槛完成后才本地合并，未推送/打tag/发布。下方按时间保留各阶段证据，旧阶段状态不代表当前状态。
 
 设计见[SQL 草稿恢复设计](../specs/2026-08-30-sql-draft-recovery-design.md)。执行计划：
 
@@ -272,3 +272,5 @@ Counter边界：session计数来自真实ConnectionManager调用provider.sqlRunn
 主代理独立最终完整回归session50022：`test --rerun-tasks --no-daemon --console=plain`，仅本次命令JAVA_TOOL_OPTIONS追加非headless，随后恢复；exit0、41秒、8任务全执行。实际XML150 suites /1365 tests /1362 passed /0 failures /0 errors /3原有live skips（名称同上），新增7项无跳过。原unchecked编译提示仍存在。进程与打包复验单独记录，桌面仍未验收。
 
 源码7d17728跨进程/打包复验session21608：同前述组合命令，exit0、52秒、17任务（9执行/8 up-to-date），jlink/jpackageImage实际执行。8个顶层子进程和锁内第二实例均通过，受控异常进程退出37符合预期，独占目录`C:/Users/hetia/AppData/Local/Temp/datacube-draft-process-12929717576398861958`保留。root直接读取检查点及locked-probe0日志。新镜像modules SHA-256为`94C5724987520D1982B71881039DEB60F248B86184A392BB9460C49FE7AD8E9C`；jimage检查有草稿生产类而无验收launcher/probe，cfg仍为真实DataCubeFx入口，无测试user.home覆盖。默认3.0.0不代表发布；原JDK/JEP493提示仍存在，未启动/安装此发行入口。
+
+最终复审冻结范围`6d52bfc..694ccb9`（5提交、105272字节），独立审查完整差异、报告和修订计划后结论Spec-compliant / code review approved；两项原Important均关闭，无新增Critical/Important。清单末尾原“尚未执行”的历史文字已同步为真实进程验收状态。非阻塞管理行提示及低层额外测试建议继续保留。整体合并门槛仍为No，仅因必需桌面/主题/入口发现性验收受限；不将自动化证据替代桌面证据。按分支收尾流程保留工作树，main仍为0c4ecb9，未合并/推送/tag/发布。
