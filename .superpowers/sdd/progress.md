@@ -2,6 +2,8 @@
 
 ## Active plan: SQL draft recovery (2026-08-30)
 
+- Manager implementation ffb2ba9 exact13source/test files delivered; root actual XML149suites1358total1355passed0fail/errors3original live skips checked. Root fresh full session69717 active. Frozen task review package review-ca91d07..ffb2ba9.diff ready, report still being written; not task-complete until independent review/fresh run. Process plan extended with explicit child user.home and overlapping locked-probe JVM; not executed yet. Main merge/push/tag unchanged.
+
 - Finisher corrected recovery RED root-verified XML16:41:24.841Z9tests9fail0errors/skips: eight restore UOE, one dialog UOE, no Fixture.ready timeout. New preview LF/CR/CRLF regression agent-reported3tests1fail(loneCR) before assignment change; root XML was already GREEN18/0 at16:43:24Z, so no independent preview-RED claim. Plan/brief normalized TextArea presentation only; raw checkpoints unchanged. Manager implementation/full/report/commit and independent review still pending; root no Gradle.
 
 - Manager handoff ACTIVE draft_manager_finish(sol): draft_manager_impl stopped INCOMPLETE (despite DONE_WITH_CONCERNS label), no source commit/report. Partial full behavior reapplied; dialog/AppShell may still be unfinished. Complete-task BASE remainsca91d07. New finisher has same full brief, exact13file scope, no root Gradle. Required corrected recovery stub run with real observer/runtime prerequisites before fresh restore method implementation; prior manager15UOE valid, prior recovery8ready-timeouts invalid. Await complete focused/full/report/commit then independent task review. Current latest controller commitf0b048d; process acceptance task is ready but NOT dispatched.

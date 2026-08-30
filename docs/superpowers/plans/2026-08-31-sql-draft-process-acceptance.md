@@ -81,6 +81,8 @@ public final class SqlDraftAcceptanceLauncher {
             child("restore", root.resolve("abrupt"), 0);
             child("disable", root.resolve("disabled"), 0);
             child("verify-disabled", root.resolve("disabled"), 0);
+            child("lock-holder", root.resolve("locked"), 0);
+            child("restore", root.resolve("locked"), 0);
             System.out.println("PROCESS_ACCEPTANCE_PASS=" + root);
             return;
         }
@@ -92,9 +94,9 @@ public final class SqlDraftAcceptanceLauncher {
         }
         Files.createDirectories(directory);
         startFx();
-        try (Fixture fixture = new Fixture(directory)) {
+        try (Fixture fixture = new Fixture(directory, !args[0].equals("locked-probe"))) {
             switch (args[0]) {
-                case "normal", "abrupt" -> {
+                case "normal", "abrupt", "lock-holder" -> {
                     fixture.openForWrite();
                     fixture.await(() -> fixture.handle().status().saveStatus() == SqlDraftCoordinator.SaveStatus.SAVED);
                     SqlDraft record = fx(() -> fixture.owner.runtime().refresh()).get(5, TimeUnit.SECONDS)
@@ -103,6 +105,12 @@ public final class SqlDraftAcceptanceLauncher {
                     fixture.offline();
                     System.out.println(MARKER);
                     System.out.flush();
+                    if (args[0].equals("lock-holder")) {
+                        child("locked-probe", directory, 0);
+                        SqlDraft after = fx(() -> fixture.owner.runtime().refresh()).get(5, TimeUnit.SECONDS)
+                                .snapshot().drafts().getFirst();
+                        check(record.equals(after), "second process changed the locked checkpoint");
+                    }
                     if (args[0].equals("abrupt")) fx(() -> {
                         fixture.pane.setSqlText("UNFLUSHED_SYNTHETIC_EDIT");
                         Runtime.getRuntime().halt(37);
@@ -139,6 +147,14 @@ public final class SqlDraftAcceptanceLauncher {
                             "disabled text was persisted");
                     return null;
                 });
+                case "locked-probe" -> fx(() -> {
+                    check(fixture.owner.runtime().mode() == SqlDraftCoordinator.Mode.UNAVAILABLE,
+                            "second process acquired active writer lock");
+                    check(fixture.owner.runtime().lastManagementResult().snapshot().drafts().isEmpty(),
+                            "second process exposed locked records");
+                    check(fixture.pane == null, "second process constructed an editor");
+                    return null;
+                });
                 default -> throw new IllegalArgumentException("Unknown acceptance mode");
             }
             fixture.offline();
@@ -154,7 +170,9 @@ public final class SqlDraftAcceptanceLauncher {
         Path java = Path.of(System.getProperty("java.home"), "bin",
                 System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
         Process process = new ProcessBuilder(java.toString(), "--enable-native-access=ALL-UNNAMED",
-                "-Djava.awt.headless=false", "-cp", classpath, SqlDraftAcceptanceLauncher.class.getName(),
+                "-Djava.awt.headless=false", "-Duser.home=" + directory,
+                "-Ddraft.acceptance.classpath=" + classpath, "-cp", classpath,
+                SqlDraftAcceptanceLauncher.class.getName(),
                 mode, directory.toString()).redirectErrorStream(true).redirectOutput(log.toFile()).start();
         try {
             check(process.waitFor(30, TimeUnit.SECONDS), "child timed out: " + mode);
@@ -181,7 +199,7 @@ public final class SqlDraftAcceptanceLauncher {
         final SqlDraftRecoveryTabs recovery;
         SqlEditorPane pane;
 
-        Fixture(Path directory) throws Exception {
+        Fixture(Path directory, boolean expectAvailable) throws Exception {
             this.directory = directory;
             tabs = fx(ContentTabPane::new);
             owner = fx(() -> new SqlDraftUi(directory.resolve("drafts")));
@@ -196,7 +214,11 @@ public final class SqlDraftAcceptanceLauncher {
                 }, ignored -> {});
             });
             await(() -> !owner.runtime().managementPending());
-            fx(() -> { check(owner.runtime().mode() != SqlDraftCoordinator.Mode.UNAVAILABLE, "store unavailable"); return null; });
+            fx(() -> {
+                check((owner.runtime().mode() != SqlDraftCoordinator.Mode.UNAVAILABLE) == expectAvailable,
+                        "unexpected store availability");
+                return null;
+            });
         }
         void openForWrite() throws Exception {
             fx(() -> {
@@ -354,7 +376,7 @@ allprojects { project ->
 .\gradlew.bat -I .superpowers/sdd/draft-acceptance.init.gradle verifySqlDraftProcesses --no-daemon --console=plain
 ```
 
-Expected: exit0 and six CHILD_RESULT lines: normal0,restore0,abrupt37,restore0,disable0,verify-disabled0, followed by PROCESS_ACCEPTANCE_PASS with an owned temporary path. Abrupt37 is success only with prior confirmed-checkpoint marker. A first-pass success is valid verification of already-implemented behavior, not a new product RED/GREEN claim. Run no concurrent Gradle task. Read logs only under the returned isolated path.
+Expected: exit0 and eight top-level CHILD_RESULT lines: normal0,restore0,abrupt37,restore0,disable0,verify-disabled0,lock-holder0,restore0, followed by PROCESS_ACCEPTANCE_PASS with an owned temporary path. The lock-holder log must also contain nested locked-probe0: its overlapping process cannot take the lock or alter the exact checkpoint. Every child JVM uses its explicit directory as user.home and receives the explicit child classpath for the nested check. Abrupt37 is success only with prior confirmed-checkpoint marker. A first-pass success is valid verification of already-implemented behavior, not a new product RED/GREEN claim. Run no concurrent Gradle task. Read logs only under the returned isolated path.
 
 - [ ] **Step 3: Produce report and hand desktop work to controller.** Report exact source SHA, command, exit codes, owned directories, assertions and failure distinctions. The controller verifies actual files/results and performs desktop controls after reading current CredentialCipher constructor isolation, then runs complete regression and jpackageImage. Do not launch a desktop or merge main from this subtask.
 
