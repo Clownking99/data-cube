@@ -564,21 +564,33 @@ class SqlEditorDraftIntegrationTest {
                     .filter(Button.class::isInstance)
                     .map(Button.class::cast)
                     .toList();
+            Button cancel = buttons.stream().filter(Button::isCancelButton).findFirst().orElseThrow();
             Button button =
                 "取消".equals(text)
-                    ? buttons.stream().filter(Button::isCancelButton).findFirst().orElseThrow()
+                    ? cancel
                     : buttons.stream()
                         .filter(candidate -> text.equals(candidate.getText()))
                         .findFirst()
                         .orElseThrow();
-            if ("取消".equals(text)) {
-              assertTrue(button.isDefaultButton());
-              assertTrue(
-                  buttons.stream()
-                      .filter(candidate -> candidate.getText().equals("放弃本次最新修改并关闭"))
-                      .noneMatch(Button::isDefaultButton));
+            Throwable assertionFailure = null;
+            try {
+              assertTrue(cancel.isDefaultButton());
+              if ("放弃本次最新修改并关闭".equals(text)) {
+                assertFalse(button.isDefaultButton());
+              }
+              button.fire();
+            } catch (RuntimeException | Error failure) {
+              assertionFailure = failure;
+              throw failure;
+            } finally {
+              if (assertionFailure != null) {
+                try {
+                  cancel.fire();
+                } catch (RuntimeException | Error cleanupFailure) {
+                  assertionFailure.addSuppressed(cleanupFailure);
+                }
+              }
             }
-            button.fire();
           });
     }
 
