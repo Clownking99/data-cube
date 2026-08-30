@@ -308,6 +308,16 @@ public final class ContentTabPane {
         openTab(title, content);
     }
 
+    public boolean selectExistingContent(Node content) {
+        for (Tab tab : tabPane.getTabs()) {
+            if (tab.getContent() == content) {
+                tabPane.getSelectionModel().select(tab);
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Immutable ownership bundle created only after a registry reservation is acquired. */
     public record ManagedTabSpec(
             Node content,

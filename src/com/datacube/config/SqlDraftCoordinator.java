@@ -98,6 +98,8 @@ public final class SqlDraftCoordinator {
 
     public ManagementResult lastManagementResult() { owner(); return lastManagementResult; }
 
+    public boolean managementPending() { owner(); return busy; }
+
     public Handle attach(UUID id, Long savedAt, Source source) {
         active(); Objects.requireNonNull(id); Objects.requireNonNull(source);
         if (savedAt != null && busy) throw new IllegalStateException("Draft management in progress");

@@ -171,6 +171,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private Label statusLabel;
     private TextField schemaField;
     private Button executeBtn, explainBtn, formatBtn, clearBtn;
+    private Button recoveryConnectionButton;
     private MenuButton exportResultBtn;
     private Button copyInsertBtn;
     private CheckBox analyzeCheck;
@@ -361,6 +362,23 @@ public final class SqlEditorPane implements AutoCloseable {
         renderDisconnectedCandidate(currentConn());
         draftEdited();
         return true;
+    }
+
+    void installRecoveryConnectionChooser(java.util.function.Supplier<List<ConnConfig>> configs) {
+        if (recoveryIntent == null || recoveryConnectionButton != null) return;
+        recoveryConnectionButton = new Button("重新选择草稿连接");
+        recoveryConnectionButton.setId("sql-draft-connection");
+        recoveryConnectionButton.setOnAction(event -> {
+            if (!recoveryPassive() || draftEditingBlocked() || !sessionOperations.snapshot().accepting()) return;
+            SqlDraftConnectionChooser.show(configs.get(),
+                    root.getScene() == null ? null : root.getScene().getWindow()).ifPresent(choice -> {
+                ConnConfig current = connections.config(choice.id());
+                if (current == null || current.type() != choice.type() || !chooseRecoveryConnection(current))
+                    showAlert("所选连接已不可用，请重新选择。草稿内容未改变。");
+            });
+        });
+        root.getChildren().add(1, recoveryConnectionButton);
+        renderConnectionGuidance();
     }
 
     /** FX admission point: pin before safety/schema/oracle decisions or worker submission. */
@@ -872,6 +890,8 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void renderConnectionGuidance() {
         if (connectionGuidance == null) return;
+        if (recoveryConnectionButton != null)
+            recoveryConnectionButton.setDisable(!recoveryPassive() || draftEditingBlocked());
         SqlConnectionGuidance state = guidance();
         String text = recoveryPassive()
                 ? (state.hasConnection() ? "草稿已恢复，尚未连接；执行时将绑定原连接。"

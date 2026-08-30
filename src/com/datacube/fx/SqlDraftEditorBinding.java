@@ -98,6 +98,8 @@ final class SqlDraftEditorBinding implements AutoCloseable {
     return root;
   }
 
+  UUID id() { return handle.id(); }
+
   boolean closing() {
     return closing || closed;
   }

@@ -164,6 +164,9 @@ public final class AppShell {
         });
         Button historyBtn = new Button("🕘 SQL 历史");
         historyBtn.setOnAction(e -> openSqlHistory());
+        Button draftsBtn = new Button("SQL 草稿");
+        draftsBtn.setId("sql-drafts");
+        draftsBtn.setOnAction(event -> openSqlDrafts());
         Separator sep = new Separator(Orientation.VERTICAL);
 
         // 弹性留白：把右侧功能按钮推向右端（“活动连接”不再在头部展示，改由各页面自行标识）
@@ -186,7 +189,7 @@ public final class AppShell {
         settingsBtn.setOnAction(e ->
                 SettingsDialog.show(settings, shortcuts, root.getScene() == null ? null : root.getScene().getWindow(), themeManager));
 
-        HBox bar = new HBox(6, logo, addConnBtn, refreshBtn, newSqlBtn, historyBtn, sep, spacer,
+        HBox bar = new HBox(6, logo, addConnBtn, refreshBtn, newSqlBtn, historyBtn, draftsBtn, sep, spacer,
                 migrationBtn, themeBtn, aboutBtn, settingsBtn);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPadding(new Insets(6, 12, 6, 12));
@@ -235,6 +238,16 @@ public final class AppShell {
         failure.printStackTrace(System.err);
     }
 
+    private void openSqlDrafts() {
+        SqlDraftUi owner = sqlDrafts.get();
+        SqlDraftRecoveryTabs recovery = new SqlDraftRecoveryTabs(contentTabs, owner,
+                draft -> SqlEditorPane.recoverDraft(session, connMgr, treeSvc, settings,
+                        treeActions::openTableDesigner, draft, sqlHistory, shortcuts, tasks),
+                pane -> pane.installRecoveryConnectionChooser(connectionTree::connectionConfigsSnapshot));
+        SqlDraftManagerDialog.show(owner, root.getScene() == null ? null : root.getScene().getWindow(),
+                themeManager, draft -> recovery.restore(draft));
+    }
+
     /**
      * 打开 SQL 历史找回对话框：选中一条则在新的 SQL 编辑标签中载入其 SQL，
      * 并按连接名解析回原连接（解析不到则不绑定）、回填其 schema。
@@ -271,7 +284,7 @@ public final class AppShell {
             String title,
             Supplier<SqlEditorPane> factory,
             Consumer<SqlEditorPane> initialize) {
-        contentTabs.openManagedTab(title, binding -> ManagedTabFactorySequence.create(
+        javafx.scene.control.Tab opened = contentTabs.openManagedTab(title, binding -> ManagedTabFactorySequence.create(
                 factory,
                 pane -> binding.bind(pane::closeResources),
                 pane -> {
@@ -282,6 +295,7 @@ public final class AppShell {
                         pane.getNode(), pane::requestClose,
                         pane::requestMandatoryClose,
                         pane::finalizeCloseOnFx, pane::closeResources)));
+        if (opened != null) sqlDrafts.get().installed(opened.getContent());
     }
 
     private void openBackgroundCleanupTab(String title, Supplier<BackgroundTab> factory) {
