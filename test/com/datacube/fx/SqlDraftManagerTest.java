@@ -121,6 +121,7 @@ class SqlDraftManagerTest {
         Region content = assertInstanceOf(Region.class, area.lookup(".content"));
         Paint background = content.getBackground().getFills().getLast().getFill();
         if (background instanceof Color color) {
+            assertEquals(1.0, color.getOpacity(), 0.0001);
             assertContrast(foreground, color, expected);
         } else if (background instanceof LinearGradient gradient) {
             for (Stop stop : gradient.getStops()) {
