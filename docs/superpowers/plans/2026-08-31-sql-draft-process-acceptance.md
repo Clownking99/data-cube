@@ -150,8 +150,8 @@ public final class SqlDraftAcceptanceLauncher {
                 case "locked-probe" -> fx(() -> {
                     check(fixture.owner.runtime().mode() == SqlDraftCoordinator.Mode.UNAVAILABLE,
                             "second process acquired active writer lock");
-                    check(fixture.owner.runtime().lastManagementResult().snapshot().drafts().isEmpty(),
-                            "second process exposed locked records");
+                    check(fixture.owner.runtime().lastManagementResult() == null,
+                            "failed lock acquisition published a management snapshot");
                     check(fixture.pane == null, "second process constructed an editor");
                     return null;
                 });
