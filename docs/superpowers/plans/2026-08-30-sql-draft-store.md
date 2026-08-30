@@ -38,7 +38,7 @@
 - Retention expires at age>=7 days. Future timestamps, open IDs and unreadable/corrupt entries are preserved. A candidate changed since the snapshot is preserved. Application decides when to prune and must pass all open IDs.
 - No durability/UI success claim beyond successfully returned atomic publish. On partial clear/prune failure, propagate a sanitized failure; caller must reload and never claim all entries were deleted. Generation barriers and prevention of queued write resurrection belong to coordinator.
 
-- [ ] **Step 1: Add compilable stub and complete behavioral tests.**
+- [x] **Step 1: Add compilable stub and complete behavioral tests.**
 
 `src/com/datacube/config/SqlDraftStore.java`:
 
@@ -305,7 +305,7 @@ class SqlDraftStoreTest {
 }
 ```
 
-- [ ] **Step 2: Run RED before implementing policies.**
+- [x] **Step 2: Run RED before implementing policies.**
 
 ```powershell
 .\gradlew.bat test --tests com.datacube.config.SqlDraftStoreTest --rerun-tasks --no-daemon --console=plain
@@ -313,7 +313,7 @@ class SqlDraftStoreTest {
 
 Expected exit1 from missing save/reopen/policy behavior against compilable stubs. Record actual output before Step3.
 
-- [ ] **Step 3: Complete store implementation.**
+- [x] **Step 3: Complete store implementation.**
 
 `src/com/datacube/config/SqlDraftStore.java`:
 
@@ -498,7 +498,7 @@ public final class SqlDraftStore implements AutoCloseable {
 }
 ```
 
-- [ ] **Step 4: Focused GREEN and full forced regression.**
+- [x] **Step 4: Focused GREEN and full forced regression.**
 
 ```powershell
 .\gradlew.bat test --tests com.datacube.config.SqlDraftStoreTest --tests com.datacube.config.SqlDraftDirectoryTest --tests com.datacube.config.SqlDraftCodecTest --rerun-tasks --no-daemon --console=plain
@@ -518,7 +518,7 @@ exit $draftTestExit
 
 Expected exit0; record actual XML totals and named skips, not just console BUILD SUCCESSFUL.
 
-- [ ] **Step 5: Self-review, commit and report exact evidence.**
+- [x] **Step 5: Self-review, commit and report exact evidence.**
 
 ```powershell
 git diff --check

@@ -4,13 +4,16 @@
 
 工作树：`D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery`；分支：`codex/sql-draft-recovery`；起点：`main@0c4ecb9`。
 
-P1 尚未完成。当前已完成草稿值/格式及文件边界，存储策略、保存调度、恢复界面与重启验收仍在后续阶段；不将基础测试当成用户可用恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
+P1 尚未完成。当前已完成草稿值/格式及文件边界，存储策略实现已通过回归、正在独立审查；保存调度、恢复界面与重启验收仍在后续阶段，不将基础测试当成用户可用恢复功能。完成整条P1路径后才本地合并，未推送/打tag/发布。
 
 设计见[SQL 草稿恢复设计](../specs/2026-08-30-sql-draft-recovery-design.md)。执行计划：
 
 - [P1.1 格式](../plans/2026-08-30-sql-draft-format.md)
 - [P1.2 文件边界](../plans/2026-08-30-sql-draft-directory.md)
 - [P1.2 存储策略](../plans/2026-08-30-sql-draft-store.md)
+- [P1.3 保存状态](../plans/2026-08-30-sql-draft-save-state.md)
+
+异步运行时边界另见[运行时整合约束](../specs/2026-08-30-sql-draft-runtime-contract.md)，该文档是后续设计约束，不是实现证据。
 
 仅使用合成数据与隔离测试目录，不读取真实连接凭据或SQL历史，`.testagent/`未读取/修改。
 
@@ -56,6 +59,12 @@ exit $draftTestExit
 
 实际运行（非跳过）：独立Java子进程抢锁/释放后成功、Windows符号链接拒绝、大小写别名保护。原子移动不支持、写入失败、清理失败、目标变化与目录条目上限也已通过。审查范围`0eb3957..045a5dd`已Approved，无任务内阻塞问题；已披露的基线unchecked编译说明作为非阻塞后续事项保留给整体审查，不额外修改无关测试。尚未实现SqlDraftStore策略及应用保存/恢复入口。
 
+## P1.2存储策略（审查中）
+
+提交`82c54b1`只包含SqlDraftStore及对应测试。编译成功后RED11项全部失败，主代理实际读取XML核实；完整实现后的Store/Directory/Codec focused回归exit0，完整强制非headless回归exit0，141 suites / 1264 tests / 1261 passed / 0 failures / 0 errors / 3相同live skips，环境恢复。主代理独立读取最终XML，并逐字核对两份文件与完整计划代码块一致。
+
+已验证严格启停、有效草稿重开、异常设置/未知文件保留、100条与32MiB边界、7天过期规则和打开草稿保护；尚未运行应用内自动保存/恢复。冻结审查范围`3192384..82c54b1`（另含控制器保存状态计划文档），任务源代码审查进行中。基线unchecked编译说明仍保留，不宣称构建输出零警告。
+
 ## Requirement | Evidence
 
 | Requirement | Evidence / 当前边界 |
@@ -71,7 +80,10 @@ exit $draftTestExit
 | 同进程及跨进程单写者 | `secondWriterFailsWithoutBreakingFirstAndCloseIsIdempotent`、`operatingSystemLockRejectsAnotherProcessUntilClose`；GREEN，实际子进程运行 |
 | 失败保留旧文件、临时文件清理、目标变化 | `unsupportedAtomicMoveKeepsOldFileAndCleansTemporary`、`failedWritePreservesOldFileAndCleanupFailureIsVisible`、`changedTargetIsNotOverwrittenAfterTemporaryWrite`；GREEN |
 | 字节/目录枚举边界、文件名/符号链接保护 | `readAndPublishRejectOversizeWithoutTruncating`、`scanHasExactBoundAndDoesNotDeleteUnknownFiles`、`rejectsNamesOutsideOwnedFiles`、`rejectsCaseAliasesWithoutOverwritingOrDeletingExistingBytes`、`rejectsSymlinksWithoutReadingWritingOrDeletingTheirTargets`；GREEN，无符号链接跳过 |
-| 草稿总容量、严格偏好、过期与异常条目 | SqlDraftStore已有完整计划，尚未实现/验收 |
+| 精确草稿重开、同文本独立ID、空草稿 | `SqlDraftStoreTest.savesDistinctIdsReplacesExactlyAndRecoversAfterReopen`；GREEN |
+| 严格启停与损坏偏好保护 | `disableIsPersistedExactlyAndKeepsRecoverableDrafts`、`invalidPreferenceNeverDefaultsOnOrHidesValidDrafts`、`atomicFailureKeepsOldDraftAndPreference`；GREEN |
+| 总容量与旧版本保留 | `countLimitAllowsReplacementButNeverEvictsOtherDrafts`、`totalByteBoundaryUsesPublishedBytesAndRetainsOldVersion`、`invalidNewSnapshotNeverReplacesLastSuccessfulBytes`、`externallyOverfullDirectoryIsPreservedAndCanStillPersistDisable`；GREEN |
+| 过期规则与异常条目保护 | `expiryUsesEmbeddedTimeAndPreservesOpenFutureAndInvalidEntries`、`corruptUnknownAndMismatchedFilesArePreservedWithValidNeighbors`、`unreadableOversizeEntryDisablesSavingWithoutHidingNeighbor`；GREEN |
 | 自动保存、关闭/清空/禁用竞态 | 尚未实现/验收 |
 | 离线恢复零DB调用、连接身份安全 | 生命周期代码分析完成，尚未实现/验收 |
 | 重启、异常退出、桌面可见状态 | 尚未验收 |
