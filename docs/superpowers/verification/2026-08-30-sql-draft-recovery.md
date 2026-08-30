@@ -4,7 +4,7 @@
 
 工作树：`D:/Projects/朝花夕拾/.worktrees/sql-draft-recovery`；分支：`codex/sql-draft-recovery`；起点：`main@0c4ecb9`。
 
-P1实现、任务审查及本地产品验收已完成，正在做最后整分支差异复核与本地整合。两项Important反馈已在7d17728修复，显示收尾5e50f21已通过独立审查。主代理最终非headless回归1373项/1370通过/0失败/3原有live跳过；跨进程恢复及jlink/jpackageImage复验通过。桌面环境已恢复，三次真实AppShell隔离启动完成保存、正常重启恢复、安全取消、重复定位和明暗实际焦点验收，均正常关闭。合并main与合并后回归尚待最终复核，不提前声称已合并；未推送/tag/安装/发布。下方按时间保留历史失败与阶段证据，旧阶段状态不代表当前状态。
+P1已完成并本地合并main。实现/任务审查、整分支复审、跨进程恢复、打包及三次实际AppShell隔离桌面验收均完成；原反馈修复7d17728、呈现修正5e50f21及测试收尾35d2f8d通过。main快进至35d2f8d后，主代理完整非headless回归43秒exit0，1373项/1370通过/0失败/3原有live跳过。没有推送/tag/安装/发布，P0.2其余发布门槛独立保留。下方按时间保留历史失败与阶段证据，旧阶段状态不代表当前状态。
 
 设计见[SQL 草稿恢复设计](../specs/2026-08-30-sql-draft-recovery-design.md)。执行计划：
 
@@ -326,3 +326,19 @@ Counter边界：session计数来自真实ConnectionManager调用provider.sqlRunn
 最终实际AppShell桌面复验使用前述同一独占profile和启动命令：PID29692，session90232。暗色列表显示“未绑定连接”而非null，保留desktop_schema；未选中时仅显示清晰预览提示。点击提示后，实际accessibility.focused_element为`64 编辑 ID: JavaFX87`，截图中提示仍可见。切换亮色、重新打开管理页，实际焦点为`103 编辑 ID: JavaFX143`，提示仍清晰。两种主题选择草稿后完整SQL可读，无重叠；亮色显式恢复后只有1个恢复标签，Schema与SQL保留，未绑定、尚未创建专用会话及执行/事务禁用状态均直接核对。空Schema和未命名连接的分支由实际cell测试覆盖，不冒充本次profile中的桌面记录。
 
 经实际标题栏正常关闭，exit0、4m19s、9任务（1执行/8 up-to-date）；两份草稿SHA仍分别为901DFF1B…FE94与C3C49D30…EAED（完整值见上表），没有新编辑或文件变化。实际焦点验收补齐任务审查中的不可从diff核验项。没有活跃验收JVM或Gradle。此时P1代码/自动化/打包/桌面门槛已满足，最后由整分支审查复核新增差异与证据，再本地合并main并在main回归；发布/远端CI/P0.2其余交互门槛不随之关闭。
+
+## 本地main整合完成
+
+整分支复核读取`694ccb9..afa3f86`增量及已有完整分支审查上下文，结论允许本地main合并，无Critical/Important。两项收尾Minor分别为当前摘要陈旧及纯色背景缺少透明度断言；2d77b6a与35d2f8d已处理，后者仅增加测试断言，定向26项/0失败/0跳过、23秒exit0。小范围`afa3f86..35d2f8d`再审确认关闭这两项，merge gate Yes。报告基线措辞也校正为原实施1541458、测试收尾2d77b6a，不改变既有证据。
+
+在main仍为0c4ecb9、只有原有`.testagent/`名称出现在status且未访问其内容的条件下，执行`git merge --ff-only codex/sql-draft-recovery`，成功快进至`35d2f8d54fc09b1c72f4a85b893e8359e1d52ccc`。随后在主工作区`D:/Projects/朝花夕拾`执行`gradlew.bat test --rerun-tasks --no-daemon --console=plain`，仅命令期间设置非headless并恢复原环境：session70089，exit0、43秒、8任务全执行。主代理读取main生成XML：150 suites /1373 tests /1370 passed /0 failures /0 errors /3相同live skips；原unchecked说明保留。后续收尾提交仅同步文档与台账，不改变该测试过的源码/资源/测试。
+
+保留独立worktree和独占临时验收产物用于追溯，不强制清理。没有推送、tag、安装、发布或触及真实用户数据。P1结束；下一阶段为P2工作区恢复的独立设计，P0.2剩余桌面组合/安装升级/远端CI及真实用户试用仍待对应授权或验收。
+
+| Requirement | Evidence |
+| --- | --- |
+| 空连接/名称/Schema给出明确文案，原始检查点不变 | `metadataRowsDescribeMissingValuesWithoutChangingCheckpoint`（6种实际cell输入），main完整回归通过 |
+| 明暗预览在选择及焦点状态仍可读 | `previewPromptHasReadableThemeContrastAcrossSelectionAndFocusStyles`（2主题）及最终实际OS焦点观察 |
+| 合并后的完整回归 | main上`test --rerun-tasks --no-daemon --console=plain`，1370通过、3既有跳过、exit0 |
+
+非阻塞后续建议仍记录：管理列表可进一步反映当前连接注册表中的删除/类型改变（区别于本次null/未绑定修正）；Store实际删除循环故障注入、Queue inline与第二轮空闲用例。当前恢复时仍严格验证稳定ID/类型，以上未作为现有覆盖或新增产品能力宣传。
