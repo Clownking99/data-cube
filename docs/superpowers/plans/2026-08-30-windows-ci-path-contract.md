@@ -61,7 +61,7 @@ exit $ciTestExit
 
 这是本轮证据命令，不是可跨机器复用的硬编码配置。后续重跑先确认该目录仍存在且短名映射未变；否则重新创建独占临时目录并获取真实短名，不猜测 `~1` 编号。
 
-- [ ] **Step 2: 确认隔离位置后，仅强化用例的输入以获得跨平台稳定 RED。**
+- [x] **Step 2: 确认隔离位置后，仅强化用例的输入以获得跨平台稳定 RED。**
 
 将该用例第一行改为：
 
@@ -77,7 +77,7 @@ Path target = directory.resolve(".").resolve("result.csv");
 
 预期：同一用例因输入包含 `.` 而返回规范路径，在相等断言失败；不是编译错误，也不能出现写入异常。
 
-- [ ] **Step 3: 最小修正断言，保留其他行为覆盖。**
+- [x] **Step 3: 最小修正断言，保留其他行为覆盖。**
 
 该用例最终完整内容：
 
@@ -105,7 +105,7 @@ Path target = directory.resolve(".").resolve("result.csv");
 
 期望路径由测试目录与已知文件名独立构造，不用 `capture(target).path()` 作为自我验证。规范路径断言加实际文件身份断言，原成功状态、发布后不能取消、取消后旧内容保留断言不变。
 
-- [ ] **Step 4: 定向 GREEN。**
+- [x] **Step 4: 定向 GREEN。**
 
 ```powershell
 .\gradlew.bat test --tests 'com.datacube.export.SafeResultFilePublisherTest' --rerun-tasks --no-daemon --console=plain
@@ -113,7 +113,7 @@ Path target = directory.resolve(".").resolve("result.csv");
 
 预期：失败/错误为零；若平台无法创建符号链接，报告该既有条件跳过，不能计作通过。随后在 Step 1 的短路径环境运行同一类，验证真实 Windows 别名问题消失。
 
-- [ ] **Step 5: 导出组合验证与全量验证。**
+- [x] **Step 5: 导出组合验证与全量验证。**
 
 ```powershell
 .\gradlew.bat test --tests 'com.datacube.export.*' --tests 'com.datacube.fx.SqlResultExportCoordinatorTest' --rerun-tasks --no-daemon --console=plain
@@ -140,7 +140,7 @@ $ciTotals
 
 不把历史 1208 passed 预填为本次结果，也不把 Redis/Oracle/PostgreSQL live 环境缺失的跳过算作通过。
 
-- [ ] **Step 6: 审查与本地交付。**
+- [x] **Step 6: 审查与本地交付。**（修复 `da3dee9`、验收文档补全 `40d51c6`，任务复审通过；整分支审查及合并后复验单独记录。）
 
 检查差异仅涉及该用例与计划/验收文档；确认没有对生产源、`.testagent/` 或无关文件的更改。记录完整 RED/GREEN 命令、退出码、XML 断言差值与限制。按文件明确暂存，不执行 `git add .`。
 
@@ -158,9 +158,11 @@ git commit -m "test(export): handle canonical paths in publisher contract"
 
 路线图与计划文档单独明确暂存，避免混入其他文件。本地提交不等于远端 CI 已修复。
 
-## Task 2: 远端验收交接（需集成授权）
+## Task 2: 本地合并与远端验收（仅本地合并已授权）
 
-- [ ] 用户授权合并/推送后，重新 fetch 并核对双方差异，不 force、不改变其他分支或 tags。
+- [x] 用户授权独立 worktree 开发，完成后本地合并回 `main`。
+- [ ] 独立审查与本地验证完成后，核对 `main` 未发生冲突变更，执行本地合并并重跑合并后的测试；不删除用户文件或其他分支。
+- [ ] 另获推送授权后，重新 fetch 并核对双方差异，不 force、不改变其他分支或 tags。
 - [ ] 推送后读取新 SHA 的 Verify run；确认 Windows/Linux 单测、Redis 集成、wrapper validation 及 Windows jlink 成功。
 - [ ] 失败则记录确切测试/步骤并继续诊断，不自动重跑直至偶然通过。
 - [ ] 在验收文档加入 run 链接与对应 SHA，之后才把父路线图的 CI gate 标为完成；进入 P0.2 桌面与打包验收。
@@ -168,6 +170,6 @@ git commit -m "test(export): handle canonical paths in publisher contract"
 ## 自审及执行状态
 
 - 本计划只修正测试中路径表示与文件身份混淆，不修改用户可见导出行为。
-- Windows 短路径的环境复现已完成；跨平台 `.` 回归和修复尚未执行。
+- Windows 短路径的环境复现、跨平台 `.` 回归与最小修复已完成，修复提交 `da3dee9`；全量结果为 138 suites、1211 tests、1208 passed、3 skipped、0 failures/errors。
 - 用户已确认独立 worktree，完成后本地合并回 `main`；普通路径对照运行 1 项通过、14 秒。修复与审查结果记录到独立验收文件。
 - 完成条件同时要求本地证据和经授权取得的远端证据，不能因写完计划或测试数量不变而标记完成。

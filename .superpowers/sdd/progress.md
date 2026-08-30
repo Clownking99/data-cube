@@ -1,6 +1,17 @@
 # Subagent-Driven Development Progress
 
-## Active plan: query XLSX readability (2026-08-30)
+## Active plan: product continuity / Windows CI path contract (2026-08-30)
+
+- User authorized a complete product plan and stepwise delivery, then explicitly approved an isolated worktree and merging completed work back to main. No push, tag or release authorization for this increment.
+- Worktree: `D:/Projects/朝花夕拾/.worktrees/product-continuity`; branch `codex/product-continuity`; feature base `a3fb53d`, original product base `151a64a`; plan commit `f3f4abc`.
+- Plans: `docs/superpowers/plans/2026-08-30-product-continuity-roadmap.md` and `2026-08-30-windows-ci-path-contract.md`. Only local P0.1 repair executes now; later product increments require their own design confirmation. Remote CI gate remains pending until authorized push.
+- Root confirmed original Windows CI run33303961545 failure at SafeResultFilePublisherTest line80. Unchanged test fails locally with a real 8.3 temporary-directory alias (1 failed,17s), passes with ordinary temp path (1 passed,14s). No production defect is inferred from path equality failure.
+- Task1 queued: brief `.superpowers/sdd/task-1-brief.md`, report `.superpowers/sdd/task-1-report.md`; task base `f3f4abc`. Preserve this ledger's historical entries and user `.testagent/`.
+- Worktree baseline fresh clean test exit0/30s;138suites1211tests1208passed0fail/errors3live skips. Task1 implementing via ci_path_fix; root edits only roadmap/plan/ledger concurrently, not test source/build artifacts. Ordinary-path reproduction contrast passed1test14s before isolation.
+- Task1: complete (commits f3f4abc..40d51c6, ci_path_review spec compliant/Approved,0Critical/Important/Minor after documentation follow-up). da3dee9 changes only one test fixture/assertions;40d51c6 makes the verification recipe reproducible. Earlier Resolve-Path identity diagnostic failed before Gradle and was replaced with Java toRealPath; corrected short-path class run passed9tests/15s,0fail/errors/skips; environment restored. Root independently read final9test XML and earlier complete138suite/1211test XML. No production changes.
+- Root additionally ran worktree jlink exit0/35s and verified generated runtime modules com.datacube,javafx.controls,java.sql. Existing JEP493 toolchain notice retained. Whole-branch review, local merge and post-merge root test remain next; no push/tag. P0.2/manual Excel gates and future SQL recovery remain unimplemented/pending.
+
+## Archived plan: query XLSX readability (2026-08-30)
 
 - Follow-up after4eb2e8c: user approved continued progress. Scope is prior two review findings, not rerunning Tasks1-3. Proceed with ignoring DEL/C1 for width only per recommendation; verify feasible public writer-level sampling failure coverage without production hooks or fabricated inputs. Fresh fixer owns code/tests; root owns docs and final full suite. Brief xlsx-followup-brief.md; report xlsx-followup-report.md. Excel interaction remains unverified; no repeat of privacy-blocked UI path. Keep local branch, no push/merge/tag.
 - Follow-up fix aeaa37e: estimator only excludes DEL/C1; new regression tests distinguish visible boundary widths above min12, ignored controls consuming256codepoints, and actual header/data XML retaining controls. RED2assertionfailures/GREEN15focusedtests0fail/error/skip reported; root checked exact diff. Direct sampling-failure injection could not be demonstrated through ordinary frozen snapshot inputs without prohibited artificial seams; existing composition and actual serialization-cancellation coverage retained. Final reviewer xlsx_final_review re-reviewing updated whole branch c811802..aeaa37e; root clean fullsuite in progress.
