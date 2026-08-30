@@ -31,7 +31,7 @@
 - Produces package-private `SqlResultToolbar(Actions actions, MenuButton columnMenu)`; existing public constructor delegates with null.
 - Root owns design/plan/release documentation and desktop acceptance; implementer owns only four source/test files and its scratch report.
 
-- [ ] Step 1: Extend the existing FX contract suite with failing tests, using existing `PaneFixture`, `showQuery`, `resultTable`, `invoke`, and `awaitFxDelay` helpers. No new general test harness. Add the helpers and concrete tests below (fully qualify or import the referenced existing types).
+- [x] Step 1: Extend the existing FX contract suite with the helpers and concrete tests below, using existing `PaneFixture`, `showQuery`, `resultTable`, `invoke`, and `awaitFxDelay` helpers. No new general test harness. Three tests had pre-implementation RED; the fourth debounce/condition test was added afterward. This process deviation is retained in the [verification record](../verification/2026-08-30-result-column-visibility.md), not retroactively described as TDD.
 
 ```java
 private static javafx.scene.control.MenuButton columnMenu(SqlEditorPane pane) {
@@ -142,9 +142,9 @@ private static javafx.scene.control.MenuItem columnItem(SqlEditorPane pane, Stri
 
 Also exercise actual debounce completion and condition add/remove using the existing suite's synthetic helpers, asserting hidden state, column ordering and sorting after those transitions. Keep test code in this same contract file; no separate test-generation fan-out or `.testagent` artifacts. Report the exact test names and assertions in a Requirement | Evidence table.
 
-- [ ] Step 2: Run the narrow class before implementation; missing menu must fail an assertion, not fail compilation. Command: `gradlew.bat test --tests com.datacube.fx.SqlEditorResultFilterContractTest --no-daemon --console=plain`, with process-scoped `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false` restored in `finally`. Record RED output.
+- [x] Step 2: Run the narrow class before implementation; missing menu must fail an assertion, not fail compilation. Command: `gradlew.bat test --tests com.datacube.fx.SqlEditorResultFilterContractTest --no-daemon --console=plain`, with process-scoped `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false` restored in `finally`. Recorded RED: 32 tests, 3 missing-menu assertion failures; see Step 1 deviation.
 
-- [ ] Step 3: Implement the menu with this starting code; adjust only if compile or behavior evidence requires it.
+- [x] Step 3: Implement the menu with this starting code; adjust only if compile or behavior evidence requires it.
 
 ```java
 package com.datacube.fx;
@@ -230,7 +230,7 @@ final class SqlResultColumnMenu {
 }
 ```
 
-- [ ] Step 4: Integrate with exact existing boundaries, without moving unrelated code.
+- [x] Step 4: Integrate with exact existing boundaries, without moving unrelated code. Implementation additionally retains/reapplies sort columns and sort types around item replacement, as required by the regression evidence; the sketch below is not the final implementation.
 
 `SqlResultToolbar`: retain public constructor and add package-private overload; change `composeLayout()` to accept the optional MenuButton and insert it into `actionsRow` immediately before Copy.
 
@@ -279,12 +279,12 @@ if (resultColumnMenu != null) {
 }
 ```
 
-- [ ] Step 5: Run focused class and toolbar suite until GREEN. Check actual timer firing, add/remove condition, clear, newer-result reset, stale-item no-op and both CSV files. Fix newly exposed failures rather than dropping assertions. Run the full nonheadless `test --rerun-tasks` once before committing; report counts and named skips from XML, not only console success.
-- [ ] Step 6: Self-review and commit only the four owned source/test files. Report RED/GREEN commands, full run, exact behavior mapping and any deviations in the scratch report. Root handles the independent task review, desktop observation and broad final review before local merge.
+- [x] Step 5: Run focused class and toolbar suite until GREEN. Actual timer, add/remove condition, clear, newer-result reset, stale-item no-op and both CSV files covered. Full nonheadless forced regression: 1212 passed, 3 named live skips, 0 failures/errors; independently checked XML.
+- [x] Step 6: Self-review and commit only the four owned source/test files (`719685b`). RED/GREEN commands, full run, exact behavior mapping and deviations recorded; independent task review Approved after truthful process-evidence correction.
 
 ## Controller closeout
 
-- [ ] Inspect actual diff and XML; run independent task review and fix findings.
-- [ ] Use only supported computer-use against the no-connection synthetic UI; verify hiding, last-column guard, Show All, search preservation and view/export agreement. Respect existing denied Excel path and classify tool limitations separately.
-- [ ] Update candidate notes and acceptance records, preserving historical failed/blocked attempts.
+- [x] Inspect actual diff and XML; independent task review complete; historical TDD deviation retained, no current code defect found.
+- [x] Supported computer-use synthetic UI: hiding, last-column guard, Show All, search preservation, CSV summary, compact/light layout, new-result reset and normal exit observed. No desktop file saved; denied Excel path not retried.
+- [x] Update candidate notes and acceptance records, preserving historical failed/blocked attempts.
 - [ ] Complete broad branch review, locally fast-forward main if clean/ancestry permits, then run merged full regression. Release gates remain open; no automatic push/tag.
