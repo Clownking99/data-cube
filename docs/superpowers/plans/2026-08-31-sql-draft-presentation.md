@@ -32,7 +32,7 @@
 - Consumes existing `SqlDraft` record, `SqlDraftManagerPane.preview(String,int)`, existing test `Fixture` (`probe`, `pane`, `fx`, `list`, `sql`, `settle`).
 - Produces corrected actual cell text and scoped prompt styling; no new public interfaces.
 
-- [ ] **Step 1: Add regression tests before production changes.** Add imports for `java.util.stream.Stream`, `javafx.css.PseudoClass`, `javafx.scene.control.ListCell`, `javafx.scene.layout.Region`, `javafx.scene.paint.Color`, `javafx.scene.text.Text`, `org.junit.jupiter.params.provider.Arguments`, `org.junit.jupiter.params.provider.MethodSource`.
+- [x] **Step 1: Add regression tests before production changes.** Add imports for `java.util.stream.Stream`, `javafx.css.PseudoClass`, `javafx.scene.control.ListCell`, `javafx.scene.layout.Region`, `javafx.scene.paint.Color`, `javafx.scene.text.Text`, `org.junit.jupiter.params.provider.Arguments`, `org.junit.jupiter.params.provider.MethodSource`.
 
 Add inside `SqlDraftManagerTest`:
 
@@ -142,7 +142,7 @@ private static double linear(double channel) {
 
 These tests deliberately use actual CSS computation with a focused pseudo-class, not OS focus acquisition. Root will separately verify actual focus in desktop acceptance. If a JavaFX skin fixture assumption fails, correct the fixture against actual node behavior before counting RED; never weaken contrast assertions or introduce production seams.
 
-- [ ] **Step 2: Run focused RED and report before GREEN.**
+- [x] **Step 2: Run focused RED and report before GREEN.**
 
 PowerShell (preserve process environment):
 
@@ -156,7 +156,7 @@ try {
 
 Expected nonzero with missing metadata fallback and insufficient/transparent prompt-color assertions. Compile errors or fixture lookups are not behavioral RED. Send root the actual XML names/count and keep production unchanged until root acknowledges.
 
-- [ ] **Step 3: Implement minimal presentation correction.** Replace the existing cell `setText` construction with:
+- [x] **Step 3: Implement minimal presentation correction.** Replace the existing cell `setText` construction with:
 
 ```java
 setText(empty || draft == null ? null : TIME.format(Instant.ofEpochMilli(draft.modifiedAt()))
@@ -183,8 +183,8 @@ Append to `theme-base.css`:
 }
 ```
 
-- [ ] **Step 4: Verify focused GREEN then full regression once.** Repeat Step 2 command, expected all manager tests pass without skips; then same environment-preserving wrapper with `test --rerun-tasks --no-daemon --console=plain` (no tests filter). Expected exit0; record actual suites/tests/failures/errors/skips and any existing compiler notes. Root owns later process/package and desktop checks; do not run them.
-- [ ] **Step 5: Self-review, commit only the three task files, write report.**
+- [x] **Step 4: Verify focused GREEN then full regression once.** Repeat Step 2 command, expected all manager tests pass without skips; then same environment-preserving wrapper with `test --rerun-tasks --no-daemon --console=plain` (no tests filter). Expected exit0; record actual suites/tests/failures/errors/skips and any existing compiler notes. Root owns later process/package and desktop checks; do not run them.
+- [x] **Step 5: Self-review, commit only the three task files, write report.**
 
 ```powershell
 git diff --check

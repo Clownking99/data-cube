@@ -314,3 +314,15 @@ Counter边界：session计数来自真实ConnectionManager调用provider.sqlRunn
 删除取消没有测量独立的操作前哈希，仅记录UI条数及后续文件存在，不扩大证据。没有访问真实连接、SQL历史、密码或`.testagent/`。两次受控进程均正常结束，临时产物保留。实际桌面首次使用是已有预置合成记录下新建普通SQL；完全空目录首次保存由既有自动化测试覆盖，不混称为空目录桌面验收。
 
 后续只需[局部呈现修正](../plans/2026-08-31-sql-draft-presentation.md)、审查及最终源码复验，再按授权本地合并main。当前尚未合并，不推送/tag/安装/发布。
+
+## 最终呈现修正及桌面复验（源码5e50f21）
+
+`5e50f21`仅修改草稿管理行文案、限定ID的提示色及管理页测试。首次RED为26项/6失败，其中亮色背景类型断言是夹具错误，未冒充产品失败；改为检查实际渐变各色标后，主代理直接核对23:28:41Z XML，4项元数据及暗/亮对比度1.03147/1.76223共6项真实失败，生产代码仍未改动。随后定向26项全部通过。独立任务审查Spec compliant / Approved，无Critical/Important/Minor；实际OS焦点明确由桌面复验补证。
+
+主代理最终组合命令：`gradlew.bat -I .superpowers/sdd/draft-acceptance.init.gradle test verifySqlDraftProcesses jpackageImage --rerun-tasks --no-daemon --console=plain`，session6314，exit0、99秒、18任务全执行。测试强制非headless，实际XML150 suites /1373 total /1370 passed /0 failures /0 errors /3原有live skips；新增8项没有跳过。8个顶层子进程及nested locked-probe通过，异常退出37符合预期，目录`C:/Users/hetia/AppData/Local/Temp/datacube-draft-process-6617288954716498219`保留；主代理直接读取normal/restore/locked-probe成功标记。已有fixture CSS与unchecked提示仍披露。
+
+组合命令携带的`JAVA_TOOL_OPTIONS`使打包插件输出多条`java/javac failed: Picked up JAVA_TOOL_OPTIONS`，尽管构建exit0。为区分环境诊断噪声，单独暂时清除该进程变量后重跑`gradlew.bat jpackageImage --rerun-tasks --no-daemon --console=plain`并恢复变量：session16539，exit0、43秒、14任务全执行，上述噪声不再出现，原JDK/JEP493提示仍存在。没有据此修改构建脚本或系统设置。最终镜像modules SHA-256为`381FAC8D419CCE7CAB899FF20BD96FEA4C18EAFEEF356008A783B574E2B64A3B`；jimage读取成功，含SqlDraft与Manager生产类、不含测试launcher/probe；cfg为真实DataCubeFx入口且无隔离user.home。默认3.0.0不是发布号，未安装或启动完整发行入口。
+
+最终实际AppShell桌面复验使用前述同一独占profile和启动命令：PID29692，session90232。暗色列表显示“未绑定连接”而非null，保留desktop_schema；未选中时仅显示清晰预览提示。点击提示后，实际accessibility.focused_element为`64 编辑 ID: JavaFX87`，截图中提示仍可见。切换亮色、重新打开管理页，实际焦点为`103 编辑 ID: JavaFX143`，提示仍清晰。两种主题选择草稿后完整SQL可读，无重叠；亮色显式恢复后只有1个恢复标签，Schema与SQL保留，未绑定、尚未创建专用会话及执行/事务禁用状态均直接核对。空Schema和未命名连接的分支由实际cell测试覆盖，不冒充本次profile中的桌面记录。
+
+经实际标题栏正常关闭，exit0、4m19s、9任务（1执行/8 up-to-date）；两份草稿SHA仍分别为901DFF1B…FE94与C3C49D30…EAED（完整值见上表），没有新编辑或文件变化。实际焦点验收补齐任务审查中的不可从diff核验项。没有活跃验收JVM或Gradle。此时P1代码/自动化/打包/桌面门槛已满足，最后由整分支审查复核新增差异与证据，再本地合并main并在main回归；发布/远端CI/P0.2其余交互门槛不随之关闭。
