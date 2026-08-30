@@ -37,7 +37,7 @@
 - Reject noncanonical case aliases before reading, publishing or deleting: a preexisting uppercase UUID filename or `Preferences.bin` is not implicitly adopted/overwritten through the canonical lowercase name on Windows. Detect aliases from bounded direct entry names on all platforms.
 - Preference parsing, unknown/corrupt same-ID preservation, 100 drafts/32MiB, 7-day expiry, clear barriers, availability UI and close/drain ordering are SqlDraftStore/coordinator work, not responsibilities of this I/O task.
 
-- [ ] **Step 1: Create compilable stubs and complete tests.**
+- [x] **Step 1: Create compilable stubs and complete tests.**
 
 Use this compile-only stub before Step2; no live file behavior exists before RED.
 
@@ -307,7 +307,7 @@ class SqlDraftDirectoryTest {
 }
 ```
 
-- [ ] **Step 2: Observe RED with compile success.**
+- [x] **Step 2: Observe RED with compile success.**
 
 ```powershell
 .\gradlew.bat test --tests com.datacube.config.SqlDraftDirectoryTest --rerun-tasks --no-daemon --console=plain
@@ -315,7 +315,7 @@ class SqlDraftDirectoryTest {
 
 Expected exit1 against the null/no-op I/O stubs. Record actual failures before implementing file access. Do not count a compilation error as RED.
 
-- [ ] **Step 3: Implement the complete directory boundary.**
+- [x] **Step 3: Implement the complete directory boundary.**
 
 `src/com/datacube/config/SqlDraftDirectory.java`:
 
@@ -550,7 +550,7 @@ final class SqlDraftDirectory implements AutoCloseable {
 }
 ```
 
-- [ ] **Step 4: Focused GREEN and one full regression.**
+- [x] **Step 4: Focused GREEN and one full regression.**
 
 ```powershell
 .\gradlew.bat test --tests com.datacube.config.SqlDraftDirectoryTest --tests com.datacube.config.SqlDraftCodecTest --rerun-tasks --no-daemon --console=plain
@@ -570,7 +570,7 @@ exit $draftTestExit
 
 Expected exit0; report actual XML counts and named skips. Existing unchecked JavaFX test compiler note may still appear; preserve unrelated tests. No coverage percentage without measurement.
 
-- [ ] **Step 5: Self-review, commit exact files, and report.**
+- [x] **Step 5: Self-review, commit exact files, and report.**
 
 ```powershell
 git diff --check
