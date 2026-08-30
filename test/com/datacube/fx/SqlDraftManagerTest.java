@@ -8,6 +8,7 @@ import com.datacube.spi.model.DbType;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -21,13 +22,131 @@ import javafx.scene.control.DialogPane;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.ListCell;
+import javafx.scene.layout.Region;
+import javafx.scene.paint.Color;
+import javafx.scene.paint.LinearGradient;
+import javafx.scene.paint.Paint;
+import javafx.scene.paint.Stop;
+import javafx.scene.text.Text;
+import javafx.css.PseudoClass;
 import javafx.stage.Window;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SqlDraftManagerTest {
+    static Stream<Arguments> metadataRows() {
+        return Stream.of(
+                Arguments.of(null, null, null, null, "未绑定连接", "未指定"),
+                Arguments.of(null, null, "", "  ", "未绑定连接", "未指定"),
+                Arguments.of("pg", DbType.POSTGRESQL, null, "", "未命名连接 · POSTGRESQL", "未指定"),
+                Arguments.of("ora", DbType.ORACLE, " \t", null, "未命名连接 · ORACLE", "未指定"),
+                Arguments.of("pg", DbType.POSTGRESQL, "开发\nPG", "  public  ", "开发 PG · POSTGRESQL", "  public  "),
+                Arguments.of("ora", DbType.ORACLE, "Oracle", "APP", "Oracle · ORACLE", "APP"));
+    }
+
+    @ParameterizedTest @MethodSource("metadataRows")
+    void metadataRowsDescribeMissingValuesWithoutChangingCheckpoint(
+            String connectionId, DbType type, String name, String schema,
+            String expectedConnection, String expectedSchema) throws Exception {
+        try (Fixture f = new Fixture(true, true, true)) {
+            SqlDraft raw = new SqlDraft(UUID.randomUUID(), 100_001L, connectionId, type, name,
+                    schema, "select null;\r\n-- raw");
+            f.probe.records.clear();
+            f.probe.records.add(raw);
+            f.fx(() -> f.button("refresh").fire());
+            f.settle();
+            f.fx(() -> {
+                ListCell<SqlDraft> cell = f.list().getCellFactory().call(f.list());
+                cell.updateListView(f.list());
+                cell.updateIndex(0);
+                String[] lines = cell.getText().split("\n", -1);
+                assertTrue(lines[0].endsWith("  " + expectedConnection), lines[0]);
+                assertEquals("Schema: " + expectedSchema, lines[1]);
+                assertEquals("select null;  -- raw", lines[2]);
+                f.list().getSelectionModel().selectFirst();
+                SqlDraft selected = f.list().getSelectionModel().getSelectedItem();
+                assertSame(raw, selected);
+                assertEquals(name, selected.connectionName());
+                assertEquals(schema, selected.schema());
+                assertEquals("select null;\r\n-- raw", selected.sql());
+                assertEquals("select null;\n-- raw", f.sql().getText());
+                cell.updateIndex(-1);
+                assertNull(cell.getText());
+                assertNull(cell.getGraphic());
+            });
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"dark", "light"})
+    void previewPromptHasReadableThemeContrastAcrossSelectionAndFocusStyles(String theme) throws Exception {
+        try (Fixture f = new Fixture(true, true, true)) {
+            f.fx(() -> {
+                Scene scene = f.pane.getNode().getScene();
+                scene.getStylesheets().setAll(
+                        SqlDraftManagerTest.class.getResource("theme-base.css").toExternalForm(),
+                        SqlDraftManagerTest.class.getResource("theme-" + theme + ".css").toExternalForm());
+                for (boolean focusedStyle : new boolean[] {false, true}) {
+                    f.sql().pseudoClassStateChanged(PseudoClass.getPseudoClass("focused"), focusedStyle);
+                    scene.getRoot().applyCss();
+                    scene.getRoot().layout();
+                    assertReadablePreviewText(f.sql(), f.sql().getPromptText());
+                }
+                f.list().getSelectionModel().select(f.newer);
+                scene.getRoot().applyCss();
+                scene.getRoot().layout();
+                assertFalse(f.sql().isEditable());
+                assertReadablePreviewText(f.sql(), "select 1;\n-- raw\n");
+                assertEquals("select 1;\r\n-- raw\n", f.newer.sql());
+                f.list().getSelectionModel().clearSelection();
+                scene.getRoot().applyCss();
+                scene.getRoot().layout();
+                assertReadablePreviewText(f.sql(), f.sql().getPromptText());
+            });
+        }
+    }
+
+    private static void assertReadablePreviewText(TextArea area, String expected) {
+        Text rendered = area.lookupAll(".text").stream().filter(Text.class::isInstance)
+                .map(Text.class::cast).filter(text -> expected.equals(text.getText()))
+                .findFirst().orElseThrow(() -> new AssertionError("Missing rendered preview: " + expected));
+        assertTrue(rendered.isVisible());
+        assertEquals(1.0, rendered.getOpacity(), 0.0001);
+        Color foreground = assertInstanceOf(Color.class, rendered.getFill());
+        assertEquals(1.0, foreground.getOpacity(), 0.0001);
+        Region content = assertInstanceOf(Region.class, area.lookup(".content"));
+        Paint background = content.getBackground().getFills().getLast().getFill();
+        if (background instanceof Color color) {
+            assertContrast(foreground, color, expected);
+        } else if (background instanceof LinearGradient gradient) {
+            for (Stop stop : gradient.getStops()) {
+                assertEquals(1.0, stop.getColor().getOpacity(), 0.0001);
+                assertContrast(foreground, stop.getColor(), expected);
+            }
+        } else {
+            fail("Unexpected background paint: " + background);
+        }
+    }
+
+    private static void assertContrast(Color foreground, Color background, String expected) {
+        double luminanceForeground = luminance(foreground), luminanceBackground = luminance(background);
+        double contrast = (Math.max(luminanceForeground, luminanceBackground) + 0.05)
+                / (Math.min(luminanceForeground, luminanceBackground) + 0.05);
+        assertTrue(contrast >= 4.5, "Preview contrast=" + contrast + ", text=" + expected);
+    }
+
+    private static double luminance(Color color) {
+        return 0.2126 * linear(color.getRed()) + 0.7152 * linear(color.getGreen())
+                + 0.0722 * linear(color.getBlue());
+    }
+
+    private static double linear(double channel) {
+        return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+    }
     static SqlDraft draft(long time, String sql) {
         return new SqlDraft(UUID.randomUUID(), time, "saved", DbType.POSTGRESQL, "Saved", "  schema  ", sql);
     }

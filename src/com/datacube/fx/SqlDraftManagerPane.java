@@ -55,8 +55,9 @@ final class SqlDraftManagerPane implements AutoCloseable {
             @Override protected void updateItem(SqlDraft draft, boolean empty) {
                 super.updateItem(draft, empty);
                 setText(empty || draft == null ? null : TIME.format(Instant.ofEpochMilli(draft.modifiedAt()))
-                        + "  " + preview(draft.connectionName(), 80) + " · " + draft.connectionType()
-                        + "\nSchema: " + preview(draft.schema(), 80) + "\n"
+                        + "  " + (draft.connectionType() == null ? "未绑定连接"
+                                : displayMetadata(draft.connectionName(), "未命名连接") + " · " + draft.connectionType())
+                        + "\nSchema: " + displayMetadata(draft.schema(), "未指定") + "\n"
                         + (draft.sql().isEmpty() ? "空草稿" : preview(draft.sql(), 120)));
                 setGraphic(null);
             }
@@ -122,6 +123,10 @@ final class SqlDraftManagerPane implements AutoCloseable {
         }
         if (text.length() > length) value.append('…');
         return value.toString();
+    }
+
+    private static String displayMetadata(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : preview(value, 80);
     }
 
     void refreshView() {
