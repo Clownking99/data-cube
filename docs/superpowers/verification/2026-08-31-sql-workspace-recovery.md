@@ -265,6 +265,18 @@ P2.4完成。P2.5真实桌面、跨进程和打包仍待执行，当前任务批
 
 ## P2 完整验收清单
 
+### P2.5 跨进程与桌面边界
+
+忽略目录内的SqlWorkspaceAcceptanceLauncher及init脚本仅为验收工具，不进入发行包。实现代理最终matrix（修正40秒子进程等待及增加真实Handle检查点后）session38486 exit0/64s，17个独立JVM，根目录 `C:/Users/hetia/AppData/Local/Temp/datacube-workspace-process-14862248713823088493`。首编译错误Mode.ACTIVE应为ENABLED仅是夹具错误，不是产品缺陷。
+
+root独立执行 `./gradlew.bat -I .superpowers/sdd/workspace-acceptance.init.gradle verifySqlWorkspaceProcesses --no-daemon --console=plain`：session52720 terminal exit0/57s；根目录 `C:/Users/hetia/AppData/Local/Temp/datacube-workspace-process-9961000438763930905`。17次结果均符合约定（异常子进程37，其余0），root另行读取全部17份日志，确认各自四探针0、16份正常关闭/CHILD_PASS、异常前检查点标记，无AssertionError、未捕获异常或强制清理。场景为正常退出→恢复、确认检查点后异常中断→恢复、单标签关闭→单页恢复、取消退出→恢复旧布局、未触及启动→再次恢复、持久关闭记录→仍可恢复旧布局、清空布局→草稿保留且可逐条恢复。均断言真实Tab/CodeArea文本、顺序、选中和8:2/9:3反向选择，不以文件读取成功代替界面状态。
+
+独立任务审查认为功能符合，但以Important要求消除原始Scene产生的CSS lookup/String-to-Paint警告并明确隔离已知unnamed-module启动诊断，以免掩盖新问题。正在修正**验收夹具**及复跑，不修改产品样式或关闭通用日志；当前不将此任务标记为最终Approved。
+
+真实AppShell已用已标记profile启动：session85204、PID26932，标题 `DataCube SQL工作区隔离验收`，输出路径与本轮独占profile一致。Computer Use先返回唯一目标窗口，尝试读取界面时报 `Computer Use helper already has an active request`；重新定位后重试一次仍为相同错误。没有成功截图/控件树、没有点击或输入，故明暗主题/键盘/真实入口**未验收**。按技能停止输入，向维护者报告后，只在核对exe、launcher、profile均匹配的情况下结束本轮PID26932，未操作其他进程。JavaExec因此exit-1、Gradle exit1/1m59s，这是工具阻塞后的验收实例清理，不是正常退出通过或产品断言失败。合成profile/标记/草稿全部保留；桌面控制通道恢复后必须重新启动并继续，不能以自动化进程结果替代。
+
+桌面阻塞不妨碍只读整分支审查。main的重叠未提交文件仍需用户方向；在桌面门槛及合并边界解决前，不本地合并、不推送/tag/发布。
+
 ### P2.5 当前运行证据（2026-08-31）
 
 [总体验收计划](../plans/2026-08-31-sql-workspace-acceptance.md)及[独立进程计划](../plans/2026-08-31-sql-workspace-process-acceptance.md)已记录。本轮不改产品行为。
