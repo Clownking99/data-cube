@@ -75,7 +75,7 @@ public final class AppShell {
             AppShell::reportShutdownFailure);
     private final LazyValue<MigrationPane> migrationPane = new LazyValue<>(() -> new MigrationPane(tasks));
     private final LazyValue<SqlDraftUi> sqlDrafts = new LazyValue<>(() ->
-            new SqlDraftUi(java.nio.file.Path.of(System.getProperty("user.home"), ".datacube", "sql-drafts")));
+            new SqlDraftUi(java.nio.file.Path.of(System.getProperty("user.home"), ".datacube", "sql-drafts"), contentTabs));
     private final LazyValue<UpdateService> updateService =
             new LazyValue<>(() -> new UpdateService(tasks::submit, Platform::runLater));
     private final SqlHistoryStore sqlHistory = new SqlHistoryStore();

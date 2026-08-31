@@ -10,6 +10,9 @@ import java.util.concurrent.CompletionStage;
 
 /** Thread-safe registry; close-all seals ownership and asynchronously waits for open reservations. */
 final class AsyncManagedTabRegistry<K> {
+    private java.util.function.Supplier<CompletionStage<Void>> beforeGuards;
+    private java.util.function.Function<TabCloseOutcome, CompletionStage<TabCloseOutcome>> gate;
+    private java.util.function.BiConsumer<TabCloseOutcome, Runnable> terminal;
     private final Map<K, AsyncTabCloseCoordinator> entries = new IdentityHashMap<>();
     private State state = State.OPEN;
     private CompletableFuture<TabCloseOutcome> closing;
@@ -72,14 +75,32 @@ final class AsyncManagedTabRegistry<K> {
     }
 
     CompletionStage<TabCloseOutcome> closeAll(ManagedCloseMode mode) {
+        return closeAll(mode, () -> CompletableFuture.completedFuture(null),
+                CompletableFuture::completedFuture, (outcome, commit) -> commit.run());
+    }
+
+    CompletionStage<TabCloseOutcome> closeAll(ManagedCloseMode mode,
+            java.util.function.Supplier<CompletionStage<Void>> beforeGuards,
+            java.util.function.Function<TabCloseOutcome, CompletionStage<TabCloseOutcome>> gate,
+            java.util.function.BiConsumer<TabCloseOutcome, Runnable> terminal) {
         Objects.requireNonNull(mode, "mode");
+        Objects.requireNonNull(beforeGuards, "beforeGuards");
+        Objects.requireNonNull(gate, "gate");
+        Objects.requireNonNull(terminal, "terminal");
         CompletableFuture<TabCloseOutcome> result;
         List<AsyncTabCloseCoordinator> snapshot = null;
         synchronized (this) {
+            // A terminal hook may have committed OPEN/CLOSED but has not returned yet. Keep its
+            // attempt private until the hook succeeds, so a late hook exception can fail closed
+            // without racing a newer close attempt or exposing premature success.
+            if (closing != null && !closing.isDone()) return closing.copy();
             if (state == State.CLOSED) {
                 return CompletableFuture.completedFuture(TabCloseOutcome.COMPLETED);
             }
-            if (state == State.CLOSING || state == State.FAILED_PARTIAL) return closing;
+            if (state == State.CLOSING || state == State.FAILED_PARTIAL) return closing.copy();
+            this.beforeGuards = beforeGuards;
+            this.gate = gate;
+            this.terminal = terminal;
             state = State.CLOSING;
             closeStarted = false;
             closeMode = mode;
@@ -90,8 +111,8 @@ final class AsyncManagedTabRegistry<K> {
                 snapshot = List.copyOf(entries.values());
             }
         }
-        if (snapshot != null) startCloseAll(snapshot, result, mode);
-        return result;
+        if (snapshot != null) freezeThenClose(snapshot, result, mode);
+        return result.copy();
     }
 
     private void reservationReleased() {
@@ -108,7 +129,17 @@ final class AsyncManagedTabRegistry<K> {
                 mode = closeMode;
             }
         }
-        if (snapshot != null) startCloseAll(snapshot, result, mode);
+        if (snapshot != null) freezeThenClose(snapshot, result, mode);
+    }
+
+    private void freezeThenClose(List<AsyncTabCloseCoordinator> snapshot,
+            CompletableFuture<TabCloseOutcome> result, ManagedCloseMode mode) {
+        try {
+            Objects.requireNonNull(beforeGuards.get(), "freeze returned null").whenComplete((unused, failure) -> {
+                if (failure != null) finishCloseAll(result, TabCloseOutcome.FAILED_PARTIAL);
+                else startCloseAll(snapshot, result, mode);
+            });
+        } catch (Throwable failure) { finishCloseAll(result, TabCloseOutcome.FAILED_PARTIAL); }
     }
 
     private void startCloseAll(
@@ -142,7 +173,35 @@ final class AsyncManagedTabRegistry<K> {
         return aggregate;
     }
 
+    static TabCloseOutcome worst(TabCloseOutcome left, TabCloseOutcome right) {
+        if (left == null || right == null || left == TabCloseOutcome.FAILED_PARTIAL
+                || right == TabCloseOutcome.FAILED_PARTIAL) return TabCloseOutcome.FAILED_PARTIAL;
+        return left == TabCloseOutcome.CANCELLED || right == TabCloseOutcome.CANCELLED
+                ? TabCloseOutcome.CANCELLED : TabCloseOutcome.COMPLETED;
+    }
+
     private void finishCloseAll(CompletableFuture<TabCloseOutcome> expected, TabCloseOutcome outcome) {
+        try {
+            Objects.requireNonNull(gate.apply(outcome), "gate returned null").whenComplete((finalOutcome, failure) ->
+                    terminate(expected, failure == null ? worst(outcome, finalOutcome) : TabCloseOutcome.FAILED_PARTIAL));
+        } catch (Throwable failure) { terminate(expected, TabCloseOutcome.FAILED_PARTIAL); }
+    }
+
+    private void terminate(CompletableFuture<TabCloseOutcome> expected, TabCloseOutcome outcome) {
+        java.util.concurrent.atomic.AtomicBoolean committed = new java.util.concurrent.atomic.AtomicBoolean();
+        try {
+            terminal.accept(outcome, () -> {
+                if (committed.compareAndSet(false, true)) commitTransition(expected, outcome);
+            });
+            if (!committed.get()) throw new IllegalStateException("terminal did not commit");
+            expected.complete(outcome);
+        } catch (Throwable failure) {
+            commitTransition(expected, TabCloseOutcome.FAILED_PARTIAL);
+            expected.complete(TabCloseOutcome.FAILED_PARTIAL);
+        }
+    }
+
+    private void commitTransition(CompletableFuture<TabCloseOutcome> expected, TabCloseOutcome outcome) {
         synchronized (this) {
             if (closing != expected) return;
             state = switch (outcome) {
@@ -151,12 +210,10 @@ final class AsyncManagedTabRegistry<K> {
                 case CANCELLED -> State.OPEN;
             };
             if (state == State.OPEN) {
-                closing = null;
                 closeStarted = false;
                 closeMode = null;
             }
         }
-        expected.complete(outcome);
     }
 
     final class Reservation implements AutoCloseable {

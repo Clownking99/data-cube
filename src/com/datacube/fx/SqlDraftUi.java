@@ -34,6 +34,7 @@ final class SqlDraftUi {
   private final Set<Runnable> observers = new LinkedHashSet<>();
   private final SqlDraftCoordinator runtime;
   private final Timeline timer;
+  private SqlWorkspaceUi workspace;
 
   SqlDraftUi(Path directory) {
     long started = System.nanoTime();
@@ -52,6 +53,7 @@ final class SqlDraftUi {
                 event -> {
                   runtime.pulse();
                   List.copyOf(bindings).forEach(SqlDraftEditorBinding::refresh);
+                  if (workspace != null) workspace.pulse();
                   List.copyOf(observers).forEach(Runnable::run);
                 }));
     timer.setCycleCount(Timeline.INDEFINITE);
@@ -64,6 +66,25 @@ final class SqlDraftUi {
 
   SqlDraftCoordinator runtime() { return runtime; }
 
+  SqlWorkspaceUi attachWorkspace(ContentTabPane tabs, java.util.function.LongSupplier clock,
+      java.util.function.Supplier<java.util.concurrent.CompletionStage<SqlWorkspaceUi.Decision>> decision) {
+    if (workspace != null) throw new IllegalStateException("Workspace already attached");
+    workspace = new SqlWorkspaceUi(this, tabs, clock, decision);
+    bindings.forEach(binding -> binding.workspaceActivity(workspace::activity));
+    return workspace;
+  }
+
+  SqlDraftUi(Path directory, ContentTabPane tabs) {
+    this(directory);
+    long start = System.nanoTime();
+    attachWorkspace(tabs, () -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start), null);
+  }
+
+  SqlDraftEditorBinding installedBinding(Node content) {
+    SqlDraftEditorBinding binding = boundContent.get(content);
+    return binding != null && installedContent.get(binding.id()) == content ? binding : null;
+  }
+
   void bind(SqlEditorPane pane, SqlDraft draft) {
     Node content = pane.getNode();
     SqlDraftEditorBinding binding = pane.bindDraft(runtime,
@@ -75,12 +96,14 @@ final class SqlDraftUi {
         });
     bindings.add(binding);
     boundContent.put(content, binding);
+    if (workspace != null) binding.workspaceActivity(workspace::activity);
   }
 
   void installed(Node content) {
     SqlDraftEditorBinding binding = boundContent.get(content);
     if (binding == null) throw new IllegalStateException("Draft content is not bound");
     installedContent.put(binding.id(), content);
+    if (workspace != null) workspace.activity();
   }
 
   Node installedContent(UUID id) { return installedContent.get(id); }
@@ -98,6 +121,7 @@ final class SqlDraftUi {
         () -> {
           try {
             timer.stop();
+            if (workspace != null) workspace.close();
             observers.clear();
             runtime
                 .shutdown()

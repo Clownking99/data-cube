@@ -27,6 +27,15 @@ public final class ContentTabPane {
     private MandatoryAbortTracker mandatoryAborts = new MandatoryAbortTracker();
     private final Object ownershipLock = new Object();
     private boolean internalTabMutation;
+    private Supplier<CompletionStage<Void>> beforeClose = () -> CompletableFuture.completedFuture(null);
+    private java.util.function.Function<TabCloseOutcome, CompletionStage<TabCloseOutcome>> finalClose =
+            CompletableFuture::completedFuture;
+
+    void workspaceLifecycle(Supplier<CompletionStage<Void>> before,
+            java.util.function.Function<TabCloseOutcome, CompletionStage<TabCloseOutcome>> finish) {
+        beforeClose = java.util.Objects.requireNonNull(before);
+        finalClose = java.util.Objects.requireNonNull(finish);
+    }
     private final ManagedSelectionTracker<Tab> selectionTracker = new ManagedSelectionTracker<>();
 
     public ContentTabPane() {
@@ -260,22 +269,29 @@ public final class ContentTabPane {
             } catch (Throwable failure) {
                 dispatched.completeExceptionally(failure);
             }
-            return dispatched;
+            return dispatched.copy();
         }
         MandatoryAbortTracker tracker;
         CompletionStage<TabCloseOutcome> closing;
         synchronized (ownershipLock) {
             tracker = mandatoryAborts;
-            closing = ManagedCloseBarrier.close(() -> guardedTabs.closeAll(mode), tracker);
+            CompletableFuture<TabCloseOutcome> abortSettlement = new CompletableFuture<>();
+            closing = guardedTabs.closeAll(mode, beforeClose,
+                    outcome -> abortSettlement.thenCompose(aborted -> {
+                        TabCloseOutcome combined = AsyncManagedTabRegistry.worst(outcome, aborted);
+                        return java.util.Objects.requireNonNull(finalClose.apply(combined))
+                                .thenApply(finalized -> AsyncManagedTabRegistry.worst(combined, finalized));
+                    }), (outcome, commit) -> {
+                        synchronized (ownershipLock) {
+                            if (outcome == TabCloseOutcome.CANCELLED && mandatoryAborts == tracker)
+                                mandatoryAborts = new MandatoryAbortTracker();
+                            commit.run();
+                        }
+                    });
+            tracker.hardSeal().whenComplete((outcome, failure) -> abortSettlement.complete(
+                    failure == null && outcome != null ? outcome : TabCloseOutcome.FAILED_PARTIAL));
         }
-        return closing.thenApply(outcome -> {
-            if (outcome == TabCloseOutcome.CANCELLED) {
-                synchronized (ownershipLock) {
-                    if (mandatoryAborts == tracker) mandatoryAborts = new MandatoryAbortTracker();
-                }
-            }
-            return outcome;
-        });
+        return closing.toCompletableFuture().copy();
     }
 
     /** @deprecated 使用并等待 {@link #closeAllManagedTabs()} 的显式结果。 */

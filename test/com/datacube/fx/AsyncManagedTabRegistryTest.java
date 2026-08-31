@@ -18,6 +18,96 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AsyncManagedTabRegistryTest {
 
+    @Test void terminalExceptionAfterCancelledCommitFailsClosedAndCannotStartAnotherAttemptInsideHook() {
+        var registry = new AsyncManagedTabRegistry<Object>();
+        AtomicReference<CompletionStage<TabCloseOutcome>> reentrant = new AtomicReference<>();
+        var result = registry.closeAll(ManagedCloseMode.MANDATORY,
+                () -> CompletableFuture.completedFuture(null),
+                ignored -> CompletableFuture.completedFuture(TabCloseOutcome.CANCELLED),
+                (outcome, commit) -> {
+                    commit.run();
+                    reentrant.set(registry.closeAll());
+                    assertFalse(reentrant.get().toCompletableFuture().isDone());
+                    throw new IllegalStateException("synthetic terminal failure after commit");
+                });
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL,result.toCompletableFuture().join());
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL,reentrant.get().toCompletableFuture().join());
+        assertFalse(registry.reserve().acquired());
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL,registry.closeAll().toCompletableFuture().join());
+    }
+
+    @Test void reservationsSettleThenFreezeCompletesBeforeAnyGuard() {
+        var registry = new AsyncManagedTabRegistry<Object>();
+        var reservation = registry.reserve();
+        var frozen = new CompletableFuture<Void>();
+        List<String> events = new ArrayList<>();
+        var closed = registry.closeAll(ManagedCloseMode.MANDATORY, () -> {
+            events.add("freeze"); return frozen;
+        }, outcome -> CompletableFuture.completedFuture(outcome), (outcome, commit) -> commit.run());
+        assertTrue(events.isEmpty());
+        reservation.register(new Object(), coordinator(() -> {
+            events.add("guard"); return CompletableFuture.completedFuture(CloseGuardOutcome.APPROVED);
+        }));
+        reservation.close();
+        assertEquals(List.of("freeze"), events);
+        assertFalse(closed.toCompletableFuture().isDone());
+        frozen.complete(null);
+        assertEquals(TabCloseOutcome.COMPLETED, closed.toCompletableFuture().join());
+        assertEquals(List.of("freeze", "guard"), events);
+    }
+
+    @Test void finalGateCancellationReopensOnlyInsideTerminalOwnershipCommit() {
+        var registry = new AsyncManagedTabRegistry<Object>();
+        var gate = new CompletableFuture<TabCloseOutcome>();
+        AtomicInteger terminals = new AtomicInteger();
+        var closed = registry.closeAll(ManagedCloseMode.MANDATORY,
+                () -> CompletableFuture.completedFuture(null), outcome -> gate, (outcome, commit) -> {
+                    assertFalse(registry.reserve().acquired());
+                    assertEquals(TabCloseOutcome.CANCELLED, outcome);
+                    terminals.incrementAndGet();
+                    commit.run();
+                    try (var next = registry.reserve()) { assertTrue(next.acquired()); }
+                });
+        assertFalse(closed.toCompletableFuture().isDone());
+        assertFalse(registry.reserve().acquired());
+        gate.complete(TabCloseOutcome.CANCELLED);
+        assertEquals(TabCloseOutcome.CANCELLED, closed.toCompletableFuture().join());
+        assertEquals(1, terminals.get());
+    }
+
+    @Test void callerCancellationCannotCancelInternalGateOrReopenAdmission() {
+        var registry = new AsyncManagedTabRegistry<Object>();
+        var gate = new CompletableFuture<TabCloseOutcome>();
+        var caller = registry.closeAll(ManagedCloseMode.MANDATORY,
+                () -> CompletableFuture.completedFuture(null), outcome -> gate,
+                (outcome, commit) -> commit.run()).toCompletableFuture();
+        caller.cancel(false);
+        var observer = registry.closeAll().toCompletableFuture();
+        assertFalse(observer.isDone());
+        assertFalse(registry.reserve().acquired());
+        gate.complete(TabCloseOutcome.COMPLETED);
+        assertEquals(TabCloseOutcome.COMPLETED, observer.join());
+        assertFalse(registry.reserve().acquired());
+    }
+
+    @Test void gateCannotDowngradeFatalOrCancelledAndExceptionFailsClosed() {
+        for (CloseGuardOutcome guard : List.of(CloseGuardOutcome.REJECTED, CloseGuardOutcome.FAILED_PARTIAL)) {
+            var registry = new AsyncManagedTabRegistry<Object>();
+            registry.register(new Object(), immediateCoordinator(guard));
+            var result = registry.closeAll(ManagedCloseMode.MANDATORY,
+                    () -> CompletableFuture.completedFuture(null),
+                    ignored -> CompletableFuture.completedFuture(TabCloseOutcome.COMPLETED),
+                    (outcome, commit) -> commit.run());
+            assertEquals(guard == CloseGuardOutcome.REJECTED ? TabCloseOutcome.CANCELLED
+                    : TabCloseOutcome.FAILED_PARTIAL, result.toCompletableFuture().join());
+        }
+        var registry = new AsyncManagedTabRegistry<Object>();
+        assertEquals(TabCloseOutcome.FAILED_PARTIAL, registry.closeAll(ManagedCloseMode.MANDATORY,
+                () -> CompletableFuture.completedFuture(null), outcome -> { throw new IllegalStateException(); },
+                (outcome, commit) -> commit.run()).toCompletableFuture().join());
+        assertFalse(registry.reserve().acquired());
+    }
+
     @Test
     void mandatoryCloseAllUsesOnlyMandatoryGuards() {
         AsyncManagedTabRegistry<Object> registry = new AsyncManagedTabRegistry<>();
@@ -137,7 +227,7 @@ class AsyncManagedTabRegistryTest {
 
         assertFalse(closing.toCompletableFuture().isDone());
         assertFalse(registry.register(new Object(), immediateCoordinator(CloseGuardOutcome.APPROVED)));
-        assertSame(closing, registry.closeAll());
+        assertFalse(registry.closeAll().toCompletableFuture().isDone());
 
         cleanup.complete(CloseGuardOutcome.APPROVED);
         assertEquals(TabCloseOutcome.COMPLETED, closing.toCompletableFuture().join());

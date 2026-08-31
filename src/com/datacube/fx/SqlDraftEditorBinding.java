@@ -39,6 +39,10 @@ final class SqlDraftEditorBinding implements AutoCloseable {
   private final ChangeListener<String> changes = (observable, before, after) -> edited();
   private boolean closed, closing, priorEditable, priorSchemaDisabled, managementPending;
   private CompletableFuture<Boolean> closeAttempt;
+  private Runnable workspaceActivity = () -> {};
+  private final javafx.beans.InvalidationListener positionChanged = ignored -> {
+    if (!closed && !closing) workspaceActivity.run();
+  };
 
   SqlDraftEditorBinding(
       SqlDraftCoordinator runtime,
@@ -69,6 +73,8 @@ final class SqlDraftEditorBinding implements AutoCloseable {
     try {
       editor.textProperty().addListener(changes);
       schema.textProperty().addListener(changes);
+      editor.anchorProperty().addListener(positionChanged);
+      editor.caretPositionProperty().addListener(positionChanged);
       retry.setOnAction(
           event -> {
             if (!closing && !closed) {
@@ -100,6 +106,11 @@ final class SqlDraftEditorBinding implements AutoCloseable {
   }
 
   UUID id() { return handle.id(); }
+  boolean checkpointed() { return handle.status().savedAt() != null; }
+  com.datacube.config.SqlWorkspace.Entry position() {
+    return new com.datacube.config.SqlWorkspace.Entry(id(), editor.getAnchor(), editor.getCaretPosition());
+  }
+  void workspaceActivity(Runnable listener) { workspaceActivity = listener; }
 
   boolean closing() {
     return closing || closed;
@@ -108,6 +119,7 @@ final class SqlDraftEditorBinding implements AutoCloseable {
   void edited() {
     if (!closed && !closing) {
       handle.edited();
+      workspaceActivity.run();
       refresh();
     }
   }
@@ -261,6 +273,9 @@ final class SqlDraftEditorBinding implements AutoCloseable {
     closed = true;
     editor.textProperty().removeListener(changes);
     schema.textProperty().removeListener(changes);
+    editor.anchorProperty().removeListener(positionChanged);
+    editor.caretPositionProperty().removeListener(positionChanged);
+    workspaceActivity = () -> {};
     handle.detach();
     detached.accept(this);
   }

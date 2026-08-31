@@ -255,6 +255,12 @@ public final class SqlDraftCoordinator {
         return workspaceOperation(false, true, () -> backend.clearWorkspace());
     }
 
+    /** Current workspace-management generation; valid only on the UI owner. */
+    public long workspaceGeneration() {
+        owner();
+        return workspaceEpoch.get();
+    }
+
     /** One pending layout publication; capture/coalescing belongs to the UI state owner. */
     private <T> CompletableFuture<T> workspaceOperation(boolean saving, boolean managing, Callable<T> action) {
         active();
