@@ -2,9 +2,11 @@
 
 ## 当前范围
 
-P2.1 基础模块和P2.2严格存储已完成，源码提交分别为 `6b0bbe1`、`4611f54`，测试与独立任务审查通过。尚无用户可用的工作区恢复入口。工作分支 `codex/sql-workspace-recovery`，起点 main `7710ecb526d10a22e3fbff65367c50b04e44ed9d`，设计/计划提交 `48faecc`、`eaa8de0`。main 保持不变；无推送/tag/发布。
+P2.1基础模块、P2.2严格存储、P2.3a异步运行时桥已完成，源码提交分别为 `6b0bbe1`、`4611f54`、`2cb002d`，测试与独立任务审查通过。尚无用户可用的工作区恢复入口。工作分支 `codex/sql-workspace-recovery`，起点 main `7710ecb526d10a22e3fbff65367c50b04e44ed9d`；main未合并本分支，无推送/tag/发布。
 
-设计：[P2 工作区恢复](../specs/2026-08-31-sql-workspace-recovery-design.md)。已完成计划：[P2.1 基础模块](../plans/2026-08-31-sql-workspace-foundation.md)、[P2.2 共享锁持久化](../plans/2026-08-31-sql-workspace-persistence.md)。协调与 UI 尚未实施，不以存储单测通过替代这些验收。
+设计：[P2 工作区恢复](../specs/2026-08-31-sql-workspace-recovery-design.md)。已完成计划：[P2.1 基础模块](../plans/2026-08-31-sql-workspace-foundation.md)、[P2.2 共享锁持久化](../plans/2026-08-31-sql-workspace-persistence.md)、[P2.3a 异步存储桥](../plans/2026-08-31-sql-workspace-runtime-bridge.md)。活动捕获/退出冻结与恢复 UI 尚未实施，不以存储和运行时测试替代这些验收。
+
+本轮P2.3a完成区间 `c3747e11fa8c54178851e561cd4b23e91536b1a6..2cb002d4de6103cfc07a690e82da8ef02ed486d2`，按[运行时设计](../specs/2026-08-31-sql-workspace-runtime-design.md)实施。范围仅共享队列API、失效代次、故障/关闭结果传播；FX标签捕获、变更合并与退出冻结仍属P2.3b，不宣称已完成。主目录发现未提交SqlDraftStore改动，仅核对其状态，不读取或改动该文件内容；本轮仅在独立worktree实施。
 
 ## 基线证据
 
@@ -79,14 +81,62 @@ P2.1 基础模块和P2.2严格存储已完成，源码提交分别为 `6b0bbe1`�
 
 这是P2.2任务门槛，不是P2整分支合并批准；下列队列、退出、恢复UI验收仍未完成。
 
-### P2.3 接入契约（尚未实施）
+### P2.3 接入契约与当前分层
 
 - `Snapshot.recordingEnabled` 仅代表工作区偏好；不能直接作为整个运行时允许写入的标志，还要检查草稿保护及共享writer状态。
-- 新的同步API只能在共享writer上调用。不得在FX线程执行，也不得重新open相同目录获取第二个owner。
-- `SqlDraftCoordinator` 已有清理失败分类与结构性停用：`CLEANUP` 必须使共享writer粘性停用并使排队任务失效。新工作区领域失败尚未接入该分类，不得描述为运行时保护已完成。
-- 清空布局/关闭记录都需使旧的排队布局快照失效；恢复开启不能自动覆盖上一次工作区。界面保存状态必须等待实际落盘结果。
+- P2.3a已将同步API接到共享writer，真实Path构造也复用唯一store；FX捕获与UI消费尚未接入。
+- P2.3a已接通工作区CLEANUP/结构性失败的共享writer粘性停用，普通工作区损坏/独立禁用不误停草稿。未来UI仍须消费明确错误及全局mode，不能只看记录偏好。
+- P2.3a已使清空/启停/删除前的旧排队快照失效。P2.3b仍需使尚未提交的内存候选失效，并确保重新开启不自动覆盖上一次工作区、界面保存状态等待实际结果。
 - 一般关闭单标签应更新布局；退出要在binding脱离前冻结完整布局。取消或部分失败不得把不完整布局当作成功退出快照。
 - 初次读取损坏/未知清单时仍可展示独立草稿；未开始新工作或明确清空时，启动初始化不能写空布局覆盖旧清单。
+
+## P2.3a 验证范围
+
+本轮改动前root全量：session50743，`./gradlew.bat test --no-daemon --console=plain`，上述JDK，scoped `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false` 后恢复，exit0/32秒；154 suites、1430 total、1427 passed、0 failures/errors、3原有live跳过。
+
+以下验收映射对应源码 `2cb002d4de6103cfc07a690e82da8ef02ed486d2`，新增22个测试case均已通过，root独立复跑和独立任务审查通过：
+
+RED已确认：实现代理报告 `./gradlew.bat test --tests com.datacube.config.SqlWorkspaceRuntimeTest --no-daemon --console=plain` 编译成功后exit1/13.149秒。root直接读取02:03:48.765Z XML：22项全部因 `UnsupportedOperationException: Workspace runtime not implemented` 失败，0 errors/skips；实际diff只新增编译骨架/default Backend入口及枚举，没有运行时行为。root确认后才授权GREEN实现。
+
+通过证据（上述JDK）：
+
+- 实现代理定向GREEN同命令，exit0/12.695秒，22 passed、0 failures/errors/skips；root也直接读取02:06:13.527Z通过XML。
+- 相邻回归：`./gradlew.bat test --tests com.datacube.config.SqlDraftCoordinatorTest --tests com.datacube.config.SqlDraftWriteQueueTest --tests com.datacube.config.SqlWorkspaceRuntimeTest --tests com.datacube.config.SqlWorkspaceStoreTest --tests com.datacube.config.SqlWorkspaceStoreFaultTest --no-daemon --console=plain`，代理exit0/10.451秒；root在全量XML核对对应五套20+11+22+9+16共78通过。
+- 全量：`./gradlew.bat test --rerun-tasks --no-daemon --console=plain`，代理scoped `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`，exit0/49.685秒。root直接汇总实际XML：155 suites、1452 total、1449 passed、0 failures/errors、3 skipped，仍为Redis standalone与SchemaDiff Oracle/PostgreSQL三条原有live用例。原有SqlEditorResultFilterContractTest unchecked提示仍在，不描述为无警告。
+- root独立复跑：`./gradlew.bat test --tests com.datacube.config.SqlWorkspaceRuntimeTest --tests com.datacube.config.SqlDraftCoordinatorTest --tests com.datacube.config.SqlDraftWriteQueueTest --no-daemon --console=plain`，exit0/9秒，8 tasks中1 executed/7 up-to-date，53 passed、0 failures/errors/skips。没有冒称第二次全量执行。
+- `workspace-runtime-bridge-task-1-report.md`保留完整命令、RED片段、矩阵及来源区分；源码提交仅Coordinator和新测试，未改store/queue/FX。
+
+| 要求 | 精确测试名（SqlWorkspaceRuntimeTest） |
+| --- | --- |
+| 未触及启动与关闭不写布局 | untouchedStartupReadAndShutdownNeverCreateLayoutFiles |
+| 非UI写入、UI交付后才完成 | saveRunsOffUiAndOnlySettlesAfterDiskAndUiDelivery |
+| 单保存背压、调用者取消隔离 | singleOutstandingSaveIsBoundedAndCallerCancellationDoesNotCancelPublication |
+| 清空不复活旧布局且不丢待写草稿 | clearInvalidatesQueuedLayoutButPreservesQueuedDraft |
+| workspace独立关闭与重开 | workspaceDisableCancelsQueuedLayoutWithoutDisablingDraftProtection |
+| P1清空/删除/总开关失效，refresh不误取消 | draftManagementInvalidatesOldWorkspace；refreshDoesNotInvalidateAcceptedLayout |
+| 管理失败也失效旧任务、保留旧文件 | failedManagementStillInvalidatesOldSaveAndRetainsOldFiles |
+| workspace损坏不停止正常草稿 | workspaceCorruptionDoesNotStopDraftProtection |
+| CLEANUP/P1偏好损坏停止共享写入 | cleanupStopsSharedWriterBeforeLaterDraftCanPublish；invalidDraftPreferenceStopsWorkspaceAndSubsequentDraftWrites |
+| 普通写失败可显式重试 | ordinaryWriteFailurePreservesOldLayoutAndAllowsExplicitRetry |
+| shutdown排空、晚到UI回调也结算、释放锁 | acceptedSaveDrainsAndCompletesEvenWhenShutdownPrecedesUiDelivery |
+| owner/null/初始化/busy准入 | wrongThreadInitializingNullAndOverlappingManagementAreRejected |
+| writer/UI拒绝不留下未结算future | writerRejectionSettlesOutcomeAndMakesRuntimeUnavailable；uiRejectionSettlesOutcomeAndStopsFurtherWrites |
+| 已开始保存先完成，清空后不复活 | runningSaveFinishesBeforeClearRatherThanResurrectingAfterIt |
+| 真实Path构造与LocalBackend四入口 | publicPathOwnerUsesSameStoreForReadWritePreferenceAndClear |
+
+### P2.3a 独立任务审查
+
+`workspace_runtime_bridge_review`（sol）对完整冻结两文件diff、brief和报告给出 Spec compliant / Task quality Approved：0 Critical / 0 Important，1 Minor为既有SqlEditorResultFilterContractTest unchecked编译提示，进入P2整分支审查记录，不为本任务扩大无关修复。
+
+审查定向核对了原queue空ID/barrierAll顺序、stop的CLEANUP粘性及shutdown/owner语义；CodeGraph跨worktree提示后的检查使用本worktree源码。其“未独立重跑历史RED/full”由root实际RED XML、全量XML及独立53项复跑证据补足；“b/UI未实现”作为明确未完成项保留。root核对build/wrapper/JDK仍为Java25/JavaFX25/JUnit5.11.3/Gradle9.2.0。此批准不等于P2整体验收或合并许可已满足。
+
+下一阶段的新增核对事项：当前AppShell将`closeAllManagedTabsMandatory`直接交给AsyncShutdownCoordinator；后者只在COMPLETED后执行destructiveTeardown，FAILED_PARTIAL保持终态、CANCELLED才允许重试。P2.3b应在破坏性清理前解决清单保存决策，同时核对已关闭managed registry在“取消退出”后的可用性，不能只包一层future就声称取消/重试安全。此处是当前代码发现的接入风险，未修改原关闭流程。
+
+root已直接核对当前worktree `AsyncManagedTabRegistry.finishCloseAll`：COMPLETED转为CLOSED，只有CANCELLED转回OPEN。故“受管标签已经全部关闭，再因布局失败对外返回CANCELLED”不能直接作为b的实现；必须在其设计/测试中处理registry可继续使用，不能把已有CLOSED/FAILED_PARTIAL状态无条件重置。
+
+P2.3b还需把捕获层的“最新候选”纳入同一失效契约：本桥只失效已经提交到queue的保存，尚在FX内存等待BUSY解除的候选不能在P1清空后重新提交。b的计划应增加明确的代次观察/通知与候选废弃测试，不能只覆盖已排队任务。首次草稿成功保存后的savedAt变化也须触发捕获，否则刚保存的新标签可能一直不进入布局。退出冻结不能等binding脱离后再从installedContent重新推断原标签集合。
+
+独立开关的用户意图也需由b保留：关闭记录请求失败时，存储桥如实返回失败且旧偏好仍存在；未来自动捕获层不能因旧偏好仍为开启而自动恢复记录，须在本次会话暂停并显示“设置未保存”，待用户明确重试/重新开启。a目前只有显式调用，不提供自动捕获策略，不能用其“普通写入可显式重试”测试替代隐私开关UI验收。
 
 ## 后续集成必须补验的风险
 
@@ -105,6 +155,7 @@ P2.1 基础模块和P2.2严格存储已完成，源码提交分别为 `6b0bbe1`�
 ## P2 完整验收清单
 
 - [x] P2.2 I/O 故障注入、偏好/清空/未知文件保护、同 JVM 与多 JVM 单写者；25项新测试通过且独立审查零发现。排队清空竞态属下一项。
+- [x] P2.3a 共享队列异步API、单保存背压、管理代次失效、故障隔离/停用、关闭排空与future结算；22项新测试和独立审查通过。
 - [ ] P2.3 活动快照、防抖、失效代次、退出冻结、取消/部分失败/未触及启动不覆盖。
 - [ ] P2.4 启动页及草稿页入口、原选中/光标/选择、重复定位、其他标签顺序、部分失败可见。
 - [ ] 更名/同名不同 ID/删除/类型变化/不存在 Schema，恢复及切换均为零数据库调用。

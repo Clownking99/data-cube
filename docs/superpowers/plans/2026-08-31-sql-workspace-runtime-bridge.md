@@ -39,7 +39,7 @@
 - Normal workspace corruption/disable only affects workspace. Directory structural/CLEANUP and DRAFT_PROTECTION_UNAVAILABLE stop shared writer. Cleanup reason remains sticky. No auto-retry.
 - No changes to queue/store/FX or original tests. Internal Backend gets explicit unsupported defaults so legacy P1-only test adapters remain valid; production LocalBackend overrides all.
 
-- [ ] **Step 1: Add test and compile-only API stubs**
+- [x] **Step 1: Add test and compile-only API stubs**
 
 For RED add the four new public method signatures with `throw new UnsupportedOperationException("Workspace runtime not implemented");`, the two enum values, and Backend default methods from Step3 only. Do NOT add runtime behavior/LocalBackend overrides/epoch/management changes before the behavioral RED. Existing P1 startup/fixture must remain real. Then create the test below.
 
@@ -376,7 +376,7 @@ class SqlWorkspaceRuntimeTest {
 }
 ```
 
-- [ ] **Step 2: Record behavioral RED before implementation**
+- [x] **Step 2: Record behavioral RED before implementation**
 
 ```powershell
 $env:JAVA_HOME='D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8'
@@ -385,7 +385,7 @@ $env:JAVA_HOME='D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8'
 
 Expected nonzero with named runtime-UOE failures, not compilation/fixture timeouts. Record actual counts/exit/duration and failure snippets in unique report; send root RED before GREEN. Fix fixture/compiler mistakes separately, do not claim them as behavioral RED.
 
-- [ ] **Step 3: Implement coordinator bridge**
+- [x] **Step 3: Implement coordinator bridge**
 
 Add import `java.util.concurrent.atomic.AtomicLong`; append DISABLED and CANCELLED to FailureReason; add fields:
 
@@ -513,7 +513,7 @@ Add `case DISABLED -> FailureReason.DISABLED;` to `modeReason` switch. In `struc
 
 Do not alter original handle, queue, stop, shutdown or P1 manage completion behavior. Existingqueue still drains and closes the singlebackend; new workspace callbacks deliberately settle even whileclosing.
 
-- [ ] **Step 4: Focused GREEN, adjacent regression and one full run**
+- [x] **Step 4: Focused GREEN, adjacent regression and one full run**
 
 ```powershell
 $env:JAVA_HOME='D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8'
@@ -528,7 +528,7 @@ try {
 
 Record exact command, exit, duration, actual XML suite/test/failure/error/skip counts and complete skipcase names. Expected all new tests pass with no new skips; the three old live-service skips and existing unchecked compile note remain explicitly reported. No concurrent Gradle withroot.
 
-- [ ] **Step 5: Review assertions, commit exact files, hand off**
+- [x] **Step 5: Review assertions, commit exact files, hand off**
 
 Check every requirement above against exacttestnames, including failure outcomes before futures are consumed, no UI I/O, oldfile bytes/content, singular owner and lockrelease. Record Requirement|Evidence table, RED/GREEN excerpts and limitations in `.superpowers/sdd/workspace-runtime-bridge-task-1-report.md`.
 

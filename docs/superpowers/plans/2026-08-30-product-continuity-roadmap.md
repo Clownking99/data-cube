@@ -139,6 +139,8 @@ P2.1 已完成：`6b0bbe1` 提供有界清单、严格版本化编解码与按UU
 
 P2.2 已完成[持久化设计](../specs/2026-08-31-sql-workspace-persistence-design.md)与[完整实现计划](2026-08-31-sql-workspace-persistence.md)，源码 `4611f54`。共享P1目录锁和store monitor、独立严格偏好、原子空清单清理；不复制正文、不删除草稿、不自动接入UI。最终全量1427通过/3原有live跳过/0失败，root独立25项通过，独立任务审查零发现。下一步P2.3活动工作区捕获、排队失效与退出冻结，再接P2.4恢复入口；仍留独立分支，P2整体验收前不合并main。
 
+P2.3分为a共享writer异步桥和b活动捕获/退出冻结。[运行时设计](../specs/2026-08-31-sql-workspace-runtime-design.md)与[a逐文件计划](2026-08-31-sql-workspace-runtime-bridge.md)已实施至 `2cb002d`：22项新测试通过，全量1449通过/3原有live跳过/0失败，root独立运行时/草稿协调器/队列53项通过；独立审查无阻塞发现，原有unchecked提示单列。下一步b需消费a的BUSY/CANCELLED/故障结果，处理尚未提交候选的失效、关闭偏好失败时暂停自动记录，以及取消退出后的受管标签可用性。尚无用户入口或整个P2.3完成声明。
+
 **关注文件：** `src/com/datacube/fx/AppShell.java`、`SqlEditorPane.java`、`AsyncTabCloseCoordinator.java`、`AsyncShutdownCoordinator.java`、`src/com/datacube/DataCubeFx.java`，以及 P1 草稿组件。
 
 - [x] 写独立设计，定义工作区清单只引用草稿 ID，不复制 SQL 或连接密钥。
