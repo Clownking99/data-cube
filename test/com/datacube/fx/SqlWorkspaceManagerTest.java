@@ -135,6 +135,118 @@ class SqlWorkspaceManagerTest {
         }
     }
 
+    @Test void oldRestoreCompletionCannotAffectNewPendingRefresh() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.base.seed("checkpoint");
+            SqlWorkspace saved = new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(draft.id(), 8, 1)), draft.id());
+            f.base.save(saved); f.open(); f.ready();
+            Path manifest = f.base.root.resolve("drafts/workspace.bin");
+            byte[] durableManifest = Files.readAllBytes(manifest);
+            try (CompletionGate gate = new CompletionGate(f)) {
+                CompletableFuture<Runnable> oldResult = gate.holdWorkspaceResult();
+                f.base.fx(() -> {
+                    assertEquals(0, f.base.created.size());
+                    assertTrue(f.base.tabPane().getTabs().isEmpty());
+                    f.button("restore").fire();
+                });
+                Runnable oldDelivery = oldResult.get(5, TimeUnit.SECONDS);
+                long generation = f.base.call(() -> f.base.owner.runtime().workspaceGeneration());
+                f.base.call(() -> f.base.owner.runtime().setWorkspaceEnabled(false)).get(5, TimeUnit.SECONDS);
+                f.base.fx(() -> {
+                    assertTrue(f.base.owner.runtime().workspaceGeneration() > generation);
+                    f.pane.refreshView();
+                    assertTrue(f.notice().contains("已取消"));
+                    assertFalse(f.button("refresh").isDisabled());
+                });
+                CompletableFuture<Runnable> newResult = gate.holdWorkspaceResult();
+                f.base.fx(() -> f.button("refresh").fire());
+                Runnable newDelivery = newResult.get(5, TimeUnit.SECONDS);
+                String pendingStatus = f.base.call(f::status);
+                f.base.fx(() -> {
+                    assertTrue(pendingStatus.contains("处理中"), pendingStatus);
+                    assertTrue(f.button("refresh").isDisabled());
+                    assertTrue(f.button("restore").isDisabled());
+                    assertEquals("", f.notice());
+                });
+                gate.deliver(oldDelivery);
+                // Delivery queues the manager callback; this next FX task is its FIFO barrier.
+                f.base.fx(() -> {
+                    assertEquals(0, f.base.created.size(), "old restore must not run an editor factory");
+                    assertTrue(f.base.tabPane().getTabs().isEmpty());
+                    assertEquals(pendingStatus, f.status(), "old completion must leave the newer refresh pending");
+                    assertTrue(f.button("refresh").isDisabled());
+                    assertTrue(f.button("restore").isDisabled());
+                    assertEquals("", f.notice(), "old restore counts must not replace the newer request notice");
+                });
+                gate.deliver(newDelivery); f.ready();
+                f.base.fx(() -> {
+                    assertEquals("共 1，可用 1，缺失 0 · 工作区记录已关闭，已有工作区仍可恢复", f.status());
+                    assertEquals("", f.notice());
+                    for (String button : List.of("refresh", "restore", "toggle", "clear"))
+                        assertFalse(f.button(button).isDisabled(), button);
+                    assertEquals("开启记录 SQL 工作区", f.button("toggle").getText());
+                    assertEquals(0, f.base.created.size());
+                    assertTrue(f.base.tabPane().getTabs().isEmpty());
+                });
+                var persisted = f.base.snapshot();
+                assertFalse(persisted.recordingEnabled());
+                assertEquals(saved, persisted.workspace());
+                assertArrayEquals(durableManifest, Files.readAllBytes(manifest));
+                f.base.offline();
+            }
+        }
+    }
+
+    /** Holds only scheduling, never backend data or manager state. */
+    static final class CompletionGate implements AutoCloseable {
+        final Fixture fixture;
+        final Field ui = SqlDraftCoordinator.class.getDeclaredField("ui");
+        final Executor original;
+        final List<Runnable> held = new ArrayList<>();
+        CompletableFuture<Runnable> next;
+        int deliveriesBeforeWorkspace;
+
+        CompletionGate(Fixture fixture) throws Exception {
+            this.fixture = fixture;
+            ui.setAccessible(true);
+            original = fixture.base.call(() -> (Executor) ui.get(fixture.base.owner.runtime()));
+            fixture.base.call(() -> { ui.set(fixture.base.owner.runtime(), (Executor) this::execute); return null; });
+        }
+        synchronized CompletableFuture<Runnable> holdWorkspaceResult() {
+            assertNull(next, "only one workspace result may be armed at a time");
+            // A manager load first posts refresh's management state, then its workspace result.
+            deliveriesBeforeWorkspace = 1;
+            return next = new CompletableFuture<>();
+        }
+        synchronized void execute(Runnable action) {
+            if (next != null && deliveriesBeforeWorkspace-- == 0) {
+                held.add(action);
+                CompletableFuture<Runnable> captured = next; next = null;
+                captured.complete(action);
+            } else original.execute(action);
+        }
+        void deliver(Runnable action) throws Exception {
+            fixture.base.fx(() -> {
+                synchronized (this) { assertTrue(held.remove(action), "completion delivered once"); }
+                action.run();
+            });
+        }
+        public void close() throws Exception {
+            fixture.base.call(() -> {
+                // In failure paths invalidate callbacks before draining every captured result.
+                fixture.pane.close();
+                ui.set(fixture.base.owner.runtime(), original);
+                synchronized (this) {
+                    next = null;
+                    for (Runnable action : held) action.run();
+                    held.clear();
+                }
+                return null;
+            });
+            fixture.base.fx(() -> {});
+        }
+    }
+
     @ParameterizedTest @ValueSource(booleans = {false, true})
     void disabledRecordingOrDraftProtectionStillRestoresOldLayoutWithoutNewWrites(boolean draftsOff) throws Exception {
         try (Fixture f = new Fixture(directory)) {
