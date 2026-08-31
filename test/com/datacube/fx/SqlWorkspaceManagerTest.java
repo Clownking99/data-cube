@@ -1,0 +1,433 @@
+package com.datacube.fx;
+
+import com.datacube.config.*;
+import java.nio.file.*;
+import java.lang.reflect.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+import javafx.scene.control.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import static org.junit.jupiter.api.Assertions.*;
+
+class SqlWorkspaceManagerTest {
+    @TempDir Path directory;
+
+    @Test void initialReadShowsRealSnapshotCountsAndCreatesEditorsOnlyAfterExplicitRestore() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft a = f.base.seed("select alpha"), b = f.base.seed("select beta");
+            SqlWorkspace saved = new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(b.id(), 8, 2),
+                    new SqlWorkspace.Entry(UUID.randomUUID(), 0, 0), new SqlWorkspace.Entry(a.id(), 7, 1)), b.id());
+            f.base.save(saved); f.open(); f.ready();
+            f.base.fx(() -> {
+                assertTrue(f.status().contains("共 3"), f.status());
+                assertTrue(f.status().contains("可用 2"), f.status());
+                assertTrue(f.status().contains("缺失 1"), f.status());
+                assertTrue(f.base.tabPane().getTabs().isEmpty());
+                assertEquals(0, f.base.created.size());
+                f.button("restore").fire(); f.button("restore").fire();
+            });
+            f.ready();
+            f.base.fx(() -> {
+                assertEquals(2, f.base.created.size());
+                assertEquals(List.of(f.base.tab(b.id()), f.base.tab(a.id())), List.copyOf(f.base.tabPane().getTabs()));
+                assertEquals("select beta", f.base.editor(b.id()).getText());
+                assertEquals(8, f.base.editor(b.id()).getAnchor());
+                assertSame(f.base.tab(b.id()), f.base.tabPane().getSelectionModel().getSelectedItem());
+                assertEquals("已打开 2，已定位 0，缺失 1，失败 0", f.notice());
+            });
+        }
+    }
+
+    @Test void dialogComposesWorkspaceAndDraftControlsWithOneDisposedSubscriptionAndLiveWriter() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.base.seed("checkpoint");
+            f.base.fx(() -> SqlDraftManagerTest.respondToDialog(
+                    () -> SqlDraftManagerDialog.show(f.base.owner, null, null, f.base.single::restore, f.base.batch), dialog -> {
+                        assertNotNull(dialog.lookup("#workspace-manager"));
+                        assertNotNull(dialog.lookup("#draft-manager-list"));
+                        assertEquals(1, ((Set<?>) SqlWorkspaceRecoveryTabsTest.get(f.base.owner, "observers")).size());
+                    }));
+            f.base.fx(() -> assertEquals(0, ((Set<?>) SqlWorkspaceRecoveryTabsTest.get(f.base.owner, "observers")).size()));
+            f.base.await(() -> !f.base.owner.runtime().managementPending());
+            f.base.fx(() -> {
+                assertTrue(f.base.single.restore(draft));
+                f.base.editor(draft.id()).replaceText("writer still available");
+            });
+            var binding = f.base.call(() -> f.base.owner.installedBinding(f.base.owner.installedContent(draft.id())));
+            f.base.call(() -> ((SqlDraftCoordinator.Handle) SqlWorkspaceRecoveryTabsTest.get(binding, "handle")).flush()).get(5, TimeUnit.SECONDS);
+            assertEquals("writer still available", f.base.call(() -> f.base.owner.runtime().refresh()).get(5, TimeUnit.SECONDS).snapshot().drafts().getFirst().sql());
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"absent", "empty", "corrupt", "unsupported", "unreadable", "failed"})
+    void snapshotProblemsHaveFixedMessagesNoAutomaticLoopAndExplicitRetry(String kind) throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.base.seed("checkpoint");
+            Path manifest = f.base.root.resolve("drafts/workspace.bin");
+            SqlWorkspace saved = new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(draft.id(), 8, 1)), draft.id());
+            if (kind.equals("empty")) f.base.save(new SqlWorkspace(0, List.of(), null));
+            if (kind.equals("corrupt")) Files.write(manifest, new byte[] {1, 2, 3});
+            if (kind.equals("unsupported")) {
+                f.base.save(saved);
+                byte[] bytes = Files.readAllBytes(manifest);
+                java.nio.ByteBuffer.wrap(bytes).putInt(4, 99); Files.write(manifest, bytes);
+            }
+            if (kind.equals("unreadable")) Files.write(manifest, new byte[1024 * 1024]);
+            if (kind.equals("failed")) f.failMethod.set("workspaceSnapshot");
+            f.open(); f.ready();
+            String expected = switch (kind) {
+                case "absent" -> "没有保存的工作区";
+                case "empty" -> "工作区为空";
+                case "corrupt" -> "工作区清单已损坏";
+                case "unsupported" -> "工作区清单版本不受支持";
+                case "unreadable" -> "工作区清单无法读取";
+                default -> "工作区读取失败";
+            };
+            f.base.fx(() -> {
+                assertTrue((f.status() + f.notice()).contains(expected), f.status() + f.notice());
+                assertTrue(f.button("restore").isDisabled());
+                assertEquals(0, f.base.created.size());
+                int reads = f.reads.get();
+                for (int i = 0; i < 10; i++) f.pane.refreshView();
+                assertEquals(reads, f.reads.get(), "rendering a failure never loops reads");
+            });
+            if (Files.exists(manifest)) Files.delete(manifest);
+            f.failMethod.set(null); f.base.save(saved);
+            f.base.fx(() -> f.button("refresh").fire()); f.ready();
+            f.base.fx(() -> {
+                assertFalse(f.button("restore").isDisabled());
+                assertTrue(f.status().contains("可用 1"));
+                f.button("restore").fire();
+            });
+            f.ready();
+            f.base.fx(() -> assertEquals("checkpoint", f.base.editor(draft.id()).getText()));
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"clear", "disable", "delete", "close"})
+    void lateReadAfterGenerationChangeOrClosedPaneNeverCreatesEditors(String mutation) throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.base.seed("checkpoint");
+            f.base.save(new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(draft.id(), 8, 1)), draft.id()));
+            f.open(); f.ready();
+            f.blockMethod.set("workspaceSnapshot");
+            f.base.fx(() -> { f.button("restore").fire(); f.button("restore").fire(); });
+            assertTrue(f.entered.await(5, TimeUnit.SECONDS));
+            String prior = f.base.call(f::status);
+            CompletableFuture<?> change = f.base.call(() -> switch (mutation) {
+                case "clear" -> f.base.owner.runtime().clearWorkspace();
+                case "disable" -> f.base.owner.runtime().setWorkspaceEnabled(false);
+                case "delete" -> f.base.owner.runtime().delete(draft.id());
+                default -> { f.pane.close(); yield CompletableFuture.completedFuture(null); }
+            });
+            f.release.countDown(); change.get(5, TimeUnit.SECONDS);
+            f.base.call(() -> f.base.owner.runtime().workspaceSnapshot()).get(5, TimeUnit.SECONDS);
+            f.base.fx(() -> {
+                f.pane.refreshView();
+                assertEquals(0, f.base.created.size()); assertTrue(f.base.tabPane().getTabs().isEmpty());
+                if (mutation.equals("close")) assertEquals(prior, f.status(), "closed view must ignore late result");
+                else { assertTrue(f.notice().contains("已取消")); assertTrue(f.button("restore").isDisabled()); }
+            });
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void disabledRecordingOrDraftProtectionStillRestoresOldLayoutWithoutNewWrites(boolean draftsOff) throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.base.seed("checkpoint");
+            SqlWorkspace saved = new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(draft.id(), 8, 1)), draft.id());
+            f.base.save(saved);
+            if (draftsOff) f.base.call(() -> f.base.owner.runtime().setEnabled(false)).get(5, TimeUnit.SECONDS);
+            else f.base.call(() -> f.base.owner.runtime().setWorkspaceEnabled(false)).get(5, TimeUnit.SECONDS);
+            f.base.await(() -> !f.base.owner.runtime().managementPending());
+            f.open(); f.ready();
+            int writes = f.writes.get();
+            f.base.fx(() -> {
+                assertTrue(f.status().contains(draftsOff ? "不会记录新的布局" : "工作区记录已关闭"), f.status());
+                f.button("restore").fire();
+            });
+            f.ready();
+            f.base.fx(() -> { assertEquals("checkpoint", f.base.editor(draft.id()).getText()); f.base.now = 10000; f.base.workspace.pulse(); });
+            assertEquals(saved, f.base.snapshot().workspace()); assertEquals(writes, f.writes.get());
+        }
+    }
+
+    @Test void invalidPreferenceIsNeverDisplayedAsEnabledAndCannotToggle() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            Files.write(f.base.root.resolve("drafts/workspace-preferences.bin"), new byte[] {1});
+            f.open(); f.ready();
+            f.base.fx(() -> {
+                assertTrue(f.status().contains("偏好不可确认")); assertFalse(f.status().contains("记录已开启"));
+                assertTrue(f.button("toggle").isDisabled());
+            });
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void disabledDraftsCloseButPausedDraftGuardStillCancelsWithoutWorkspacePublicationOrDecision(boolean pause) throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.base.seed("checkpoint");
+            SqlWorkspace saved = new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(draft.id(), 8, 1)), draft.id());
+            f.base.save(saved);
+            if (pause) f.failMethod.set("setEnabled");
+            var changed = f.base.call(() -> f.base.owner.runtime().setEnabled(false)).get(5, TimeUnit.SECONDS);
+            assertEquals(!pause, changed.succeeded());
+            f.base.await(() -> !f.base.owner.runtime().managementPending());
+            f.base.fx(() -> assertEquals(pause ? SqlDraftCoordinator.Mode.PAUSED : SqlDraftCoordinator.Mode.DISABLED, f.base.owner.runtime().mode()));
+            f.open(); f.ready();
+            f.base.fx(() -> f.button("restore").fire()); f.ready();
+            int writes = f.writes.get();
+            assertEquals(pause ? TabCloseOutcome.CANCELLED : TabCloseOutcome.COMPLETED,
+                    f.base.tabs.closeAllManagedTabsMandatory().toCompletableFuture().get(5, TimeUnit.SECONDS));
+            assertEquals(saved, f.base.snapshot().workspace());
+            assertEquals(writes, f.writes.get()); assertEquals(0, f.base.decisions.get());
+            f.base.fx(() -> {
+                assertEquals(pause ? 1 : 0, f.base.tabPane().getTabs().size());
+                if (pause) assertEquals("checkpoint", f.base.editor(draft.id()).getText());
+            });
+        }
+    }
+
+    @Test void initializationDefersExactlyOneReadUntilRuntimeReady() throws Exception {
+        AtomicReference<SqlDraftUi> owner = new AtomicReference<>();
+        AtomicReference<SqlWorkspaceManagerPane> pane = new AtomicReference<>();
+        AtomicReference<AutoCloseable> subscription = new AtomicReference<>();
+        CountDownLatch loaded = new CountDownLatch(1);
+        try {
+            FxUiTestSupport.call(() -> {
+                ContentTabPane tabs = new ContentTabPane();
+                SqlDraftUi drafts = new SqlDraftUi(directory.resolve("initializing"), tabs); owner.set(drafts);
+                var recovery = new SqlWorkspaceRecoveryTabs(tabs, drafts,
+                        new SqlDraftRecoveryTabs(tabs, drafts, ignored -> { throw new AssertionError("must not construct"); }, ignored -> {}));
+                pane.set(new SqlWorkspaceManagerPane(drafts, recovery));
+                assertTrue(((Label) pane.get().getNode().lookup("#workspace-manager-status")).getText().contains("初始化中"));
+                assertTrue(((Button) pane.get().getNode().lookup("#workspace-manager-restore")).isDisabled());
+                subscription.set(drafts.observe(() -> {
+                    pane.get().refreshView();
+                    if (((Label) pane.get().getNode().lookup("#workspace-manager-status")).getText().contains("没有保存的工作区")) loaded.countDown();
+                }));
+                return null;
+            });
+            assertTrue(loaded.await(5, TimeUnit.SECONDS));
+            FxUiTestSupport.call(() -> {
+                Object applied = owner.get().runtime().lastManagementResult();
+                for (int i = 0; i < 10; i++) pane.get().refreshView();
+                assertSame(applied, owner.get().runtime().lastManagementResult());
+                assertFalse(owner.get().runtime().managementPending()); return null;
+            });
+        } finally {
+            FxUiTestSupport.call(() -> { if (pane.get() != null) pane.get().close(); if (subscription.get() != null) subscription.get().close(); return null; });
+            if (owner.get() != null) owner.get().closeFromBackground();
+        }
+    }
+
+    @Test void ordinaryReadFailureLabelsPriorCountsAndRequiresExplicitRetry() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.base.seed("checkpoint");
+            var saved = new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(draft.id(), 8, 1)), draft.id());
+            f.base.save(saved); f.open(); f.ready();
+            f.failMethod.set("workspaceSnapshot");
+            f.base.fx(() -> f.button("refresh").fire()); f.ready();
+            f.base.fx(() -> {
+                assertTrue(f.status().contains("上次读取的恢复点（需刷新）"));
+                assertTrue(f.status().contains("可用 1"));
+                assertTrue(f.button("restore").isDisabled());
+                assertTrue(f.notice().contains("读取失败"));
+            });
+            f.failMethod.set(null);
+            assertEquals(saved, f.base.snapshot().workspace());
+            f.base.fx(() -> f.button("refresh").fire()); f.ready();
+            f.base.fx(() -> { assertFalse(f.button("restore").isDisabled()); assertFalse(f.status().contains("需刷新")); });
+        }
+    }
+
+    @Test void clearingAlreadyEmptyManifestIsSuccessfulOperation() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            f.base.save(new SqlWorkspace(0, List.of(), null)); f.open(); f.ready();
+            f.base.fx(() -> SqlDraftManagerTest.respondToDialog(f.button("clear")::fire, dialog ->
+                    dialog.getButtonTypes().stream().filter(type -> type != ButtonType.CANCEL).findFirst()
+                            .ifPresent(type -> ((Button) dialog.lookupButton(type)).fire())));
+            f.ready();
+            f.base.fx(() -> { assertTrue(f.notice().contains("已清空")); assertTrue(f.status().contains("工作区为空")); });
+            assertEquals(List.of(), f.base.snapshot().workspace().entries());
+        }
+    }
+
+    @Test void stalePreferenceCannotExecuteToggleUntilExplicitRefresh() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            f.open(); f.ready();
+            f.base.call(() -> f.base.owner.runtime().setWorkspaceEnabled(false)).get(5, TimeUnit.SECONDS);
+            f.base.fx(() -> {
+                f.pane.refreshView();
+                assertTrue(f.button("toggle").isDisabled(), "old enabled snapshot cannot choose an opposite intent");
+                f.button("toggle").fire();
+            });
+            assertFalse(f.base.snapshot().recordingEnabled());
+            f.base.fx(() -> f.button("refresh").fire()); f.ready();
+            f.base.fx(() -> {
+                assertEquals("开启记录 SQL 工作区", f.button("toggle").getText());
+                assertFalse(f.button("toggle").isDisabled());
+            });
+        }
+    }
+
+    @Test void callbackFailureShowsFixedNoticeAndKeepsPreviousManifestForRetry() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            UUID missing = UUID.randomUUID();
+            SqlWorkspace saved = new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(missing, 8, 1)), missing);
+            f.base.save(saved); f.open(); f.ready();
+            SingleSelectionModel<Tab> original = f.base.call(() -> f.base.tabPane().getSelectionModel());
+            try {
+                f.base.fx(() -> {
+                    f.base.tabPane().setSelectionModel(new SingleSelectionModel<>() {
+                        protected Tab getModelItem(int index) { return null; }
+                        protected int getItemCount() { return 0; }
+                        public void clearSelection() { throw new IllegalStateException("synthetic private selection failure"); }
+                    });
+                    f.button("restore").fire();
+                });
+                f.ready();
+                f.base.fx(() -> {
+                    assertEquals("工作区恢复未完成，已有恢复点保留；请刷新后重试。", f.notice());
+                    assertEquals(0, f.base.created.size());
+                });
+                assertEquals(saved, f.base.snapshot().workspace());
+            } finally { f.base.fx(() -> f.base.tabPane().setSelectionModel(original)); }
+        }
+    }
+
+    @Test void corruptManifestClearRemainsProtectedAndSingleDraftRestoreStillWorks() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.base.seed("still recoverable");
+            byte[] corrupt = {1, 2, 3}; Path manifest = f.base.root.resolve("drafts/workspace.bin");
+            Files.write(manifest, corrupt); f.open(); f.ready();
+            f.base.fx(() -> {
+                assertTrue(f.button("clear").isDisabled()); f.button("clear").fire();
+                assertTrue(f.base.single.restore(draft));
+                assertEquals("still recoverable", f.base.editor(draft.id()).getText());
+            });
+            assertArrayEquals(corrupt, Files.readAllBytes(manifest));
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void toggleWaitsForPersistenceAndFailedDisableStaysSessionPausedUntilExplicitEnable(boolean failDisable) throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            f.open(); f.ready();
+            f.blockMethod.set("setWorkspaceEnabled");
+            if (failDisable) f.failMethod.set("setWorkspaceEnabled");
+            f.base.fx(() -> f.button("toggle").fire());
+            assertTrue(f.entered.await(5, TimeUnit.SECONDS));
+            f.base.fx(() -> {
+                assertTrue(f.button("toggle").isDisabled());
+                assertEquals("正在保存工作区设置…", f.notice());
+                assertFalse(f.notice().contains("已关闭"));
+            });
+            f.release.countDown(); f.ready();
+            assertEquals(failDisable, f.base.snapshot().recordingEnabled());
+            f.base.fx(() -> {
+                assertTrue(f.status().contains(failDisable ? "本次已暂停" : "工作区记录已关闭"), f.status());
+                f.button("refresh").fire();
+            });
+            f.ready();
+            f.base.fx(() -> assertTrue(f.status().contains(failDisable ? "本次已暂停" : "工作区记录已关闭")));
+            f.failMethod.set(null);
+            f.base.fx(() -> f.button("toggle").fire()); f.ready();
+            assertTrue(f.base.snapshot().recordingEnabled());
+            f.base.fx(() -> {
+                assertTrue(f.status().contains("工作区记录已开启"));
+                assertFalse(f.status().contains("本次已暂停"));
+            });
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"cancel", "success", "failure"})
+    void clearOnlyChangesManifestAfterConfirmationAndFailureRetainsRecoveryCount(String decision) throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.base.seed("checkpoint");
+            SqlWorkspace saved = new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(draft.id(), 8, 1)), draft.id());
+            f.base.save(saved); f.open(); f.ready();
+            f.base.fx(() -> assertTrue(f.base.single.restore(draft)));
+            if (decision.equals("failure")) f.failMethod.set("clearWorkspace");
+            f.base.fx(() -> SqlDraftManagerTest.respondToDialog(f.button("clear")::fire, dialog -> {
+                assertTrue(((Button) dialog.lookupButton(ButtonType.CANCEL)).isDefaultButton());
+                assertTrue(dialog.getContentText().contains("不删除 SQL 草稿"));
+                if (!decision.equals("cancel")) dialog.getButtonTypes().stream()
+                        .filter(type -> type != ButtonType.CANCEL).findFirst()
+                        .ifPresent(type -> ((Button) dialog.lookupButton(type)).fire());
+            }));
+            f.ready();
+            assertEquals(decision.equals("success") ? List.of() : saved.entries(), f.base.snapshot().workspace().entries());
+            f.base.fx(() -> {
+                assertEquals("checkpoint", f.base.editor(draft.id()).getText());
+                assertSame(f.base.tab(draft.id()), f.base.tabPane().getSelectionModel().getSelectedItem());
+                if (decision.equals("failure")) {
+                    assertTrue(f.notice().contains("未完成")); assertTrue(f.status().contains("可用 1"));
+                } else if (decision.equals("success")) assertTrue(f.status().contains("工作区为空"));
+            });
+            assertEquals(1, f.base.call(() -> f.base.owner.runtime().refresh()).get(5, TimeUnit.SECONDS).snapshot().drafts().size());
+        }
+    }
+
+    static final class Fixture implements AutoCloseable {
+        final SqlWorkspaceRecoveryTabsTest.Fixture base;
+        SqlWorkspaceManagerPane pane;
+        AutoCloseable subscription;
+        final AtomicReference<String> failMethod = new AtomicReference<>(), blockMethod = new AtomicReference<>();
+        final CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+        final AtomicInteger reads = new AtomicInteger(), writes = new AtomicInteger();
+        Fixture(Path directory) throws Exception {
+            base = new SqlWorkspaceRecoveryTabsTest.Fixture(directory);
+            base.fx(() -> {
+                try {
+                    Field field = SqlDraftCoordinator.class.getDeclaredField("backend"); field.setAccessible(true);
+                    Object actual = field.get(base.owner.runtime());
+                    field.set(base.owner.runtime(), Proxy.newProxyInstance(actual.getClass().getClassLoader(),
+                            new Class<?>[] {field.getType()}, (proxy, method, args) -> {
+                                if (method.getName().equals("workspaceSnapshot")) reads.incrementAndGet();
+                                if (method.getName().equals("saveWorkspace")) writes.incrementAndGet();
+                                boolean gated = method.getName().equals(blockMethod.getAndUpdate(value -> method.getName().equals(value) ? null : value));
+                                boolean snapshotGate = gated && method.getName().equals("workspaceSnapshot");
+                                method.setAccessible(true);
+                                Object snapshot = null;
+                                if (snapshotGate) {
+                                    try { snapshot = method.invoke(actual, args); }
+                                    catch (InvocationTargetException failure) { throw failure.getCause(); }
+                                }
+                                if (gated) {
+                                    entered.countDown();
+                                    if (!release.await(5, TimeUnit.SECONDS)) throw new AssertionError("fault gate timeout");
+                                }
+                                if (method.getName().equals(failMethod.get())) throw new java.io.IOException("synthetic private failure");
+                                if (snapshotGate) return snapshot;
+                                try { return method.invoke(actual, args); }
+                                catch (InvocationTargetException failure) { throw failure.getCause(); }
+                            }));
+                } catch (ReflectiveOperationException failure) { throw new AssertionError(failure); }
+            });
+        }
+        void open() throws Exception {
+            base.fx(() -> {
+                pane = new SqlWorkspaceManagerPane(base.owner, base.batch);
+                subscription = base.owner.observe(pane::refreshView);
+                pane.refreshView();
+            });
+        }
+        Button button(String suffix) { return (Button) pane.getNode().lookup("#workspace-manager-" + suffix); }
+        String status() { return ((Label) pane.getNode().lookup("#workspace-manager-status")).getText(); }
+        String notice() { return ((Label) pane.getNode().lookup("#workspace-manager-notice")).getText(); }
+        void ready() throws Exception { base.await(() -> !button("refresh").isDisabled()); }
+        public void close() throws Exception {
+            release.countDown(); failMethod.set(null);
+            base.fx(() -> {
+                if (pane != null) pane.close();
+                if (subscription != null) try { subscription.close(); } catch (Exception failure) { throw new AssertionError(failure); }
+            });
+            base.close();
+        }
+    }
+}

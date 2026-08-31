@@ -65,6 +65,7 @@ final class SqlDraftUi {
   }
 
   SqlDraftCoordinator runtime() { return runtime; }
+  SqlWorkspaceUi workspace() { return workspace; }
 
   SqlWorkspaceUi attachWorkspace(ContentTabPane tabs, java.util.function.LongSupplier clock,
       java.util.function.Supplier<java.util.concurrent.CompletionStage<SqlWorkspaceUi.Decision>> decision) {

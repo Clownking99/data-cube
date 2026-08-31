@@ -32,6 +32,28 @@ import static org.junit.jupiter.api.Assertions.*;
 class WorkspaceStartPaneTest {
     @TempDir Path directory;
 
+    @Test void recoveryEntryOnlyInvokesCallbackOnClickAndKeepsExistingTabPane() throws Exception {
+        FxUiTestSupport.call(() -> {
+            AtomicInteger recovered = new AtomicInteger();
+            ContentTabPane tabs = new ContentTabPane();
+            Parent root = (Parent) AppShell.startWorkspace(tabs, () -> fail("create"), () -> fail("focus"), recovered::incrementAndGet);
+            Node original = tabs.getNode();
+            Button recovery = (Button) root.lookup("#start-restore-workspace");
+            assertNotNull(recovery);
+            assertEquals("恢复 SQL 工作区…", recovery.getText());
+            assertEquals(0, recovered.get());
+            recovery.fire(); assertEquals(1, recovered.get());
+            Tab opened = tabs.openTab("synthetic", new Group());
+            assertSame(original, tabs.getNode());
+            assertFalse(root.lookup("#workspace-start").isVisible());
+            ((TabPane) original).getTabs().remove(opened);
+            assertTrue(root.lookup("#workspace-start").isVisible());
+            assertEquals(1, recovered.get());
+            assertNull(new WorkspaceStartPane(() -> {}, () -> {}).lookup("#start-restore-workspace"));
+            return null;
+        });
+    }
+
     @Test
     void emptyOpenAndCloseKeepTheSameTabNode() throws Exception {
         FxUiTestSupport.call(() -> {

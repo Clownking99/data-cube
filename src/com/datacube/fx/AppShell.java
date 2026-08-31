@@ -119,7 +119,7 @@ public final class AppShell {
 
         SplitPane split = new SplitPane(connectionTree.getNode(),
                 startWorkspace(contentTabs, connectionTree::newConnection,
-                        connectionTree::focusConnections));
+                        connectionTree::focusConnections, this::openSqlDrafts));
         split.setDividerPositions(0.24);
         SplitPane.setResizableWithParent(connectionTree.getNode(), false);
         root.setCenter(split);
@@ -139,7 +139,11 @@ public final class AppShell {
     }
 
     static Node startWorkspace(ContentTabPane tabs, Runnable create, Runnable focus) {
-        WorkspaceStartPane start = new WorkspaceStartPane(create, focus);
+        return startWorkspace(tabs, create, focus, null);
+    }
+
+    static Node startWorkspace(ContentTabPane tabs, Runnable create, Runnable focus, Runnable recoverWorkspace) {
+        WorkspaceStartPane start = new WorkspaceStartPane(create, focus, recoverWorkspace);
         start.visibleProperty().bind(tabs.emptyProperty());
         start.managedProperty().bind(start.visibleProperty());
         Node content = tabs.getNode();
@@ -148,6 +152,7 @@ public final class AppShell {
         content.managedProperty().bind(hasTabs);
         return new StackPane(content, start);
     }
+
 
     private HBox topBar(ConnectionTreePane treePane) {
         // 品牌以小立方体图标呈现（标题文字与系统标题栏重复，故省略）
@@ -245,7 +250,7 @@ public final class AppShell {
                         treeActions::openTableDesigner, draft, sqlHistory, shortcuts, tasks),
                 pane -> pane.installRecoveryConnectionChooser(connectionTree::connectionConfigsSnapshot));
         SqlDraftManagerDialog.show(owner, root.getScene() == null ? null : root.getScene().getWindow(),
-                themeManager, draft -> recovery.restore(draft));
+                themeManager, recovery::restore, new SqlWorkspaceRecoveryTabs(contentTabs, owner, recovery));
     }
 
     /**

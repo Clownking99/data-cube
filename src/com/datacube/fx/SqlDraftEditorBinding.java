@@ -111,6 +111,10 @@ final class SqlDraftEditorBinding implements AutoCloseable {
     return new com.datacube.config.SqlWorkspace.Entry(id(), editor.getAnchor(), editor.getCaretPosition());
   }
   void workspaceActivity(Runnable listener) { workspaceActivity = listener; }
+  void restorePosition(int anchor, int caret) {
+    int length = editor.getLength();
+    editor.selectRange(Math.max(0, Math.min(anchor, length)), Math.max(0, Math.min(caret, length)));
+  }
 
   boolean closing() {
     return closing || closed;

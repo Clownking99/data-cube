@@ -2,6 +2,7 @@ package com.datacube.fx;
 
 import com.datacube.config.SqlWorkspace;
 import com.datacube.config.SqlWorkspaceActivity;
+import com.datacube.config.SqlDraftCoordinator;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -21,7 +22,7 @@ final class SqlWorkspaceUi implements AutoCloseable {
     private final Supplier<CompletionStage<Decision>> decision;
     private final ListChangeListener<Tab> tabChanges = change -> activity();
     private final ChangeListener<Tab> selection = (value, before, after) -> activity();
-    private boolean closing, disposed;
+    private boolean closing, disposed, recovering;
     private SqlWorkspaceActivity.Frozen frozen;
     private boolean captureFailure;
 
@@ -37,6 +38,18 @@ final class SqlWorkspaceUi implements AutoCloseable {
     }
 
     SqlWorkspaceActivity owner() { return activity; }
+    boolean beginRecovery() {
+        if (!Platform.isFxApplicationThread()) throw new IllegalStateException("FX restoration required");
+        if (closing || disposed || recovering) return false;
+        recovering = true;
+        return true;
+    }
+    void endRecovery(boolean successful) {
+        if (!Platform.isFxApplicationThread()) throw new IllegalStateException("FX restoration required");
+        if (!recovering) return;
+        recovering = false;
+        if (successful) activity();
+    }
     SqlWorkspace capture() { return capture(false); }
     private SqlWorkspace capture(boolean provisional) {
         if (!Platform.isFxApplicationThread()) throw new IllegalStateException("FX capture required");
@@ -52,7 +65,7 @@ final class SqlWorkspaceUi implements AutoCloseable {
     }
 
     void activity() {
-        if (disposed || closing) return;
+        if (disposed || closing || recovering) return;
         // Non-SQL startup tabs alone do not activate recording. Once active, removing the last SQL
         // tab must still produce the empty layout, so its activity is admitted by the owner.
         if (activity.status() == SqlWorkspaceActivity.Status.IDLE && tabs.getTabs().stream()
@@ -62,7 +75,7 @@ final class SqlWorkspaceUi implements AutoCloseable {
     }
 
     void pulse() {
-        if (disposed || closing) return;
+        if (disposed || closing || recovering) return;
         try { activity.checkpointObserved(capture()); }
         catch (IllegalArgumentException invalid) { activity.captureFailed(); }
         activity.pulse();
@@ -89,6 +102,12 @@ final class SqlWorkspaceUi implements AutoCloseable {
         CompletableFuture<TabCloseOutcome> result = new CompletableFuture<>();
         Platform.runLater(() -> {
             if (outcome != TabCloseOutcome.COMPLETED) { closing = false; result.complete(outcome); return; }
+            // Explicitly disabled/paused draft protection cannot publish a new layout. Preserve
+            // all prior draft/abort outcomes above; genuine unavailable/write failures still ask.
+            if (drafts.runtime().mode() == SqlDraftCoordinator.Mode.DISABLED
+                    || drafts.runtime().mode() == SqlDraftCoordinator.Mode.PAUSED) {
+                closing = false; result.complete(TabCloseOutcome.COMPLETED); return;
+            }
             if (captureFailure) decide(result, null);
             else if (frozen == null || !frozen.recording()
                     || frozen.generation() != drafts.runtime().workspaceGeneration()) {

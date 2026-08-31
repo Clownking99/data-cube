@@ -10,6 +10,15 @@ import javafx.scene.layout.VBox;
 
 /** Empty-workspace guidance; actions are explicit and have no database dependencies. */
 final class WorkspaceStartPane extends VBox {
+    WorkspaceStartPane(Runnable createConnection, Runnable focusConnections, Runnable recoverWorkspace) {
+        this(createConnection, focusConnections);
+        if (recoverWorkspace != null) {
+            Button recovery = new Button("恢复 SQL 工作区…");
+            recovery.setId("start-restore-workspace");
+            recovery.setOnAction(event -> recoverWorkspace.run());
+            getChildren().add(recovery);
+        }
+    }
     WorkspaceStartPane(Runnable createConnection, Runnable focusConnections) {
         Objects.requireNonNull(createConnection, "createConnection");
         Objects.requireNonNull(focusConnections, "focusConnections");
