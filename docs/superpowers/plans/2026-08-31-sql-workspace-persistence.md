@@ -45,7 +45,7 @@ Worktree `D:/Projects/朝花夕拾/.worktrees/sql-workspace-recovery`，branch `
 - FailureCode `DISABLED/INVALID_WORKSPACE/PROTECTED_WORKSPACE/PREFERENCE_CORRUPT/DRAFT_PROTECTION_UNAVAILABLE`, fixedmessage `SQL workspace store failed: <CODE>`, no cause. Preserve directory structural/write/publish/cleanup Failure stages; only directory READ becomes protected unreadablefile/invalidpref.
 - No runtime auto-retry or stale queue admission here: P2.3 must make CLEANUP session-sticky unavailable and invalidate queued work on clear/toggle. Do not claim that integration complete.
 
-- [ ] **Step 1: Write tests; use compile-only API stubs to obtain behavioral RED**
+- [x] **Step 1: Write tests; use compile-only API stubs to obtain behavioral RED**
 
 Create `SqlWorkspaceStoreTest.java`:
 
@@ -402,7 +402,7 @@ void setEnabled(boolean enabled) throws IOException { }
 boolean clear() throws IOException { return false; }
 ```
 
-- [ ] **Step 2: Run focused behavior RED; preserve evidence before GREEN**
+- [x] **Step 2: Run focused behavior RED; preserve evidence before GREEN**
 
 ```powershell
 $env:JAVA_HOME='D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8'
@@ -411,7 +411,7 @@ $env:JAVA_HOME='D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8'
 
 Expected exit1 with behavior failures: missing persisted file, ignored disable/protection/clear, missing expected exceptions. Capture test names/counts and representative output/XML in the report before GREEN overwrites XML. Compilation errors are not RED; fix fixture mechanics first. Tell controller when RED is observed; no human confirmation needed.
 
-- [ ] **Step 3: Implement helper, facade guards and exact-name admission**
+- [x] **Step 3: Implement helper, facade guards and exact-name admission**
 
 Create full `SqlWorkspaceStore.java`:
 
@@ -551,7 +551,7 @@ boolean allowed = "preferences.bin".equals(name) || "workspace.bin".equals(name)
         || "workspace-preferences.bin".equals(name);
 ```
 
-- [ ] **Step 4: Focused GREEN and regression**
+- [x] **Step 4: Focused GREEN and regression**
 
 Run Step2 command; expect all runnable new cases pass. If symlink assumptions skip, record exact names/reason, not pass. Then:
 
@@ -571,7 +571,7 @@ try {
 
 Use the stated JDK for all commands. Expect exit0; report fresh XML totals, named skips, exact stdout including existing unchecked compile note. Independent child probes only operate on @TempDir and return23whilelocked/0afterrelease; never kill arbitrary java processes.
 
-- [ ] **Step 5: Self-review, exact commit and report**
+- [x] **Step 5: Self-review, exact commit and report**
 
 ```powershell
 git diff --check

@@ -135,7 +135,9 @@
 
 2026-08-31 已启动独立 `codex/sql-workspace-recovery`，从 main `7710ecb` 创建；基线全量1370通过/3原有live跳过/0失败。已记录[完整阶段设计](../specs/2026-08-31-sql-workspace-recovery-design.md)、[P2.1逐文件计划](2026-08-31-sql-workspace-foundation.md)和[持续验收记录](../verification/2026-08-31-sql-workspace-recovery.md)。选用显式一键恢复，不启动即展示全部SQL；先清单/纯解析，再严格存储、退出协调、用户入口和整体验收。目前尚未提供工作区恢复功能，不修改P1已完成结论。
 
-P2.1 已完成：`6b0bbe1` 提供有界清单、严格版本化编解码与按UUID解析/排序/选择回退；独立审查零发现，全量1402通过/3原有live跳过/0失败，root定向32通过。下一步P2.2严格本地存储；尚无清单写盘与恢复入口，仍留独立分支。
+P2.1 已完成：`6b0bbe1` 提供有界清单、严格版本化编解码与按UUID解析/排序/选择回退；独立审查零发现，阶段全量1402通过/3原有live跳过/0失败，root定向32通过。
+
+P2.2 已完成[持久化设计](../specs/2026-08-31-sql-workspace-persistence-design.md)与[完整实现计划](2026-08-31-sql-workspace-persistence.md)，源码 `4611f54`。共享P1目录锁和store monitor、独立严格偏好、原子空清单清理；不复制正文、不删除草稿、不自动接入UI。最终全量1427通过/3原有live跳过/0失败，root独立25项通过，独立任务审查零发现。下一步P2.3活动工作区捕获、排队失效与退出冻结，再接P2.4恢复入口；仍留独立分支，P2整体验收前不合并main。
 
 **关注文件：** `src/com/datacube/fx/AppShell.java`、`SqlEditorPane.java`、`AsyncTabCloseCoordinator.java`、`AsyncShutdownCoordinator.java`、`src/com/datacube/DataCubeFx.java`，以及 P1 草稿组件。
 
