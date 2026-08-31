@@ -143,6 +143,8 @@ P2.3分为a共享writer异步桥和b活动捕获/退出冻结。[运行时设计
 
 **关注文件：** `src/com/datacube/fx/AppShell.java`、`SqlEditorPane.java`、`AsyncTabCloseCoordinator.java`、`AsyncShutdownCoordinator.java`、`src/com/datacube/DataCubeFx.java`，以及 P1 草稿组件。
 
+P2.3b已完成[活动捕获/退出计划](2026-08-31-sql-workspace-activity.md)：`0a7203b`实际FX/AppShell接入，`2fa333c`修复独立审查发现的默认关闭attempt/tracker竞态。最终全量1496通过/3原有live跳过/0失败，root独立80项通过；复审Spec compliant/Approved，无剩余Critical/Important。记录布局引用和位置、合并变更、失效旧候选、失败禁用后会话暂停；退出冻结并支持失败重试/取消/明确忽略。仍未提供P2.4显式恢复入口，下一阶段接启动页/草稿页恢复及偏好/清空UI，再执行P2.5完整桌面/打包/整分支验收；main未合并。
+
 - [x] 写独立设计，定义工作区清单只引用草稿 ID，不复制 SQL 或连接密钥。
 - [x] 定义可恢复项：SQL 标签顺序、当前选中标签、连接 ID、Schema 提示、光标位置；不恢复网格、迁移、Schema Diff、Redis 和事务。连接/Schema仍从P1草稿读取，清单不重复保存。
 - [x] 明确同名不同 ID、改名、已删除连接、数据库类型变化、Schema 不存在的行为；保留 SQL，显示未绑定/待确认，不猜测替代连接。设计完成不等于UI集成验收。

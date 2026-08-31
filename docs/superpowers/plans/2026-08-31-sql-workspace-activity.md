@@ -53,7 +53,7 @@ public long workspaceGeneration() { owner(); return workspaceEpoch.get(); }
 
 Read design `docs/superpowers/specs/2026-08-31-sql-workspace-activity-design.md` first. It is binding requirements. Complete executable algorithms below define behavior; integration names may follow local conventions, but the two created classes and responsibility boundaries are fixed.
 
-- [ ] **Step 1: Add regression tests and compilation-only API shells, run behavioral RED.**
+- [x] **Step 1: Add regression tests and compilation-only API shells, run behavioral RED.**
 
 Use real `SqlDraftCoordinator` with manual disk/UI executors and injected clocks as in SqlWorkspaceRuntimeTest; actual TempDir store is deliberate local persistence integration. Use representative `SqlDraftRecoveryTabsTest` synthetic FX fixture and DraftConnectionProbe; no real profile. Do not create a second test framework or broad coverage inventory.
 
@@ -90,7 +90,7 @@ try {
 } finally { $env:JAVA_TOOL_OPTIONS=$workspaceTestOptions }
 ```
 
-- [ ] **Step 2: Implement bounded candidate/state owner and FX capture.**
+- [x] **Step 2: Implement bounded candidate/state owner and FX capture.**
 
 Keep immutable `(workspace, generation)` candidate; one in-flight and one latest. On every explicit activity and pulse first read runtime generation. Mismatch discards pending/frozen automatic candidate, updates observed baseline and holds until new explicit activity; do not retag old candidate. A successful new checkpoint following real editing can update the current active layout without an additional user event. On failure keep newest but latch failed; only retry or explicit successful re-enable releases latch. BUSY is backpressure, CANCELLED is invalidation, neither says disk corrupt.
 
@@ -118,7 +118,7 @@ FX observes installed SQL bindings in actual TabPane order, checks acknowledged 
 
 Settings APIs live on owner for P2.4 reuse: setWorkspaceEnabled(false) sets session pause before invoking runtime; write success confirms off, failure remains paused; successful explicit true resumes. Clear drops in-memory pending immediately and delegates clearWorkspace. Existing runtime calls outside owner still invalidate by workspaceGeneration polling. Do not add full recovery/settings UI here; expose fixed status for existing observers and close failure dialog.
 
-- [ ] **Step 3: Integrate attempt-scoped freeze and finalization gate.**
+- [x] **Step 3: Integrate attempt-scoped freeze and finalization gate.**
 
 Keep original `closeAll(mode)` as a no-extra-work delegate, preserving existing tests. Add attempt lifecycle hook scoped to one closeAll, called exactly once after reservations settle and before guards start, and a finalization function called after guard outcomes but before registry final state. Callback exceptions/null are fail-closed; never unblock teardown based on an exception.
 
@@ -151,7 +151,7 @@ String ignore = "忽略本次工作区更新并退出";
 
 Default button is cancel. Inject the decision function into UI adapter for deterministic tests; production implementation shows owned FX Alert without exposing exceptions. On CANCELLED/FAILED_PARTIAL preserve frozen object/hold; no timer recapture until explicit activity. First later explicit action uses current installed nodes, not detached freeze references.
 
-- [ ] **Step 4: Focused GREEN, full regression once, self-review.**
+- [x] **Step 4: Focused GREEN, full regression once, self-review.**
 
 Run same focused command, then full command scoped non-headless:
 
@@ -167,10 +167,12 @@ git diff --check
 
 Expected exit 0, zero new skips. Baseline full: 155 suites / 1452 total / 1449 pass / 3 existing live DB skips. Inspect actual XML for counts and exact skipped names. Preserve existing compile notes explicitly; no claim pristine if emitted. Check assertions against behavior matrix and record exact tests. No concurrent Gradle with controller. No broad whole-repo crawling.
 
-- [ ] **Step 5: Commit exact source/tests and report for independent task review.**
+- [x] **Step 5: Commit exact source/tests and report for independent task review.**
 
 Stage only allowed changed source/test file names, never `.testagent/`, parent worktree or controller docs; run `git diff --cached --stat` before commit. Commit message `feat: capture SQL workspace activity and freeze safe shutdown`. Full report path `.superpowers/sdd/workspace-activity-task-1-report.md`, includes RED/GREEN/full command+exit+elapsed, XML totals/skips, requirement-to-test names, source files, self-review and concerns. Return status/SHA/one-line result/report path only. Controller records frozen BASE before dispatch, creates unique review package and requests independent sol review of spec+quality; no merge/push.
 
 ## Review boundary
+
+Completed `4c14aca..2fa333c`: initial integration `0a7203b`, review fix `2fa333c` adds ContentTabPane attempt deduplication and `test/com/datacube/fx/ContentTabPaneCloseAttemptTest.java`. Final full158 suites/1499total/1496pass/3baseline skips/0fail; root independent80/80. Initial shallow tests were rejected, genuine RED replaced them; one overlapping pre-fix test launch was excluded and rerun serially. Independent review found one attempt/tracker race, reproduced deterministically and fixed; re-review Spec compliant / Approved, no remaining Critical/Important. Detailed provenance and requirement mapping: [verification](../verification/2026-08-31-sql-workspace-recovery.md).
 
 P2.3b ends only after actual AppShell capture+exit integration, full regression, and task-scoped spec/quality approval. P2.4 remains explicit restoration entry/settings UI; P2.5 remains full branch/desktop/package acceptance before main merge. This plan does not authorize a new remote action or waive those gates.

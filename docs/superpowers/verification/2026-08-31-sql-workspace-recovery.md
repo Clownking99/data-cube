@@ -2,11 +2,11 @@
 
 ## 当前范围
 
-P2.1基础模块、P2.2严格存储、P2.3a异步运行时桥已完成，源码提交分别为 `6b0bbe1`、`4611f54`、`2cb002d`，测试与独立任务审查通过。尚无用户可用的工作区恢复入口。工作分支 `codex/sql-workspace-recovery`，起点 main `7710ecb526d10a22e3fbff65367c50b04e44ed9d`；main未合并本分支，无推送/tag/发布。
+P2.1基础模块、P2.2严格存储、P2.3a异步桥及P2.3b活动捕获/退出冻结已完成。b源码`0a7203b`及审查修复`2fa333c`通过最终回归与独立复审。尚无P2.4显式工作区恢复入口。工作分支 `codex/sql-workspace-recovery`，起点 main `7710ecb526d10a22e3fbff65367c50b04e44ed9d`；main未合并本分支，无推送/tag/发布。
 
-设计：[P2 工作区恢复](../specs/2026-08-31-sql-workspace-recovery-design.md)。已完成计划：[P2.1 基础模块](../plans/2026-08-31-sql-workspace-foundation.md)、[P2.2 共享锁持久化](../plans/2026-08-31-sql-workspace-persistence.md)、[P2.3a 异步存储桥](../plans/2026-08-31-sql-workspace-runtime-bridge.md)。活动捕获/退出冻结与恢复 UI 尚未实施，不以存储和运行时测试替代这些验收。
+设计：[P2 工作区恢复](../specs/2026-08-31-sql-workspace-recovery-design.md)。已完成计划：[P2.1 基础模块](../plans/2026-08-31-sql-workspace-foundation.md)、[P2.2 共享锁持久化](../plans/2026-08-31-sql-workspace-persistence.md)、[P2.3a 异步存储桥](../plans/2026-08-31-sql-workspace-runtime-bridge.md)、[P2.3b 活动捕获/退出冻结](../plans/2026-08-31-sql-workspace-activity.md)。恢复 UI 尚未实施，不以状态/关闭测试替代P2.4/P2.5验收。
 
-本轮P2.3a完成区间 `c3747e11fa8c54178851e561cd4b23e91536b1a6..2cb002d4de6103cfc07a690e82da8ef02ed486d2`，按[运行时设计](../specs/2026-08-31-sql-workspace-runtime-design.md)实施。范围仅共享队列API、失效代次、故障/关闭结果传播；FX标签捕获、变更合并与退出冻结仍属P2.3b，不宣称已完成。主目录发现未提交SqlDraftStore改动，仅核对其状态，不读取或改动该文件内容；本轮仅在独立worktree实施。
+P2.3a完成区间 `c3747e11fa8c54178851e561cd4b23e91536b1a6..2cb002d4de6103cfc07a690e82da8ef02ed486d2`，按[运行时设计](../specs/2026-08-31-sql-workspace-runtime-design.md)实施。本轮P2.3b完成区间`4c14aca620e1c673b618014d6a2d727436c76a93..2fa333c900a068036c9ef650bfc018ea6318a177`接入实际FX标签、变更合并与退出冻结，独立审查及修复后复审证据见下。主目录未提交SqlDraftStore改动仅核对状态，不读取或改动其内容；本轮仍只在独立worktree实施。
 
 ## 基线证据
 
@@ -140,6 +140,66 @@ P2.3b还需把捕获层的“最新候选”纳入同一失效契约：本桥只
 
 ## 后续集成必须补验的风险
 
+### P2.3b 启动基线与接入方案
+
+2026-08-31从独立worktree `62997db5f4278e472061927fd3f708e87c4c84be` 继续；工作树干净。root执行 `./gradlew.bat test --no-daemon --console=plain`，作用域内设置并恢复 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`，JDK仍为25.0.1+8，session41295 exit0/61秒。直接读取当前XML：155 suites、1452 total、1449 passed、0 failures/errors、3既有live skips。此为实现前基线，不是b完成证据。
+
+设计与计划提交 `4c14aca620e1c673b618014d6a2d727436c76a93`：[活动设计](../specs/2026-08-31-sql-workspace-activity-design.md)、[集成计划](../plans/2026-08-31-sql-workspace-activity.md)。只读架构子代理确认应在registry最终状态转换前运行gate，等待tab+mandatory-abort结算，并在ownershipLock内原子轮换tracker与提交取消转换。最终保存身份从同writer的已验证草稿快照解析，不依赖flush回调顺序。计划包含实际FX/AppShell路径和取消后重新打开managed tab验收；不接受只完成状态模块。
+
+以下保留启动时的设计与测试质量记录；最终实现、回归及审查结论在后续小节，不能将方案本身当成通过证据。
+
+首轮测试质量检查（不是有效RED证据）：实际XML02:37:20Z为8个activity和2个UI测试UOE；root发现断言没有执行其名称所描述的行为，拒绝GREEN。activity文件8项均只有一个状态相等断言：`failedDisableRemainsPausedUntilExplicitSuccessfulEnable`与`emptyNeverSavedExcludedButClearedCheckpointIncluded`只检查新建空owner为IDLE；management/busy/debounce等仅检查PENDING。返回固定状态、不执行清空/暂停/落盘也能满足这些断言，故不能验证计划。要求以真实运行时/临时store/手动时钟和真实FX节点重写，重新观察有意义的失败后才实现。此记录保留审查来源，不把名称或失败数当作测试覆盖。
+
+### P2.3b 实现及验证
+
+源码提交`0a7203b0c67a64140dd15945ccfee9bbf4b19e61`，11个允许的源/测试文件。新建无FX的`SqlWorkspaceActivity`和FX适配器`SqlWorkspaceUi`，复用唯一runtime/timer/writer；AppShell惰性构造已接通ContentTabPane关闭生命周期。registry在reservation完成后冻结，再关闭guards，最终gate等abort结算并保存布局；取消转换和tracker轮换在同一ownershipLock下完成。尚不提供P2.4恢复界面。
+
+真实TDD起点由root直接核实：XML02:38:57.110Z，一个使用实际临时store、手动disk/UI executor、已存在清单的未触及退出用例UOE；断言检查确切旧文件与没有新发布，之后才ACK实现。后续RED/GREEN为实现代理报告并保留逐次输出：代次/隐私、真实FX捕获、重复取消退出、abort错误不可降级、terminal hook提交取消后再抛异常等。早期`firstCheckpoint...`实为延迟发布测试，已改名`changedLayoutPublishesAtIdleDeadline`；真正的首次草稿成功保存由新的FX用例验证。
+
+一次测试调度失误也保留：代理在旧全量进程尚未真正结束时启动定向用例，后者因output.bin占用失败。这不是行为RED，不计验收。确认两个进程退出后，串行重跑获得真正失败用例、定向GREEN，再重新完整运行。未使用删除/清理规避文件锁。
+
+- 最终串行全量命令：`./gradlew.bat test --rerun-tasks --no-daemon --console=plain`，scoped non-headless、JDK25.0.1+8；代理session99543/chunk22d2d4 terminal exit0，46.4339074秒，8 tasks全部executed。
+- root在自己的定向复跑前直接汇总这套最终XML：157 suites、1497 total、1494 passed、0 failures/errors、3 skipped。跳过名称仍为本文件基线的Redis standalone、Oracle SchemaDiff、PostgreSQL SchemaDiff三项；未开启真实数据库测试。
+- 本任务三套：Activity26、Registry14、UI14，合计54项无跳过。编译仍有既有`SqlEditorResultFilterContractTest` unchecked提示及Gradle problems报告提示，不声称无警告。
+- root独立复跑命令：`./gradlew.bat test --tests '*SqlWorkspaceActivityTest' --tests '*SqlWorkspaceUiTest' --tests '*AsyncManagedTabRegistryTest' --tests '*SqlWorkspaceRuntimeTest' --tests '*ManagedCloseBarrierTest' --no-daemon --console=plain`。同JDK、scoped non-headless并显式保留native exit；session40303 exit0/12秒。实际XML03:07:20–22Z：26+14+14+22+2=78 passed，0 failures/errors/skips。这不是第二次全量。
+- root确认diff仅允许文件，`git diff --check`无错误；CRLF转换提示保留。root确认main仍为`7710ecb526d10a22e3fbff65367c50b04e44ed9d`，用户未提交SqlDraftStore及`.testagent/`名称仍在，未访问其内容。
+
+下表A=SqlWorkspaceActivityTest，U=SqlWorkspaceUiTest，R=AsyncManagedTabRegistryTest；完整三套均在上述最终全量与root独立定向中通过。
+
+| 要求 | 精确测试 |
+| --- | --- |
+| 未开始工作直接退出不覆盖旧布局 | A/U.untouchedSessionAndExitPreservePreviousLayout |
+| 首次保存确认自动入列、未保存空页排除/已清空检查点保留 | U.firstCheckpointBecomesEligibleWithoutAnotherUserAction；U.emptyNeverSavedExcludedButClearedCheckpointIncluded |
+| 1000ms空闲/10000ms持续上限、时间戳轮询不制造写入 | A.changedLayoutPublishesAtIdleDeadline；A.continuousActivityIsCoalescedWithBoundedDeadline；A.timestampOnlyObservationDoesNotWriteAgain |
+| 一在途一最新、BUSY可继续 | A.busyKeepsLatestCandidateAndDoesNotLoseCompletion；A.runtimeBusyIsBackpressureNotFailure |
+| P1/P2管理成功或失败均废弃旧候选 | A.everyAcceptedManagementInvalidatesOldCapture（clear/delete/draftOff/draftOn/workspaceClear/workspaceOff/workspaceOn/failedClear/failedWorkspaceOff） |
+| 失败关闭保持会话暂停、迟到结果不恢复记录、成功关闭显示正确状态 | A.failedDisableRemainsPausedUntilExplicitSuccessfulEnable；A.staleAcceptedWriteCompletionCannotReleaseFailedDisablePause；A.lateReadCompletionCannotOverwritePauseOrNewGenerationCandidate；A.successfulDisableReportsDisabledAndPreservesLayout |
+| 已关闭/损坏偏好或读取失败不按默认开启处理 | A.firstActivityReadsDisabledPreferenceWithoutTryingPublication；A.corruptPreferenceProtectsExistingLayout；A.failedSnapshotIsNotTreatedAsEmptyEnabledLayoutAndRequiresRetry |
+| 普通失败仅明确重试，保留最新候选 | A.ordinaryFailureRequiresExplicitRetry |
+| 真正标签顺序、非SQL选择为空、反向UTF-16选择 | U.sqlOrderSelectionAndReversePositionsFollowActualTabs |
+| 普通单页取消不删除，实际移除才更新 | U.cancelledSingleCloseKeepsLayoutButActualRemovalUpdatesIt |
+| 退出前冻结含最终新保存草稿、重复取消不缩短快照 | U.exitFreezesBeforeRemovalAndIncludesFinalDraftCheckpoint；U.cancelledExitRetainsFrozenUntilExplicitActivity；U.repeatedCancelledExitKeepsOriginalFrozenLayoutUntilExplicitAction |
+| 布局失败取消后能重新打开受管页，重试/忽略持久化不同 | U.layoutFailureCancelAllowsNewManagedTab；U.layoutFailureRetryAndIgnoreHaveDifferentPersistence |
+| abort部分失败不打开registry/不清理应用，最终回调不能降级错误 | U.partialAbortFailureNeverReopensRegistryOrRunsTeardown；U.finalCallbackCannotDowngradeMandatoryAbortFailure；R.gateCannotDowngradeFatalOrCancelledAndExceptionFailsClosed |
+| 正在安装的reservation进入冻结，冻结完成先于guards | U.reservationFinishingDuringExitIsCapturedBeforeGuardClose；R.reservationsSettleThenFreezeCompletesBeforeAnyGuard |
+| 调用方取消不取消内部写入/退出，terminal异常不提前报成功 | A.callerCancelledFrozenPublicationStillPersistsAndSettlesInternalAdmission；U.callerCancellationDoesNotCancelInternalCloseOrPublication；R.callerCancellationCannotCancelInternalGateOrReopenAdmission；R.terminalExceptionAfterCancelledCommitFailsClosedAndCannotStartAnotherAttemptInsideHook |
+
+首轮独立审查`workspace_activity_review`：Spec不通过 / Needs fixes，0 Critical、1 Important；既有unchecked提示为Minor。问题是registry在terminal hook返回前仍保留pending旧attempt，而ContentTabPane在重复关闭时无条件获取并hardSeal当前tracker。默认/尚未创建SQL owner路径的后台abort结算可在“已轮换新tracker并OPEN、旧future尚未完成”间隙遇到第二次FX关闭，导致旧attempt与新sealed tracker错配，取消后所有新factory被拒绝。SqlWorkspaceUi.finish自身FX串行不能保护未初始化owner的既有流程。
+
+root读当前两文件核对交错成立，已要求ContentTabPane在获取/封存tracker之前按attempt去重，补无workspace owner的真实可控交错回归，保留terminal异常fail-closed语义。上述1497全量/78定向是审查前版本的真实结果，不能替代修复后的重跑。复审通过前不将P2.3b标为完成。P2.4恢复入口和P2.5桌面/打包/全分支审查仍独立待办。
+
+### P2.3b 审查修复与最终完成证据
+
+修复`2fa333c900a068036c9ef650bfc018ea6318a177`仅改变ContentTabPane及新增ContentTabPaneCloseAttemptTest，未改变registry/P1 guards。ContentTabPane在读取tracker前建立内部关闭attempt占位，pending及已完成非CANCELLED结果均返回隔离副本，只有真正完成的CANCELLED允许下一尝试。这样重复关闭不再接触新tracker，同时保留terminal异常失败关闭语义。
+
+- 真实回归RED：root直接读取XML03:13:56.181Z，`ContentTabPaneCloseAttemptTest` 2 tests、1 failure、0 errors/skips。`repeatedCloseDuringWorkerTerminalGapDoesNotSealRotatedTracker`在后台hook提交/轮换后以latch停住，FX发起第二次关闭，两次均CANCELLED后实际新factory为null；失败点正是预期缺陷，不是超时或编译失败。代理exit1/12.4206037秒。
+- 修复后定向GREEN 2/2，exit0/10.2851951秒；六套覆盖80/80，exit0/11.9621156秒。另一个`ContentTabPaneCloseAttemptTest.synchronousEmptyAttemptAndCallbackFailureAlwaysSettleReturnedCopies`验证同步空关闭、异常回调和重复结果均结算。
+- 最终串行全量仍为`./gradlew.bat test --rerun-tasks --no-daemon --console=plain`，同JDK/scoped非headless；session89686确认terminal exit0且无session_id，48.7315575秒。root在复跑前用只读XML汇总再次确认：158 suites、1499 tests、1496 passed、0 failures/errors、3原有live skips，名称与基线完全一致。本任务四套56/56无跳过。
+- root修复后独立复跑：上文五过滤命令增加`--tests '*ContentTabPaneCloseAttemptTest'`，session60993 exit0/12秒。直接汇总实际XML六套80 passed、0 failures/errors/skips。原有编译unchecked提示仍留存，不声称无警告或远端CI通过。
+- `workspace_activity_review`在原完整审查后，仅复读修复两文件package与更新报告，最终给出 **Spec compliant / Task quality Approved**：0 Critical、0 Important，无新增问题；既有unchecked提示为Minor进入P2最终整分支审查。确认attempt先于tracker准入、旧attempt完整结算、取消隔离和实际新factory回归。未冒称完成整P2审查。
+
+P2.3b按计划完成。下一步P2.4启动页/草稿页显式恢复入口与偏好/清空UI；P2.5真实桌面、打包、进程验收与整分支审查后才本地合并main。
+
 以下是当前代码检查所得的具体接入风险，不是已实现缺陷或已通过测试。
 
 1. `SqlDraftUi` 拥有 writer、timer、binding 和 installedContent，`SqlDraftCoordinator` 内部 LocalBackend 独占 SqlDraftStore。工作区存储应共享同一 directory 锁与序列化通道，不能再 open 同一目录形成第二 writer。
@@ -156,7 +216,7 @@ P2.3b还需把捕获层的“最新候选”纳入同一失效契约：本桥只
 
 - [x] P2.2 I/O 故障注入、偏好/清空/未知文件保护、同 JVM 与多 JVM 单写者；25项新测试通过且独立审查零发现。排队清空竞态属下一项。
 - [x] P2.3a 共享队列异步API、单保存背压、管理代次失效、故障隔离/停用、关闭排空与future结算；22项新测试和独立审查通过。
-- [ ] P2.3 活动快照、防抖、失效代次、退出冻结、取消/部分失败/未触及启动不覆盖。
+- [x] P2.3 活动快照、防抖、失效代次、退出冻结、取消/部分失败/未触及启动不覆盖；b实际FX/AppShell接入及修复后复审通过，最终1496通过/3原有跳过/0失败，root独立80项通过。
 - [ ] P2.4 启动页及草稿页入口、原选中/光标/选择、重复定位、其他标签顺序、部分失败可见。
 - [ ] 更名/同名不同 ID/删除/类型变化/不存在 Schema，恢复及切换均为零数据库调用。
 - [ ] 非 headless 全量回归、独立进程重启与异常中断恢复。
