@@ -197,7 +197,8 @@ final class SqlDraftDirectory implements AutoCloseable {
     }
 
     private Path target(String name) throws IOException {
-        boolean allowed = "preferences.bin".equals(name);
+        boolean allowed = "preferences.bin".equals(name) || "workspace.bin".equals(name)
+                || "workspace-preferences.bin".equals(name);
         if (name != null && name.endsWith(".draft")) {
             String id = name.substring(0, name.length() - 6);
             try { allowed = UUID.fromString(id).toString().equals(id); }

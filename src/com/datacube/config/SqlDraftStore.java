@@ -34,14 +34,38 @@ public final class SqlDraftStore implements AutoCloseable {
     private static final int PREFERENCE_MAGIC = 0x44434450;
     private static final String PREFERENCE_FILE = "preferences.bin";
     private final SqlDraftDirectory directory;
+    private final SqlWorkspaceStore workspaceStore;
 
-    SqlDraftStore(SqlDraftDirectory directory) { this.directory = Objects.requireNonNull(directory); }
+    SqlDraftStore(SqlDraftDirectory directory) {
+        this.directory = Objects.requireNonNull(directory);
+        this.workspaceStore = new SqlWorkspaceStore(directory);
+    }
 
     public static SqlDraftStore open(Path path) throws IOException {
         return new SqlDraftStore(SqlDraftDirectory.open(path));
     }
 
     public synchronized Snapshot snapshot() throws IOException { return inspect().snapshot(); }
+
+    public synchronized SqlWorkspaceStore.Snapshot workspaceSnapshot() throws IOException {
+        return workspaceStore.snapshot();
+    }
+
+    public synchronized void saveWorkspace(SqlWorkspace workspace) throws IOException {
+        directory.entries();
+        Preference preference = preference();
+        if (!preference.valid()) throw new SqlWorkspaceStore.Failure(SqlWorkspaceStore.FailureCode.DRAFT_PROTECTION_UNAVAILABLE);
+        if (!preference.enabled()) throw new SqlWorkspaceStore.Failure(SqlWorkspaceStore.FailureCode.DISABLED);
+        workspaceStore.save(workspace);
+    }
+
+    public synchronized void setWorkspaceEnabled(boolean enabled) throws IOException {
+        workspaceStore.setEnabled(enabled);
+    }
+
+    public synchronized boolean clearWorkspace() throws IOException {
+        return workspaceStore.clear();
+    }
 
     public synchronized void save(SqlDraft draft) throws IOException {
         byte[] bytes;
