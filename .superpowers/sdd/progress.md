@@ -1,6 +1,10 @@
 # Subagent-Driven Development Progress
 
-## Active plan: SQL draft recovery (2026-08-30)
+## Active plan: P2 SQL workspace recovery (2026-08-31)
+
+- P2 DESIGN/FOUNDATION PLAN READY: independentworktree codex/sql-workspace-recovery frommain7710ecb; baseline65868 exit0/46s8executed150suites1373total1370pass3oldliveskips0fail/errors. Design2026-08-31-sql-workspace-recovery-design.md defines explicitrestore, UUIDonlymanifest, noDBeffects, close/exitprivacyrules. Plan2026-08-31-sql-workspace-foundation.md Task1 next: boundedvalue/codec/pureresolver only, noUI/I/O yet. P2.2store→P2.3coordination→P2.4UI→P2.5acceptance remain. No mainmerge until fullP2gate; no push/tag/install. P1below COMPLETE, do notredispatch.
+
+## Completed plan: SQL draft recovery (2026-08-30)
 
 - P1 COMPLETE / LOCAL MAIN MERGED 2026-08-31: finalbranchreview incl694ccb9..afa3f86 andafa3f86..35d2f8d Approvedlocalmerge0Critical/Important; two finalminorsclosed2d77b6a(summary)/35d2f8d(testopacity), reportoriginalBASE1541458/followupBASE2d77b6acorrected. mainfastforward0c4ecb9→35d2f8d succeeded. Rootmainfullsession70089 exit0/43s8executed150suites1373total1370passed0fail/errors3namedoldliveskips. NoGradle/JVMactive. Finalsource5e50f21 image/process/desktop evidenceunchangedbytest-only35d2f8d. ClosurecommitDOCSONLYtosyncbothmain/worktree; no push/tag/install/release. Preserveworktree/ownedtestartifactsforaudit; .testagentcontentneveraccessed. ALLP1tasksDONE, donotredispatch. NEXT P2workspace-recovery independentdesign frommain; P0.2release/remoteCI/realuserfeedbackremainseparate, unboundedgoalactive.
 
