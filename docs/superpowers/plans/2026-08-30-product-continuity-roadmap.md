@@ -133,11 +133,15 @@
 
 依赖：P1 格式、持久化与关闭语义通过验证；草稿恢复不是工作区恢复的替代验收。
 
+2026-08-31 已启动独立 `codex/sql-workspace-recovery`，从 main `7710ecb` 创建；基线全量1370通过/3原有live跳过/0失败。已记录[完整阶段设计](../specs/2026-08-31-sql-workspace-recovery-design.md)、[P2.1逐文件计划](2026-08-31-sql-workspace-foundation.md)和[持续验收记录](../verification/2026-08-31-sql-workspace-recovery.md)。选用显式一键恢复，不启动即展示全部SQL；先清单/纯解析，再严格存储、退出协调、用户入口和整体验收。目前尚未提供工作区恢复功能，不修改P1已完成结论。
+
+P2.1 已完成：`6b0bbe1` 提供有界清单、严格版本化编解码与按UUID解析/排序/选择回退；独立审查零发现，全量1402通过/3原有live跳过/0失败，root定向32通过。下一步P2.2严格本地存储；尚无清单写盘与恢复入口，仍留独立分支。
+
 **关注文件：** `src/com/datacube/fx/AppShell.java`、`SqlEditorPane.java`、`AsyncTabCloseCoordinator.java`、`AsyncShutdownCoordinator.java`、`src/com/datacube/DataCubeFx.java`，以及 P1 草稿组件。
 
-- [ ] 写独立设计，定义工作区清单只引用草稿 ID，不复制 SQL 或连接密钥。
-- [ ] 定义可恢复项：SQL 标签顺序、当前选中标签、连接 ID、Schema 提示、光标位置；不恢复网格、迁移、Schema Diff、Redis 和事务。
-- [ ] 明确同名不同 ID、改名、已删除连接、数据库类型变化、Schema 不存在的行为；保留 SQL，显示未绑定/待确认，不猜测替代连接。
+- [x] 写独立设计，定义工作区清单只引用草稿 ID，不复制 SQL 或连接密钥。
+- [x] 定义可恢复项：SQL 标签顺序、当前选中标签、连接 ID、Schema 提示、光标位置；不恢复网格、迁移、Schema Diff、Redis 和事务。连接/Schema仍从P1草稿读取，清单不重复保存。
+- [x] 明确同名不同 ID、改名、已删除连接、数据库类型变化、Schema 不存在的行为；保留 SQL，显示未绑定/待确认，不猜测替代连接。设计完成不等于UI集成验收。
 - [ ] 审查现有编辑器初始化与 `bindConnection` 的副作用；恢复路径必须能够脱离 JDBC 及元数据请求完成。
 - [ ] 用已有关闭协调器定义“关闭单标签”与“退出应用”的差异；取消退出不清空恢复快照，部分退出失败不谎报完整关闭。
 - [ ] 确定新旧格式兼容、工作区清单损坏时退回草稿列表的路径，然后写逐任务实现计划。

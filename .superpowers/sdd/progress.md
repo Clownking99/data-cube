@@ -2,6 +2,12 @@
 
 ## Active plan: P2 SQL workspace recovery (2026-08-31)
 
+- P2.1 Task1: COMPLETE (commits48faecc..6b0bbe1, workspace_foundation_review Speccompliant/Approved,0Critical/Important/Minor). Rootfreshfocusedexit0/6s32pass; fullactualXML152suites1405total1402pass3oldliveskips0fail/errors, agentexit0/48s. Report hasexactRED/GREEN/fullcommands+cases; initialsentineltestfalsepositivefixedwithcorrectedRED. Rootresolvedreviewenvironmentitems viaactualbuild/wrapper/JDK. No agents/Gradle active; closuredocsnext. NEXT P2.2strictworkspacepersistence plan onthissameworktree; P2.3coordination→P2.4UI→P2.5fullreview/acceptancebeforemainmerge. No persistentworkspace/UIexistsyet; doNOTredispatchP2.1 orP1. Main7710ecbunchanged; no push/tag/release/profileaccess. ProductgoalwasPAUSEDatget_goal, donotmodifygoallifecycle.
+
+- P2.1 Task1 CODE COMPLETE6b0bbe1; workspace_foundation_review(terra) ACTIVE on frozen48faecc..6b0bbe1 package. Implementerreport nowexactcommands: RED32/24 twice (original+sentinelfix), focused32pass, full48s exit0/152suites1405total1402pass3oldskips0fail/errors. RootactualXMLfullverified before freshfocused exit0/6s32pass at01:18:21Z; rootreviewedproductiondiff. Sentinelcontains(select) hit selectedDraftId; plan/brief/testuseactualSQLfragment, no productionchangefortest. Rootdocsdirtyintentional; tasknotcompleteuntilreviewapproved. NoGradleactive. PlatformgoalquerycurrentlyPAUSED, donotmarkcomplete/resume; usercurrentturnworkcontinuesnormally.
+
+- P2.1 Task1 ACTIVE workspace_foundation_impl(luna), frozenBASE48faecc8a948e2521ef8145c6e7f535fc3bbabd2; brief `.superpowers/sdd/task-1-brief.md`, report `task-1-report.md`. Owns exactlySqlWorkspace/Codec/Recovery+2tests. Rootowns verification/roadmapdocs, no concurrentGradle. Next awaitbehaviorRED/GREEN+fullreport, generate taskreviewpackage fromBASE48faecc (notHEAD~1). No P2UI/I/O implemented; donotmainmerge.
+
 - P2 DESIGN/FOUNDATION PLAN READY: independentworktree codex/sql-workspace-recovery frommain7710ecb; baseline65868 exit0/46s8executed150suites1373total1370pass3oldliveskips0fail/errors. Design2026-08-31-sql-workspace-recovery-design.md defines explicitrestore, UUIDonlymanifest, noDBeffects, close/exitprivacyrules. Plan2026-08-31-sql-workspace-foundation.md Task1 next: boundedvalue/codec/pureresolver only, noUI/I/O yet. P2.2store→P2.3coordination→P2.4UI→P2.5acceptance remain. No mainmerge until fullP2gate; no push/tag/install. P1below COMPLETE, do notredispatch.
 
 ## Completed plan: SQL draft recovery (2026-08-30)

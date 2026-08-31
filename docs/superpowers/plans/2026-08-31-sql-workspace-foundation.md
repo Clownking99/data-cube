@@ -46,7 +46,7 @@ Worktree: `D:/Projects/朝花夕拾/.worktrees/sql-workspace-recovery`，branch 
 - Decode validation: pre-allocation byte bound/count/length, invalid header/semantic fields/truncation/trailing bytes rejected. Known magic with non-1 version => UNSUPPORTED_VERSION; all other bad format => CORRUPT. Fixed error `Invalid SQL workspace format: <CODE>` and no cause.
 - Resolution: input drafts 0..100, no null or duplicate UUID; lookup strictly by UUID, preserve available order and exact SqlDraft objects/fields; collect absent UUIDs in manifest order. Preserve selected UUID if available, else first available when an originally selected item is missing; null selection stays null. Positions unchanged here: future FX caller clamps to actual displayed length. Result lists immutable; no mutation/I/O/network/FX.
 
-- [ ] **Step 1: Add exact behavior tests and compile-only stubs**
+- [x] **Step 1: Add exact behavior tests and compile-only stubs**
 
 `test/com/datacube/config/SqlWorkspaceCodecTest.java`:
 
@@ -251,7 +251,7 @@ class SqlWorkspaceRecoveryTest {
         assertEquals(10, result.tabs().get(1).draft().modifiedAt());
         assertEquals(999, result.tabs().get(1).anchor());
         assertEquals(2, result.tabs().get(1).caret());
-        assertFalse(result.toString().contains("select"));
+        assertFalse(result.toString().contains("select '😀'"));
         assertFalse(result.toString().contains("private-schema"));
         assertFalse(result.toString().contains("private-connection"));
     }
@@ -358,7 +358,7 @@ public final class SqlWorkspaceRecovery {
 }
 ```
 
-- [ ] **Step 2: Run behavior RED and record before GREEN**
+- [x] **Step 2: Run behavior RED and record before GREEN**
 
 Run in this worktree:
 
@@ -369,7 +369,7 @@ $env:JAVA_HOME='D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8'
 
 Expected exit 1, assertion failures for empty encoded bytes, missing validation, missing resolved IDs/selection. Do not claim compiler/import errors as RED. Record failing XML cases before replacing skeletons; report RED to controller, then proceed with GREEN (no human confirmation).
 
-- [ ] **Step 3: Replace skeletons with implementation**
+- [x] **Step 3: Replace skeletons with implementation**
 
 `src/com/datacube/config/SqlWorkspace.java`:
 
@@ -534,7 +534,7 @@ public final class SqlWorkspaceRecovery {
 }
 ```
 
-- [ ] **Step 4: Focused GREEN, then one full regression**
+- [x] **Step 4: Focused GREEN, then one full regression**
 
 Run the focused command from Step 2; expected exit 0, all cases pass, zero skips in these two suites. Then run once:
 
@@ -549,7 +549,7 @@ try {
 
 Expected exit 0, no new failures/skips; calculate actual XML counts rather than copying baseline counts. If a fixture has an import/type defect, repair that defect and rerun RED before behavior implementation. Do not suppress failure or weaken an assertion to match broken production behavior.
 
-- [ ] **Step 5: Self-review, commit exact files, report evidence**
+- [x] **Step 5: Self-review, commit exact files, report evidence**
 
 Review assertions against each interface/edge above. Record exact test names for every behavior, RED command/output, GREEN command/output, full suite totals and baseline warnings. No coverage percentage claim without a measured report.
 
@@ -562,5 +562,7 @@ git commit -m "feat: add bounded SQL workspace manifest and recovery resolution"
 Controller then generates review-package using the frozen pre-dispatch BASE and obtains independent spec+quality review. No P2 integration/main merge on this foundation-only task. Output a Requirement | Evidence table with exact tests in the report. A full test run does not prove disk persistence, restart, close/exit or desktop behavior: those remain later gates.
 
 ## Self-review of plan
+
+执行结果：Task1提交 `6b0bbe1`，独立任务审查 workspace_foundation_review 已确认 Spec compliant / Approved，0 Critical / Important / Minor。全量1402通过/3旧live跳过，root定向复跑32通过；完整矩阵见[验收记录](../verification/2026-08-31-sql-workspace-recovery.md)。本计划完成的是P2.1；P2.2存储至P2.5总验收及整分支审查仍未完成，不合并main。
 
 P2.1 exact contract covered by Task 1 value/codec/resolve tests; P2.2–P2.5 remain separate implementation scopes, not missing steps disguised as complete here. Interfaces match all code blocks. Byte count 24+100*24=2424. Selection -1 remains valid with zero entries; invalid positive index rejected. Cases include 99/100/101, both position boundaries, every byte truncation, raw CRLF/emoji, duplicate/missing IDs and non-SQL selected state. No placeholder implementation in GREEN; compile-only RED skeletons are explicitly temporary.
