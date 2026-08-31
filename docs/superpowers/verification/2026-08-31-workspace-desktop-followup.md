@@ -46,6 +46,8 @@ root修复前独立定向基线：session71066，JDK25、scoped非headless、`te
 
 独立任务审查completion_focus_review：Spec compliant/Quality Approved，0Critical/Important/Minor；报告列出的RED顺序、进程退出及XML核验事项已由root以上证据独立补足。
 
+最终增量审查completion_focus_final_review检查完整固定范围`109df89..9485836`及实施报告，结论Ready to merge: Yes，0Critical/Important/new Minor；原unchecked提示为非阻塞既有事项。该结论只覆盖本轮补全修复，不代表P2全部键盘/正式分发入口通过，也不代表新提交已通过远端CI。保留`codex/sql-workspace-recovery`及其独立worktree，本轮不合并、不推送。
+
 修复后桌面session62756/PID22572沿用相同标记profile，helper两份hash仍不变。启动不自动恢复；显式恢复最终显示打开2/定位0/失败0，当前布局已保存，立即截图和随后稳定观察均无SELECT补全浮层。重复恢复最终打开0/定位2/失败0，仍无浮层；关闭管理页后alpha文本、选区及两张标签保留，仍未绑定连接。只用窗口输入，没有键入或执行SQL，没有操作真实配置。
 
 ## 尚未关闭的边界
