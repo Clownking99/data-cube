@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
@@ -14,7 +15,7 @@ import java.util.function.LongSupplier;
 public final class SqlDraftCoordinator {
     public enum Mode { INITIALIZING, ENABLED, DISABLED, PAUSED, UNAVAILABLE, CLOSED }
     public enum SaveStatus { EMPTY, WAITING, SAVING, SAVED, FAILED }
-    public enum FailureReason { INITIALIZING, PAUSED, UNAVAILABLE, CLOSED, BUSY, CAPTURE, WRITE, CAPACITY, INVALID_DRAFT, CLEANUP, SHUTDOWN }
+    public enum FailureReason { INITIALIZING, PAUSED, UNAVAILABLE, CLOSED, BUSY, CAPTURE, WRITE, CAPACITY, INVALID_DRAFT, CLEANUP, SHUTDOWN, DISABLED, CANCELLED }
     public record Status(Mode mode, SaveStatus saveStatus, Long savedAt, FailureReason failureReason) { }
     public record ManagementResult(boolean succeeded, SqlDraftStore.Snapshot snapshot) { }
     public static final class Failure extends IOException {
@@ -33,6 +34,18 @@ public final class SqlDraftCoordinator {
         void clear() throws IOException;
         void delete(UUID id) throws IOException;
         void prune(long now, Set<UUID> openIds) throws IOException;
+        default SqlWorkspaceStore.Snapshot workspaceSnapshot() throws IOException {
+            throw new IOException("Workspace backend unsupported");
+        }
+        default void saveWorkspace(SqlWorkspace workspace) throws IOException {
+            throw new IOException("Workspace backend unsupported");
+        }
+        default void setWorkspaceEnabled(boolean enabled) throws IOException {
+            throw new IOException("Workspace backend unsupported");
+        }
+        default boolean clearWorkspace() throws IOException {
+            throw new IOException("Workspace backend unsupported");
+        }
         @Override void close() throws IOException;
     }
     @FunctionalInterface interface Factory { Backend open() throws IOException; }
@@ -45,6 +58,10 @@ public final class SqlDraftCoordinator {
         public void clear() throws IOException { store.clearRecoverable(); }
         public void delete(UUID id) throws IOException { store.delete(id); }
         public void prune(long now, Set<UUID> openIds) throws IOException { store.pruneExpired(now, openIds); }
+        public SqlWorkspaceStore.Snapshot workspaceSnapshot() throws IOException { return store.workspaceSnapshot(); }
+        public void saveWorkspace(SqlWorkspace workspace) throws IOException { store.saveWorkspace(workspace); }
+        public void setWorkspaceEnabled(boolean enabled) throws IOException { store.setWorkspaceEnabled(enabled); }
+        public boolean clearWorkspace() throws IOException { return store.clearWorkspace(); }
         public void close() throws IOException { store.close(); }
     }
     private final SqlDraftWriteQueue queue;
@@ -59,6 +76,8 @@ public final class SqlDraftCoordinator {
     private Mode mode = Mode.INITIALIZING;
     private ManagementResult lastManagementResult;
     private boolean busy = true, closing;
+    private final AtomicLong workspaceEpoch = new AtomicLong();
+    private boolean workspaceSavePending;
     private CompletableFuture<Void> shutdown;
 
     public SqlDraftCoordinator(Path directory, Executor writer, Executor ui, BooleanSupplier isUi,
@@ -220,10 +239,82 @@ public final class SqlDraftCoordinator {
         return manage(Set.of(), () -> { backend.setEnabled(enabled); return null; }, enabled);
     }
 
+    public CompletableFuture<SqlWorkspaceStore.Snapshot> workspaceSnapshot() {
+        return workspaceOperation(false, false, () -> backend.workspaceSnapshot());
+    }
+    public CompletableFuture<Void> saveWorkspace(SqlWorkspace workspace) {
+        active();
+        if (workspace == null) return CompletableFuture.failedFuture(
+                new SqlWorkspaceStore.Failure(SqlWorkspaceStore.FailureCode.INVALID_WORKSPACE));
+        return workspaceOperation(true, false, () -> { backend.saveWorkspace(workspace); return null; });
+    }
+    public CompletableFuture<Void> setWorkspaceEnabled(boolean enabled) {
+        return workspaceOperation(false, true, () -> { backend.setWorkspaceEnabled(enabled); return null; });
+    }
+    public CompletableFuture<Boolean> clearWorkspace() {
+        return workspaceOperation(false, true, () -> backend.clearWorkspace());
+    }
+
+    /** One pending layout publication; capture/coalescing belongs to the UI state owner. */
+    private <T> CompletableFuture<T> workspaceOperation(boolean saving, boolean managing, Callable<T> action) {
+        active();
+        if (busy || (saving && workspaceSavePending)) return refused(FailureReason.BUSY);
+        if (faulted.get()) return refused(unavailableReason());
+        if (saving && mode() != Mode.ENABLED) return refused(modeReason());
+        if (managing) {
+            busy = true;
+            workspaceEpoch.incrementAndGet();
+        }
+        if (saving) workspaceSavePending = true;
+        long epoch = workspaceEpoch.get();
+        CompletableFuture<T> result = queue.barrier(Set.of(), () -> {
+            if (faulted.get()) throw new Failure(unavailableFailure.get());
+            if (saving && epoch != workspaceEpoch.get()) throw new Failure(FailureReason.CANCELLED);
+            if (saving && !admitted.get()) throw new Failure(FailureReason.UNAVAILABLE);
+            try { return action.call(); }
+            catch (Exception | Error failure) {
+                if (structural(failure)) stop(failure);
+                throw failure;
+            }
+        });
+        CompletableFuture<T> exposed = new CompletableFuture<>();
+        result.whenComplete((value, failure) -> {
+            if (failure != null && structural(failure)) stop(failure);
+            Runnable delivered = () -> {
+                try {
+                    owner();
+                    if (saving) workspaceSavePending = false;
+                    if (managing && !closing) busy = false;
+                    if (failure == null) exposed.complete(value);
+                    else exposed.completeExceptionally(workspaceFailure(failure));
+                } catch (RuntimeException deliveryFailure) {
+                    stop(deliveryFailure);
+                    exposed.completeExceptionally(new Failure(FailureReason.UNAVAILABLE));
+                }
+            };
+            // Unlike ordinary observer posts, accepted results must settle while closing too.
+            try { ui.execute(delivered); }
+            catch (RuntimeException rejected) {
+                stop(rejected);
+                exposed.completeExceptionally(new Failure(FailureReason.UNAVAILABLE));
+            }
+        });
+        return exposed.copy();
+    }
+
+    private static IOException workspaceFailure(Throwable error) {
+        if (error instanceof CompletionException && error.getCause() != null) return workspaceFailure(error.getCause());
+        if (error instanceof SqlWorkspaceStore.Failure failure) return failure;
+        if (error instanceof Failure failure) return failure;
+        if (classify(error) == FailureReason.CLEANUP) return new Failure(FailureReason.CLEANUP);
+        return new Failure(structural(error) ? FailureReason.UNAVAILABLE : FailureReason.WRITE);
+    }
+
     private CompletableFuture<ManagementResult> manage(Set<UUID> resetIds, Callable<Void> action, Boolean enabled) {
         active();
         if (busy) return refused(FailureReason.BUSY);
         if (faulted.get()) return refused(FailureReason.UNAVAILABLE);
+        if (enabled != null || resetIds == null || !resetIds.isEmpty()) workspaceEpoch.incrementAndGet();
         busy = true;
         if (enabled != null) {
             admitted.set(false); mode = Mode.PAUSED;
@@ -315,12 +406,15 @@ public final class SqlDraftCoordinator {
         return switch (mode()) {
             case INITIALIZING -> FailureReason.INITIALIZING;
             case PAUSED -> FailureReason.PAUSED;
+            case DISABLED -> FailureReason.DISABLED;
             case CLOSED -> FailureReason.CLOSED;
             default -> FailureReason.UNAVAILABLE;
         };
     }
     private static boolean structural(Throwable error) {
         if (error instanceof CompletionException && error.getCause() != null) return structural(error.getCause());
+        if (error instanceof SqlWorkspaceStore.Failure failure)
+            return failure.code() == SqlWorkspaceStore.FailureCode.DRAFT_PROTECTION_UNAVAILABLE;
         if (error instanceof SqlDraftDirectory.Failure failure) return switch (failure.stage()) {
             case OPEN, BUSY, CLOSED, UNSAFE, SCAN_LIMIT, CLEANUP, CLOSE -> true;
             default -> false;
