@@ -18,9 +18,12 @@ final class SqlWorkspaceManagerPane implements AutoCloseable {
     private static final String PRIVACY = "工作区仅记录草稿引用、标签顺序和编辑位置；恢复会显示本地 SQL 草稿。清空工作区不删除草稿，SQL 历史独立管理。";
     private final SqlDraftCoordinator runtime;
     private final SqlWorkspaceActivity activity;
+    private final SqlWorkspaceUi workspace;
     private final SqlWorkspaceRecoveryTabs recovery;
     private final VBox root = new VBox(6);
     private final Label status = new Label(), notice = new Label();
+    private final Label activityStatus = new Label();
+    private final Button retrySave = new Button("重试保存布局");
     private final Button restore = new Button("恢复工作区"), refresh = new Button("刷新工作区"),
             toggle = new Button(), clear = new Button("清空工作区");
     private boolean pending, closed, needsInitialRead = true, stale = true;
@@ -31,12 +34,20 @@ final class SqlWorkspaceManagerPane implements AutoCloseable {
 
     SqlWorkspaceManagerPane(SqlDraftUi owner, SqlWorkspaceRecoveryTabs recovery) {
         runtime = owner.runtime();
-        activity = Objects.requireNonNull(owner.workspace()).owner();
+        workspace = Objects.requireNonNull(owner.workspace());
+        activity = workspace.owner();
         this.recovery = Objects.requireNonNull(recovery);
         expectedGeneration = runtime.workspaceGeneration();
         root.setId("workspace-manager");
         status.setId("workspace-manager-status"); status.setWrapText(true);
         notice.setId("workspace-manager-notice"); notice.setWrapText(true);
+        activityStatus.setId("workspace-manager-activity-status"); activityStatus.setWrapText(true);
+        retrySave.setId("workspace-manager-retry-save");
+        retrySave.setOnAction(event -> {
+            if (blocked() || !workspace.canRetrySave()) return;
+            workspace.retrySave();
+            render();
+        });
         restore.setId("workspace-manager-restore"); refresh.setId("workspace-manager-refresh");
         toggle.setId("workspace-manager-toggle"); clear.setId("workspace-manager-clear");
         restore.setOnAction(event -> { if (!blocked() && usable()) load(true); });
@@ -51,7 +62,8 @@ final class SqlWorkspaceManagerPane implements AutoCloseable {
                 manage(activity::clearWorkspace, "工作区已清空；SQL 草稿和编辑器保持不变。");
         });
         Label privacy = new Label(PRIVACY); privacy.setWrapText(true);
-        root.getChildren().addAll(status, new FlowPane(8, 4, restore, refresh, toggle, clear), notice, privacy);
+        root.getChildren().addAll(status, activityStatus, retrySave,
+                new FlowPane(8, 4, restore, refresh, toggle, clear), notice, privacy);
         refreshView();
     }
 
@@ -182,6 +194,14 @@ final class SqlWorkspaceManagerPane implements AutoCloseable {
 
     private void render() {
         boolean blocked = blocked();
+        retrySave.setDisable(blocked || !workspace.canRetrySave());
+        activityStatus.setText("当前布局：" + switch (runtime.mode()) {
+            case DISABLED, PAUSED -> "草稿保护已关闭或暂停，不记录新的布局；已有恢复点保留";
+            case INITIALIZING -> "工作区初始化中，尚未记录新的布局";
+            case UNAVAILABLE -> "工作区记录不可用，已有恢复点保留；请检查本机目录后重启";
+            case CLOSED -> "工作区记录已关闭，不记录新的布局";
+            case ENABLED -> activity.statusText();
+        });
         restore.setDisable(blocked || !usable());
         refresh.setDisable(blocked);
         toggle.setDisable(blocked || stale || loaded == null || !loaded.preferenceValid());
@@ -224,6 +244,7 @@ final class SqlWorkspaceManagerPane implements AutoCloseable {
 
     @Override public void close() {
         closed = true;
+        retrySave.setDisable(true);
         ++attempt;
     }
 }

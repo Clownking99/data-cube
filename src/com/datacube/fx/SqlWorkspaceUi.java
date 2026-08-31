@@ -38,6 +38,24 @@ final class SqlWorkspaceUi implements AutoCloseable {
     }
 
     SqlWorkspaceActivity owner() { return activity; }
+    boolean canRetrySave() {
+        if (!Platform.isFxApplicationThread()) throw new IllegalStateException("FX retry required");
+        return !disposed && !closing && !recovering
+                && drafts.runtime().mode() == SqlDraftCoordinator.Mode.ENABLED
+                && !drafts.runtime().managementPending()
+                && activity.status() == SqlWorkspaceActivity.Status.FAILED;
+    }
+    void retrySave() {
+        if (!canRetrySave()) return;
+        try {
+            SqlWorkspace current = capture();
+            activity.activity(current);
+            activity.retry();
+            activity.pulse();
+        } catch (IllegalArgumentException invalid) {
+            activity.captureFailed();
+        }
+    }
     boolean beginRecovery() {
         if (!Platform.isFxApplicationThread()) throw new IllegalStateException("FX restoration required");
         if (closing || disposed || recovering) return false;

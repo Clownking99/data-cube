@@ -16,6 +16,250 @@ import static org.junit.jupiter.api.Assertions.*;
 class SqlWorkspaceManagerTest {
     @TempDir Path directory;
 
+    @Test void activitySaveFailureIsVisibleAndExplicitRetryPersistsLatestLayout() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.base.seed("select checkpoint");
+            f.base.save(new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(draft.id(), 1, 1)), draft.id()));
+            f.open(); f.ready();
+            f.base.fx(() -> f.button("restore").fire()); f.ready();
+            f.base.await(() -> f.base.workspace.owner().status() == SqlWorkspaceActivity.Status.SAVED);
+            Path manifest = f.base.root.resolve("drafts/workspace.bin");
+            byte[] original = Files.readAllBytes(manifest);
+            f.failMethod.set("saveWorkspace");
+            f.base.fx(() -> {
+                f.base.editor(draft.id()).selectRange(2, 6);
+                f.base.workspace.activity(); f.base.now = 10000; f.base.workspace.pulse();
+            });
+            f.base.await(() -> f.base.workspace.owner().status() == SqlWorkspaceActivity.Status.FAILED);
+            f.base.fx(() -> {
+                f.pane.refreshView();
+                Label health = (Label) f.pane.getNode().lookup("#workspace-manager-activity-status");
+                assertNotNull(health, "ordinary save failure needs visible layout-save feedback");
+                assertTrue(health.isVisible());
+                assertTrue(health.getText().contains("未保存"));
+                assertTrue(health.getText().contains("已有恢复点保留"));
+                assertNotNull(f.button("retry-save"));
+                assertFalse(f.button("retry-save").isDisabled());
+            });
+            int writes = f.writes.get();
+            f.base.fx(() -> {
+                for (int i = 0; i < 10; i++) { f.base.now += 10000; f.base.workspace.pulse(); f.pane.refreshView(); }
+                f.button("refresh").fire();
+            });
+            f.ready();
+            assertEquals(writes, f.writes.get());
+            assertArrayEquals(original, Files.readAllBytes(manifest));
+            f.failMethod.set(null);
+            f.base.fx(() -> { f.base.editor(draft.id()).selectRange(4, 9); f.button("retry-save").fire(); });
+            f.base.await(() -> f.base.workspace.owner().status() == SqlWorkspaceActivity.Status.SAVED);
+            assertEquals(List.of(new SqlWorkspace.Entry(draft.id(), 4, 9)), f.base.snapshot().workspace().entries());
+            f.base.fx(() -> assertEquals("select checkpoint", f.base.editor(draft.id()).getText()));
+            f.base.offline();
+        }
+    }
+
+    @Test void activityRetryWaitsForPublicationAndFailedRetryPreservesRecoveryPoint() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.failedSave();
+            Path manifest = f.base.root.resolve("drafts/workspace.bin");
+            byte[] original = Files.readAllBytes(manifest);
+            int before = f.writes.get();
+            f.blockMethod.set("saveWorkspace");
+            f.base.fx(() -> { f.button("retry-save").fire(); f.button("retry-save").fire(); });
+            assertTrue(f.entered.await(5, TimeUnit.SECONDS));
+            f.base.fx(() -> {
+                f.pane.refreshView();
+                assertEquals(SqlWorkspaceActivity.Status.PENDING, f.base.workspace.owner().status());
+                assertTrue(f.health().contains("待保存"), f.health());
+                assertFalse(f.health().contains("已保存"));
+                assertTrue(f.button("retry-save").isDisabled());
+                f.button("retry-save").getOnAction().handle(new javafx.event.ActionEvent());
+            });
+            assertEquals(before + 1, f.writes.get());
+            assertArrayEquals(original, Files.readAllBytes(manifest));
+            f.release.countDown();
+            f.base.await(() -> f.base.workspace.owner().status() == SqlWorkspaceActivity.Status.FAILED);
+            f.base.fx(() -> {
+                for (int i = 0; i < 10; i++) { f.base.now += 10000; f.base.workspace.pulse(); f.pane.refreshView(); }
+                assertTrue(f.health().contains("未保存"));
+                assertTrue(f.health().contains("已有恢复点保留"));
+                assertFalse(f.health().contains("synthetic"));
+                assertFalse(f.button("retry-save").isDisabled());
+            });
+            assertEquals(before + 1, f.writes.get());
+            assertArrayEquals(original, Files.readAllBytes(manifest));
+            f.failMethod.set(null);
+            f.base.fx(() -> { f.base.editor(draft.id()).selectRange(9, 3); f.button("retry-save").fire(); });
+            f.base.await(() -> f.base.workspace.owner().status() == SqlWorkspaceActivity.Status.SAVED);
+            assertEquals(List.of(new SqlWorkspace.Entry(draft.id(), 9, 3)), f.base.snapshot().workspace().entries());
+            assertEquals(before + 2, f.writes.get());
+            f.base.fx(() -> { f.pane.refreshView(); assertTrue(f.health().contains("已保存")); });
+            f.base.offline();
+        }
+    }
+
+    @Test void activityReadFailureCanRetryAfterRepairWithoutAutomaticLoop() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.base.seed("select checkpoint");
+            f.base.save(new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(draft.id(), 1, 1)), draft.id()));
+            f.open(); f.ready();
+            f.failMethod.set("workspaceSnapshot");
+            f.base.fx(() -> assertTrue(f.base.single.restore(draft)));
+            f.base.await(() -> f.base.workspace.owner().status() == SqlWorkspaceActivity.Status.FAILED);
+            int reads = f.reads.get(), writes = f.writes.get();
+            f.base.fx(() -> {
+                for (int i = 0; i < 10; i++) { f.base.now += 10000; f.base.workspace.pulse(); f.pane.refreshView(); }
+                assertTrue(f.health().contains("未保存"));
+                assertFalse(f.button("retry-save").isDisabled());
+            });
+            assertEquals(reads, f.reads.get()); assertEquals(writes, f.writes.get());
+            f.failMethod.set(null);
+            f.base.fx(() -> { f.base.editor(draft.id()).selectRange(3, 8); f.button("retry-save").fire(); });
+            f.base.await(() -> f.base.workspace.owner().status() == SqlWorkspaceActivity.Status.SAVED);
+            assertEquals(List.of(new SqlWorkspace.Entry(draft.id(), 3, 8)), f.base.snapshot().workspace().entries());
+            assertEquals(writes + 1, f.writes.get()); f.base.offline();
+        }
+    }
+
+    @Test void closedManagerIgnoresRetryPublicationAndCannotSubmitAgain() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            f.failedSave(); f.failMethod.set(null); f.blockMethod.set("saveWorkspace");
+            f.base.fx(() -> f.button("retry-save").fire());
+            assertTrue(f.entered.await(5, TimeUnit.SECONDS));
+            String pending = f.base.call(f::health);
+            f.base.fx(() -> {
+                assertTrue(pending.contains("待保存"));
+                f.pane.close();
+                assertTrue(f.button("retry-save").isDisabled());
+            });
+            int writes = f.writes.get();
+            f.release.countDown();
+            f.base.await(() -> f.base.workspace.owner().status() == SqlWorkspaceActivity.Status.SAVED);
+            f.base.fx(() -> {
+                f.pane.refreshView();
+                f.button("retry-save").getOnAction().handle(new javafx.event.ActionEvent());
+                assertEquals(pending, f.health(), "closed pane must ignore the real completion");
+                assertTrue(f.button("retry-save").isDisabled());
+            });
+            assertEquals(writes, f.writes.get());
+        }
+    }
+
+    @Test void activityCaptureFailureRetryCapturesCurrentInstalledPositions() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            SqlDraft draft = f.failedSave();
+            assertThrows(IllegalStateException.class, f.base.workspace::canRetrySave);
+            assertThrows(IllegalStateException.class, f.base.workspace::retrySave);
+            f.failMethod.set(null);
+            f.base.fx(() -> {
+                f.base.workspace.owner().captureFailed();
+                f.base.editor(draft.id()).selectRange(10, 4);
+                f.pane.refreshView();
+                assertTrue(f.health().contains("未保存"));
+                f.button("retry-save").fire();
+            });
+            f.base.await(() -> f.base.workspace.owner().status() == SqlWorkspaceActivity.Status.SAVED);
+            assertEquals(List.of(new SqlWorkspace.Entry(draft.id(), 10, 4)), f.base.snapshot().workspace().entries());
+            f.base.fx(() -> assertEquals("select checkpoint", f.base.editor(draft.id()).getText()));
+            f.base.offline();
+        }
+    }
+
+    @Test void activityRetryRejectsRealOwnerCloseWhileFinalValidationIsPending() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            f.failedSave(); f.failMethod.set(null); f.blockMethod.set("snapshot");
+            var closing = f.base.tabs.closeAllManagedTabsMandatory().toCompletableFuture();
+            assertTrue(f.entered.await(5, TimeUnit.SECONDS));
+            int writes = f.writes.get();
+            f.base.fx(() -> {
+                assertFalse(closing.isDone());
+                f.pane.refreshView();
+                assertTrue(f.health().contains("已冻结"));
+                assertFalse(f.base.workspace.canRetrySave());
+                assertTrue(f.button("retry-save").isDisabled());
+                f.button("retry-save").getOnAction().handle(new javafx.event.ActionEvent());
+                f.base.workspace.retrySave();
+                assertEquals(SqlWorkspaceActivity.Status.FROZEN, f.base.workspace.owner().status());
+            });
+            assertEquals(writes, f.writes.get());
+            f.release.countDown();
+            assertEquals(TabCloseOutcome.COMPLETED, closing.get(5, TimeUnit.SECONDS));
+            assertEquals(writes + 1, f.writes.get(), "only existing final lifecycle publication is accepted");
+        }
+    }
+
+    @Test void activityRetryRejectsStructurallyUnavailableRuntimeWithoutClearingFailure() throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            f.failedSave();
+            f.failMethod.set(null);
+            f.structuralSaveFailure.set(true);
+            f.base.fx(() -> f.button("retry-save").fire());
+            f.base.await(() -> f.base.owner.runtime().mode() == SqlDraftCoordinator.Mode.UNAVAILABLE
+                    && f.base.workspace.owner().status() == SqlWorkspaceActivity.Status.FAILED);
+            int writes = f.writes.get();
+            f.base.fx(() -> {
+                f.pane.refreshView();
+                assertTrue(f.health().contains("不可用"));
+                assertTrue(f.health().contains("检查本机目录后重启"));
+                assertFalse(f.health().contains("可重试"));
+                assertTrue(f.button("retry-save").isDisabled());
+                f.button("retry-save").getOnAction().handle(new javafx.event.ActionEvent());
+                f.base.workspace.retrySave();
+                assertEquals(SqlWorkspaceActivity.Status.FAILED, f.base.workspace.owner().status());
+            });
+            assertEquals(writes, f.writes.get());
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"draft-disabled", "draft-paused", "workspace-disabled", "session-paused",
+            "runtime-closed", "frozen", "recovering", "adapter-closed", "manager-closed", "busy"})
+    void activityRetryRejectsLifecycleAndManagementGuards(String guard) throws Exception {
+        try (Fixture f = new Fixture(directory)) {
+            f.failedSave();
+            f.failMethod.set(null);
+            switch (guard) {
+                case "draft-disabled", "draft-paused" -> {
+                    if (guard.equals("draft-paused")) f.failMethod.set("setEnabled");
+                    f.base.call(() -> f.base.owner.runtime().setEnabled(false)).get(5, TimeUnit.SECONDS);
+                }
+                case "workspace-disabled", "session-paused" -> {
+                    if (guard.equals("session-paused")) f.failMethod.set("setWorkspaceEnabled");
+                    try { f.base.call(() -> f.base.workspace.owner().setWorkspaceEnabled(false)).get(5, TimeUnit.SECONDS); }
+                    catch (ExecutionException expected) { assertEquals("session-paused", guard); }
+                }
+                case "runtime-closed" -> f.base.call(() -> f.base.owner.runtime().shutdown()).get(5, TimeUnit.SECONDS);
+                case "frozen" -> f.base.fx(() -> f.base.workspace.owner().freezeForExit(f.base.workspace.capture()));
+                case "recovering" -> f.base.fx(() -> assertTrue(f.base.workspace.beginRecovery()));
+                case "adapter-closed" -> f.base.fx(f.base.workspace::close);
+                case "manager-closed" -> f.base.fx(f.pane::close);
+                case "busy" -> {
+                    f.blockMethod.set("snapshot");
+                    f.base.call(() -> f.base.owner.runtime().refresh());
+                    assertTrue(f.entered.await(5, TimeUnit.SECONDS));
+                }
+            }
+            int writes = f.writes.get();
+            f.base.fx(() -> {
+                f.pane.refreshView();
+                var before = f.base.workspace.owner().status();
+                assertTrue(f.button("retry-save").isDisabled(), guard);
+                f.button("retry-save").fire();
+                f.button("retry-save").getOnAction().handle(new javafx.event.ActionEvent());
+                assertEquals(before, f.base.workspace.owner().status(), "rejection must not clear the latch: " + guard);
+                if (!guard.equals("manager-closed")) {
+                    f.base.workspace.retrySave();
+                    assertEquals(before, f.base.workspace.owner().status());
+                }
+                if (guard.startsWith("draft-")) assertTrue(f.health().contains("不记录新的布局"), f.health());
+                if (guard.equals("runtime-closed")) assertTrue(f.health().contains("已关闭"), f.health());
+                if (guard.equals("frozen")) assertTrue(f.health().contains("已冻结"), f.health());
+            });
+            assertEquals(writes, f.writes.get());
+            f.release.countDown();
+            if (guard.equals("recovering")) f.base.fx(() -> f.base.workspace.endRecovery(false));
+        }
+    }
+
     @Test void initialReadShowsRealSnapshotCountsAndCreatesEditorsOnlyAfterExplicitRestore() throws Exception {
         try (Fixture f = new Fixture(directory)) {
             SqlDraft a = f.base.seed("select alpha"), b = f.base.seed("select beta");
@@ -492,6 +736,7 @@ class SqlWorkspaceManagerTest {
         final AtomicReference<String> failMethod = new AtomicReference<>(), blockMethod = new AtomicReference<>();
         final CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
         final AtomicInteger reads = new AtomicInteger(), writes = new AtomicInteger();
+        final AtomicBoolean structuralSaveFailure = new AtomicBoolean();
         Fixture(Path directory) throws Exception {
             base = new SqlWorkspaceRecoveryTabsTest.Fixture(directory);
             base.fx(() -> {
@@ -515,6 +760,8 @@ class SqlWorkspaceManagerTest {
                                     if (!release.await(5, TimeUnit.SECONDS)) throw new AssertionError("fault gate timeout");
                                 }
                                 if (method.getName().equals(failMethod.get())) throw new java.io.IOException("synthetic private failure");
+                                if (method.getName().equals("saveWorkspace") && structuralSaveFailure.get())
+                                    throw new IllegalStateException("synthetic structural backend failure");
                                 if (snapshotGate) return snapshot;
                                 try { return method.invoke(actual, args); }
                                 catch (InvocationTargetException failure) { throw failure.getCause(); }
@@ -530,6 +777,21 @@ class SqlWorkspaceManagerTest {
             });
         }
         Button button(String suffix) { return (Button) pane.getNode().lookup("#workspace-manager-" + suffix); }
+        String health() { return ((Label) pane.getNode().lookup("#workspace-manager-activity-status")).getText(); }
+        SqlDraft failedSave() throws Exception {
+            SqlDraft draft = base.seed("select checkpoint");
+            base.save(new SqlWorkspace(1, List.of(new SqlWorkspace.Entry(draft.id(), 1, 1)), draft.id()));
+            open(); ready(); base.fx(() -> button("restore").fire()); ready();
+            base.await(() -> base.workspace.owner().status() == SqlWorkspaceActivity.Status.SAVED);
+            failMethod.set("saveWorkspace");
+            base.fx(() -> {
+                base.editor(draft.id()).selectRange(2, 6);
+                base.workspace.activity(); base.now = 10000; base.workspace.pulse();
+            });
+            base.await(() -> base.workspace.owner().status() == SqlWorkspaceActivity.Status.FAILED);
+            base.fx(pane::refreshView);
+            return draft;
+        }
         String status() { return ((Label) pane.getNode().lookup("#workspace-manager-status")).getText(); }
         String notice() { return ((Label) pane.getNode().lookup("#workspace-manager-notice")).getText(); }
         void ready() throws Exception { base.await(() -> !button("refresh").isDisabled()); }
