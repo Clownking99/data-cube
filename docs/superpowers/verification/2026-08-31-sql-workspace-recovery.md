@@ -2,7 +2,7 @@
 
 ## 当前范围
 
-P2.5进行中：旧请求晚到/新刷新已启动的确定性用例已提交`81fde83`，独立任务审查零发现；全量1540通过/3既有live跳过/0失败，root另行管理页29项复跑通过。免安装镜像构建及内容检查通过。跨进程、真实桌面和整分支审查仍待完成，main重叠未提交修改尚未处理；不得将以下分阶段通过记录理解为P2整体已合并或发布。
+P2.5代码侧验收已完成：并发回归`81fde83`、保存失败反馈/显式重试修复`e984c0c`均已审查，整分支无剩余Critical/Important。最新全量1557通过/3既有live跳过/0失败，root独立74项、17个独立JVM矩阵及最新免安装镜像检查通过。真实桌面被控制通道故障阻塞，main重叠未提交修改仍待整合方向；P2整体尚未完成，未合并或发布。
 
 P2.4本轮完成，源码`553e0621fb6735871480ce3dfa5c27e41aed09e0`，方案/计划基线`32360ea1aebb4c4bbc84b5d561191746246ce3a4`：[显式恢复界面设计](../specs/2026-08-31-sql-workspace-restore-ui-design.md)、[实施计划](../plans/2026-08-31-sql-workspace-restore-ui.md)。启动页入口打开同一草稿管理页，读取数量后由用户明确点击整组恢复；不启动就显示历史SQL。全量1539通过/3原有跳过，root独立107通过；任务审查Spec compliant/Approved，无Critical/Important，1项并发测试补强Minor列入P2.5。
 
@@ -273,13 +273,17 @@ root独立执行 `./gradlew.bat -I .superpowers/sdd/workspace-acceptance.init.gr
 
 独立任务审查认为功能符合，但以Important要求消除原始Scene产生的CSS lookup/String-to-Paint警告并明确隔离已知unnamed-module启动诊断，以免掩盖新问题。正在修正**验收夹具**及复跑，不修改产品样式或关闭通用日志；当前不将此任务标记为最终Approved。
 
+上述审查项现已修正并复审Approved，0剩余发现：夹具实际注册/释放ThemeManager，CSS警告消失；只在Platform.startup期间匹配logger=`javafx`、WARNING、无throwable/参数且完整unnamed-module消息的单条诊断，将原文保留为 `FRAMEWORK_STARTUP_CAPTURE`，finally恢复原filter。负例确认错误级别/其他logger/其他消息/异常不被拦截，父进程拒绝每个子日志中的其余warning/error/CSS诊断。未关闭logger级别/handler/stderr，没有修改产品源文件。修订期间的变量名遮蔽导致一次helper编译失败已纠正并保留报告，不称产品RED。
+
+修正后实施代理session3876 exit0/53s，目录 `C:/Users/hetia/AppData/Local/Temp/datacube-workspace-process-1813757519229105852`；root逐份审计17日志后，再独立执行同matrix，session4397 terminal exit0/54s，新目录 `C:/Users/hetia/AppData/Local/Temp/datacube-workspace-process-11611965504443793803`。root再次核对全部17日志：每份恰好一条已知诊断capture、其余warning/error为0、四探针0，16正常cleanup/pass及异常37前确认检查点，未强制终止。最终launcher SHA-256 `FF6D0EF653FC9D60418D0F8A1C0C9CA662B560E052C253EB5125A7D9783C1A14`；init `DF8342E190AFA8BA41C9CED4B9441E3C8B15EB7EB341BE62CA07405D334D83E6`。这一完整跨进程门槛通过，不改变下方桌面尚未验收的状态。
+
 真实AppShell已用已标记profile启动：session85204、PID26932，标题 `DataCube SQL工作区隔离验收`，输出路径与本轮独占profile一致。Computer Use先返回唯一目标窗口，尝试读取界面时报 `Computer Use helper already has an active request`；重新定位后重试一次仍为相同错误。没有成功截图/控件树、没有点击或输入，故明暗主题/键盘/真实入口**未验收**。按技能停止输入，向维护者报告后，只在核对exe、launcher、profile均匹配的情况下结束本轮PID26932，未操作其他进程。JavaExec因此exit-1、Gradle exit1/1m59s，这是工具阻塞后的验收实例清理，不是正常退出通过或产品断言失败。合成profile/标记/草稿全部保留；桌面控制通道恢复后必须重新启动并继续，不能以自动化进程结果替代。
 
 桌面阻塞不妨碍只读整分支审查。main的重叠未提交文件仍需用户方向；在桌面门槛及合并边界解决前，不本地合并、不推送/tag/发布。
 
 ### P2.5 当前运行证据（2026-08-31）
 
-[总体验收计划](../plans/2026-08-31-sql-workspace-acceptance.md)及[独立进程计划](../plans/2026-08-31-sql-workspace-process-acceptance.md)已记录。本轮不改产品行为。
+[总体验收计划](../plans/2026-08-31-sql-workspace-acceptance.md)及[独立进程计划](../plans/2026-08-31-sql-workspace-process-acceptance.md)已记录。以下并发回归和进程夹具阶段不改产品行为；其后的整分支审查修复单独记录。
 
 并发回归提交 `81fde83fce1aba6c7c03b88670c14ba345da9930` 仅为 `SqlWorkspaceManagerTest` 增加112行。`oldRestoreCompletionCannotAffectNewPendingRefresh` 持有真实旧读取的owner投递，持久关闭记录并推进代次，启动并持有新刷新，再分别放行两轮结果；断言旧结果不建编辑器、不修改新pending/按钮/notice，新结果展示准确数量和关闭偏好，原清单字节不变。测试只拦截调度，不制造manager状态；关闭路径恢复原executor并排空持有结果。
 
@@ -292,17 +296,54 @@ root独立执行 `./gradlew.bat -I .superpowers/sdd/workspace-acceptance.init.gr
 
 root同时实际构建免安装镜像：`./gradlew.bat jpackageImage --rerun-tasks --no-daemon --console=plain`，session92442，exit0/53s，14任务全部执行。仅本进程暂时清空 `JAVA_TOOL_OPTIONS` 后恢复；保留JDK25的JEP493/jmods提示。`jimage list build/jpackage/DataCube/runtime/lib/modules` exit0，包含SqlWorkspace模型/存储/运行时/Manager/RecoveryTabs/Ui与P1草稿类；未检出验收launcher、DraftConnectionProbe或本项目Test类。`app/DataCube.cfg` 主入口是 `com.datacube/com.datacube.DataCubeFx`，无隔离user.home。modules SHA-256：`B860046634E550E8F65D015387365C330716E26B141F68DA412F36207F4140DC`。默认3.0.0仅为本地构建版本，不是新发布号；没有安装或运行带更新检查的发行入口。
 
-桌面专用空目录已新建并标记：`C:/Users/hetia/AppData/Local/Temp/datacube-workspace-ui-3a97aa5b837644eaaad0636a6eeed5cf`。已核对AppShell配置均由启动时user.home确定，Computer Use可列出当前窗口；尚未启动此验收应用，不构成桌面通过证据。main仍是7710ecb，未提交SqlDraftStore与本分支重叠；只检查路径名，未读取/暂存/覆盖，已请求整合方向。所有验收继续在独立分支，未合并/推送/tag。
+桌面专用目录已新建并标记：`C:/Users/hetia/AppData/Local/Temp/datacube-workspace-ui-3a97aa5b837644eaaad0636a6eeed5cf`。已核对AppShell配置均由启动时user.home确定；实际启动后因控制通道连续两次失败而停止桌面验收，详细清理证据见上文。main仍是7710ecb，未提交SqlDraftStore与本分支重叠；只检查路径名，未读取/暂存/覆盖，已请求整合方向。所有验收继续在独立分支，未合并/推送/tag。
+
+### P2.5 整分支审查与保存反馈修复
+
+独立整分支审查冻结区间`7710ecb..4cfda74`，生产/测试diff读至EOF：0 Critical，1 Important，1既有Minor，结论With fixes / 不可合并。Important为普通活动保存/读取/捕获失败会锁定FAILED并停止自动重试，但管理页只显示记录偏好和旧恢复数量，没有消费失败状态或调用显式retry，可能令用户误以为新布局仍被保护。此结论先由源码确认，不能冒称审查代理已执行复现。Minor为未修改的SqlEditorResultFilterContractTest泛型varargs unchecked提示，不阻塞本次功能，另行清理。
+
+已记录[保存反馈设计](../specs/2026-08-31-sql-workspace-save-feedback-design.md)和[实现计划](../plans/2026-08-31-sql-workspace-save-feedback.md)，冻结基线`fb19ebba0880c2f3380def393c2cbae50d85db11`。新增独立的当前布局状态与“重试保存布局”，通过现有UI owner重新捕获最新安全位置；不新增自动重试、不改变存储/代次/暂停/退出守卫、不以立即返回的retry future冒充落盘成功。实施代理先提交真实FX失败用例供root核实，然后实现、完整测试、交回原整分支审查者复审，并重新验证进程与镜像。桌面及main边界不因代码修复自动解除。
+
+真实RED已由root核实：保留的`workspace-save-feedback-task-1-red.xml`时间2026-08-31T11:41:34.587Z，1test/1failure/0errors/skips，实施代理native exit1。`activitySaveFailureIsVisibleAndExplicitRetryPersistsLatestLayout`先保存/恢复真实草稿并确认SAVED，再注入实际saveWorkspace失败并等待FAILED；缺少可见状态Label的assertNotNull失败，不是编译错误或超时。root同时检查用例后续最新位置、无自动重试、旧清单及离线断言，并核实当时两生产文件diff为0，确认后才允许实现。
+
+修复提交`e984c0c974867f3aa278c43d431367b26b4c4062`仅修改SqlWorkspaceManagerPane、SqlWorkspaceUi和SqlWorkspaceManagerTest，303新增/2删除。新增“当前布局：”状态行与“重试保存布局”按钮；重新捕获已安装/已有草稿检查点的控件位置再显式重试，实际异步落盘成功前保持待保存。17个新增测试场景保持原持久化、代次、恢复批次和退出守卫。测试中一次调用package-private异常构造器导致编译失败，改为现有结构故障分类器识别的backend异常；这是夹具修正，不是产品RED。
+
+实施代理最终定向命令`./gradlew.bat test --tests '*SqlWorkspaceManagerTest' --tests '*SqlWorkspaceUiTest' --tests '*SqlWorkspaceRecoveryTabsTest' --no-daemon --console=plain`，session98565 exit0/58s，46+14+14=74通过/0失败或跳过，原始XML已另存。最终完整命令`./gradlew.bat test --rerun-tasks --no-daemon --console=plain`，session33067 native exit0/1m37s、8任务执行；root实际读取完整日志并聚合XML160suites、1560total、1557passed、0failures/errors、3既有live skipped（名称与基线相同）。所有命令串行、JDK25、作用域内设置/恢复非headless。原unchecked提示保留，没有连接真实数据库。
+
+下表方法均属于SqlWorkspaceManagerTest：
+
+| 需求 | 精确方法名与行为证据 |
+| --- | --- |
+| 失败可见、刷新/定时不自动重试，重试保存最新位置 | activitySaveFailureIsVisibleAndExplicitRetryPersistsLatestLayout：真实文件/编辑器/失败、旧文件字节及写次数、最新4/9位置与SQL不变 |
+| 写入中不报成功、重复点击、再次失败保留旧恢复点 | activityRetryWaitsForPublicationAndFailedRetryPreservesRecoveryPoint：实际保存门闩、单次接纳、原字节、修复后9/3位置与SAVED |
+| 活动读取失败修复后重试、捕获失败后重新捕获 | activityReadFailureCanRetryAfterRepairWithoutAutomaticLoop；activityCaptureFailureRetryCapturesCurrentInstalledPositions：读取不循环、真实3/8及10/4位置、非FX拒绝 |
+| 暂停/关闭记录、关闭runtime/adapter/manager、冻结/恢复中/管理忙拒绝 | activityRetryRejectsLifecycleAndManagementGuards：10组实际生命周期操作及控制器/事件拒绝，不清失败状态或新增写入 |
+| 结构性不可用时不给不可执行的重试邀请 | activityRetryRejectsStructurallyUnavailableRuntimeWithoutClearingFailure：实际backend错误进入UNAVAILABLE，显示固定重启指引、不泄漏异常内容 |
+| 真正退出期间拒绝重试、页面关闭后忽略完成 | activityRetryRejectsRealOwnerCloseWhileFinalValidationIsPending；closedManagerIgnoresRetryPublicationAndCannotSubmitAgain：真实关闭/保存门闩及最终发布次数、关闭后状态不更新 |
+
+边界披露：捕获失败用例调用现有public captureFailed后使用真实控件恢复，不声称已注入retry内部第二次capture异常；没有为此增加生产测试接口。退出拒绝同时满足closing和FROZEN，不声称单独变异证明closing字段。代码已交原整分支审查者复审；以下新源码独立复测、镜像、进程结果单独补充。
+
+原整分支审查者对`fb19ebb..e984c0c`完整diff、设计、计划、brief和报告复审至EOF：Spec compliant / Approved，原Important已解决，0剩余Critical/Important、无新Minor；合并此前整分支审查后代码批准。既有unchecked提示仍为独立非阻塞项。审查者没有运行测试，不把提供的验证报告当作其独立执行。整体合并仍不批准，须完成其余验收并解决main重叠。
+
+root修复后独立重跑同三类定向命令，session1390 terminal exit0/56s；实际XML3suites、74tests、0failures/errors/skips。与完整回归分开记录；不把定向74项称作全量1560项再跑。
+
+修复后免安装镜像：root `./gradlew.bat jpackageImage --rerun-tasks --no-daemon --console=plain`，session52844 terminal exit0/40s、14任务执行，作用域内清空并恢复JAVA_TOOL_OPTIONS。保留JEP493/jmods提示。真实DataCube.cfg仍为正式DataCubeFx模块入口、无隔离user.home；jimage内容包含最新工作区UI类。首次辅助检查用不区分大小写的Test子串误报生产类QueryXlsxLayoutEstimator和ConnectionTestController，核对两者实际src路径后，改为测试源文件对应的精确类路径（包含内部类）和验收helper精确类名检查，exit0、无测试/探针/launcher混入；此为检查表达式误报，不是包缺陷。新modules SHA-256 `99B364305F3D502602AD7C96F55D1553A2E8FFC9C9375F19FA752FE14F28C492`，替代此前镜像hash；未安装或运行带更新检查的发行入口。
+
+修复后跨进程：root在同一源码`e984c0c`运行`./gradlew.bat -I .superpowers/sdd/workspace-acceptance.init.gradle verifySqlWorkspaceProcesses --no-daemon --console=plain`，session32518 terminal exit0/54s；新合成根目录`C:/Users/hetia/AppData/Local/Temp/datacube-workspace-process-8330616676396494667`。逐份独立复核17日志与预期场景名，所有四探针0，每份恰一条已知框架诊断capture、其他warning/error为0；16份正常cleanup/pass和异常37前已确认检查点，未强制终止。夹具两份SHA-256与此前已审查版本相同，所有目录/日志保留。该矩阵与JUnit完整回归不等于实际桌面鼠标键盘验收。
+
+最终main只读核对：仍为`main`/`7710ecb526d10a22e3fbff65367c50b04e44ed9d`，`src/com/datacube/config/SqlDraftStore.java`用户未提交修改仍存在，`.testagent/`只检查名称；未读取其内容、暂存、清理或覆盖。已询问能否读取整合重叠文件，尚无答复；桌面通道本轮不再重试。因此本轮停在已审查独立分支，不合并main、不推送/tag/发布，不提前推进P3。
 
 - [x] P2.2 I/O 故障注入、偏好/清空/未知文件保护、同 JVM 与多 JVM 单写者；25项新测试通过且独立审查零发现。排队清空竞态属下一项。
 - [x] P2.3a 共享队列异步API、单保存背压、管理代次失效、故障隔离/停用、关闭排空与future结算；22项新测试和独立审查通过。
 - [x] P2.3 活动快照、防抖、失效代次、退出冻结、取消/部分失败/未触及启动不覆盖；b实际FX/AppShell接入及修复后复审通过，最终1496通过/3原有跳过/0失败，root独立80项通过。
 - [x] P2.4 启动页及草稿页入口、原选中/光标/选择、重复定位、其他标签顺序、部分失败可见；553e062任务审查和回归通过。
 - [x] 更名/同名不同 ID/删除/类型变化/不存在 Schema，批量恢复四探针0；原P1连接切换保持既有离线行为。真实桌面另验。
-- [ ] P2.4审查Minor：旧请求完成晚于新attempt启动的确定性用例；以及既有unchecked提示，在P2.5整分支审查中评估。
-- [ ] 非 headless 全量回归、独立进程重启与异常中断恢复。
+- [x] P2.4审查Minor：旧请求完成晚于新attempt启动的确定性用例及受控变异验证，81fde83已通过独立审查；既有unchecked提示经整分支审查确认为非阻塞、单列技术债。
+- [x] 整分支Important：当前布局保存失败可见、显式重试捕获最新布局、失败与写入中不虚报成功，e984c0c回归及复审通过。
+- [x] 非 headless 全量回归、独立进程重启与异常中断恢复；最新1557通过/3原有跳过、17进程矩阵通过。
 - [ ] 合成配置真实桌面：关闭单标签 vs 退出、取消退出、明暗/键盘、开关/清空与重启。
-- [ ] 正式入口免安装包与源码一致；不夹带测试入口/临时 profile。
-- [ ] 整分支审查通过后本地合并 main，再做 main 回归；不隐含远端 CI/推送/发布已通过。
+- [x] 正式入口免安装包与源码一致；不夹带测试入口/临时 profile，新镜像hash及检查已记录。
+- [x] 整分支代码审查及Important修复复审通过；既有unchecked提示单列为非阻塞技术债。
+- [ ] 桌面验收及main重叠整合边界解决后本地合并 main，再做 main 回归；不隐含远端 CI/推送/发布已通过。
 
 未触及真实用户数据、`.testagent/` 内容和已有 P1 验收目录。P0.2 发布验收及用户反馈仍是独立未完成事项。
