@@ -37,6 +37,11 @@ Read `docs/superpowers/specs/2026-08-31-sql-workspace-restore-ui-design.md` comp
 - No config/store/codec/coordinator/ContentTabPane/registry/SQL execution or other feature changes. If an existing defect blocks this API, report concrete evidence to controller first.
 
 **Interfaces consumed:**
+
+Implementation clarification approved after root reproduction inspection: include SqlWorkspaceUi.finish handling for deliberately DISABLED/PAUSED draft protection after restoring old workspace. Preserve non-COMPLETED close outcome first; then settle COMPLETED without new layout publication/decision for these two modes only. Do not bypass UNAVAILABLE, true storage failures or mandatory guard/abort errors. Add real RED/GREEN close regression using counting decision returning CANCEL (not IGNORE), assert COMPLETED/exact preserved manifest/zero publication and decision calls. Existing SqlWorkspaceUiTest may be extended for this concrete regression if required. Root recorded actual pre-fix timeout and nested showDecision stack; test-fixture forced-ignore is not an acceptable fix.
+
+Precise outcome correction after reading existing Handle.flush: the above COMPLETED assertion applies to DISABLED with approved guards. Eligible PAUSED drafts are refused by P1 flush, so that real restored-editor test must assert CANCELLED, retained editor, exact old manifest and zero workspace publication/decision. Never weaken the P1 guard to satisfy a completion expectation. Root observed both cases' initial deterministic expected-COMPLETED/actual-CANCELLED XML; only DISABLED is the production-bug RED, PAUSED first expectation was a test-design mistake and is recorded as such.
+
 ```java
 // SqlDraftUi, FX owner
 SqlDraftCoordinator runtime();
@@ -81,7 +86,7 @@ void close();
 
 Use `SqlDraftManagerDialog.show` overload accepting existing single-draft restore function plus `SqlWorkspaceRecoveryTabs`. Original overload delegates null so legacy no-workspace fixtures keep behavior. AppShell always uses the new overload with actual workspace owner and factory; startup calls the same `openSqlDrafts` method. `WorkspaceStartPane` and `AppShell.startWorkspace` gain an overload accepting `Runnable recoverWorkspace`; originals remain and show no inert recovery button. Actual AppShell supplies the callback. New pane consumes real owner, not a duplicated state machine backend.
 
-- [ ] **Step 1: Genuine behavioral RED for batch restoration, then the pane/wiring tranche.**
+- [x] **Step 1: Genuine behavioral RED for batch restoration, then the pane/wiring tranche.**
 
 Follow `SqlDraftRecoveryTabsTest` conventions: actual TempDir configs/store, FxUiTestSupport, CodeArea/editor objects, ContentTabPane, DraftConnectionProbe counters and independent cleanup. Extend no project-wide test inventory and create no `.testagent` artifacts. API shells may throw UnsupportedOperationException for compilation only. First test must actually arrange multiple draft records, saved workspace order/positions, and unrelated tabs then assert result/nodes/positions; not merely call a shell and assert a status. Record RED command/output then tell controller the XML and exact failing cases before GREEN. Later tranches may continue genuine RED/GREEN without separate approval after root checks the first tranche.
 
@@ -128,7 +133,7 @@ try {
 exit $workspaceRestoreExit
 ```
 
-- [ ] **Step 2: Implement FX assembly with preserved ownership.**
+- [x] **Step 2: Implement FX assembly with preserved ownership.**
 
 Require FX caller. Save selected Tab before starting; ask existing workspace.beginRecovery (if legacy adapter absent, still restore but no activity hooks); if rejected return zero successful with all resolved entries failed. Loop resolved tabs using existing installedContent identity to distinguish new/reused, existing restore to perform actual admission, then locate actual installed Tab by Node identity. Count only success with matching Tab+binding; don't inspect raw SQL in toString/log/error. For new bindings use:
 ```java
@@ -140,7 +145,7 @@ void restorePosition(int anchor, int caret) {
 ```
 Build desired list by replacing only participating slots of current tabs with successes in resolution order; use FXCollections.sort with precomputed Tab->index map for a permutation. Select using the design's explicit original/null/fallback rules. In finally call endRecovery(success count > 0). During recovery both workspace.activity and pulse return without capturing, then one final activity if successful; failed attempt cannot start/overwrite an inactive session. Do not run showAndWait or await/join in this assembly. Catch bounded per-item RuntimeException to count recoverable open failure while allowing later items; preserve existing factory abort mechanics. Fatal failures must still release suppression via finally.
 
-- [ ] **Step 3: Implement dialog-scoped state, reads, management and composition.**
+- [x] **Step 3: Implement dialog-scoped state, reads, management and composition.**
 
 Pane owns only UI: fields pending, closed, needsInitialRead, expectedGeneration, loaded immutable workspace/resolution/counts, last observed P1 management result, fixed notice. On first refreshView when runtime ready/notbusy schedule exactly one load, via queued FX call so no reentrant modal from timer. All callback continuations queued on FX with closed/runtime closed/expectedGeneration guards. P1 refresh -> FX continuation -> workspaceSnapshot -> FX continuation -> resolve/render. Restore click repeats this chain to use fresh snapshots; no editing while load pending. Generation changing invalidates outstanding attempt; UI records needs refresh but never restores without another explicit click. Older completion cannot reset a newer pending/read state (attempt token).
 
@@ -156,10 +161,14 @@ Controls consume `SqlWorkspaceActivity` management methods. Render preference fr
 
 Provide fixed feedback without raw exception values. Show opened/reused/missing/failed counts after restore, leave dialog open. If no usable snapshot, never present stale counts as current ready-to-restore; ordinary failure retains clearly labeled prior recovery point, refresh offered. Render draft-off versus workspace-off distinctly. Startup only callback, no owner initialization until click. Combine P1 root and workspace block in dialog VBox, retaining P1 grow space; use existing theme.applyTo. Owner.observe callback refreshes both panes, finally closes both/subscription. No second observer timer. Ensure original overload remains functional without a workspace adapter.
 
-- [ ] **Step 4: Focused GREEN, full regression, assertion self-review.**
+- [x] **Step 4: Focused GREEN, full regression, assertion self-review.**
 
 Repeat narrow command after RED/GREEN iterations. Run adjacent coverage once with `*SqlWorkspaceUiTest`, `*SqlDraftRecoveryTabsTest`, `*SqlDraftManagerTest`, `*SqlDraftFailureFeedbackTest`, `*ContentTabPaneCloseAttemptTest`. Then full `./gradlew.bat test --rerun-tasks --no-daemon --console=plain` scoped non-headless and JDK above, one active process only; wait for terminal exit and no remaining session before any new test. Verify actual XML totals and exact existing three live skips (Redis standalone and two SchemaDiff live methods), no new skips/failures. Keep pre-existing unchecked SqlEditorResultFilterContractTest/Gradle notice honest. Self-review every required behavior against concrete exact test names; no fabricated 80% claim.
 
-- [ ] **Step 5: Commit exact source/tests and report for independent spec/quality review.**
+- [x] **Step 5: Commit exact source/tests and report for independent spec/quality review.**
 
 Run `git diff --check`; stage only named changed files from this task, inspect cached stat then commit `feat: restore SQL workspaces from startup and draft manager`. Controller docs/ledger remain uncommitted by implementer. Full report `.superpowers/sdd/workspace-restore-ui-task-1-report.md`: source SHA(s), RED/GREEN/full commands, exit/elapsed and XML counts, exact requirement-to-test table, files, self-review and concerns. Return only status, short SHA(s), compact tests and report path. Task ends only after independent Spec compliant/Approved review with any fixes retested and rereviewed. P2.5 remains next, no merge/push this task.
+
+## Completion and next gate
+
+Completed `32360ea..553e062`: 11 source/test files, final full160suites/1542tests/1539pass/3original skips/0failures/errors; root independent8suites107passed. Task review Spec compliant/Approved, no Critical/Important. One Minor static test-gap recommendation (old completion after a new attempt starts) and the existing unchecked compiler note must be considered in P2.5 whole-branch review. Full provenance, requirement-to-test matrix and remaining desktop/process/package gates: [verification](../verification/2026-08-31-sql-workspace-recovery.md). No main merge/push/tag.

@@ -48,6 +48,8 @@ FX批次内抑制activity/pulse捕获，每项按清单顺序调用原恢复工�
 
 ## 验收矩阵
 
+实现中验证补充：草稿保护DISABLED或失败关闭后的PAUSED仍允许查看/恢复旧布局；退出不得新增工作区发布或工作区“未保存”决策。root核实实际退出timeout与调用栈后，允许在既有SqlWorkspaceUi.finish增加这两种明确模式的窄保护，前提是原关闭守卫已给出COMPLETED；不跳过UNAVAILABLE/实际I/O故障，不降级guards/abort失败。DISABLED实际恢复后正常退出应COMPLETED；PAUSED的P1草稿flush会拒绝，必须保持CANCELLED且编辑器保留，两者均保留旧清单、零工作区保存/决策。不通过自动IGNORE或放宽P1守卫掩盖生产问题。
+
 真实临时store、实际FX/CodeArea/ContentTabPane及DraftConnectionProbe为主要夹具；不修改真实profile、不依赖外部数据库。第一批先RED再GREEN，后续逐行为迭代。
 
 - 启动入口不调用回调直到点击，打开/关闭仍保持同一TabPane；草稿对话框有实际工作区区块。

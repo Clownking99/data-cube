@@ -2,13 +2,19 @@
 
 ## 当前范围
 
-P2.1基础模块、P2.2严格存储、P2.3a异步桥及P2.3b活动捕获/退出冻结已完成。b源码`0a7203b`及审查修复`2fa333c`通过最终回归与独立复审。尚无P2.4显式工作区恢复入口。工作分支 `codex/sql-workspace-recovery`，起点 main `7710ecb526d10a22e3fbff65367c50b04e44ed9d`；main未合并本分支，无推送/tag/发布。
+P2.4本轮完成，源码`553e0621fb6735871480ce3dfa5c27e41aed09e0`，方案/计划基线`32360ea1aebb4c4bbc84b5d561191746246ce3a4`：[显式恢复界面设计](../specs/2026-08-31-sql-workspace-restore-ui-design.md)、[实施计划](../plans/2026-08-31-sql-workspace-restore-ui.md)。启动页入口打开同一草稿管理页，读取数量后由用户明确点击整组恢复；不启动就显示历史SQL。全量1539通过/3原有跳过，root独立107通过；任务审查Spec compliant/Approved，无Critical/Important，1项并发测试补强Minor列入P2.5。
 
-设计：[P2 工作区恢复](../specs/2026-08-31-sql-workspace-recovery-design.md)。已完成计划：[P2.1 基础模块](../plans/2026-08-31-sql-workspace-foundation.md)、[P2.2 共享锁持久化](../plans/2026-08-31-sql-workspace-persistence.md)、[P2.3a 异步存储桥](../plans/2026-08-31-sql-workspace-runtime-bridge.md)、[P2.3b 活动捕获/退出冻结](../plans/2026-08-31-sql-workspace-activity.md)。恢复 UI 尚未实施，不以状态/关闭测试替代P2.4/P2.5验收。
+P2.1基础模块、P2.2严格存储、P2.3a异步桥、P2.3b活动捕获/退出冻结及P2.4显式恢复入口均已完成各自任务验收。工作分支 `codex/sql-workspace-recovery`，起点 main `7710ecb526d10a22e3fbff65367c50b04e44ed9d`；P2.5尚未完成，main未合并本分支，无推送/tag/发布。
+
+设计：[P2 工作区恢复](../specs/2026-08-31-sql-workspace-recovery-design.md)。已完成计划：[P2.1 基础模块](../plans/2026-08-31-sql-workspace-foundation.md)、[P2.2 共享锁持久化](../plans/2026-08-31-sql-workspace-persistence.md)、[P2.3a 异步存储桥](../plans/2026-08-31-sql-workspace-runtime-bridge.md)、[P2.3b 活动捕获/退出冻结](../plans/2026-08-31-sql-workspace-activity.md)、[P2.4 显式恢复界面](../plans/2026-08-31-sql-workspace-restore-ui.md)。恢复UI已实现并通过FX测试，不替代P2.5真实桌面/打包/跨进程与整分支验收。
 
 P2.3a完成区间 `c3747e11fa8c54178851e561cd4b23e91536b1a6..2cb002d4de6103cfc07a690e82da8ef02ed486d2`，按[运行时设计](../specs/2026-08-31-sql-workspace-runtime-design.md)实施。本轮P2.3b完成区间`4c14aca620e1c673b618014d6a2d727436c76a93..2fa333c900a068036c9ef650bfc018ea6318a177`接入实际FX标签、变更合并与退出冻结，独立审查及修复后复审证据见下。主目录未提交SqlDraftStore改动仅核对状态，不读取或改动其内容；本轮仍只在独立worktree实施。
 
 ## 基线证据
+
+P2.4实现前root基线：`./gradlew.bat test --no-daemon --console=plain`，JDK25.0.1+8、作用域内设置并恢复`JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`，session32637 terminal exit0/52秒，8 tasks中1executed/7up-to-date。root实际XML汇总158suites、1499total、1496passed、0failures/errors、3原有live skipped。main只核对name/status/HEAD：`7710ecb526d10a22e3fbff65367c50b04e44ed9d`，用户未提交SqlDraftStore和`.testagent/`名称存在，内容未访问。
+
+P2.4真实RED起点：root读取XML `2026-08-31T10:33:16.739Z`，`SqlWorkspaceRecoveryTabsTest.orderedPartialRestoreClampsNewControlAndPreservesEditedReuseAndUnrelatedSlots` 1test/1failure/0errors/skips；未实现restore壳抛UOE，代理命令native exit1/14秒。root同时检查实际测试：临时store/writer保存三草稿及清单，已有B页修改正文/Schema/反向选择，穿插非SQL标签，并断言恢复计数、实际顺序、未覆盖B、A控件换行与夹取、重复无新工厂、离线四探针；不以单一状态断言冒充这些行为。确认后才允许GREEN。此项只证明实施前失败，不替代最终回归与审查。
 
 - Worktree：`D:/Projects/朝花夕拾/.worktrees/sql-workspace-recovery`，基线源码 `7710ecb`。
 - JDK：`D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8`。
@@ -212,13 +218,57 @@ P2.3b按计划完成。下一步P2.4启动页/草稿页显式恢复入口与偏�
 8. 清空/关闭草稿保护会触发代次/屏障，工作区排队任务也须失效。写入成功后再报告保存状态；UI 设置不能采用静默 best-effort 偏好。
 9. 当前 SQL 草稿 UI 是 lazy 初始化；启动页恢复提示若要加载清单，应异步初始化共享 owner，不在 FX 线程扫描文件，也不能在没有用户工作区动作时写一个空快照覆盖上次布局。
 
+## P2.4 显式恢复界面验证
+
+源码提交`553e0621fb6735871480ce3dfa5c27e41aed09e0`，基线`32360ea1aebb4c4bbc84b5d561191746246ce3a4`，8个生产文件/3个测试文件。AppShell启动页和SQL草稿共用管理对话框；启动入口仅回调、不提前初始化writer或显示SQL。区块读取有效草稿/清单后显示数量，点击恢复重新读取并校验代次，再按实际受管标签装配。清空只清布局，开关写入结果与本次暂停状态分别显示。
+
+调试记录保留：首个batch RED见前述root原始XML；随后manager/startup10项3失败（初读UOE、实际组合区块和入口按钮缺失），root实际XML10:36:35–37Z核实。新增stale-toggle及queued-callback错误反馈用例真实RED由实现代理记录。空草稿夹具未调用edited、错误用目录模拟普通不可读、断言受管关闭应删除非受管页，均修正为正确夹具/预期，不冒充产品缺陷。
+
+关闭边界发现及修复：DISABLED草稿保护允许恢复旧布局，但原finish尝试保存新清单，产生错误工作区决策。root核实真实timeout/嵌套showDecision栈，要求计数决策返回CANCEL的确定性回归；该DISABLED用例期望COMPLETED、实际CANCELLED。PAUSED草稿的原P1 flush会拒绝；最初也要求COMPLETED是测试预期错误而非产品缺陷，已明确改为CANCELLED且编辑器保留。最终SqlWorkspaceUi只在关闭结果已COMPLETED且明确DISABLED/PAUSED时跳过新工作区发布，不跳过UNAVAILABLE/真正写失败、不改原守卫/abort。
+
+### 命令与结果
+
+所有命令使用`D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8`，作用域内设置并恢复`JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`，原生exit单独保留，进程串行。没有真实数据库连接。
+
+- 实现代理最终定向：`./gradlew.bat test --tests '*SqlWorkspaceRecoveryTabsTest' --tests '*SqlWorkspaceManagerTest' --tests '*WorkspaceStartPaneTest' --no-daemon --console=plain`，exit0/37s，14+28+8=50通过。
+- 相邻回归：追加的五套`SqlWorkspaceUiTest/SqlDraftRecoveryTabsTest/SqlDraftManagerTest/SqlDraftFailureFeedbackTest/ContentTabPaneCloseAttemptTest`，exit0/15s，14+9+26+6+2=57通过。
+- 最终完整：`./gradlew.bat test --rerun-tasks --no-daemon --console=plain`，session46291 terminal exit0/78s。root在独立复跑前实际XML汇总160suites、1542total、1539passed、0failures/errors、3skip；名称仍仅Redis standalone、Oracle SchemaDiff、PostgreSQL SchemaDiff三个既有live用例。
+- root独立复跑上述八套，完整命令为`./gradlew.bat test --tests '*SqlWorkspaceRecoveryTabsTest' --tests '*SqlWorkspaceManagerTest' --tests '*WorkspaceStartPaneTest' --tests '*SqlWorkspaceUiTest' --tests '*SqlDraftRecoveryTabsTest' --tests '*SqlDraftManagerTest' --tests '*SqlDraftFailureFeedbackTest' --tests '*ContentTabPaneCloseAttemptTest' --no-daemon --console=plain`，session77910 terminal exit0/41s，实际XML8suites/107passed/0failures/errors/skips。
+- 原有SqlEditorResultFilterContractTest unchecked编译提示及Gradle配置缓存建议保留；不声称无警告或远端CI通过。
+
+### 需求到具体用例
+
+下表R=`SqlWorkspaceRecoveryTabsTest`，M=`SqlWorkspaceManagerTest`，S=`WorkspaceStartPaneTest`。只针对本轮功能，不宣称测试覆盖率百分比或真实桌面验收通过。
+
+| 需求 | 精确方法名与断言 |
+| --- | --- |
+| 新标签顺序/选中、UTF-16反向选择、CRLF控件和空检查点夹取 | R.orderedPartialRestoreClampsNewControlAndPreservesEditedReuseAndUnrelatedSlots；R.selectedFallbackUsesFirstSuccessExceptNullPreservesPriorTab，真实Tab/正文/anchor/caret |
+| 不覆盖复用标签正文/Schema/位置，不移动无关SQL及非SQL页、重复不创建 | R.orderedPartialRestoreClampsNewControlAndPreservesEditedReuseAndUnrelatedSlots；R.involvedSlotPermutationPreservesUnrelatedSqlAndAllManagedCloseGuards，真实身份顺序、编辑值、工厂数、关闭后资源释放 |
+| 原选中缺失/失败回退，null保留原当前或首成功 | R.selectedFallbackUsesFirstSuccessExceptNullPreservesPriorTab，missing/failed/null-existing/null-empty四种实际选中身份 |
+| 部分成功准确计数、零成功不消费清单/激活记录、重试与批次抑制 | R.zeroSuccessKeepsSelectionOldManifestAndInactiveSessionForRetry；R.recoverySuppressesIntermediateCaptureAndRejectsNestedBatch；R.orderedPartialRestoreClampsNewControlAndPreservesEditedReuseAndUnrelatedSlots |
+| 改名/删除/同名异ID/类型变化/未知Schema均离线 | R.offlineRestorePreservesCheckpointIntentWithoutResolvingProvider，五组正文、Schema、intent、原文与四探针0、global connection和admission未绑定 |
+| 初读等待初始化、展示真实数量、点击前不建编辑器、重复点击单次 | M.initialReadShowsRealSnapshotCountsAndCreatesEditorsOnlyAfterExplicitRestore；M.initializationDefersExactlyOneReadUntilRuntimeReady |
+| 清空/关闭/删除变更代次或页面关闭后，迟到读不建页 | M.lateReadAfterGenerationChangeOrClosedPaneNeverCreatesEditors，四组真实backend读后门闩和runtime操作 |
+| 空/不存在/损坏/未知版本/不可读/读失败、显式重试、错误回调、坏偏好 | M.snapshotProblemsHaveFixedMessagesNoAutomaticLoopAndExplicitRetry；M.ordinaryReadFailureLabelsPriorCountsAndRequiresExplicitRetry；M.invalidPreferenceIsNeverDisplayedAsEnabledAndCannotToggle；M.callbackFailureShowsFixedNoticeAndKeepsPreviousManifestForRetry |
+| 两种保护关闭仍可恢复且无新发布；DISABLED退出、PAUSED拒绝保持 | M.disabledRecordingOrDraftProtectionStillRestoresOldLayoutWithoutNewWrites；M.disabledDraftsCloseButPausedDraftGuardStillCancelsWithoutWorkspacePublicationOrDecision，原文件/写入计数/决策计数/真实关闭结果 |
+| 开关落盘前不报成功、失败本次暂停、刷新后仍暂停、显式再启用、旧偏好禁用按钮 | M.toggleWaitsForPersistenceAndFailedDisableStaysSessionPausedUntilExplicitEnable；M.stalePreferenceCannotExecuteToggleUntilExplicitRefresh |
+| 清空取消/成功/失败、只清布局不删除草稿或当前页、空清单成功、坏文件保护 | M.clearOnlyChangesManifestAfterConfirmationAndFailureRetainsRecoveryCount；M.clearingAlreadyEmptyManifestIsSuccessfulOperation；M.corruptManifestClearRemainsProtectedAndSingleDraftRestoreStillWorks |
+| 启动实际按钮、旧TabPane/旧helper、对话框实际组合/单订阅释放/writer继续 | S.recoveryEntryOnlyInvokesCallbackOnClickAndKeepsExistingTabPane；M.dialogComposesWorkspaceAndDraftControlsWithOneDisposedSubscriptionAndLiveWriter；相邻P1管理/恢复回归 |
+
+root源差异核对未见新增磁盘owner/线程/timer/数据库执行路径；测试断言覆盖实际节点、文本、选择、文件、受管清理、权限/生命周期拒绝，不以状态名或数量代替具体行为。独立`workspace_restore_ui_review`给出Spec compliant / Task quality Approved，0 Critical、0 Important：确认实际节点/持久化/拒绝结果断言，无新增无断言或纯空值用例；只读审查未声称自己执行测试。审查为核实mandatory abort作一次聚焦外部检查（SqlDraftRecoveryTabs、ContentTabPane），确认原所有权与退出屏障；root核实不变的Java/JavaFX25、JUnit5.11.3、Gradle9.2.0版本。
+
+审查Minor保留到P2.5：`SqlWorkspaceManagerTest.lateReadAfterGenerationChangeOrClosedPaneNeverCreatesEditors`已覆盖旧读取失效，但尚未覆盖“旧回调返回时新attempt已开始”的完整组合；针对`SqlWorkspaceManagerPane.valid`的attempt token条件补一个确定性测试，验证旧回调既不建页也不清除新pending/result。此为静态未验证的测试缺口，不是已复现运行时缺陷。P2.5整分支审查必须再评估此项及既有unchecked编译提示，不静默丢弃。
+
+P2.4完成。P2.5真实桌面、跨进程和打包仍待执行，当前任务批准不等于main合并/发布批准。
+
 ## P2 完整验收清单
 
 - [x] P2.2 I/O 故障注入、偏好/清空/未知文件保护、同 JVM 与多 JVM 单写者；25项新测试通过且独立审查零发现。排队清空竞态属下一项。
 - [x] P2.3a 共享队列异步API、单保存背压、管理代次失效、故障隔离/停用、关闭排空与future结算；22项新测试和独立审查通过。
 - [x] P2.3 活动快照、防抖、失效代次、退出冻结、取消/部分失败/未触及启动不覆盖；b实际FX/AppShell接入及修复后复审通过，最终1496通过/3原有跳过/0失败，root独立80项通过。
-- [ ] P2.4 启动页及草稿页入口、原选中/光标/选择、重复定位、其他标签顺序、部分失败可见。
-- [ ] 更名/同名不同 ID/删除/类型变化/不存在 Schema，恢复及切换均为零数据库调用。
+- [x] P2.4 启动页及草稿页入口、原选中/光标/选择、重复定位、其他标签顺序、部分失败可见；553e062任务审查和回归通过。
+- [x] 更名/同名不同 ID/删除/类型变化/不存在 Schema，批量恢复四探针0；原P1连接切换保持既有离线行为。真实桌面另验。
+- [ ] P2.4审查Minor：旧请求完成晚于新attempt启动的确定性用例；以及既有unchecked提示，在P2.5整分支审查中评估。
 - [ ] 非 headless 全量回归、独立进程重启与异常中断恢复。
 - [ ] 合成配置真实桌面：关闭单标签 vs 退出、取消退出、明暗/键盘、开关/清空与重启。
 - [ ] 正式入口免安装包与源码一致；不夹带测试入口/临时 profile。
