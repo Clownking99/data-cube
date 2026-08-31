@@ -2,6 +2,8 @@
 
 ## 当前范围
 
+P2.5进行中：旧请求晚到/新刷新已启动的确定性用例已提交`81fde83`，独立任务审查零发现；全量1540通过/3既有live跳过/0失败，root另行管理页29项复跑通过。免安装镜像构建及内容检查通过。跨进程、真实桌面和整分支审查仍待完成，main重叠未提交修改尚未处理；不得将以下分阶段通过记录理解为P2整体已合并或发布。
+
 P2.4本轮完成，源码`553e0621fb6735871480ce3dfa5c27e41aed09e0`，方案/计划基线`32360ea1aebb4c4bbc84b5d561191746246ce3a4`：[显式恢复界面设计](../specs/2026-08-31-sql-workspace-restore-ui-design.md)、[实施计划](../plans/2026-08-31-sql-workspace-restore-ui.md)。启动页入口打开同一草稿管理页，读取数量后由用户明确点击整组恢复；不启动就显示历史SQL。全量1539通过/3原有跳过，root独立107通过；任务审查Spec compliant/Approved，无Critical/Important，1项并发测试补强Minor列入P2.5。
 
 P2.1基础模块、P2.2严格存储、P2.3a异步桥、P2.3b活动捕获/退出冻结及P2.4显式恢复入口均已完成各自任务验收。工作分支 `codex/sql-workspace-recovery`，起点 main `7710ecb526d10a22e3fbff65367c50b04e44ed9d`；P2.5尚未完成，main未合并本分支，无推送/tag/发布。
@@ -262,6 +264,23 @@ root源差异核对未见新增磁盘owner/线程/timer/数据库执行路径；
 P2.4完成。P2.5真实桌面、跨进程和打包仍待执行，当前任务批准不等于main合并/发布批准。
 
 ## P2 完整验收清单
+
+### P2.5 当前运行证据（2026-08-31）
+
+[总体验收计划](../plans/2026-08-31-sql-workspace-acceptance.md)及[独立进程计划](../plans/2026-08-31-sql-workspace-process-acceptance.md)已记录。本轮不改产品行为。
+
+并发回归提交 `81fde83fce1aba6c7c03b88670c14ba345da9930` 仅为 `SqlWorkspaceManagerTest` 增加112行。`oldRestoreCompletionCannotAffectNewPendingRefresh` 持有真实旧读取的owner投递，持久关闭记录并推进代次，启动并持有新刷新，再分别放行两轮结果；断言旧结果不建编辑器、不修改新pending/按钮/notice，新结果展示准确数量和关闭偏好，原清单字节不变。测试只拦截调度，不制造manager状态；关闭路径恢复原executor并排空持有结果。
+
+- root新基线manager28项：session80622，exit0/31s，实际XML28/0failures/errors/skips。
+- 新用例首先通过现有实现（exit0/36s，1项），不是产品缺陷RED。受控变异只临时删除 `token != attempt`，exit1，root直接读取实际XML1项1失败、0errors/skips，失败为editor factory expected0/actual1，非超时。
+- 生产文件恢复前后SHA-256均 `0578FA44F1BF86C5CD444700B8B9DDF6A30C55C6B87F30C79F409908FBE4AFE6`，root实际diff检查0。恢复后manager29项exit0/39s。
+- root在提交后独立运行 `./gradlew.bat test --tests '*SqlWorkspaceManagerTest' --no-daemon --console=plain`，session31851 terminal exit0/32s，实际XML29通过/0failures/errors/skips；复核生产SHA-256仍相同。
+- 实施代理唯一最终完整命令 `./gradlew.bat test --rerun-tasks --no-daemon --console=plain`，JDK25、scoped非headless，terminal exit0/1m11s。root独立聚合实际XML：160suites、1543total、1540passed、0failures/errors、3既有live skips；仅Redis standalone、Oracle及PostgreSQL SchemaDiff，名称与上阶段相同。既有unchecked编译提示保留。
+- 并发任务独立 `workspace_attempt_review` 给出Spec compliant / Approved，0 Critical/Important/Minor；核对真实投递顺序和失败排空。root补齐其无法由diff独立证明的历史XML、精确变异失败及生产复原检查。不能据此提前关闭整个P2。
+
+root同时实际构建免安装镜像：`./gradlew.bat jpackageImage --rerun-tasks --no-daemon --console=plain`，session92442，exit0/53s，14任务全部执行。仅本进程暂时清空 `JAVA_TOOL_OPTIONS` 后恢复；保留JDK25的JEP493/jmods提示。`jimage list build/jpackage/DataCube/runtime/lib/modules` exit0，包含SqlWorkspace模型/存储/运行时/Manager/RecoveryTabs/Ui与P1草稿类；未检出验收launcher、DraftConnectionProbe或本项目Test类。`app/DataCube.cfg` 主入口是 `com.datacube/com.datacube.DataCubeFx`，无隔离user.home。modules SHA-256：`B860046634E550E8F65D015387365C330716E26B141F68DA412F36207F4140DC`。默认3.0.0仅为本地构建版本，不是新发布号；没有安装或运行带更新检查的发行入口。
+
+桌面专用空目录已新建并标记：`C:/Users/hetia/AppData/Local/Temp/datacube-workspace-ui-3a97aa5b837644eaaad0636a6eeed5cf`。已核对AppShell配置均由启动时user.home确定，Computer Use可列出当前窗口；尚未启动此验收应用，不构成桌面通过证据。main仍是7710ecb，未提交SqlDraftStore与本分支重叠；只检查路径名，未读取/暂存/覆盖，已请求整合方向。所有验收继续在独立分支，未合并/推送/tag。
 
 - [x] P2.2 I/O 故障注入、偏好/清空/未知文件保护、同 JVM 与多 JVM 单写者；25项新测试通过且独立审查零发现。排队清空竞态属下一项。
 - [x] P2.3a 共享队列异步API、单保存背压、管理代次失效、故障隔离/停用、关闭排空与future结算；22项新测试和独立审查通过。

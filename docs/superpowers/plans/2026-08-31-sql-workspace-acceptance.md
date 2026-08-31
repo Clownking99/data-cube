@@ -30,7 +30,7 @@
 
 **Interfaces:** Existing manager buttons `workspace-manager-restore` / `workspace-manager-refresh`; real runtime `setWorkspaceEnabled(boolean)`, `workspaceSnapshot()`, `refresh()`; existing fixture `seed`, `save`, `open`, `ready`, `base.fx`, `base.call`, `base.offline`.
 
-- [ ] **Step 1: Add one deterministic behavioral test** named `oldRestoreCompletionCannotAffectNewPendingRefresh`. Start with one real saved draft and manifest and no editors. Start an explicit restore and hold its real workspace completion using a test-local scheduling gate. Advance the real runtime generation with persisted `setWorkspaceEnabled(false)`. Refresh the manager view, then start a newer explicit refresh and hold its result. Deliver the old successful result while the newer request is pending. Assert no editor factory ran, no tabs appeared, status still says processing, refresh/restore remain disabled and no old restore count/notice is applied. Release the newer result and assert exact available count, persisted disabled-recording text, refreshed buttons, zero editors and unchanged durable manifest. Always release gates, restore the runtime's original executor if temporarily intercepted, and settle owner cleanup. Use bounded latches/futures, never sleeps, fabricated manager state or direct calls to private `valid`.
+- [x] **Step 1: Add one deterministic behavioral test** named `oldRestoreCompletionCannotAffectNewPendingRefresh`. Start with one real saved draft and manifest and no editors. Start an explicit restore and hold its real workspace completion using a test-local scheduling gate. Advance the real runtime generation with persisted `setWorkspaceEnabled(false)`. Refresh the manager view, then start a newer explicit refresh and hold its result. Deliver the old successful result while the newer request is pending. Assert no editor factory ran, no tabs appeared, status still says processing, refresh/restore remain disabled and no old restore count/notice is applied. Release the newer result and assert exact available count, persisted disabled-recording text, refreshed buttons, zero editors and unchanged durable manifest. Always release gates, restore the runtime's original executor if temporarily intercepted, and settle owner cleanup. Use bounded latches/futures, never sleeps, fabricated manager state or direct calls to private `valid`.
 
 The sequence under test is:
 
@@ -43,7 +43,7 @@ deliver A -> FX barrier -> assert B remains pending and editor count=0
 deliver B -> ready -> assert available=1, recording=false, editor count=0
 ```
 
-- [ ] **Step 2: Run the narrow test**, then all manager cases:
+- [x] **Step 2: Run the narrow test**, then all manager cases:
 
 ```powershell
 ./gradlew.bat test --tests '*SqlWorkspaceManagerTest.oldRestoreCompletionCannotAffectNewPendingRefresh' --no-daemon --console=plain
@@ -52,8 +52,8 @@ deliver B -> ready -> assert available=1, recording=false, editor count=0
 
 Record whether the first run passes existing code or exposes a genuine product defect. If needed, pause and report a proposed narrow production fix; no speculative production changes in this task.
 
-- [ ] **Step 3: Verify discrimination**, temporarily removing only `token != attempt` from the current manager guard using a reversible exact patch. Run only the new case; require failure of the intended pending/editor/result assertion, not a timeout. Restore the exact production bytes and rerun the focused class. This is an intentional mutation check, not historical product RED. Never commit the mutation.
-- [ ] **Step 4: Run the complete suite once**, scoped nonheadless, inspect XML, then commit only the test file. Write the report with exact methods/commands/results, cleanup guarantees and mutation distinction. Controller independently reviews actual changes/results and dispatches a task review before marking complete.
+- [x] **Step 3: Verify discrimination**, temporarily removing only `token != attempt` from the current manager guard using a reversible exact patch. Run only the new case; require failure of the intended pending/editor/result assertion, not a timeout. Restore the exact production bytes and rerun the focused class. This is an intentional mutation check, not historical product RED. Never commit the mutation.
+- [x] **Step 4: Run the complete suite once**, scoped nonheadless, inspect XML, then commit only the test file. Write the report with exact methods/commands/results, cleanup guarantees and mutation distinction. Controller independently reviews actual changes/results and dispatches a task review before marking complete.
 
 ### Task 2: Isolated restart and desktop acceptance
 
