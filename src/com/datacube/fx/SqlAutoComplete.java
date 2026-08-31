@@ -73,8 +73,11 @@ final class SqlAutoComplete {
         });
 
         area.textProperty().addListener((obs, o, n) -> {
-            if (mutating) return;
-            Platform.runLater(this::maybeShow);
+            // Programmatic unfocused loads are not input, and queued completion may outlive focus.
+            if (mutating || !area.isFocused()) return;
+            Platform.runLater(() -> {
+                if (area.isFocused()) maybeShow();
+            });
         });
 
         // 键盘导航同时注册到编辑器与弹窗列表：弹窗显示时其窗口可能抢占系统焦点，
