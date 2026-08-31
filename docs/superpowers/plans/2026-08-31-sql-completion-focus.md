@@ -24,7 +24,7 @@
 
 **Interfaces:** SqlAutoComplete(CodeArea, Supplier<Collection<String>>, ShortcutSettings), void refresh(), void hide(); FxUiTestSupport.call(Callable<T>); ShortcutSettings(Path). No interface changes.
 
-- [ ] **Step 1: Add and run the smallest genuine RED.** Start from this complete test class, using actual controls/listener and an FX-queue barrier:
+- [x] **Step 1: Add and run the smallest genuine RED.** Start from this complete test class, using actual controls/listener and an FX-queue barrier:
 
 ```java
 package com.datacube.fx;
@@ -67,9 +67,9 @@ class SqlAutoCompleteFocusTest {
 
 Run `./gradlew.bat test --tests '*SqlAutoCompleteFocusTest.unfocusedRestoreDoesNotRequestCandidates' --no-daemon --console=plain` with scoped `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`, JDK25. Expected actual assertion failure: candidate request count greater than zero. Preserve RED XML outside build output and send root its path/native exit. Wait root acknowledgment before production changes.
 
-- [ ] **Step 2: Extend real-FX coverage before the relevant fix.** Use an owned Stage/Scene with CodeArea and a second focusable control, temporary ShortcutSettings and bounded future/property listeners for focus readiness. No fixed sleeps or fabricated production state. Cover replacement while unfocused then focus gained before delivery (no request); replacement while focused then focus lost before delivery (no request/popup); focused edit (actual candidates/popup), Ctrl+Space (still opens actual candidates), and Tab/Enter acceptance (expected inserted text, popup closes, no recursive reopen). Hide only owned popup/stage in finally. Reflection may inspect the existing private Popup, but do not invoke maybeShow directly or add production test hooks. Record which additional cases fail old code versus preserve existing behavior.
+- [x] **Step 2: Extend real-FX coverage before the relevant fix.** Use an owned Stage/Scene with CodeArea and a second focusable control, temporary ShortcutSettings and bounded future/property listeners for focus readiness. No fixed sleeps or fabricated production state. Cover replacement while unfocused then focus gained before delivery (no request); replacement while focused then focus lost before delivery (no request/popup); focused edit (actual candidates/popup), Ctrl+Space (still opens actual candidates), and Tab/Enter acceptance (expected inserted text, popup closes, no recursive reopen). Hide only owned popup/stage in finally. Reflection may inspect the existing private Popup, but do not invoke maybeShow directly or add production test hooks. Record which additional cases fail old code versus preserve existing behavior.
 
-- [ ] **Step 3: Minimal implementation.** Replace only the text listener's enqueue body:
+- [x] **Step 3: Minimal implementation.** Replace only the text listener's enqueue body:
 
 ```java
 if (mutating || !area.isFocused()) return;
@@ -80,7 +80,7 @@ Platform.runLater(() -> {
 
 Add a short comment explaining both focus checks: programmatic unfocused loads are not input, and queued completion may outlive focus. Leave onKeyPressed, maybeShow, refresh and all recovery code intact. If real evidence requires a different guard, report it before expanding the patch.
 
-- [ ] **Step 4: Verify and commit.** Run focused `*SqlAutoCompleteFocusTest`, then adjacent `*SqlEditorDraftRecoveryTest`, `*SqlWorkspaceRecoveryTabsTest`, `*SqlWorkspaceManagerTest`; full `./gradlew.bat test --rerun-tasks --no-daemon --console=plain` once. Inspect exact test XML and preserve results/report. Self-review and commit only the two source/test paths. Return status, SHA, native exits/counts, concerns and report path. Controller performs independent verification, task review and final bounded branch review.
+- [x] **Step 4: Verify and commit.** Run focused `*SqlAutoCompleteFocusTest`, then adjacent `*SqlEditorDraftRecoveryTest`, `*SqlWorkspaceRecoveryTabsTest`, `*SqlWorkspaceManagerTest`; full `./gradlew.bat test --rerun-tasks --no-daemon --console=plain` once. Inspect exact test XML and preserve results/report. Self-review and commit only the two source/test paths. Return status, SHA, native exits/counts, concerns and report path. Controller performs independent verification, task review and final bounded branch review.
 
 ## Controller follow-through
 

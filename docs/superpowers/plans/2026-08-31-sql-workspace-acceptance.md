@@ -75,6 +75,8 @@ Record whether the first run passes existing code or exposes a genuine product d
 
 ## Acceptance accounting
 
+2026-08-31最新续验：main整合与c8c53aa推送已按维护者后续明确要求完成，CI四作业成功，详见main整合记录；下文“整合等待”仅为当时历史。Task2 Step3现已实际验证显式/重复恢复、顺序/可见选区、明暗主题及正常退出/重启，但复现恢复时补全浮层覆盖管理页，且对话框键盘覆盖仍不足，因此不勾选全部桌面通过。新增[焦点修复计划](2026-08-31-sql-completion-focus.md)，完成后复验。原main重叠文件已核实为换行差异并保存原字节，不再是待解决阻塞。
+
 Latest code `e984c0c`: Task1 and process/image/full-code-review gates completed, including the separately planned save-feedback Important fix. Root verified the final full1557pass/3oldskips, independent74pass, image and17-process rerun. Task2 Step3 remains blocked by Computer Use helper failure after one permitted retry; Task3 Step3's review fixes are done, but integration awaits desktop acceptance and explicit direction for the overlapping dirty main file. No merge/push; do not rerun completed implementation tasks on the next continuation. Exact evidence is in the P2 verification record.
 
 This plan explicitly separates test, process, desktop, image and integration gates. Task 2 receives a complete executable harness subplan before dispatch, as required by the existing staged P2 design; this acceptance checklist does not claim that source already exists. Main's dirty overlap is currently present. Passing test counts alone cannot close P2.
