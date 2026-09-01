@@ -13,6 +13,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -94,11 +95,17 @@ public final class SqlScriptFileStore {
         void clean(Path path) throws IOException;
     }
 
+    @FunctionalInterface
+    interface TemporaryIdentityReader {
+        TemporaryIdentity read(Path path) throws IOException;
+    }
+
     private final ByteReader reader;
     private final ContentWriter writer;
     private final AtomicMover mover;
     private final TempCleaner cleaner;
     private final Consumer<Path> cleanupDiagnostic;
+    private final TemporaryIdentityReader temporaryIdentityReader;
 
     public SqlScriptFileStore() {
         this(Files::readAllBytes, Files::write, (source, destination, finalCheck) -> {
@@ -111,11 +118,18 @@ public final class SqlScriptFileStore {
 
     SqlScriptFileStore(ByteReader reader, ContentWriter writer, AtomicMover mover, TempCleaner cleaner,
             Consumer<Path> cleanupDiagnostic) {
+        this(reader, writer, mover, cleaner, cleanupDiagnostic, SqlScriptFileStore::temporaryIdentity);
+    }
+
+    SqlScriptFileStore(ByteReader reader, ContentWriter writer, AtomicMover mover, TempCleaner cleaner,
+            Consumer<Path> cleanupDiagnostic, TemporaryIdentityReader temporaryIdentityReader) {
         this.reader = Objects.requireNonNull(reader, "reader");
         this.writer = Objects.requireNonNull(writer, "writer");
         this.mover = Objects.requireNonNull(mover, "mover");
         this.cleaner = Objects.requireNonNull(cleaner, "cleaner");
         this.cleanupDiagnostic = Objects.requireNonNull(cleanupDiagnostic, "cleanupDiagnostic");
+        this.temporaryIdentityReader = Objects.requireNonNull(temporaryIdentityReader,
+                "temporaryIdentityReader");
     }
 
     public Target capture(Path chosen) throws Failure {
@@ -224,7 +238,7 @@ public final class SqlScriptFileStore {
                 }
             }
         } finally {
-            Failure cleanupFailure = cleanup(temporary, initialTemporaryIdentity, published);
+            Failure cleanupFailure = cleanup(temporary, initialTemporaryIdentity, published, expected.path);
             BUSY_TARGETS.remove(expected.path);
             if (cleanupFailure != null) throw cleanupFailure;
         }
@@ -232,21 +246,23 @@ public final class SqlScriptFileStore {
         return result;
     }
 
-    private Failure cleanup(Path temporary, TemporaryIdentity initialIdentity, boolean published) {
-        Failure failure = null;
-        if (temporary != null && !published) {
-            if (!hasTemporaryIdentity(temporary, initialIdentity)) {
-                failure = cleanupFailure(temporary);
-            } else {
-                try {
-                    cleaner.clean(temporary);
-                } catch (IOException | RuntimeException ignored) {
-                    failure = cleanupFailure(temporary);
-                }
-            }
+    private Failure cleanup(Path temporary, TemporaryIdentity initialIdentity, boolean published,
+            Path destination) {
+        Path ownedPath = published ? destination : temporary;
+        boolean witnessed = initialIdentity != null && initialIdentity.witness() != null;
+        if (witnessed && !deleteOwnedWitness(ownedPath, initialIdentity)) {
+            return cleanupFailure(temporary);
         }
-        if (!removeWitness(initialIdentity)) return cleanupFailure(temporary);
-        return failure;
+        if (temporary == null || published) return null;
+        if (!witnessed && !hasTemporaryIdentity(temporary, initialIdentity)) {
+            return cleanupFailure(temporary);
+        }
+        try {
+            cleaner.clean(temporary);
+            return null;
+        } catch (IOException | RuntimeException ignored) {
+            return cleanupFailure(temporary);
+        }
     }
 
     private Failure cleanupFailure(Path temporary) {
@@ -293,10 +309,10 @@ public final class SqlScriptFileStore {
         }
     }
 
-    private static TemporaryIdentity captureTemporaryIdentity(Path path) throws IOException {
-        TemporaryIdentity identity = temporaryIdentity(path);
+    private TemporaryIdentity captureTemporaryIdentity(Path path) throws IOException {
+        TemporaryIdentity identity = temporaryIdentityReader.read(path);
         if (identity == null || identity.fileKey() != null) return identity;
-        Path witness = path.resolveSibling(path.getFileName() + ".owner");
+        Path witness = path.resolveSibling(".datacube-sql-owner-" + UUID.randomUUID());
         Files.createLink(witness, path);
         return new TemporaryIdentity(null, identity.created(), witness);
     }
@@ -308,18 +324,27 @@ public final class SqlScriptFileStore {
         return new TemporaryIdentity(attributes.fileKey(), attributes.creationTime(), null);
     }
 
-    private static boolean hasTemporaryIdentity(Path path, TemporaryIdentity expected) {
+    private boolean hasTemporaryIdentity(Path path, TemporaryIdentity expected) {
         if (expected == null) return false;
         try {
-            if (expected.witness() != null) return Files.isSameFile(path, expected.witness());
-            return expected.equals(temporaryIdentity(path));
+            if (expected.witness() != null) {
+                TemporaryIdentity candidate = temporaryIdentityReader.read(path);
+                TemporaryIdentity witness = temporaryIdentityReader.read(expected.witness());
+                return candidate != null && witness != null
+                        && candidate.fileKey() == null && witness.fileKey() == null
+                        && Objects.equals(expected.created(), candidate.created())
+                        && Objects.equals(expected.created(), witness.created())
+                        && Files.isSameFile(path, expected.witness());
+            }
+            return expected.equals(temporaryIdentityReader.read(path));
         } catch (IOException | RuntimeException failure) {
             return false;
         }
     }
 
-    private static boolean removeWitness(TemporaryIdentity identity) {
+    private boolean deleteOwnedWitness(Path ownedPath, TemporaryIdentity identity) {
         if (identity == null || identity.witness() == null) return true;
+        if (!hasTemporaryIdentity(ownedPath, identity)) return false;
         try {
             return Files.deleteIfExists(identity.witness());
         } catch (IOException | RuntimeException failure) {
@@ -329,7 +354,7 @@ public final class SqlScriptFileStore {
 
     private record Version(Object fileKey, long size, FileTime modified, FileTime created) { }
 
-    private record TemporaryIdentity(Object fileKey, FileTime created, Path witness) { }
+    record TemporaryIdentity(Object fileKey, FileTime created, Path witness) { }
 
     private record Current(boolean valid, Version version) {
         private static final Current MISSING = new Current(true, null);

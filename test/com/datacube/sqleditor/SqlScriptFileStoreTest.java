@@ -10,10 +10,15 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -293,6 +298,74 @@ class SqlScriptFileStoreTest {
     }
 
     @Test
+    void replacedFallbackWitnessIsLeftUntouchedAndReportedAsCleanup() throws Exception {
+        assumeNullFileKeyProvider();
+        Path target = Files.writeString(directory.resolve("witness-target.sql"), "old");
+        AtomicReference<Path> temporary = new AtomicReference<>();
+        AtomicReference<Path> witness = new AtomicReference<>();
+        AtomicReference<Path> diagnosed = new AtomicReference<>();
+        AtomicBoolean cleanerCalled = new AtomicBoolean();
+        SqlScriptFileStore store = store(Files::readAllBytes, (path, bytes) -> {
+            temporary.set(path);
+            witness.set(findWitness(path));
+            Files.delete(witness.get());
+            Files.writeString(witness.get(), "external witness");
+            throw new IOException("writer stopped");
+        }, (source, destination, finalCheck) -> fail("must not publish"), path -> {
+            cleanerCalled.set(true);
+            Files.deleteIfExists(path);
+        }, diagnosed::set);
+
+        SqlScriptFileStore.Failure failure = assertThrows(SqlScriptFileStore.Failure.class,
+                () -> store.save(store.capture(target), "ours"));
+        assertEquals(SqlScriptFileStore.FailureCode.CLEANUP, failure.code());
+        assertEquals(temporary.get(), failure.temporaryPath());
+        assertEquals(temporary.get(), diagnosed.get());
+        assertFalse(cleanerCalled.get());
+        assertTrue(Files.exists(temporary.get()));
+        assertEquals("external witness", Files.readString(witness.get()));
+        assertFalse(witness.get().equals(temporary.get().resolveSibling(
+                temporary.get().getFileName() + ".owner")));
+        assertEquals("old", Files.readString(target));
+    }
+
+    @Test
+    void repointedFallbackWitnessCannotAuthorizeReplacementTempCleanup() throws Exception {
+        assumeNullFileKeyProvider();
+        Path target = Files.writeString(directory.resolve("repoint-target.sql"), "old");
+        AtomicReference<Path> temporary = new AtomicReference<>();
+        AtomicReference<Path> witness = new AtomicReference<>();
+        AtomicReference<Path> diagnosed = new AtomicReference<>();
+        AtomicBoolean cleanerCalled = new AtomicBoolean();
+        SqlScriptFileStore store = store(Files::readAllBytes, (path, bytes) -> {
+            temporary.set(path);
+            witness.set(findWitness(path));
+            FileTime originalCreation = Files.readAttributes(path, BasicFileAttributes.class)
+                    .creationTime();
+            Files.delete(path);
+            Files.writeString(path, "external temporary");
+            Files.getFileAttributeView(path, BasicFileAttributeView.class)
+                    .setTimes(null, null, FileTime.fromMillis(originalCreation.toMillis() + 60_000));
+            Files.delete(witness.get());
+            Files.createLink(witness.get(), path);
+            throw new IOException("writer stopped");
+        }, (source, destination, finalCheck) -> fail("must not publish"), path -> {
+            cleanerCalled.set(true);
+            Files.deleteIfExists(path);
+        }, diagnosed::set);
+
+        SqlScriptFileStore.Failure failure = assertThrows(SqlScriptFileStore.Failure.class,
+                () -> store.save(store.capture(target), "ours"));
+        assertEquals(SqlScriptFileStore.FailureCode.CLEANUP, failure.code());
+        assertEquals(temporary.get(), failure.temporaryPath());
+        assertEquals(temporary.get(), diagnosed.get());
+        assertFalse(cleanerCalled.get());
+        assertEquals("external temporary", Files.readString(temporary.get()));
+        assertEquals("external temporary", Files.readString(witness.get()));
+        assertEquals("old", Files.readString(target));
+    }
+
+    @Test
     void deletionOrReplacementAfterPublicationReturnsChanged() throws Exception {
         assertPostPublicationChange("deleted", false);
         assertPostPublicationChange("replaced", true);
@@ -318,19 +391,48 @@ class SqlScriptFileStoreTest {
                 StandardCopyOption.REPLACE_EXISTING);
     }
 
+    private void assumeNullFileKeyProvider() throws IOException {
+        Path probe = Files.createTempFile(directory, "file-key-probe-", ".tmp");
+        try {
+            Assumptions.assumeTrue(Files.readAttributes(probe, BasicFileAttributes.class).fileKey() == null,
+                    "fallback witness applies only when fileKey is unavailable");
+        } finally {
+            Files.deleteIfExists(probe);
+        }
+    }
+
+    private Path findWitness(Path temporary) throws IOException {
+        try (var paths = Files.list(directory)) {
+            return paths.filter(path -> !path.equals(temporary)).filter(path -> {
+                try {
+                    return Files.isSameFile(path, temporary);
+                } catch (IOException failure) {
+                    return false;
+                }
+            }).findFirst().orElseThrow();
+        }
+    }
+
     private void assertPostPublicationChange(String name, boolean replace) throws Exception {
         Path target = Files.writeString(directory.resolve("post-" + name + ".sql"), "old");
         Path external = replace
                 ? Files.writeString(directory.resolve("external-" + name + ".sql"), "external replacement")
                 : null;
-        SqlScriptFileStore store = store(Files::readAllBytes, SqlScriptFileStoreTest::writeBytes,
+        AtomicInteger identityReads = new AtomicInteger();
+        SqlScriptFileStore store = new SqlScriptFileStore(Files::readAllBytes,
+                SqlScriptFileStoreTest::writeBytes,
                 (source, destination, finalCheck) -> {
                     finalCheck.verify();
                     Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE,
                             StandardCopyOption.REPLACE_EXISTING);
                     Files.delete(destination);
                     if (external != null) Files.move(external, destination, StandardCopyOption.REPLACE_EXISTING);
-                }, path -> Files.deleteIfExists(path), ignored -> { });
+                }, path -> Files.deleteIfExists(path), ignored -> { }, path -> {
+                    BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class);
+                    Object fileKey = identityReads.incrementAndGet() <= 2 ? "owned" : "external";
+                    return new SqlScriptFileStore.TemporaryIdentity(fileKey,
+                            attributes.creationTime(), null);
+                });
 
         SqlScriptFileStore.Failure failure = assertThrows(SqlScriptFileStore.Failure.class,
                 () -> store.save(store.capture(target), "ours"));
