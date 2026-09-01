@@ -44,11 +44,17 @@ public final class RecentSqlFiles {
         void delete(Path path) throws IOException;
     }
 
+    @FunctionalInterface
+    interface TemporaryIdentityReader {
+        TemporaryIdentity read(Path path) throws IOException;
+    }
+
     private final Path storage;
     private final ContentWriter writer;
     private final AtomicMover mover;
     private final IndexDeleter deleter;
     private final Consumer<String> diagnostic;
+    private final TemporaryIdentityReader temporaryIdentityReader;
     private List<Path> paths;
 
     public RecentSqlFiles(Path storage) {
@@ -60,11 +66,18 @@ public final class RecentSqlFiles {
 
     RecentSqlFiles(Path storage, ContentWriter writer, AtomicMover mover, IndexDeleter deleter,
             Consumer<String> diagnostic) {
+        this(storage, writer, mover, deleter, diagnostic, RecentSqlFiles::temporaryIdentity);
+    }
+
+    RecentSqlFiles(Path storage, ContentWriter writer, AtomicMover mover, IndexDeleter deleter,
+            Consumer<String> diagnostic, TemporaryIdentityReader temporaryIdentityReader) {
         this.storage = Objects.requireNonNull(storage, "storage").toAbsolutePath().normalize();
         this.writer = Objects.requireNonNull(writer, "writer");
         this.mover = Objects.requireNonNull(mover, "mover");
         this.deleter = Objects.requireNonNull(deleter, "deleter");
         this.diagnostic = Objects.requireNonNull(diagnostic, "diagnostic");
+        this.temporaryIdentityReader = Objects.requireNonNull(temporaryIdentityReader,
+                "temporaryIdentityReader");
         this.paths = load();
     }
 
@@ -154,6 +167,7 @@ public final class RecentSqlFiles {
         Path temporary = null;
         TemporaryIdentity temporaryIdentity = null;
         boolean published = false;
+        boolean successful = false;
         try {
             Path parent = storage.getParent();
             if (parent == null) throw new IOException();
@@ -164,12 +178,14 @@ public final class RecentSqlFiles {
             if (!hasTemporaryIdentity(temporary, temporaryIdentity)) return false;
             mover.move(temporary, storage);
             published = true;
-            return true;
+            successful = true;
         } catch (IOException | RuntimeException failure) {
             return false;
         } finally {
             if (!published && temporary != null) cleanOwnedTemporary(temporary, temporaryIdentity);
+            if (!cleanOwnedWitness(temporaryIdentity, published ? storage : temporary)) successful = false;
         }
+        return successful;
     }
 
     private static byte[] encode(List<Path> paths) throws CharacterCodingException {
@@ -198,8 +214,8 @@ public final class RecentSqlFiles {
         return bytes;
     }
 
-    private static TemporaryIdentity captureTemporaryIdentity(Path path) throws IOException {
-        TemporaryIdentity identity = temporaryIdentity(path);
+    private TemporaryIdentity captureTemporaryIdentity(Path path) throws IOException {
+        TemporaryIdentity identity = temporaryIdentityReader.read(path);
         if (identity == null || identity.fileKey() != null) return identity;
         Path witness = path.resolveSibling(".datacube-recent-owner-" + UUID.randomUUID());
         Files.createLink(witness, path);
@@ -213,35 +229,57 @@ public final class RecentSqlFiles {
         return new TemporaryIdentity(attributes.fileKey(), attributes.creationTime(), null);
     }
 
-    private static boolean hasTemporaryIdentity(Path path, TemporaryIdentity expected) {
+    private boolean hasTemporaryIdentity(Path path, TemporaryIdentity expected) {
         if (expected == null) return false;
         try {
             if (expected.witness() != null) {
-                TemporaryIdentity candidate = temporaryIdentity(path);
-                TemporaryIdentity witness = temporaryIdentity(expected.witness());
-                return candidate != null && witness != null
-                        && candidate.fileKey() == null && witness.fileKey() == null
-                        && Objects.equals(expected.created(), candidate.created())
-                        && Objects.equals(expected.created(), witness.created())
+                TemporaryIdentity candidate = temporaryIdentityReader.read(path);
+                TemporaryIdentity witness = temporaryIdentityReader.read(expected.witness());
+                return matchesIdentity(expected, candidate) && matchesIdentity(expected, witness)
                         && Files.isSameFile(path, expected.witness());
             }
-            return expected.equals(temporaryIdentity(path));
+            return matchesIdentity(expected, temporaryIdentityReader.read(path));
         } catch (IOException | RuntimeException failure) {
             return false;
         }
     }
 
-    private static void cleanOwnedTemporary(Path temporary, TemporaryIdentity identity) {
+    private static boolean matchesIdentity(TemporaryIdentity expected, TemporaryIdentity candidate) {
+        return expected != null && candidate != null
+                && Objects.equals(expected.fileKey(), candidate.fileKey())
+                && Objects.equals(expected.created(), candidate.created());
+    }
+
+    private void cleanOwnedTemporary(Path temporary, TemporaryIdentity identity) {
         if (!hasTemporaryIdentity(temporary, identity)) return;
         try {
             Files.deleteIfExists(temporary);
-            if (identity.witness() != null) Files.deleteIfExists(identity.witness());
         } catch (IOException | RuntimeException ignored) {
             // The temporary was created by this instance and cleanup is best effort.
         }
     }
 
-    private record TemporaryIdentity(Object fileKey, FileTime created, Path witness) { }
+    private boolean cleanOwnedWitness(TemporaryIdentity identity, Path relatedPath) {
+        if (identity == null || identity.witness() == null) return true;
+        try {
+            TemporaryIdentity witness = temporaryIdentityReader.read(identity.witness());
+            if (!matchesIdentity(identity, witness)) return false;
+            if (relatedPath != null && Files.exists(relatedPath, LinkOption.NOFOLLOW_LINKS)) {
+                TemporaryIdentity related = temporaryIdentityReader.read(relatedPath);
+                if (matchesIdentity(identity, related)) {
+                    if (!Files.isSameFile(identity.witness(), relatedPath)) return false;
+                } else if (Files.isSameFile(identity.witness(), relatedPath)) {
+                    return false;
+                }
+            }
+            Files.deleteIfExists(identity.witness());
+            return true;
+        } catch (IOException | RuntimeException failure) {
+            return false;
+        }
+    }
+
+    record TemporaryIdentity(Object fileKey, FileTime created, Path witness) { }
 
     private void report(String message) {
         try {

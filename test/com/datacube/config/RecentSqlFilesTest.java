@@ -9,10 +9,12 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -207,6 +209,64 @@ class RecentSqlFilesTest {
     }
 
     @Test
+    void nullFileKeySuccessfulPublicationRemovesItsOwnedWitness() throws Exception {
+        Path index = index("null-key-success.index");
+        RecentSqlFiles recent = recentWithNullFileKeys(index, new ArrayList<>());
+
+        recent.record(directory.resolve("saved.sql"));
+
+        assertEquals(List.of(directory.resolve("saved.sql").toAbsolutePath().normalize()), recent.recent());
+        assertTrue(ownerWitnesses().isEmpty());
+    }
+
+    @Test
+    void nullFileKeyTemporaryReplacementKeepsReplacementButRemovesOwnedWitness() throws Exception {
+        Path old = directory.resolve("old.sql").toAbsolutePath().normalize();
+        Path index = seeded("null-key-temp-replacement.index", old);
+        byte[] originalIndex = Files.readAllBytes(index);
+        List<String> diagnostics = new ArrayList<>();
+        List<Path> replacement = new ArrayList<>();
+        RecentSqlFiles recent = recentWithNullFileKeys(index, diagnostics, (temporary, bytes) -> {
+            Files.delete(temporary);
+            Files.writeString(temporary, "temporary replacement", StandardCharsets.UTF_8);
+            replacement.add(temporary);
+        });
+
+        recent.record(directory.resolve("new.sql"));
+
+        assertEquals(List.of(old), recent.recent());
+        assertArrayEquals(originalIndex, Files.readAllBytes(index));
+        assertEquals("temporary replacement", Files.readString(replacement.getFirst(), StandardCharsets.UTF_8));
+        assertTrue(ownerWitnesses().isEmpty());
+        assertFixedDiagnostic(diagnostics, "Unable to save recent SQL files.", index,
+                "temporary replacement", "IOException");
+    }
+
+    @Test
+    void nullFileKeyWitnessReplacementIsRetainedAndPreventsPublication() throws Exception {
+        Path old = directory.resolve("old.sql").toAbsolutePath().normalize();
+        Path index = seeded("null-key-witness-replacement.index", old);
+        byte[] originalIndex = Files.readAllBytes(index);
+        List<String> diagnostics = new ArrayList<>();
+        RecentSqlFiles recent = recentWithNullFileKeys(index, diagnostics, (temporary, bytes) -> {
+            Files.write(temporary, bytes);
+            Path witness = ownerWitnesses().getFirst();
+            Files.delete(witness);
+            Files.writeString(witness, "witness replacement", StandardCharsets.UTF_8);
+        });
+
+        recent.record(directory.resolve("new.sql"));
+
+        assertEquals(List.of(old), recent.recent());
+        assertArrayEquals(originalIndex, Files.readAllBytes(index));
+        List<Path> witnesses = ownerWitnesses();
+        assertEquals(1, witnesses.size());
+        assertEquals("witness replacement", Files.readString(witnesses.getFirst(), StandardCharsets.UTF_8));
+        assertFixedDiagnostic(diagnostics, "Unable to save recent SQL files.", index,
+                "witness replacement", "IOException");
+    }
+
+    @Test
     void rejectsNullRequiredInputs() {
         assertThrows(NullPointerException.class, () -> new RecentSqlFiles(null));
         RecentSqlFiles recent = new RecentSqlFiles(index("null.index"));
@@ -237,6 +297,25 @@ class RecentSqlFilesTest {
 
     private static void delete(Path path) throws IOException {
         Files.deleteIfExists(path);
+    }
+
+    private RecentSqlFiles recentWithNullFileKeys(Path index, List<String> diagnostics) {
+        return recentWithNullFileKeys(index, diagnostics, RecentSqlFilesTest::write);
+    }
+
+    private RecentSqlFiles recentWithNullFileKeys(Path index, List<String> diagnostics,
+            RecentSqlFiles.ContentWriter writer) {
+        return new RecentSqlFiles(index, writer, RecentSqlFilesTest::moveAtomically,
+                RecentSqlFilesTest::delete, diagnostics::add,
+                path -> new RecentSqlFiles.TemporaryIdentity(null, FileTime.fromMillis(
+                        Files.readString(path, StandardCharsets.UTF_8).contains("replacement") ? 2 : 1), null));
+    }
+
+    private List<Path> ownerWitnesses() throws IOException {
+        try (Stream<Path> entries = Files.list(directory)) {
+            return entries.filter(path -> path.getFileName().toString().startsWith(".datacube-recent-owner-"))
+                    .toList();
+        }
     }
 
     private static void assertUnchangedAfterFailedRecord(RecentSqlFiles recent, List<Path> expected, Path index,
