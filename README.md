@@ -1,9 +1,8 @@
 # DataCube — 数据库管理与迁移工具
 
-面向 **Oracle**、**PostgreSQL** 与 **Redis** 的桌面数据库工具，提供图形界面（GUI）与命令行（CLI）两个入口：
+面向 **Oracle**、**PostgreSQL** 与 **Redis** 的桌面数据库工具，通过 `DataCube.exe` 提供统一的图形化工作空间：
 
-- **GUI（`DataCube.exe`）**：关系库连接/对象/SQL 管理，Redis 键浏览、五类型值编辑与安全命令控制台，结果导出（SQL / Excel / `pg_dump`）、Oracle→PostgreSQL 迁移、应用内自动更新。
-- **CLI（`DataCubeCli.exe`）**：将 Oracle 用户的表结构、序列、索引、约束、存储过程、触发器与全量数据迁移到 PostgreSQL。
+- **桌面应用（`DataCube.exe`）**：关系库连接/对象/SQL 管理，Redis 键浏览、五类型值编辑与安全命令控制台，结果导出（SQL / Excel / `pg_dump`）、Oracle→PostgreSQL 迁移、应用内自动更新。
 
 发布产物内置运行时（jlink），终端用户无需安装 Java。
 
@@ -15,7 +14,7 @@
 - **对象浏览**：连接树、表/视图数据网格（分页、排序）、DDL 查看、列注释展示。
 - **查询结果导出**：支持 XLSX / CSV / SQL / HTML / XML；默认导出当前筛选后的全部可见行，并保留排序和可见列顺序，可明确切换到当前活动结果的全部已加载行。预览/特殊值需确认，不能无损生成 INSERT 的值会阻止 SQL 输出；不自动重新查询。
 - **导出文件保护**：查询结果先写同目录临时文件，成功后才原子发布；覆盖前确认目标，写入/发布失败保留旧文件，不支持原子发布时拒绝保存。整表导出、pg_dump 和迁移保持各自原有行为，不在此保护承诺范围内。
-- **迁移**：Oracle→PostgreSQL 的完整/增量迁移与结果校验（CLI 与 GUI 均可）。
+- **迁移**：Oracle→PostgreSQL 的完整/增量迁移与结果校验。
 - **Schema Diff**：在线比较 PostgreSQL↔PostgreSQL 或 Oracle↔Oracle 的单个 Schema，按语义差异生成稳定、有序且带安全门禁的同步计划。
 - **应用内自动更新**：启动时检查 GitHub Release，支持安装版与免安装版就地更新。
 
@@ -24,10 +23,10 @@
 ```
 朝花夕拾/
 ├── src/com/datacube/
-│   ├── DataCube.java             # CLI 入口（迁移工具）
+│   ├── DataCube.java             # 保留的控制台迁移入口（不随 Windows 发布包分发）
 │   ├── DataCubeFx.java           # GUI 入口（JavaFX）
 │   ├── module-info.java          # 模块声明（模块化构建）
-│   ├── cli/                      # 控制台交互（Logger / Prompter）
+│   ├── cli/                      # 保留的控制台交互实现（Logger / Prompter）
 │   ├── config/                   # 应用设置、连接存储、凭据加密、JVM 选项
 │   ├── core/                     # 迁移核心：类型映射、SQL 工具、日志抽象
 │   ├── export/                   # 导出：SQL 脚本 / Excel / pg_dump / 表导出
@@ -202,7 +201,7 @@ JDBC 操作也由应用级虚拟线程和面板任务作用域管理；关闭应
 
 | 文件 | 说明 |
 |------|------|
-| `DataCube-vX.X.X-win64-portable.zip` | 免安装绿色版。解压后进入 `DataCube` 文件夹，双击 `DataCube.exe` 启动 GUI；`DataCubeCli.exe` 为命令行迁移工具。 |
+| `DataCube-vX.X.X-win64-portable.zip` | 免安装绿色版。解压后进入 `DataCube` 文件夹，双击 `DataCube.exe` 启动。 |
 | `DataCube-vX.X.X-win64-setup.exe` | 安装程序。按向导安装（可选目录），创建开始菜单项与桌面快捷方式。 |
 
 PR 和推送到 `main` 会运行 [verify.yml](.github/workflows/verify.yml)：Windows、Linux
@@ -213,24 +212,11 @@ PR 和推送到 `main` 会运行 [verify.yml](.github/workflows/verify.yml)：Wi
 发布任务必须先通过同一验证门禁，并在 jpackage 前再次执行测试；手动发布会在最新
 tag 上递增 patch。
 
-## CLI 迁移工具
+## Oracle → PostgreSQL 迁移
 
-`DataCubeCli.exe`（或 `gradlew run` 后以 `com.datacube.DataCube` 为主类）按提示输入 Oracle 与 PostgreSQL 连接信息，每个 Oracle 用户运行一次：
+启动 `DataCube.exe` 后，点击顶部“数据迁移”，填写 Oracle 与 PostgreSQL 连接信息。可分别执行“导出 DDL”“导出数据”“完整导入”“增量导入”和“验证”，或使用“一键全部”完成导出、增量导入与结果校验。每个 Oracle 用户单独运行一次迁移。
 
-```
-  ─────────────────────────────────────────────
-  功能菜单
-  ─────────────────────────────────────────────
-  1. 导出 DDL（表/序列/索引/约束/函数）
-  2. 导出数据（全量）
-  3. 导入到 PostgreSQL（完整模式 - 先清空再导入）
-  4. 导入到 PostgreSQL（增量模式 - 仅补充缺失）
-  5. 一键全部（导出DDL + 导出数据 + 增量导入）
-  6. 验证导入结果
-  0. 退出
-```
-
-| | 完整模式（选项3） | 增量模式（选项4/5） |
+| | 完整导入 | 增量导入 / 一键全部 |
 |---|---|---|
 | 已存在的表 | 不删除，直接建（IF NOT EXISTS） | 跳过 |
 | 缺失的表 | 创建 + 修复 | 创建 + 修复 |
