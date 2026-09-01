@@ -149,13 +149,44 @@ public final class ContentTabPane {
         try {
             ManagedTabSpec spec = factory.create(binding);
             if (!binding.isBound()) binding.bind(spec.mandatoryAbortCleanup());
-            Tab tab = openReservedManagedTab(title, spec, reservation);
+            Tab tab = openReservedManagedTab(new Tab(title), spec, reservation);
             if (tab == null) {
                 lease.abort(binding.guard());
                 return null;
             }
             lease.installed();
             return tab;
+        } catch (Throwable failure) {
+            lease.failed(failure, binding.guard(), ContentTabPane::reportCloseFailure);
+            reportCloseFailure(failure);
+            return null;
+        }
+    }
+
+    /**
+     * Transactional variant for initialization which needs the eventual Tab (for example its
+     * title consumer). The tab remains private until the complete managed specification returns.
+     */
+    public Tab openManagedTab(String title, ManagedTabTabFactory factory) {
+        AsyncManagedTabRegistry<Tab>.Reservation reservation;
+        ManagedOpenLease lease;
+        synchronized (ownershipLock) {
+            reservation = guardedTabs.reserve();
+            lease = ManagedOpenLease.acquire(reservation.acquired(), reservation, mandatoryAborts);
+        }
+        if (!lease.acquired()) return null;
+        AbortBinding binding = new AbortBinding();
+        Tab tab = new Tab(title);
+        try {
+            ManagedTabSpec spec = factory.create(tab, binding);
+            if (!binding.isBound()) binding.bind(spec.mandatoryAbortCleanup());
+            Tab installed = openReservedManagedTab(tab, spec, reservation);
+            if (installed == null) {
+                lease.abort(binding.guard());
+                return null;
+            }
+            lease.installed();
+            return installed;
         } catch (Throwable failure) {
             lease.failed(failure, binding.guard(), ContentTabPane::reportCloseFailure);
             reportCloseFailure(failure);
@@ -186,7 +217,7 @@ public final class ContentTabPane {
             return null;
         }
         try {
-            Tab tab = openReservedManagedTab(title,
+            Tab tab = openReservedManagedTab(new Tab(title),
                     new ManagedTabSpec(content, guard, uiFinalizer, mandatoryAbortCleanup), reservation);
             if (tab == null) lease.abort(AsyncTabCloseGuards.mandatoryAbort(
                     mandatoryAbortCleanup, ContentTabPane::reportCloseFailure));
@@ -202,13 +233,13 @@ public final class ContentTabPane {
     }
 
     private Tab openReservedManagedTab(
-            String title,
+            Tab tab,
             ManagedTabSpec spec,
             AsyncManagedTabRegistry<Tab>.Reservation reservation) {
         Node content = spec.content();
         AsyncTabCloseGuard guard = spec.guard();
         Runnable uiFinalizer = spec.uiFinalizer();
-        Tab tab = new Tab(title, content);
+        tab.setContent(content);
         tab.setClosable(true);
         AsyncTabCloseCoordinator coordinator = new AsyncTabCloseCoordinator(
                 guard,
@@ -372,6 +403,11 @@ public final class ContentTabPane {
     @FunctionalInterface
     public interface ManagedTabFactory {
         ManagedTabSpec create(AbortBinding abortBinding);
+    }
+
+    @FunctionalInterface
+    public interface ManagedTabTabFactory {
+        ManagedTabSpec create(Tab tab, AbortBinding abortBinding);
     }
 
     public static final class AbortBinding {

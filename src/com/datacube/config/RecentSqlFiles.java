@@ -56,6 +56,7 @@ public final class RecentSqlFiles {
     private final Consumer<String> diagnostic;
     private final TemporaryIdentityReader temporaryIdentityReader;
     private List<Path> paths;
+    private long clearGeneration;
 
     public RecentSqlFiles(Path storage) {
         this(storage, (path, bytes) -> Files.write(path, bytes), (source, destination) ->
@@ -85,8 +86,20 @@ public final class RecentSqlFiles {
         return List.copyOf(paths);
     }
 
-    public synchronized void record(Path path) {
+    /** Captures an admission token for work which may execute after a later clear request. */
+    public synchronized RecordAdmission recordAdmission() {
+        return new RecordAdmission(clearGeneration);
+    }
+
+    public void record(Path path) {
+        record(recordAdmission(), path);
+    }
+
+    /** Records only if no successful clear has occurred since the work was admitted. */
+    public synchronized void record(RecordAdmission admission, Path path) {
+        Objects.requireNonNull(admission, "admission");
         Path required = Objects.requireNonNull(path, "path");
+        if (admission.clearGeneration() != clearGeneration) return;
         try {
             Path normalized = required.toAbsolutePath().normalize();
             if (normalized.toString().length() > MAX_PATH_CHARS) throw new IOException();
@@ -108,6 +121,7 @@ public final class RecentSqlFiles {
         try {
             deleter.delete(storage);
             paths = List.of();
+            clearGeneration++;
         } catch (IOException | RuntimeException failure) {
             report(CLEAR_DIAGNOSTIC);
         }
@@ -280,6 +294,9 @@ public final class RecentSqlFiles {
     }
 
     record TemporaryIdentity(Object fileKey, FileTime created, Path witness) { }
+
+    /** Opaque ordering token used to suppress records queued before a successful clear. */
+    public record RecordAdmission(long clearGeneration) { }
 
     private void report(String message) {
         try {

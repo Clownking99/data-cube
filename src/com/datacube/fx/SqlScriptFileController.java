@@ -7,10 +7,10 @@ import com.datacube.sqleditor.SqlScriptFileStore;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyBooleanProperty;
 import javafx.beans.property.ReadOnlyBooleanWrapper;
-import javafx.beans.value.ChangeListener;
 import javafx.stage.Window;
 import org.fxmisc.richtext.CodeArea;
 
+import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.concurrent.Callable;
@@ -53,9 +53,10 @@ public final class SqlScriptFileController implements AutoCloseable {
     private final Runnable beforeSettlement;
     private final ReadOnlyBooleanWrapper busyProperty = new ReadOnlyBooleanWrapper();
     private final Object lifecycleLock = new Object();
-    private final ChangeListener<String> textListener = (observable, oldText, newText) -> refreshTitle();
-
     private SqlScriptDocument document;
+    private Runnable unsubscribeTextChanges = () -> { };
+    private final java.util.function.Consumer<Object> textListener = this::plainTextChanged;
+
     private boolean installed;
     private boolean listenerAttached;
     private volatile boolean closed;
@@ -125,11 +126,11 @@ public final class SqlScriptFileController implements AutoCloseable {
         if (initial == null) {
             document = new SqlScriptDocument(editor.getText());
         } else {
-            editor.replaceText(initial.text());
             document = new SqlScriptDocument();
             document.attach(initial);
+            editor.replaceText(document.normalizedText());
         }
-        editor.textProperty().addListener(textListener);
+        subscribeToPlainTextChanges();
         listenerAttached = true;
         installed = true;
         refreshTitle();
@@ -140,7 +141,7 @@ public final class SqlScriptFileController implements AutoCloseable {
         Operation operation = beginOperation();
         if (operation == null) return CompletableFuture.completedFuture(false);
         if (document.target() == null) return startSaveAs(operation);
-        submitSave(document.target(), editor.getText(), operation);
+        submitSave(document.target(), document.physicalText(), operation);
         return operation.result();
     }
 
@@ -164,7 +165,7 @@ public final class SqlScriptFileController implements AutoCloseable {
             return operation.result();
         }
 
-        String snapshot = editor.getText();
+        String snapshot = document.physicalText();
         submit(operation, () -> store.capture(chosen), target -> {
             if (document.path() != null && document.path().equals(target.path())) {
                 submitSave(document.target(), snapshot, operation);
@@ -231,7 +232,7 @@ public final class SqlScriptFileController implements AutoCloseable {
         if (unavailableForClose()) {
             return CompletableFuture.completedFuture(CloseGuardOutcome.REJECTED);
         }
-        if (!document.dirty(editor.getText())) return invokeGuard(proceed);
+        if (!document.dirty()) return invokeGuard(proceed);
 
         final CloseDecision decision;
         try {
@@ -245,7 +246,7 @@ public final class SqlScriptFileController implements AutoCloseable {
         }
         if (decision == CloseDecision.DISCARD) return invokeGuard(proceed);
         return save().thenCompose(saved -> {
-            if (!Boolean.TRUE.equals(saved) || closed || document.dirty(editor.getText())) {
+            if (!Boolean.TRUE.equals(saved) || closed || document.dirty()) {
                 return CompletableFuture.completedFuture(CloseGuardOutcome.REJECTED);
             }
             return invokeGuard(proceed);
@@ -276,7 +277,8 @@ public final class SqlScriptFileController implements AutoCloseable {
     public void detachUi() {
         requireFx("detachUi");
         if (!listenerAttached) return;
-        editor.textProperty().removeListener(textListener);
+        unsubscribeTextChanges.run();
+        unsubscribeTextChanges = () -> { };
         listenerAttached = false;
     }
 
@@ -385,12 +387,47 @@ public final class SqlScriptFileController implements AutoCloseable {
         synchronized (lifecycleLock) {
             if (closed || document == null) return;
             try {
-                titleConsumer.accept(document.title(fallbackTitle, editor.getText()));
+                titleConsumer.accept(document.title(fallbackTitle));
             } catch (RuntimeException collaboratorFailure) {
                 failed = true;
             }
         }
         if (failed) report(GENERIC_FEEDBACK);
+    }
+
+    /**
+     * RichTextFX keeps ReactFX on the class path for the modular packaged application. Use its
+     * public stream contract reflectively so module-info stays aligned with the merged runtime.
+     */
+    private void subscribeToPlainTextChanges() {
+        try {
+            Object stream = CodeArea.class.getMethod("plainTextChanges").invoke(editor);
+            Method subscribe = stream.getClass().getMethod("subscribe", java.util.function.Consumer.class);
+            Object subscription = subscribe.invoke(stream, textListener);
+            Method unsubscribe = Class.forName("org.reactfx.Subscription").getMethod("unsubscribe");
+            unsubscribeTextChanges = () -> {
+                try {
+                    unsubscribe.invoke(subscription);
+                } catch (ReflectiveOperationException failure) {
+                    throw new IllegalStateException("Unable to detach SQL text change stream", failure);
+                }
+            };
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("Unable to subscribe to SQL text change stream", failure);
+        }
+    }
+
+    private void plainTextChanged(Object change) {
+        try {
+            Class<?> type = change.getClass();
+            int position = (Integer) type.getMethod("getPosition").invoke(change);
+            String removed = (String) type.getMethod("getRemoved").invoke(change);
+            String inserted = (String) type.getMethod("getInserted").invoke(change);
+            document.editorTextChanged(position, removed, inserted);
+            refreshTitle();
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("Unable to read SQL text change", failure);
+        }
     }
 
     private void report(String message) {

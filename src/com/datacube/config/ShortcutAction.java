@@ -25,7 +25,13 @@ public enum ShortcutAction {
     SQL_BLOCK_COMMENT("sql.blockComment", "SQL 编辑器", "块注释切换",
             new KeyCodeCombination(KeyCode.SLASH, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN)),
     SQL_HISTORY("sql.history", "全局", "找回近期 SQL",
-            new KeyCodeCombination(KeyCode.H, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN));
+            new KeyCodeCombination(KeyCode.H, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN)),
+    SQL_OPEN_FILE("sql.openFile", "SQL 文件", "打开 SQL 文件",
+            new KeyCodeCombination(KeyCode.O, KeyCombination.CONTROL_DOWN)),
+    SQL_SAVE_FILE("sql.saveFile", "SQL 文件", "保存 SQL 文件",
+            new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN)),
+    SQL_SAVE_AS("sql.saveAs", "SQL 文件", "SQL 文件另存为",
+            new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN));
 
     private final String persistKey;
     private final String category;

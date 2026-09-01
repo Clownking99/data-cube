@@ -3,9 +3,11 @@ package com.datacube.fx;
 import com.datacube.config.AppSettings;
 import com.datacube.config.ConnectionStore;
 import com.datacube.config.CredentialCipher;
+import com.datacube.config.RecentSqlFiles;
 import com.datacube.config.ShortcutAction;
 import com.datacube.config.ShortcutSettings;
 import com.datacube.config.SqlHistoryStore;
+import com.datacube.fx.task.FxTaskScope;
 import com.datacube.fx.task.FxTaskRunner;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.DataBrowseService;
@@ -18,6 +20,7 @@ import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.RoutineRef;
 import com.datacube.spi.model.ScriptOutcome;
 import com.datacube.spi.model.TableRef;
+import com.datacube.sqleditor.SqlScriptFileStore;
 import com.datacube.update.UpdateService;
 
 import javafx.application.Platform;
@@ -29,17 +32,23 @@ import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.Separator;
 import javafx.scene.control.SplitPane;
+import javafx.scene.control.Tab;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
+import javafx.stage.FileChooser;
 
+import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -51,6 +60,8 @@ import java.util.function.Supplier;
  * 迁移功能作为一个常驻标签保留。
  */
 public final class AppShell {
+
+    static final String SQL_FILE_OPEN_FAILURE = "无法打开 SQL 文件。";
 
     private final BorderPane root = new BorderPane();
 
@@ -66,6 +77,13 @@ public final class AppShell {
     private final TableDesignService designSvc = new TableDesignService(connMgr);
     private final SessionContext session = new SessionContext();
     private final FxTaskRunner tasks = new FxTaskRunner();
+    private final FxTaskScope fileOpenTasks = tasks.scope();
+    private final SqlScriptFileStore sqlScriptFileStore = new SqlScriptFileStore();
+    private final RecentSqlFiles recentSqlFiles = new RecentSqlFiles(
+            Path.of(System.getProperty("user.home"), ".datacube", "recent-sql-files.txt"));
+    private final SqlFileEntry sqlFileEntry = new SqlFileEntry(sqlScriptFileStore, recentSqlFiles,
+            new ScopeSqlFileTaskDispatcher(fileOpenTasks), SessionContext::new,
+            this::openLoadedSqlFile, ignored -> showSqlFileOpenFailure());
 
     private final ContentTabPane contentTabs = new ContentTabPane();
     private final AsyncShutdownCoordinator shutdown = new AsyncShutdownCoordinator(
@@ -132,6 +150,15 @@ public final class AppShell {
                     if (shortcuts.get(ShortcutAction.SQL_HISTORY).match(e)) {
                         e.consume();
                         openSqlHistory();
+                    } else if (shortcuts.get(ShortcutAction.SQL_OPEN_FILE).match(e)) {
+                        e.consume();
+                        chooseSqlFileToOpen();
+                    } else if (shortcuts.get(ShortcutAction.SQL_SAVE_FILE).match(e)) {
+                        e.consume();
+                        fireSelectedSqlFileAction("sql-file-save");
+                    } else if (shortcuts.get(ShortcutAction.SQL_SAVE_AS).match(e)) {
+                        e.consume();
+                        fireSelectedSqlFileAction("sql-file-save-as");
                     }
                 });
             }
@@ -167,6 +194,7 @@ public final class AppShell {
             ConnConfig active = session.getActiveConnection();
             treeActions.openSqlEditor(active != null && active.type() == DbType.REDIS ? null : active, null);
         });
+        MenuButton sqlFilesMenu = sqlFilesMenu();
         Button historyBtn = new Button("🕘 SQL 历史");
         historyBtn.setOnAction(e -> openSqlHistory());
         Button draftsBtn = new Button("SQL 草稿");
@@ -194,7 +222,7 @@ public final class AppShell {
         settingsBtn.setOnAction(e ->
                 SettingsDialog.show(settings, shortcuts, root.getScene() == null ? null : root.getScene().getWindow(), themeManager));
 
-        HBox bar = new HBox(6, logo, addConnBtn, refreshBtn, newSqlBtn, historyBtn, draftsBtn, sep, spacer,
+        HBox bar = new HBox(6, logo, addConnBtn, refreshBtn, newSqlBtn, sqlFilesMenu, historyBtn, draftsBtn, sep, spacer,
                 migrationBtn, themeBtn, aboutBtn, settingsBtn);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPadding(new Insets(6, 12, 6, 12));
@@ -219,6 +247,7 @@ public final class AppShell {
      * 异步释放全部资源。受守卫标签完成关闭后，其余潜在阻塞清理在虚拟线程执行。
      */
     public CompletionStage<ShutdownOutcome> shutdownAsync() {
+        sqlFileEntry.close();
         return shutdown.shutdown();
     }
 
@@ -236,6 +265,200 @@ public final class AppShell {
                 () -> updateService.ifInitialized(UpdateService::close),
                 tasks::close,
                 connMgr::closeAll);
+    }
+
+    private MenuButton sqlFilesMenu() {
+        MenuButton sqlFilesMenu = new MenuButton("SQL 文件");
+        sqlFilesMenu.setId("sql-files");
+        sqlFilesMenu.setOnShowing(event -> rebuildSqlFilesMenu(sqlFilesMenu));
+        return sqlFilesMenu;
+    }
+
+    private void rebuildSqlFilesMenu(MenuButton sqlFilesMenu) {
+        rebuildSqlFilesMenu(sqlFilesMenu, recentSqlFiles, this::chooseSqlFileToOpen, this::openSqlFile);
+    }
+
+    static void rebuildSqlFilesMenu(MenuButton sqlFilesMenu, RecentSqlFiles recentFiles,
+            Runnable chooseOpen, Consumer<Path> openPath) {
+        sqlFilesMenu.getItems().clear();
+        MenuItem open = new MenuItem("打开 SQL 文件…");
+        open.setId("sql-file-open");
+        open.setOnAction(event -> chooseOpen.run());
+        sqlFilesMenu.getItems().add(open);
+
+        int index = 0;
+        for (Path path : recentFiles.recent()) {
+            MenuItem recent = new MenuItem(path.toString());
+            recent.setId("sql-file-recent-" + index);
+            recent.setOnAction(event -> openPath.accept(path));
+            sqlFilesMenu.getItems().add(recent);
+            index++;
+        }
+        MenuItem clear = new MenuItem("清空最近文件");
+        clear.setId("sql-file-recent-clear");
+        clear.setDisable(index == 0);
+        clear.setOnAction(event -> {
+            recentFiles.clear();
+            rebuildSqlFilesMenu(sqlFilesMenu, recentFiles, chooseOpen, openPath);
+        });
+        sqlFilesMenu.getItems().add(clear);
+    }
+
+    private void chooseSqlFileToOpen() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("打开 SQL 文件");
+        chooser.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter("SQL 文件 (*.sql)", "*.sql"),
+                new FileChooser.ExtensionFilter("所有文件 (*.*)", "*.*"));
+        java.io.File selected = chooser.showOpenDialog(
+                root.getScene() == null ? null : root.getScene().getWindow());
+        if (selected != null) openSqlFile(selected.toPath());
+    }
+
+    void openSqlFile(Path path) {
+        sqlFileEntry.open(path);
+    }
+
+    private boolean openLoadedSqlFile(SqlScriptFileStore.Loaded loaded, SessionContext fileSession) {
+        return openLoadedSqlFile(contentTabs, loaded, fileSession, connMgr, treeSvc, settings,
+                treeActions::openTableDesigner, sqlHistory, shortcuts, tasks, sqlScriptFileStore,
+                recentSqlFiles, new SqlFileDraftLifecycle() {
+                    @Override public void bind(SqlEditorPane pane) { sqlDrafts.get().bind(pane); }
+                    @Override public void installed(Node content) { sqlDrafts.get().installed(content); }
+                });
+    }
+
+    /** Production file-tab transaction shared by AppShell and its package-level lifecycle contract. */
+    static boolean openLoadedSqlFile(ContentTabPane contentTabs, SqlScriptFileStore.Loaded loaded,
+            SessionContext fileSession, ConnectionManager connMgr, ObjectTreeService treeSvc,
+            AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
+            SqlHistoryStore sqlHistory, ShortcutSettings shortcuts, FxTaskRunner tasks,
+            SqlScriptFileStore sqlScriptFileStore, RecentSqlFiles recentSqlFiles,
+            SqlFileDraftLifecycle drafts) {
+        String fallbackTitle = "SQL";
+        Tab opened = contentTabs.openManagedTab(fallbackTitle, (tab, binding) -> {
+            SqlEditorPane pane = new SqlEditorPane(fileSession, connMgr, treeSvc, settings,
+                    openDesigner, null, null, sqlHistory, shortcuts, tasks);
+            binding.bind(pane::closeResources);
+            try {
+                pane.installSqlScriptFileController(loaded, sqlScriptFileStore, recentSqlFiles,
+                        tab::setText, fallbackTitle);
+                drafts.bind(pane);
+                drafts.installed(pane.getNode());
+                return new ContentTabPane.ManagedTabSpec(pane.getNode(), pane::requestClose,
+                        pane::requestMandatoryClose, pane::finalizeCloseOnFx, pane::closeResources);
+            } catch (Throwable failure) {
+                pane.finalizeCloseOnFx();
+                throw failure;
+            }
+        });
+        return opened != null;
+    }
+
+    private void showSqlFileOpenFailure() {
+        Alert alert = new Alert(Alert.AlertType.ERROR, SQL_FILE_OPEN_FAILURE, ButtonType.OK);
+        alert.setHeaderText(null);
+        alert.setTitle("打开 SQL 文件");
+        javafx.stage.Window owner = root.getScene() == null ? null : root.getScene().getWindow();
+        if (owner != null) alert.initOwner(owner);
+        alert.showAndWait();
+    }
+
+    private void fireSelectedSqlFileAction(String actionId) {
+        javafx.scene.control.TabPane tabPane = (javafx.scene.control.TabPane) contentTabs.getNode();
+        fireSelectedSqlFileAction(tabPane, actionId);
+    }
+
+    static void fireSelectedSqlFileAction(javafx.scene.control.TabPane tabPane, String actionId) {
+        Tab selected = tabPane.getSelectionModel().getSelectedItem();
+        if (selected == null || selected.getContent() == null) return;
+        Node candidate = selected.getContent().lookup("#" + actionId);
+        if (candidate instanceof Button button && !button.isDisabled()) button.fire();
+    }
+
+    interface SqlFileTaskDispatcher extends AutoCloseable {
+        <T> void submit(Callable<T> operation, Consumer<? super T> success,
+                Consumer<? super Throwable> failure);
+        @Override void close();
+    }
+
+    @FunctionalInterface
+    interface SqlFileTabOpener {
+        boolean open(SqlScriptFileStore.Loaded loaded, SessionContext fileSession);
+    }
+
+    interface SqlFileDraftLifecycle {
+        void bind(SqlEditorPane pane);
+        void installed(Node content);
+    }
+
+    /** App-owned admission gate for file reads and callbacks. It has no database knowledge. */
+    static final class SqlFileEntry implements AutoCloseable {
+        private final SqlScriptFileStore store;
+        private final RecentSqlFiles recentFiles;
+        private final SqlFileTaskDispatcher tasks;
+        private final Supplier<SessionContext> fileSessionFactory;
+        private final SqlFileTabOpener opener;
+        private final Consumer<String> feedback;
+        private final AtomicBoolean closed = new AtomicBoolean();
+
+        SqlFileEntry(SqlScriptFileStore store, RecentSqlFiles recentFiles, SqlFileTaskDispatcher tasks,
+                Supplier<SessionContext> fileSessionFactory, SqlFileTabOpener opener,
+                Consumer<String> feedback) {
+            this.store = java.util.Objects.requireNonNull(store);
+            this.recentFiles = java.util.Objects.requireNonNull(recentFiles);
+            this.tasks = java.util.Objects.requireNonNull(tasks);
+            this.fileSessionFactory = java.util.Objects.requireNonNull(fileSessionFactory);
+            this.opener = java.util.Objects.requireNonNull(opener);
+            this.feedback = java.util.Objects.requireNonNull(feedback);
+        }
+
+        void open(Path path) {
+            if (closed.get()) return;
+            if (path == null) { reportFailure(); return; }
+            try {
+                tasks.submit(() -> store.load(path), this::loaded, ignored -> reportFailure());
+            } catch (RuntimeException ignored) {
+                reportFailure();
+            }
+        }
+
+        private void loaded(SqlScriptFileStore.Loaded loaded) {
+            if (closed.get()) return;
+            final boolean opened;
+            try {
+                opened = opener.open(loaded, fileSessionFactory.get());
+            } catch (RuntimeException ignored) {
+                reportFailure();
+                return;
+            }
+            if (!opened || closed.get()) { if (!closed.get()) reportFailure(); return; }
+            RecentSqlFiles.RecordAdmission admission = recentFiles.recordAdmission();
+            try {
+                tasks.submit(() -> {
+                    if (!closed.get()) recentFiles.record(admission, loaded.path());
+                    return null;
+                }, ignored -> { }, ignored -> { });
+            } catch (RuntimeException ignored) {
+                // The opened editor remains usable when shutdown rejects recent-path persistence.
+            }
+        }
+
+        private void reportFailure() {
+            if (!closed.get()) feedback.accept(SQL_FILE_OPEN_FAILURE);
+        }
+
+        @Override public void close() {
+            if (closed.compareAndSet(false, true)) tasks.close();
+        }
+    }
+
+    private static final class ScopeSqlFileTaskDispatcher implements SqlFileTaskDispatcher {
+        private final FxTaskScope scope;
+        private ScopeSqlFileTaskDispatcher(FxTaskScope scope) { this.scope = scope; }
+        @Override public <T> void submit(Callable<T> operation, Consumer<? super T> success,
+                Consumer<? super Throwable> failure) { scope.submit(operation, success, failure); }
+        @Override public void close() { scope.close(); }
     }
 
     private static void reportShutdownFailure(Throwable failure) {
@@ -282,7 +505,7 @@ public final class AppShell {
     }
 
     private void openSqlTab(String title, Supplier<SqlEditorPane> factory) {
-        openSqlTab(title, factory, ignored -> {});
+        openSqlTab(title, factory, ignored -> { });
     }
 
     private void openSqlTab(
@@ -290,7 +513,10 @@ public final class AppShell {
             Supplier<SqlEditorPane> factory,
             Consumer<SqlEditorPane> initialize) {
         javafx.scene.control.Tab opened = contentTabs.openManagedTab(title, binding -> ManagedTabFactorySequence.create(
-                factory,
+                () -> {
+                    SqlEditorPane pane = factory.get();
+                    return pane;
+                },
                 pane -> binding.bind(pane::closeResources),
                 pane -> {
                     initialize.accept(pane);

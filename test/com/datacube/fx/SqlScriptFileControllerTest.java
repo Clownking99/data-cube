@@ -59,6 +59,48 @@ class SqlScriptFileControllerTest {
     }
 
     @Test
+    void savesLoadedMixedSeparatorsExactlyWhileShowingNormalizedEditorText() throws Exception {
+        SqlScriptFileStore store = new SqlScriptFileStore();
+        String physical = "one\r\ntwo\rthree\nfour\r\n";
+        Path file = Files.writeString(directory.resolve("mixed.sql"), physical);
+        try (Fixture fixture = new Fixture("ignored", store.load(file), store, recent("mixed-recent"))) {
+            assertEquals("one\ntwo\nthree\nfour\n", fixture.text());
+            assertTrue(fixture.settle(fixture.save()));
+            assertEquals(physical, Files.readString(file));
+            fixture.edit("one!\ntwo\nthree\nfour\n");
+            assertTrue(fixture.settle(fixture.save()));
+            assertEquals("one!\r\ntwo\rthree\nfour\r\n", Files.readString(file));
+        }
+    }
+
+    @Test
+    void positionalRichTextChangeUpdatesOnlyTheEditedPhysicalSegment() throws Exception {
+        SqlScriptFileStore store = new SqlScriptFileStore();
+        String physical = "one\r\ntwo\rthree\nfour\r\n";
+        Path file = Files.writeString(directory.resolve("positional-mixed.sql"), physical);
+        try (Fixture fixture = new Fixture("ignored", store.load(file), store, recent("positional-recent"))) {
+            fixture.fx(() -> fixture.editor.replaceText(3, 3, "!"));
+
+            assertTrue(fixture.settle(fixture.save()));
+            assertEquals("one!\r\ntwo\rthree\nfour\r\n", Files.readString(file));
+        }
+    }
+
+    @Test
+    void positionalDeletionThatJoinsBareCrAndLfSavesAndReloadsAsTwoLogicalLineBreaks() throws Exception {
+        SqlScriptFileStore store = new SqlScriptFileStore();
+        Path file = Files.writeString(directory.resolve("joined-crlf.sql"), "a\rb\nc");
+        try (Fixture fixture = new Fixture("ignored", store.load(file), store, recent("joined-crlf-recent"))) {
+            fixture.fx(() -> fixture.editor.replaceText(2, 3, ""));
+
+            assertEquals("a\n\nc", fixture.text());
+            assertTrue(fixture.settle(fixture.save()));
+            assertEquals("a\r\r\nc", Files.readString(file));
+            assertEquals("a\n\nc", new SqlScriptDocument(store.load(file).text()).normalizedText());
+        }
+    }
+
+    @Test
     void firstSaveNormalSaveAndSaveAsPublishExactSnapshotsAndRebind() throws Exception {
         try (Fixture fixture = fixture("select 1", null)) {
             Path first = directory.resolve("first.sql");

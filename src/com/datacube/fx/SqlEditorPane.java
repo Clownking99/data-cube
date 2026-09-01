@@ -191,6 +191,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private boolean updatingTransactionMode;
 
     private volatile boolean running = false;
+    private final AtomicBoolean resourcesClosing = new AtomicBoolean();
     private final AtomicBoolean resourcesClosed = new AtomicBoolean();
     private final AtomicBoolean uiFinalized = new AtomicBoolean();
     private final AsyncTabCloseGuard closeGuard;
@@ -468,9 +469,9 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
     void closeResources() {
+        if (!resourcesClosing.compareAndSet(false, true)) return;
         if (fileController != null) fileController.close();
         detachDraftFromAnyThread();
-        if (resourcesClosed.get()) return;
         if (resultExports != null) resultExports.close();
         admission.beginClosing();
         sessionOperations.stopAcceptingAndCancelQueued();
