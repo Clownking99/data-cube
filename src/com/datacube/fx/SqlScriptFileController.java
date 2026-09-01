@@ -466,14 +466,14 @@ public final class SqlScriptFileController implements AutoCloseable {
         }
     }
 
-    private static String feedbackFor(Throwable failure) {
+    static String feedbackFor(Throwable failure) {
         if (failure instanceof SqlScriptFileStore.Failure storeFailure) {
             return switch (storeFailure.code()) {
                 case CHANGED -> CHANGED_FEEDBACK;
                 case TOO_LARGE -> TOO_LARGE_FEEDBACK;
                 case INVALID_TARGET -> INVALID_TARGET_FEEDBACK;
                 case BUSY -> TARGET_BUSY_FEEDBACK;
-                case READ, INVALID_UTF8, WRITE, PUBLISH, CLEANUP -> GENERIC_FEEDBACK;
+                case READ, INVALID_UTF8, WRITE, PUBLISH, CLEANUP, RECOVERY -> GENERIC_FEEDBACK;
             };
         }
         return GENERIC_FEEDBACK;

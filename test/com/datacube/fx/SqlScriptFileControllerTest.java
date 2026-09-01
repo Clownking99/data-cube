@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.lang.reflect.Constructor;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +34,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SqlScriptFileControllerTest {
     @TempDir Path directory;
+
+    @Test
+    void composedStoreFailuresKeepFixedFeedbackAndNeverExposeArtifactPaths() throws Exception {
+        Path temporary = directory.resolve("private-temporary.sql");
+        Path recovery = directory.resolve("private-recovery.sql");
+        Constructor<SqlScriptFileStore.Failure> constructor = SqlScriptFileStore.Failure.class
+                .getDeclaredConstructor(SqlScriptFileStore.FailureCode.class, Path.class, Path.class);
+        constructor.setAccessible(true);
+        SqlScriptFileStore.Failure changed = constructor.newInstance(
+                SqlScriptFileStore.FailureCode.CHANGED, temporary, recovery);
+        SqlScriptFileStore.Failure retained = constructor.newInstance(
+                SqlScriptFileStore.FailureCode.RECOVERY, temporary, recovery);
+
+        String changedFeedback = SqlScriptFileController.feedbackFor(changed);
+        String recoveryFeedback = SqlScriptFileController.feedbackFor(retained);
+
+        assertEquals("文件已被外部修改，未覆盖磁盘内容。", changedFeedback);
+        assertEquals("SQL 文件保存失败，磁盘内容未被替换。", recoveryFeedback);
+        for (String feedback : List.of(changedFeedback, recoveryFeedback)) {
+            assertFalse(feedback.contains(temporary.toString()));
+            assertFalse(feedback.contains(recovery.toString()));
+        }
+    }
 
     @Test
     void installsLoadedOrCurrentUnboundTextAndTracksExactDirtyRevert() throws Exception {

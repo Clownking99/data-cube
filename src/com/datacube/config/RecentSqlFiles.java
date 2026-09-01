@@ -1,5 +1,7 @@
 package com.datacube.config;
 
+import com.datacube.io.BoundedRegularFileReader;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -130,8 +132,7 @@ public final class RecentSqlFiles {
     private List<Path> load() {
         final byte[] bytes;
         try {
-            if (!Files.exists(storage) || Files.size(storage) > MAX_INDEX_BYTES) return List.of();
-            bytes = Files.readAllBytes(storage);
+            bytes = readBoundedRegularFile(storage);
         } catch (IOException | RuntimeException failure) {
             return List.of();
         }
@@ -185,6 +186,7 @@ public final class RecentSqlFiles {
         try {
             Path parent = storage.getParent();
             if (parent == null) throw new IOException();
+            ensureTrustedParent(parent);
             temporary = Files.createTempFile(parent, ".datacube-recent-", ".tmp");
             temporaryIdentity = captureTemporaryIdentity(temporary);
             if (temporaryIdentity == null) return false;
@@ -226,6 +228,36 @@ public final class RecentSqlFiles {
         byte[] bytes = new byte[encoded.remaining()];
         encoded.get(bytes);
         return bytes;
+    }
+
+    private static byte[] readBoundedRegularFile(Path path) throws IOException {
+        return BoundedRegularFileReader.read(path, MAX_INDEX_BYTES);
+    }
+
+    private static void ensureTrustedParent(Path parent) throws IOException {
+        Path normalized = parent.toAbsolutePath().normalize();
+        Path current = normalized.getRoot();
+        if (current == null) throw new IOException();
+        BasicFileAttributes root = Files.readAttributes(current, BasicFileAttributes.class,
+                LinkOption.NOFOLLOW_LINKS);
+        if (!root.isDirectory() || root.isSymbolicLink()) throw new IOException();
+        for (Path name : normalized) {
+            current = current.resolve(name);
+            BasicFileAttributes attributes;
+            try {
+                attributes = Files.readAttributes(current, BasicFileAttributes.class,
+                        LinkOption.NOFOLLOW_LINKS);
+            } catch (java.nio.file.NoSuchFileException absent) {
+                Files.createDirectory(current);
+                attributes = Files.readAttributes(current, BasicFileAttributes.class,
+                        LinkOption.NOFOLLOW_LINKS);
+            }
+            if (!attributes.isDirectory() || attributes.isSymbolicLink()) throw new IOException();
+        }
+        Path real = normalized.toRealPath(LinkOption.NOFOLLOW_LINKS);
+        if (!real.equals(normalized)
+                || !Files.isDirectory(real, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(real)) throw new IOException();
     }
 
     private TemporaryIdentity captureTemporaryIdentity(Path path) throws IOException {

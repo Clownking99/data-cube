@@ -1,6 +1,7 @@
 package com.datacube.config;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -12,6 +13,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.stream.Stream;
@@ -43,6 +45,20 @@ class RecentSqlFilesTest {
         assertFalse(paths.contains(expectedFirst));
         assertThrows(UnsupportedOperationException.class, paths::clear);
         assertEquals(paths, recent.recent());
+    }
+
+    @Test
+    void createsAMissingTrustedParentForTheFirstRecord() throws Exception {
+        Path missingParent = directory.resolve("fresh-profile").resolve("nested");
+        Path index = missingParent.resolve("recent.index");
+        RecentSqlFiles recent = new RecentSqlFiles(index);
+
+        Path recorded = directory.resolve("first.sql").toAbsolutePath().normalize();
+        recent.record(recorded);
+
+        assertTrue(Files.isDirectory(missingParent));
+        assertEquals(List.of(recorded), recent.recent());
+        assertTrue(Files.isRegularFile(index));
     }
 
     @Test
@@ -79,6 +95,70 @@ class RecentSqlFilesTest {
 
         Files.write(index, new byte[128 * 1024 + 1]);
         assertTrue(new RecentSqlFiles(index).recent().isEmpty());
+    }
+
+    @Test
+    void boundedNoFollowLoadAcceptsExactMaximumAndRejectsMaximumPlusOneAndSymlinks()
+            throws Exception {
+        Path valid = directory.resolve("boundary.sql").toAbsolutePath().normalize();
+        byte[] prefix = (HEADER + "\n" + encoded(valid.toString()) + "\n")
+                .getBytes(StandardCharsets.UTF_8);
+        byte[] exact = new byte[RecentSqlFiles.MAX_INDEX_BYTES];
+        Arrays.fill(exact, (byte) '\n');
+        System.arraycopy(prefix, 0, exact, 0, prefix.length);
+        Path index = Files.write(index("exact.index"), exact);
+        assertEquals(List.of(valid), new RecentSqlFiles(index).recent());
+
+        Files.write(index, Arrays.copyOf(exact, exact.length + 1));
+        assertTrue(new RecentSqlFiles(index).recent().isEmpty());
+
+        Path actual = seeded("actual.index", valid);
+        Path link = index("linked.index");
+        try {
+            Files.createSymbolicLink(link, actual.getFileName());
+        } catch (UnsupportedOperationException | IOException unavailable) {
+            Assumptions.assumeTrue(false, "Symbolic links unavailable for this account");
+        }
+        assertTrue(new RecentSqlFiles(link).recent().isEmpty());
+    }
+
+    @Test
+    void rejectsNonDirectoryAndSymlinkParentsWithoutPublishing() throws Exception {
+        Path nonDirectory = Files.writeString(directory.resolve("not-a-directory"), "keep");
+        List<String> diagnostics = new ArrayList<>();
+        RecentSqlFiles invalid = new RecentSqlFiles(nonDirectory.resolve("recent.index"),
+                RecentSqlFilesTest::write, RecentSqlFilesTest::moveAtomically,
+                RecentSqlFilesTest::delete, diagnostics::add);
+        invalid.record(directory.resolve("ignored.sql"));
+        assertTrue(invalid.recent().isEmpty());
+        assertEquals("keep", Files.readString(nonDirectory));
+        assertEquals(List.of("Unable to save recent SQL files."), diagnostics);
+
+        Path actualParent = Files.createDirectory(directory.resolve("actual-parent"));
+        Path linkedParent = directory.resolve("linked-parent");
+        try {
+            Files.createSymbolicLink(linkedParent, actualParent.getFileName());
+        } catch (UnsupportedOperationException | IOException unavailable) {
+            Assumptions.assumeTrue(false, "Symbolic links unavailable for this account");
+        }
+        diagnostics.clear();
+        RecentSqlFiles linked = new RecentSqlFiles(linkedParent.resolve("recent.index"),
+                RecentSqlFilesTest::write, RecentSqlFilesTest::moveAtomically,
+                RecentSqlFilesTest::delete, diagnostics::add);
+        linked.record(directory.resolve("ignored.sql"));
+        assertTrue(linked.recent().isEmpty());
+        assertFalse(Files.exists(actualParent.resolve("recent.index")));
+        assertEquals(List.of("Unable to save recent SQL files."), diagnostics);
+
+        diagnostics.clear();
+        Path missingThroughLink = linkedParent.resolve("must-not-create");
+        RecentSqlFiles nestedLinked = new RecentSqlFiles(missingThroughLink.resolve("recent.index"),
+                RecentSqlFilesTest::write, RecentSqlFilesTest::moveAtomically,
+                RecentSqlFilesTest::delete, diagnostics::add);
+        nestedLinked.record(directory.resolve("ignored.sql"));
+        assertTrue(nestedLinked.recent().isEmpty());
+        assertFalse(Files.exists(actualParent.resolve("must-not-create")));
+        assertEquals(List.of("Unable to save recent SQL files."), diagnostics);
     }
 
     @Test
