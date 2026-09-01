@@ -4,6 +4,7 @@ import com.datacube.config.RecentSqlFiles;
 import com.datacube.fx.SqlScriptFileController.CloseDecision;
 import com.datacube.fx.task.FxTaskRunner;
 import com.datacube.fx.task.FxTaskScope;
+import com.datacube.sqleditor.SqlScriptDocument;
 import com.datacube.sqleditor.SqlScriptFileStore;
 import javafx.application.Platform;
 import org.fxmisc.richtext.CodeArea;
@@ -367,6 +368,60 @@ class SqlScriptFileControllerTest {
         }
     }
 
+    @Test
+    void closeBeforeCallbackSettlementWinsWithoutApplyingStaleSuccessState() throws Exception {
+        SqlScriptFileStore store = new SqlScriptFileStore();
+        Path target = Files.writeString(directory.resolve("callback-race.sql"), "old baseline");
+        CountDownLatch settlementEntered = new CountDownLatch(1);
+        CountDownLatch releaseSettlement = new CountDownLatch(1);
+        Runnable settlementBarrier = () -> {
+            settlementEntered.countDown();
+            try {
+                assertTrue(releaseSettlement.await(5, TimeUnit.SECONDS),
+                        "callback settlement barrier timed out");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(interrupted);
+            }
+        };
+        try (Fixture fixture = new Fixture("ignored", store.load(target), store,
+                recent("callback-race-recent"), () -> { }, settlementBarrier)) {
+            fixture.edit("durably published but not settled");
+            int titleCount = fixture.titles.size();
+            int feedbackCount = fixture.feedback.size();
+            CompletionStage<Boolean> operation = fixture.save();
+            fixture.submitter.runWorker();
+            int recentCountBeforeClose = fixture.recent.recent().size();
+            CompletableFuture<Void> callback = new CompletableFuture<>();
+            Platform.runLater(() -> {
+                try {
+                    fixture.submitter.drainFx();
+                    callback.complete(null);
+                } catch (Throwable failure) {
+                    callback.completeExceptionally(failure);
+                }
+            });
+            assertTrue(settlementEntered.await(5, TimeUnit.SECONDS));
+
+            Thread closer = Thread.ofVirtual().start(fixture.controller::close);
+            closer.join();
+            releaseSettlement.countDown();
+            callback.get(5, TimeUnit.SECONDS);
+
+            assertFalse(operation.toCompletableFuture().get(5, TimeUnit.SECONDS));
+            fixture.fx(() -> { });
+            assertFalse(fixture.controller.isBusy());
+            assertFalse(fixture.controller.busyProperty().get());
+            assertTrue(fixture.documentDirty("durably published but not settled"));
+            assertEquals(titleCount, fixture.titles.size());
+            assertEquals(feedbackCount, fixture.feedback.size());
+            assertEquals(recentCountBeforeClose, fixture.recent.recent().size());
+            assertEquals("durably published but not settled", Files.readString(target));
+        } finally {
+            releaseSettlement.countDown();
+        }
+    }
+
     private RecentSqlFiles recent(String name) {
         return new RecentSqlFiles(directory.resolve(name + ".txt"));
     }
@@ -399,11 +454,17 @@ class SqlScriptFileControllerTest {
 
         Fixture(String text, SqlScriptFileStore.Loaded loaded, SqlScriptFileStore store,
                 RecentSqlFiles recent) throws Exception {
-            this(text, loaded, store, recent, () -> { });
+            this(text, loaded, store, recent, () -> { }, () -> { });
         }
 
         Fixture(String text, SqlScriptFileStore.Loaded loaded, SqlScriptFileStore store,
                 RecentSqlFiles recent, Runnable beforeSubmit) throws Exception {
+            this(text, loaded, store, recent, beforeSubmit, () -> { });
+        }
+
+        Fixture(String text, SqlScriptFileStore.Loaded loaded, SqlScriptFileStore store,
+                RecentSqlFiles recent, Runnable beforeSubmit, Runnable beforeSettlement)
+                throws Exception {
             this.recent = recent;
             editor = FxUiTestSupport.call(() -> new CodeArea(text));
             scope = runner.scope();
@@ -418,7 +479,7 @@ class SqlScriptFileControllerTest {
                     }, ignored -> {
                         if (throwDecision) throw new IllegalStateException("private decision");
                         return decision.get();
-                    }, feedback::add, submitter, beforeSubmit));
+                    }, feedback::add, submitter, beforeSubmit, beforeSettlement));
             fx(() -> controller.install(loaded));
         }
 
@@ -475,6 +536,12 @@ class SqlScriptFileControllerTest {
 
         boolean busy() throws Exception {
             return FxUiTestSupport.call(controller::isBusy);
+        }
+
+        boolean documentDirty(String text) throws Exception {
+            java.lang.reflect.Field field = SqlScriptFileController.class.getDeclaredField("document");
+            field.setAccessible(true);
+            return ((SqlScriptDocument) field.get(controller)).dirty(text);
         }
 
         void fx(Runnable action) throws Exception {

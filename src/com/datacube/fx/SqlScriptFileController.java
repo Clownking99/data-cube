@@ -50,6 +50,7 @@ public final class SqlScriptFileController implements AutoCloseable {
     private final Consumer<String> feedback;
     private final Submitter submitter;
     private final Runnable beforeSubmit;
+    private final Runnable beforeSettlement;
     private final ReadOnlyBooleanWrapper busyProperty = new ReadOnlyBooleanWrapper();
     private final Object lifecycleLock = new Object();
     private final ChangeListener<String> textListener = (observable, oldText, newText) -> refreshTitle();
@@ -69,7 +70,7 @@ public final class SqlScriptFileController implements AutoCloseable {
             Function<Window, CloseDecision> closeDecisionProvider, Consumer<String> feedback) {
         this(editor, store, recent, tasks, owner, titleConsumer, fallbackTitle, savePathChooser,
                 overwriteConfirmer, closeDecisionProvider, feedback, new ScopeSubmitter(tasks),
-                () -> { });
+                () -> { }, () -> { });
     }
 
     SqlScriptFileController(CodeArea editor, SqlScriptFileStore store, RecentSqlFiles recent,
@@ -79,7 +80,8 @@ public final class SqlScriptFileController implements AutoCloseable {
             Function<Window, CloseDecision> closeDecisionProvider, Consumer<String> feedback,
             Submitter submitter) {
         this(editor, store, recent, tasks, owner, titleConsumer, fallbackTitle, savePathChooser,
-                overwriteConfirmer, closeDecisionProvider, feedback, submitter, () -> { });
+                overwriteConfirmer, closeDecisionProvider, feedback, submitter,
+                () -> { }, () -> { });
     }
 
     SqlScriptFileController(CodeArea editor, SqlScriptFileStore store, RecentSqlFiles recent,
@@ -88,6 +90,17 @@ public final class SqlScriptFileController implements AutoCloseable {
             BiPredicate<Window, Path> overwriteConfirmer,
             Function<Window, CloseDecision> closeDecisionProvider, Consumer<String> feedback,
             Submitter submitter, Runnable beforeSubmit) {
+        this(editor, store, recent, tasks, owner, titleConsumer, fallbackTitle, savePathChooser,
+                overwriteConfirmer, closeDecisionProvider, feedback, submitter,
+                beforeSubmit, () -> { });
+    }
+
+    SqlScriptFileController(CodeArea editor, SqlScriptFileStore store, RecentSqlFiles recent,
+            FxTaskScope tasks, Supplier<Window> owner, Consumer<String> titleConsumer,
+            String fallbackTitle, Function<Window, Path> savePathChooser,
+            BiPredicate<Window, Path> overwriteConfirmer,
+            Function<Window, CloseDecision> closeDecisionProvider, Consumer<String> feedback,
+            Submitter submitter, Runnable beforeSubmit, Runnable beforeSettlement) {
         this.editor = Objects.requireNonNull(editor, "editor");
         this.store = Objects.requireNonNull(store, "store");
         this.recent = Objects.requireNonNull(recent, "recent");
@@ -102,6 +115,7 @@ public final class SqlScriptFileController implements AutoCloseable {
         this.feedback = Objects.requireNonNull(feedback, "feedback");
         this.submitter = Objects.requireNonNull(submitter, "submitter");
         this.beforeSubmit = Objects.requireNonNull(beforeSubmit, "beforeSubmit");
+        this.beforeSettlement = Objects.requireNonNull(beforeSettlement, "beforeSettlement");
     }
 
     public void install(SqlScriptFileStore.Loaded initial) {
@@ -200,17 +214,9 @@ public final class SqlScriptFileController implements AutoCloseable {
         synchronized (lifecycleLock) {
             if (!currentLocked(admission)) return;
             try {
-                submitter.submit(operation, value -> {
-                    if (!current(admission)) return;
-                    try {
-                        success.accept(value);
-                    } catch (RuntimeException collaboratorFailure) {
-                        fail(admission, GENERIC_FEEDBACK);
-                    }
-                }, failure -> {
-                    if (!current(admission)) return;
-                    fail(admission, feedbackFor(failure));
-                });
+                submitter.submit(operation,
+                        value -> settleSuccess(admission, value, success),
+                        failure -> settleFailure(admission, failure));
             } catch (RuntimeException failure) {
                 rejected = failure;
             }
@@ -276,16 +282,15 @@ public final class SqlScriptFileController implements AutoCloseable {
 
     @Override
     public void close() {
-        CompletableFuture<Boolean> exposed;
         synchronized (lifecycleLock) {
             if (closed) return;
             closed = true;
             generation++;
             busy = false;
-            exposed = pending;
+            CompletableFuture<Boolean> exposed = pending;
             pending = null;
+            if (exposed != null) exposed.complete(false);
         }
-        if (exposed != null) exposed.complete(false);
         clearBusyPropertyAfterClose();
     }
 
@@ -312,12 +317,6 @@ public final class SqlScriptFileController implements AutoCloseable {
         return operation;
     }
 
-    private boolean current(Operation operation) {
-        synchronized (lifecycleLock) {
-            return currentLocked(operation);
-        }
-    }
-
     private boolean currentLocked(Operation operation) {
         return !closed && generation == operation.generation()
                 && pending == operation.result() && !operation.result().isDone();
@@ -325,21 +324,60 @@ public final class SqlScriptFileController implements AutoCloseable {
 
     private void finish(Operation operation, boolean value) {
         synchronized (lifecycleLock) {
-            if (!currentLocked(operation)) return;
-            pending = null;
-            busy = false;
+            finishLocked(operation, value);
         }
+    }
+
+    private void fail(Operation operation, String message) {
+        synchronized (lifecycleLock) {
+            failLocked(operation, message);
+        }
+    }
+
+    private <T> void settleSuccess(Operation operation, T value, Consumer<T> success) {
+        if (!beforeSettlement(operation)) return;
+        synchronized (lifecycleLock) {
+            if (!currentLocked(operation)) return;
+            try {
+                success.accept(value);
+            } catch (RuntimeException collaboratorFailure) {
+                failLocked(operation, GENERIC_FEEDBACK);
+            }
+        }
+    }
+
+    private void settleFailure(Operation operation, Throwable failure) {
+        if (!beforeSettlement(operation)) return;
+        synchronized (lifecycleLock) {
+            failLocked(operation, feedbackFor(failure));
+        }
+    }
+
+    private boolean beforeSettlement(Operation operation) {
+        try {
+            beforeSettlement.run();
+            return true;
+        } catch (RuntimeException seamFailure) {
+            fail(operation, GENERIC_FEEDBACK);
+            return false;
+        }
+    }
+
+    private void failLocked(Operation operation, String message) {
+        if (!currentLocked(operation)) return;
+        report(message);
+        finishLocked(operation, false);
+    }
+
+    private void finishLocked(Operation operation, boolean value) {
+        if (!currentLocked(operation)) return;
+        pending = null;
+        busy = false;
         try {
             busyProperty.set(false);
         } finally {
             operation.result().complete(value);
         }
-    }
-
-    private void fail(Operation operation, String message) {
-        if (!current(operation)) return;
-        report(message);
-        finish(operation, false);
     }
 
     private void refreshTitle() {
