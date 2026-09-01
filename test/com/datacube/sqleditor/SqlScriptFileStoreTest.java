@@ -162,6 +162,22 @@ class SqlScriptFileStoreTest {
     }
 
     @Test
+    void publicationSeamChecksTargetImmediatelyBeforeMoving() throws Exception {
+        Path target = Files.writeString(directory.resolve("boundary.sql"), "old");
+        SqlScriptFileStore store = store(Files::readAllBytes, SqlScriptFileStoreTest::writeBytes,
+                (source, destination, finalCheck) -> {
+                    Files.writeString(destination, "external");
+                    finalCheck.verify();
+                    fail("changed target must stop publication before moving");
+                }, path -> Files.deleteIfExists(path), ignored -> { });
+
+        SqlScriptFileStore.Failure failure = assertThrows(SqlScriptFileStore.Failure.class,
+                () -> store.save(store.capture(target), "ours"));
+        assertEquals(SqlScriptFileStore.FailureCode.CHANGED, failure.code());
+        assertEquals("external", Files.readString(target));
+    }
+
+    @Test
     void writeAndAtomicMoveFailuresPreserveOldBytesAndRemoveOwnedTemps() throws Exception {
         Path target = Files.writeString(directory.resolve("safe.sql"), "old");
         AtomicReference<Path> writtenTemp = new AtomicReference<>();
@@ -180,7 +196,7 @@ class SqlScriptFileStoreTest {
         SqlScriptFileStore brokenMove = store(Files::readAllBytes, (path, bytes) -> {
             moveTemp.set(path);
             Files.write(path, bytes);
-        }, (source, destination) -> {
+        }, (source, destination, finalCheck) -> {
             throw new AtomicMoveNotSupportedException(source.toString(), destination.toString(), "test");
         }, path -> Files.deleteIfExists(path), ignored -> { });
         SqlScriptFileStore.Failure publishFailure = assertThrows(SqlScriptFileStore.Failure.class,
@@ -249,6 +265,39 @@ class SqlScriptFileStoreTest {
         assertNull(failure.getCause());
     }
 
+    @Test
+    void replacedTemporaryFileIsNeverCleaned() throws Exception {
+        Path target = Files.writeString(directory.resolve("owned.sql"), "old");
+        Path replacement = Files.writeString(directory.resolve("foreign-temporary.sql"), "external temporary");
+        AtomicReference<Path> temporary = new AtomicReference<>();
+        AtomicReference<Path> diagnosed = new AtomicReference<>();
+        AtomicReference<Boolean> cleanerCalled = new AtomicReference<>(false);
+        SqlScriptFileStore store = store(Files::readAllBytes, (path, bytes) -> {
+            temporary.set(path);
+            Files.delete(path);
+            Files.move(replacement, path, StandardCopyOption.REPLACE_EXISTING);
+            throw new IOException("writer failed");
+        }, SqlScriptFileStoreTest::moveAtomic, path -> {
+            cleanerCalled.set(true);
+            Files.deleteIfExists(path);
+        }, diagnosed::set);
+
+        SqlScriptFileStore.Failure failure = assertThrows(SqlScriptFileStore.Failure.class,
+                () -> store.save(store.capture(target), "ours"));
+        assertEquals(SqlScriptFileStore.FailureCode.CLEANUP, failure.code());
+        assertEquals(temporary.get(), failure.temporaryPath());
+        assertEquals(temporary.get(), diagnosed.get());
+        assertFalse(cleanerCalled.get());
+        assertEquals("external temporary", Files.readString(temporary.get()));
+        assertEquals("old", Files.readString(target));
+    }
+
+    @Test
+    void deletionOrReplacementAfterPublicationReturnsChanged() throws Exception {
+        assertPostPublicationChange("deleted", false);
+        assertPostPublicationChange("replaced", true);
+    }
+
     private SqlScriptFileStore store(
             SqlScriptFileStore.ByteReader reader,
             SqlScriptFileStore.ContentWriter writer,
@@ -262,9 +311,31 @@ class SqlScriptFileStoreTest {
         Files.write(path, bytes);
     }
 
-    private static void moveAtomic(Path source, Path destination) throws IOException {
+    private static void moveAtomic(Path source, Path destination,
+            SqlScriptFileStore.FinalTargetVerifier finalCheck) throws IOException {
+        finalCheck.verify();
         Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE,
                 StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private void assertPostPublicationChange(String name, boolean replace) throws Exception {
+        Path target = Files.writeString(directory.resolve("post-" + name + ".sql"), "old");
+        Path external = replace
+                ? Files.writeString(directory.resolve("external-" + name + ".sql"), "external replacement")
+                : null;
+        SqlScriptFileStore store = store(Files::readAllBytes, SqlScriptFileStoreTest::writeBytes,
+                (source, destination, finalCheck) -> {
+                    finalCheck.verify();
+                    Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE,
+                            StandardCopyOption.REPLACE_EXISTING);
+                    Files.delete(destination);
+                    if (external != null) Files.move(external, destination, StandardCopyOption.REPLACE_EXISTING);
+                }, path -> Files.deleteIfExists(path), ignored -> { });
+
+        SqlScriptFileStore.Failure failure = assertThrows(SqlScriptFileStore.Failure.class,
+                () -> store.save(store.capture(target), "ours"));
+        assertEquals(SqlScriptFileStore.FailureCode.CHANGED, failure.code());
+        if (replace) assertEquals("external replacement", Files.readString(target));
     }
 
     private static void assertChanged(ThrowingAction action) {
@@ -276,4 +347,5 @@ class SqlScriptFileStoreTest {
     private interface ThrowingAction {
         void run() throws Exception;
     }
+
 }
