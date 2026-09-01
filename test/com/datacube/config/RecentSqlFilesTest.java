@@ -9,6 +9,7 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -111,7 +112,8 @@ class RecentSqlFilesTest {
         writeFailure.record(replacement);
         assertEquals(List.of(old), writeFailure.recent());
         assertArrayEquals(beforeWrite, Files.readAllBytes(writeIndex));
-        assertFixedDiagnostic(writeDiagnostics, writeIndex);
+        assertFixedDiagnostic(writeDiagnostics, "Unable to save recent SQL files.", writeIndex,
+                "private write select secret", "IOException");
 
         Path moveIndex = seeded("move.index", old);
         List<String> moveDiagnostics = new ArrayList<>();
@@ -122,7 +124,8 @@ class RecentSqlFilesTest {
         moveFailure.record(replacement);
         assertEquals(List.of(old), moveFailure.recent());
         assertArrayEquals(beforeMove, Files.readAllBytes(moveIndex));
-        assertFixedDiagnostic(moveDiagnostics, moveIndex);
+        assertFixedDiagnostic(moveDiagnostics, "Unable to save recent SQL files.", moveIndex,
+                "private path secret", "AtomicMoveNotSupportedException");
 
         Path deleteIndex = seeded("delete.index", old);
         List<String> deleteDiagnostics = new ArrayList<>();
@@ -133,8 +136,74 @@ class RecentSqlFilesTest {
         deleteFailure.clear();
         assertEquals(List.of(old), deleteFailure.recent());
         assertArrayEquals(beforeDelete, Files.readAllBytes(deleteIndex));
-        assertFixedDiagnostic(deleteDiagnostics, deleteIndex);
+        assertFixedDiagnostic(deleteDiagnostics, "Unable to clear recent SQL files.", deleteIndex,
+                "private delete select secret", "IOException");
         assertArrayEquals(unrelatedBytes, Files.readAllBytes(unrelated));
+    }
+
+    @Test
+    void rejectsReplacedOwnedTemporaryBeforePublishingOrCleaningTheReplacement() throws Exception {
+        Path index = seeded("replacement.index", directory.resolve("old.sql").toAbsolutePath().normalize());
+        byte[] originalIndex = Files.readAllBytes(index);
+        Path unrelated = directory.resolve("unrelated-replacement.txt");
+        byte[] unrelatedBytes = "unchanged sibling".getBytes(StandardCharsets.UTF_8);
+        Files.write(unrelated, unrelatedBytes);
+        List<String> diagnostics = new ArrayList<>();
+        List<Path> replacement = new ArrayList<>();
+        RecentSqlFiles recent = new RecentSqlFiles(index, (temporary, bytes) -> {
+            Files.delete(temporary);
+            Files.writeString(temporary, "ordinary replacement", StandardCharsets.UTF_8);
+            replacement.add(temporary);
+        }, RecentSqlFilesTest::moveAtomically, RecentSqlFilesTest::delete, diagnostics::add);
+
+        recent.record(directory.resolve("new.sql"));
+
+        assertEquals(List.of(directory.resolve("old.sql").toAbsolutePath().normalize()), recent.recent());
+        assertArrayEquals(originalIndex, Files.readAllBytes(index));
+        assertEquals(1, replacement.size());
+        assertEquals("ordinary replacement", Files.readString(replacement.getFirst(), StandardCharsets.UTF_8));
+        assertArrayEquals(unrelatedBytes, Files.readAllBytes(unrelated));
+        assertFixedDiagnostic(diagnostics, "Unable to save recent SQL files.", index,
+                "ordinary replacement", "IOException");
+    }
+
+    @Test
+    void rejectsOversizedAndHostileRecordCandidatesWithoutChangingPriorState() throws Exception {
+        Path old = directory.resolve("old.sql").toAbsolutePath().normalize();
+        Path index = seeded("bounded.index", old);
+        byte[] originalIndex = Files.readAllBytes(index);
+        List<String> diagnostics = new ArrayList<>();
+        RecentSqlFiles recent = new RecentSqlFiles(index, RecentSqlFilesTest::write,
+                RecentSqlFilesTest::moveAtomically, RecentSqlFilesTest::delete, diagnostics::add);
+
+        recent.record(Path.of("x".repeat(RecentSqlFiles.MAX_PATH_CHARS + 1)));
+        assertUnchangedAfterFailedRecord(recent, List.of(old), index, originalIndex, diagnostics,
+                "oversized path");
+
+        Path serializedIndex = seeded("serialized.index", old);
+        RecentSqlFiles serialized = new RecentSqlFiles(serializedIndex, RecentSqlFilesTest::write,
+                RecentSqlFilesTest::moveAtomically, RecentSqlFilesTest::delete, diagnostics::add);
+        Path root = directory.toAbsolutePath().getRoot();
+        String prefix = "汉".repeat(RecentSqlFiles.MAX_PATH_CHARS - root.toString().length() - 1);
+        for (int i = 0; i < 7; i++) serialized.record(root.resolve(prefix + i));
+        List<Path> beforeSerializedFailure = serialized.recent();
+        byte[] beforeSerializedFailureBytes = Files.readAllBytes(serializedIndex);
+        diagnostics.clear();
+        serialized.record(root.resolve(prefix + 7));
+        assertUnchangedAfterFailedRecord(serialized, beforeSerializedFailure, serializedIndex,
+                beforeSerializedFailureBytes, diagnostics, "oversized index");
+
+        diagnostics.clear();
+        Path hostile = (Path) Proxy.newProxyInstance(Path.class.getClassLoader(), new Class<?>[]{Path.class},
+                (proxy, method, arguments) -> {
+                    if (method.getName().equals("toAbsolutePath")) {
+                        throw new IllegalStateException("private hostile SQL path detail");
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
+        recent.record(hostile);
+        assertUnchangedAfterFailedRecord(recent, List.of(old), index, originalIndex, diagnostics,
+                "private hostile SQL path detail");
     }
 
     @Test
@@ -170,10 +239,20 @@ class RecentSqlFilesTest {
         Files.deleteIfExists(path);
     }
 
-    private static void assertFixedDiagnostic(List<String> diagnostics, Path privatePath) {
+    private static void assertUnchangedAfterFailedRecord(RecentSqlFiles recent, List<Path> expected, Path index,
+            byte[] originalIndex, List<String> diagnostics, String exceptionDetail) throws IOException {
+        assertEquals(expected, recent.recent());
+        assertArrayEquals(originalIndex, Files.readAllBytes(index));
+        assertFixedDiagnostic(diagnostics, "Unable to save recent SQL files.", index,
+                "select secret", exceptionDetail);
+    }
+
+    private static void assertFixedDiagnostic(List<String> diagnostics, String expected, Path privatePath,
+            String injectedSql, String exceptionDetail) {
         assertEquals(1, diagnostics.size());
-        assertFalse(diagnostics.getFirst().contains("private"));
-        assertFalse(diagnostics.getFirst().contains("secret"));
+        assertEquals(expected, diagnostics.getFirst());
+        assertFalse(diagnostics.getFirst().contains(injectedSql));
         assertFalse(diagnostics.getFirst().contains(privatePath.toString()));
+        assertFalse(diagnostics.getFirst().contains(exceptionDetail));
     }
 }

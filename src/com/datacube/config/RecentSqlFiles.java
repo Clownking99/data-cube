@@ -2,16 +2,21 @@ package com.datacube.config;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /** Versioned, bounded local metadata for recently used SQL script paths. */
@@ -68,13 +73,22 @@ public final class RecentSqlFiles {
     }
 
     public synchronized void record(Path path) {
-        Path normalized = Objects.requireNonNull(path, "path").toAbsolutePath().normalize();
-        List<Path> candidate = new ArrayList<>();
-        candidate.add(normalized);
-        for (Path existing : paths) {
-            if (!existing.equals(normalized) && candidate.size() < MAX_ENTRIES) candidate.add(existing);
+        Path required = Objects.requireNonNull(path, "path");
+        try {
+            Path normalized = required.toAbsolutePath().normalize();
+            if (normalized.toString().length() > MAX_PATH_CHARS) throw new IOException();
+            List<Path> candidate = new ArrayList<>();
+            candidate.add(normalized);
+            for (Path existing : paths) {
+                if (!existing.equals(normalized) && candidate.size() < MAX_ENTRIES) candidate.add(existing);
+            }
+            byte[] serialized = encode(candidate);
+            if (serialized.length > MAX_INDEX_BYTES) throw new IOException();
+            if (!publish(serialized)) throw new IOException();
+            paths = List.copyOf(candidate);
+        } catch (IOException | RuntimeException failure) {
+            report(SAVE_DIAGNOSTIC);
         }
-        if (publish(candidate)) paths = List.copyOf(candidate);
     }
 
     public synchronized void clear() {
@@ -136,30 +150,34 @@ public final class RecentSqlFiles {
         }
     }
 
-    private boolean publish(List<Path> candidate) {
+    private boolean publish(byte[] contents) {
         Path temporary = null;
+        TemporaryIdentity temporaryIdentity = null;
+        boolean published = false;
         try {
             Path parent = storage.getParent();
             if (parent == null) throw new IOException();
             temporary = Files.createTempFile(parent, ".datacube-recent-", ".tmp");
-            writer.write(temporary, encode(candidate));
+            temporaryIdentity = captureTemporaryIdentity(temporary);
+            if (temporaryIdentity == null) return false;
+            writer.write(temporary, contents);
+            if (!hasTemporaryIdentity(temporary, temporaryIdentity)) return false;
             mover.move(temporary, storage);
+            published = true;
             return true;
         } catch (IOException | RuntimeException failure) {
-            report(SAVE_DIAGNOSTIC);
             return false;
         } finally {
-            if (temporary != null) cleanOwnedTemporary(temporary);
+            if (!published && temporary != null) cleanOwnedTemporary(temporary, temporaryIdentity);
         }
     }
 
-    private static byte[] encode(List<Path> paths) {
+    private static byte[] encode(List<Path> paths) throws CharacterCodingException {
         StringBuilder content = new StringBuilder(HEADER).append('\n');
         for (Path path : paths) {
-            content.append(Base64.getEncoder().encodeToString(path.toString()
-                    .getBytes(StandardCharsets.UTF_8))).append('\n');
+            content.append(Base64.getEncoder().encodeToString(strictUtf8(path.toString()))).append('\n');
         }
-        return content.toString().getBytes(StandardCharsets.UTF_8);
+        return strictUtf8(content.toString());
     }
 
     private static String decodeUtf8(byte[] bytes) throws CharacterCodingException {
@@ -170,13 +188,60 @@ public final class RecentSqlFiles {
                 .toString();
     }
 
-    private static void cleanOwnedTemporary(Path temporary) {
+    private static byte[] strictUtf8(String value) throws CharacterCodingException {
+        ByteBuffer encoded = StandardCharsets.UTF_8.newEncoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .encode(CharBuffer.wrap(value));
+        byte[] bytes = new byte[encoded.remaining()];
+        encoded.get(bytes);
+        return bytes;
+    }
+
+    private static TemporaryIdentity captureTemporaryIdentity(Path path) throws IOException {
+        TemporaryIdentity identity = temporaryIdentity(path);
+        if (identity == null || identity.fileKey() != null) return identity;
+        Path witness = path.resolveSibling(".datacube-recent-owner-" + UUID.randomUUID());
+        Files.createLink(witness, path);
+        return new TemporaryIdentity(null, identity.created(), witness);
+    }
+
+    private static TemporaryIdentity temporaryIdentity(Path path) throws IOException {
+        BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class,
+                LinkOption.NOFOLLOW_LINKS);
+        if (!attributes.isRegularFile() || attributes.isSymbolicLink()) return null;
+        return new TemporaryIdentity(attributes.fileKey(), attributes.creationTime(), null);
+    }
+
+    private static boolean hasTemporaryIdentity(Path path, TemporaryIdentity expected) {
+        if (expected == null) return false;
+        try {
+            if (expected.witness() != null) {
+                TemporaryIdentity candidate = temporaryIdentity(path);
+                TemporaryIdentity witness = temporaryIdentity(expected.witness());
+                return candidate != null && witness != null
+                        && candidate.fileKey() == null && witness.fileKey() == null
+                        && Objects.equals(expected.created(), candidate.created())
+                        && Objects.equals(expected.created(), witness.created())
+                        && Files.isSameFile(path, expected.witness());
+            }
+            return expected.equals(temporaryIdentity(path));
+        } catch (IOException | RuntimeException failure) {
+            return false;
+        }
+    }
+
+    private static void cleanOwnedTemporary(Path temporary, TemporaryIdentity identity) {
+        if (!hasTemporaryIdentity(temporary, identity)) return;
         try {
             Files.deleteIfExists(temporary);
+            if (identity.witness() != null) Files.deleteIfExists(identity.witness());
         } catch (IOException | RuntimeException ignored) {
             // The temporary was created by this instance and cleanup is best effort.
         }
     }
+
+    private record TemporaryIdentity(Object fileKey, FileTime created, Path witness) { }
 
     private void report(String message) {
         try {

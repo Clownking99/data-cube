@@ -84,6 +84,24 @@ class SqlScriptDocumentTest {
         document.attach(loaded);
     }
 
+    @Test
+    void rejectedLoadedLeavesThePreviousBindingAndBaselineIntact() throws Exception {
+        SqlScriptDocument document = new SqlScriptDocument();
+        SqlScriptFileStore.Loaded original = loaded("original.sql", "original text");
+        SqlScriptFileStore.Loaded invalid = new SqlScriptFileStore.Loaded(
+                directory.resolve("replacement.sql"), null,
+                new SqlScriptFileStore().capture(directory.resolve("replacement.sql")));
+        document.attach(original);
+
+        assertThrows(NullPointerException.class, () -> document.saved(invalid));
+
+        assertEquals(original.path(), document.path());
+        assertEquals(original.target(), document.target());
+        assertFalse(document.dirty("original text"));
+        assertTrue(document.dirty("replacement text"));
+        assertEquals("original.sql", document.title("New SQL", "original text"));
+    }
+
     private SqlScriptFileStore.Loaded loaded(String filename, String text) throws Exception {
         SqlScriptFileStore store = new SqlScriptFileStore();
         SqlScriptFileStore.Target target = store.capture(directory.resolve(filename));

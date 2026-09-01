@@ -45,8 +45,11 @@ public final class SqlScriptDocument {
 
     private void bind(SqlScriptFileStore.Loaded loaded) {
         SqlScriptFileStore.Loaded snapshot = Objects.requireNonNull(loaded, "loaded");
-        path = Objects.requireNonNull(snapshot.path(), "loaded.path");
-        target = Objects.requireNonNull(snapshot.target(), "loaded.target");
-        baseline = Objects.requireNonNull(snapshot.text(), "loaded.text");
+        Path nextPath = Objects.requireNonNull(snapshot.path(), "loaded.path");
+        SqlScriptFileStore.Target nextTarget = Objects.requireNonNull(snapshot.target(), "loaded.target");
+        String nextBaseline = Objects.requireNonNull(snapshot.text(), "loaded.text");
+        path = nextPath;
+        target = nextTarget;
+        baseline = nextBaseline;
     }
 }
