@@ -31,7 +31,7 @@
 - Produces `SqlScriptFileStore.Target` as an opaque versioned target with `path()` and `exists()`.
 - Produces `SqlScriptFileStore.Loaded(Path path, String text, Target target)`.
 - Public operations: `Target capture(Path)`, `Loaded load(Path)`, and `Loaded save(Target, String)`.
-- Typed failures expose only `FailureCode` (`INVALID_TARGET`, `TOO_LARGE`, `INVALID_UTF8`, `CHANGED`, `BUSY`, `WRITE`, `PUBLISH`, `CLEANUP`) plus an owned temporary path only for cleanup diagnostics.
+- Typed failures expose only `FailureCode` (`INVALID_TARGET`, `READ`, `TOO_LARGE`, `INVALID_UTF8`, `CHANGED`, `BUSY`, `WRITE`, `PUBLISH`, `CLEANUP`) plus an owned temporary path only for cleanup diagnostics.
 
 - [ ] **Step 1: Write failing store tests**
 
@@ -54,7 +54,7 @@ Use this public shape:
 ```java
 public final class SqlScriptFileStore {
     public static final long MAX_BYTES = 8L * 1024 * 1024;
-    public enum FailureCode { INVALID_TARGET, TOO_LARGE, INVALID_UTF8, CHANGED, BUSY, WRITE, PUBLISH, CLEANUP }
+    public enum FailureCode { INVALID_TARGET, READ, TOO_LARGE, INVALID_UTF8, CHANGED, BUSY, WRITE, PUBLISH, CLEANUP }
     public static final class Failure extends IOException {
         public FailureCode code();
         public Path temporaryPath();
