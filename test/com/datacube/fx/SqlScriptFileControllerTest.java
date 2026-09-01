@@ -20,6 +20,7 @@ import java.util.Queue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -284,6 +285,88 @@ class SqlScriptFileControllerTest {
         }
     }
 
+    @Test
+    void closeBetweenPendingPublicationAndSubmitAdmissionSettlesFalseWithoutSideEffects()
+            throws Exception {
+        SqlScriptFileStore store = new SqlScriptFileStore();
+        Path target = Files.writeString(directory.resolve("admission-race.sql"), "old");
+        CountDownLatch exposed = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Runnable barrier = () -> {
+            exposed.countDown();
+            try {
+                assertTrue(release.await(5, TimeUnit.SECONDS), "admission barrier timed out");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(interrupted);
+            }
+        };
+        try (Fixture fixture = new Fixture("ignored", store.load(target), store,
+                recent("admission-race-recent"), barrier)) {
+            fixture.edit("must not publish");
+            int titleCount = fixture.titles.size();
+            int feedbackCount = fixture.feedback.size();
+            CompletableFuture<CompletionStage<Boolean>> returned = new CompletableFuture<>();
+            Platform.runLater(() -> {
+                try {
+                    returned.complete(fixture.controller.save());
+                } catch (Throwable failure) {
+                    returned.completeExceptionally(failure);
+                }
+            });
+            assertTrue(exposed.await(5, TimeUnit.SECONDS));
+
+            Thread closer = Thread.ofVirtual().start(fixture.controller::close);
+            closer.join();
+            assertFalse(fixture.controller.isBusy());
+            release.countDown();
+
+            CompletionStage<Boolean> operation = returned.get(5, TimeUnit.SECONDS);
+            assertFalse(operation.toCompletableFuture().get(5, TimeUnit.SECONDS));
+            fixture.fx(() -> { });
+            assertFalse(fixture.controller.busyProperty().get());
+            assertEquals(0, fixture.submitter.submissions.get());
+            assertEquals(0, fixture.submitter.workerCount());
+            assertEquals("old", Files.readString(target));
+            assertTrue(fixture.recent.recent().isEmpty());
+            assertEquals(titleCount, fixture.titles.size());
+            assertEquals(feedbackCount, fixture.feedback.size());
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void throwingTitleConsumerAfterPublicationSettlesTrueAndRemainsRetryable() throws Exception {
+        try (Fixture fixture = fixture("baseline", null)) {
+            Path target = directory.resolve("title-callback.sql");
+            fixture.chosen.set(target);
+            fixture.edit("first durable snapshot");
+            fixture.throwTitle = true;
+
+            assertTrue(fixture.settle(fixture.save()));
+            assertEquals("first durable snapshot", Files.readString(target));
+            assertFalse(fixture.busy());
+            assertFalse(FxUiTestSupport.call(() -> fixture.controller.busyProperty().get()));
+            String fixed = fixture.feedback.getLast();
+            assertTrue(fixed.contains("失败"));
+            assertFalse(fixed.contains("private title detail"));
+            assertFalse(fixed.contains("first durable snapshot"));
+            assertFalse(fixed.contains(target.toString()));
+
+            fixture.throwTitle = false;
+            fixture.edit("second durable snapshot");
+            assertTrue(fixture.settle(fixture.save()));
+            assertEquals("second durable snapshot", Files.readString(target));
+
+            int feedbackBeforeListener = fixture.feedback.size();
+            fixture.throwTitle = true;
+            fixture.edit("listener must survive");
+            assertEquals(feedbackBeforeListener + 1, fixture.feedback.size());
+            assertFalse(fixture.feedback.getLast().contains("private title detail"));
+        }
+    }
+
     private RecentSqlFiles recent(String name) {
         return new RecentSqlFiles(directory.resolve(name + ".txt"));
     }
@@ -312,21 +395,30 @@ class SqlScriptFileControllerTest {
         final CodeArea editor;
         final SqlScriptFileController controller;
         boolean throwDecision;
+        volatile boolean throwTitle;
 
         Fixture(String text, SqlScriptFileStore.Loaded loaded, SqlScriptFileStore store,
                 RecentSqlFiles recent) throws Exception {
+            this(text, loaded, store, recent, () -> { });
+        }
+
+        Fixture(String text, SqlScriptFileStore.Loaded loaded, SqlScriptFileStore store,
+                RecentSqlFiles recent, Runnable beforeSubmit) throws Exception {
             this.recent = recent;
             editor = FxUiTestSupport.call(() -> new CodeArea(text));
             scope = runner.scope();
             controller = FxUiTestSupport.call(() -> new SqlScriptFileController(
-                    editor, store, recent, scope, () -> null, titles::add, "新建 SQL",
+                    editor, store, recent, scope, () -> null, title -> {
+                        if (throwTitle) throw new IllegalStateException("private title detail");
+                        titles.add(title);
+                    }, "新建 SQL",
                     ignored -> chosen.get(), (ignored, path) -> {
                         confirmations.incrementAndGet();
                         return overwrite.get();
                     }, ignored -> {
                         if (throwDecision) throw new IllegalStateException("private decision");
                         return decision.get();
-                    }, feedback::add, submitter));
+                    }, feedback::add, submitter, beforeSubmit));
             fx(() -> controller.install(loaded));
         }
 
@@ -404,11 +496,13 @@ class SqlScriptFileControllerTest {
     private static final class ControlledSubmitter implements SqlScriptFileController.Submitter {
         private final Queue<Runnable> workers = new ArrayDeque<>();
         private final Queue<Runnable> fx = new ArrayDeque<>();
+        private final AtomicInteger submissions = new AtomicInteger();
 
         @Override
         public <T> void submit(Callable<T> operation, Consumer<? super T> success,
                 Consumer<? super Throwable> failure) {
             assertTrue(Platform.isFxApplicationThread(), "submission must be initiated on FX");
+            submissions.incrementAndGet();
             workers.add(() -> {
                 assertFalse(Platform.isFxApplicationThread(), "file I/O must run off FX");
                 try {

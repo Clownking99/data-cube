@@ -16,8 +16,6 @@ import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -51,17 +49,18 @@ public final class SqlScriptFileController implements AutoCloseable {
     private final Function<Window, CloseDecision> closeDecisionProvider;
     private final Consumer<String> feedback;
     private final Submitter submitter;
+    private final Runnable beforeSubmit;
     private final ReadOnlyBooleanWrapper busyProperty = new ReadOnlyBooleanWrapper();
-    private final AtomicBoolean closed = new AtomicBoolean();
-    private final AtomicLong generation = new AtomicLong();
     private final Object lifecycleLock = new Object();
     private final ChangeListener<String> textListener = (observable, oldText, newText) -> refreshTitle();
 
     private SqlScriptDocument document;
     private boolean installed;
     private boolean listenerAttached;
+    private volatile boolean closed;
+    private long generation;
     private volatile boolean busy;
-    private volatile CompletableFuture<Boolean> pending;
+    private CompletableFuture<Boolean> pending;
 
     SqlScriptFileController(CodeArea editor, SqlScriptFileStore store, RecentSqlFiles recent,
             FxTaskScope tasks, Supplier<Window> owner, Consumer<String> titleConsumer,
@@ -69,7 +68,8 @@ public final class SqlScriptFileController implements AutoCloseable {
             BiPredicate<Window, Path> overwriteConfirmer,
             Function<Window, CloseDecision> closeDecisionProvider, Consumer<String> feedback) {
         this(editor, store, recent, tasks, owner, titleConsumer, fallbackTitle, savePathChooser,
-                overwriteConfirmer, closeDecisionProvider, feedback, new ScopeSubmitter(tasks));
+                overwriteConfirmer, closeDecisionProvider, feedback, new ScopeSubmitter(tasks),
+                () -> { });
     }
 
     SqlScriptFileController(CodeArea editor, SqlScriptFileStore store, RecentSqlFiles recent,
@@ -78,6 +78,16 @@ public final class SqlScriptFileController implements AutoCloseable {
             BiPredicate<Window, Path> overwriteConfirmer,
             Function<Window, CloseDecision> closeDecisionProvider, Consumer<String> feedback,
             Submitter submitter) {
+        this(editor, store, recent, tasks, owner, titleConsumer, fallbackTitle, savePathChooser,
+                overwriteConfirmer, closeDecisionProvider, feedback, submitter, () -> { });
+    }
+
+    SqlScriptFileController(CodeArea editor, SqlScriptFileStore store, RecentSqlFiles recent,
+            FxTaskScope tasks, Supplier<Window> owner, Consumer<String> titleConsumer,
+            String fallbackTitle, Function<Window, Path> savePathChooser,
+            BiPredicate<Window, Path> overwriteConfirmer,
+            Function<Window, CloseDecision> closeDecisionProvider, Consumer<String> feedback,
+            Submitter submitter, Runnable beforeSubmit) {
         this.editor = Objects.requireNonNull(editor, "editor");
         this.store = Objects.requireNonNull(store, "store");
         this.recent = Objects.requireNonNull(recent, "recent");
@@ -91,11 +101,12 @@ public final class SqlScriptFileController implements AutoCloseable {
                 "closeDecisionProvider");
         this.feedback = Objects.requireNonNull(feedback, "feedback");
         this.submitter = Objects.requireNonNull(submitter, "submitter");
+        this.beforeSubmit = Objects.requireNonNull(beforeSubmit, "beforeSubmit");
     }
 
     public void install(SqlScriptFileStore.Loaded initial) {
         requireFx("install");
-        if (closed.get()) throw new IllegalStateException("SQL file controller is closed");
+        if (closed) throw new IllegalStateException("SQL file controller is closed");
         if (installed) throw new IllegalStateException("SQL file controller is already installed");
         if (initial == null) {
             document = new SqlScriptDocument(editor.getText());
@@ -112,37 +123,37 @@ public final class SqlScriptFileController implements AutoCloseable {
 
     public CompletionStage<Boolean> save() {
         requireFx("save");
-        if (!readyForRequest()) return CompletableFuture.completedFuture(false);
-        if (document.target() == null) return startSaveAs();
-        CompletableFuture<Boolean> result = beginOperation();
-        if (result.isDone()) return result;
-        submitSave(document.target(), editor.getText(), generation.get(), result);
-        return result;
+        Operation operation = beginOperation();
+        if (operation == null) return CompletableFuture.completedFuture(false);
+        if (document.target() == null) return startSaveAs(operation);
+        submitSave(document.target(), editor.getText(), operation);
+        return operation.result();
     }
 
     public CompletionStage<Boolean> saveAs() {
         requireFx("saveAs");
-        if (!readyForRequest()) return CompletableFuture.completedFuture(false);
-        return startSaveAs();
+        Operation operation = beginOperation();
+        if (operation == null) return CompletableFuture.completedFuture(false);
+        return startSaveAs(operation);
     }
 
-    private CompletionStage<Boolean> startSaveAs() {
+    private CompletionStage<Boolean> startSaveAs(Operation operation) {
         final Path chosen;
         try {
             chosen = savePathChooser.apply(owner.get());
         } catch (RuntimeException failure) {
-            report(INVALID_TARGET_FEEDBACK);
-            return CompletableFuture.completedFuture(false);
+            fail(operation, INVALID_TARGET_FEEDBACK);
+            return operation.result();
         }
-        if (chosen == null) return CompletableFuture.completedFuture(false);
+        if (chosen == null) {
+            finish(operation, false);
+            return operation.result();
+        }
 
-        CompletableFuture<Boolean> result = beginOperation();
-        if (result.isDone()) return result;
-        long token = generation.get();
         String snapshot = editor.getText();
-        submit(token, result, () -> store.capture(chosen), target -> {
+        submit(operation, () -> store.capture(chosen), target -> {
             if (document.path() != null && document.path().equals(target.path())) {
-                submitSave(document.target(), snapshot, token, result);
+                submitSave(document.target(), snapshot, operation);
                 return;
             }
             if (target.exists()) {
@@ -150,54 +161,68 @@ public final class SqlScriptFileController implements AutoCloseable {
                 try {
                     confirmed = overwriteConfirmer.test(owner.get(), target.path());
                 } catch (RuntimeException failure) {
-                    fail(token, result, GENERIC_FEEDBACK);
+                    fail(operation, GENERIC_FEEDBACK);
                     return;
                 }
                 if (!confirmed) {
-                    finish(token, result, false);
+                    finish(operation, false);
                     return;
                 }
             }
-            submitSave(target, snapshot, token, result);
+            submitSave(target, snapshot, operation);
         });
-        return result;
+        return operation.result();
     }
 
-    private void submitSave(SqlScriptFileStore.Target target, String snapshot, long token,
-            CompletableFuture<Boolean> result) {
-        submit(token, result, () -> {
+    private void submitSave(SqlScriptFileStore.Target target, String snapshot, Operation operation) {
+        submit(operation, () -> {
             SqlScriptFileStore.Loaded saved = store.save(target, snapshot);
             synchronized (lifecycleLock) {
-                if (!closed.get() && generation.get() == token) recent.record(saved.path());
+                if (currentLocked(operation)) recent.record(saved.path());
             }
             return saved;
         }, saved -> {
             document.saved(saved);
             refreshTitle();
-            finish(token, result, true);
+            finish(operation, true);
         });
     }
 
-    private <T> void submit(long token, CompletableFuture<Boolean> result, Callable<T> operation,
+    private <T> void submit(Operation admission, Callable<T> operation,
             Consumer<T> success) {
         try {
-            submitter.submit(operation, value -> {
-                if (!current(token, result)) return;
-                success.accept(value);
-            }, failure -> {
-                if (!current(token, result)) return;
-                fail(token, result, feedbackFor(failure));
-            });
+            beforeSubmit.run();
         } catch (RuntimeException failure) {
-            fail(token, result, GENERIC_FEEDBACK);
+            fail(admission, GENERIC_FEEDBACK);
+            return;
         }
+        RuntimeException rejected = null;
+        synchronized (lifecycleLock) {
+            if (!currentLocked(admission)) return;
+            try {
+                submitter.submit(operation, value -> {
+                    if (!current(admission)) return;
+                    try {
+                        success.accept(value);
+                    } catch (RuntimeException collaboratorFailure) {
+                        fail(admission, GENERIC_FEEDBACK);
+                    }
+                }, failure -> {
+                    if (!current(admission)) return;
+                    fail(admission, feedbackFor(failure));
+                });
+            } catch (RuntimeException failure) {
+                rejected = failure;
+            }
+        }
+        if (rejected != null) fail(admission, GENERIC_FEEDBACK);
     }
 
     public CompletionStage<CloseGuardOutcome> guardClose(
             Supplier<CompletionStage<CloseGuardOutcome>> proceed) {
         requireFx("guardClose");
         Objects.requireNonNull(proceed, "proceed");
-        if (closed.get() || busy || !installed) {
+        if (unavailableForClose()) {
             return CompletableFuture.completedFuture(CloseGuardOutcome.REJECTED);
         }
         if (!document.dirty(editor.getText())) return invokeGuard(proceed);
@@ -214,7 +239,7 @@ public final class SqlScriptFileController implements AutoCloseable {
         }
         if (decision == CloseDecision.DISCARD) return invokeGuard(proceed);
         return save().thenCompose(saved -> {
-            if (!Boolean.TRUE.equals(saved) || closed.get() || document.dirty(editor.getText())) {
+            if (!Boolean.TRUE.equals(saved) || closed || document.dirty(editor.getText())) {
                 return CompletableFuture.completedFuture(CloseGuardOutcome.REJECTED);
             }
             return invokeGuard(proceed);
@@ -251,63 +276,118 @@ public final class SqlScriptFileController implements AutoCloseable {
 
     @Override
     public void close() {
+        CompletableFuture<Boolean> exposed;
         synchronized (lifecycleLock) {
-            if (!closed.compareAndSet(false, true)) return;
-            generation.incrementAndGet();
+            if (closed) return;
+            closed = true;
+            generation++;
+            busy = false;
+            exposed = pending;
+            pending = null;
+        }
+        if (exposed != null) exposed.complete(false);
+        clearBusyPropertyAfterClose();
+    }
+
+    private Operation beginOperation() {
+        Operation operation;
+        boolean rejectedBusy;
+        synchronized (lifecycleLock) {
+            if (closed || !installed) return null;
+            rejectedBusy = busy;
+            if (rejectedBusy) {
+                operation = null;
+            } else {
+                busy = true;
+                CompletableFuture<Boolean> result = new CompletableFuture<>();
+                pending = result;
+                operation = new Operation(generation, result);
+            }
+        }
+        if (rejectedBusy) {
+            report(BUSY_FEEDBACK);
+            return null;
+        }
+        busyProperty.set(true);
+        return operation;
+    }
+
+    private boolean current(Operation operation) {
+        synchronized (lifecycleLock) {
+            return currentLocked(operation);
+        }
+    }
+
+    private boolean currentLocked(Operation operation) {
+        return !closed && generation == operation.generation()
+                && pending == operation.result() && !operation.result().isDone();
+    }
+
+    private void finish(Operation operation, boolean value) {
+        synchronized (lifecycleLock) {
+            if (!currentLocked(operation)) return;
+            pending = null;
             busy = false;
         }
-        CompletableFuture<Boolean> exposed = pending;
-        if (exposed != null) exposed.complete(false);
-    }
-
-    private boolean readyForRequest() {
-        if (closed.get() || !installed) return false;
-        if (!busy) return true;
-        report(BUSY_FEEDBACK);
-        return false;
-    }
-
-    private CompletableFuture<Boolean> beginOperation() {
-        if (busy || closed.get()) {
-            if (busy) report(BUSY_FEEDBACK);
-            return CompletableFuture.completedFuture(false);
+        try {
+            busyProperty.set(false);
+        } finally {
+            operation.result().complete(value);
         }
-        busy = true;
-        busyProperty.set(true);
-        CompletableFuture<Boolean> result = new CompletableFuture<>();
-        pending = result;
-        return result;
     }
 
-    private boolean current(long token, CompletableFuture<Boolean> result) {
-        return !closed.get() && generation.get() == token && pending == result && !result.isDone();
-    }
-
-    private void finish(long token, CompletableFuture<Boolean> result, boolean value) {
-        if (!current(token, result)) return;
-        pending = null;
-        busy = false;
-        busyProperty.set(false);
-        result.complete(value);
-    }
-
-    private void fail(long token, CompletableFuture<Boolean> result, String message) {
-        if (!current(token, result)) return;
+    private void fail(Operation operation, String message) {
+        if (!current(operation)) return;
         report(message);
-        finish(token, result, false);
+        finish(operation, false);
     }
 
     private void refreshTitle() {
-        if (closed.get() || document == null) return;
-        titleConsumer.accept(document.title(fallbackTitle, editor.getText()));
+        boolean failed = false;
+        synchronized (lifecycleLock) {
+            if (closed || document == null) return;
+            try {
+                titleConsumer.accept(document.title(fallbackTitle, editor.getText()));
+            } catch (RuntimeException collaboratorFailure) {
+                failed = true;
+            }
+        }
+        if (failed) report(GENERIC_FEEDBACK);
     }
 
     private void report(String message) {
-        if (closed.get()) return;
+        synchronized (lifecycleLock) {
+            if (closed) return;
+            try {
+                feedback.accept(message);
+            } catch (RuntimeException ignored) {
+                // Fixed feedback is best effort and cannot change the persistence result.
+            }
+        }
+    }
+
+    private boolean unavailableForClose() {
+        synchronized (lifecycleLock) {
+            return closed || busy || !installed;
+        }
+    }
+
+    private void clearBusyPropertyAfterClose() {
+        Runnable clear = () -> {
+            try {
+                busyProperty.set(false);
+            } catch (RuntimeException ignored) {
+                // UI listeners cannot reactivate the thread-safe lifecycle state.
+            }
+        };
+        if (Platform.isFxApplicationThread()) {
+            clear.run();
+            return;
+        }
         try {
-            feedback.accept(message);
-        } catch (RuntimeException ignored) {
-            // Fixed feedback is best effort and cannot change the persistence result.
+            Platform.runLater(clear);
+        } catch (IllegalStateException toolkitStopped) {
+            // The UI is already unavailable; the thread-safe busy state is still false.
         }
     }
 
@@ -343,4 +423,6 @@ public final class SqlScriptFileController implements AutoCloseable {
             scope.submit(operation, success, failure);
         }
     }
+
+    private record Operation(long generation, CompletableFuture<Boolean> result) { }
 }
