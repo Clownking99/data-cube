@@ -204,4 +204,57 @@ class SqlEditorSessionContractTest {
         assertFalse(body.contains("openDedicated"));
         assertFalse(body.contains("DriverManager"));
     }
+
+    @Test
+    void sqlFileToolbarStartsDisabledAndBindsToTheInstalledController() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("saveSqlFileBtn.setId(\"sql-file-save\")"));
+        assertTrue(source.contains("saveAsSqlFileBtn.setId(\"sql-file-save-as\")"));
+        assertTrue(source.contains("saveSqlFileBtn.setDisable(true)"));
+        assertTrue(source.contains("saveAsSqlFileBtn.setDisable(true)"));
+        assertTrue(source.contains("fileController.busyProperty()"));
+        assertTrue(source.contains("public void installSqlScriptFileController("));
+        assertTrue(source.contains("new SqlScriptFileController("));
+    }
+
+    @Test
+    void interactiveCloseUsesFileGuardBeforeExistingSessionGuardButMandatoryCloseBypassesIt()
+            throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+        int interactive = source.indexOf("public CompletionStage<CloseGuardOutcome> requestClose()");
+        int mandatory = source.indexOf("public CompletionStage<CloseGuardOutcome> requestMandatoryClose()");
+        String interactiveBody = source.substring(interactive, mandatory);
+        int afterMandatory = source.indexOf("\n    /**", mandatory + 1);
+        String mandatoryBody = source.substring(mandatory, afterMandatory);
+
+        assertTrue(interactiveBody.contains("fileController.guardClose(closeGuard::requestClose)"));
+        assertTrue(interactiveBody.indexOf("fileController.guardClose")
+                < interactiveBody.indexOf("closeGuard::requestClose"));
+        assertFalse(mandatoryBody.contains("fileController"));
+        assertTrue(mandatoryBody.contains("mandatoryCloseGuard.requestClose()"));
+    }
+
+    @Test
+    void resourceCloseInvalidatesFileControllerBeforeSharedTasksAndUiCloseDetachesListener()
+            throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+        int closeResources = source.indexOf("void closeResources()");
+        int finalize = source.indexOf("void finalizeCloseOnFx()", closeResources);
+        String resourceBody = source.substring(closeResources, finalize);
+        int nextMethod = source.indexOf("\n    private ", finalize);
+        String uiBody = source.substring(finalize, nextMethod);
+
+        assertTrue(resourceBody.indexOf("fileController.close()")
+                < resourceBody.indexOf("tasks::close"));
+        int destructive = source.indexOf("private void runDestructiveClose");
+        int afterDestructive = source.indexOf("\n    private ", destructive + 1);
+        String destructiveBody = source.substring(destructive, afterDestructive);
+        assertTrue(destructiveBody.contains("fileController.close()"));
+        assertTrue(destructiveBody.indexOf("fileController.close()")
+                < destructiveBody.indexOf("tasks::close"));
+        assertTrue(uiBody.contains("fileController.detachUi()"));
+        assertFalse(source.contains("SqlWorkspace(") && source.contains("fileController.path()"));
+        assertFalse(source.contains("SqlDraft(") && source.contains("fileController.path()"));
+    }
 }

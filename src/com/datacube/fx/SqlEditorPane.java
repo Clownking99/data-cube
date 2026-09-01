@@ -4,6 +4,7 @@ import com.datacube.config.AppSettings;
 import com.datacube.config.AppSettings.CommentMode;
 import com.datacube.config.ShortcutAction;
 import com.datacube.config.ShortcutSettings;
+import com.datacube.config.RecentSqlFiles;
 import com.datacube.config.SqlHistoryStore;
 import com.datacube.config.SqlDraft;
 import com.datacube.config.SqlDraftCoordinator;
@@ -19,6 +20,7 @@ import com.datacube.sqleditor.SqlFormatter;
 import com.datacube.sqleditor.SqlSafetyAnalyzer;
 import com.datacube.sqleditor.SqlSafetyPolicy;
 import com.datacube.sqleditor.SqlScriptSplitter;
+import com.datacube.sqleditor.SqlScriptFileStore;
 import com.datacube.sqleditor.result.FilterCondition;
 import com.datacube.sqleditor.result.FilterConnector;
 import com.datacube.sqleditor.result.RenderedFilterQuery;
@@ -57,6 +59,7 @@ import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.*;
+import javafx.stage.FileChooser;
 import javafx.stage.Window;
 import javafx.util.Duration;
 import org.fxmisc.flowless.VirtualizedScrollPane;
@@ -171,6 +174,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private Label statusLabel;
     private TextField schemaField;
     private Button executeBtn, explainBtn, formatBtn, clearBtn;
+    private Button saveSqlFileBtn, saveAsSqlFileBtn;
     private Button recoveryConnectionButton;
     private MenuButton exportResultBtn;
     private Button copyInsertBtn;
@@ -191,6 +195,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private final AtomicBoolean uiFinalized = new AtomicBoolean();
     private final AsyncTabCloseGuard closeGuard;
     private final AsyncTabCloseGuard mandatoryCloseGuard;
+    private SqlScriptFileController fileController;
     /** 最近一次单条查询的原 SQL（用于安全重查与「复制 INSERT」解析目标表）。 */
     private String lastQuerySql;
     private SqlDraftEditorBinding draftBinding;
@@ -320,6 +325,26 @@ public final class SqlEditorPane implements AutoCloseable {
         applyHighlighting(editorArea.getText());
     }
 
+    /** Installs the one per-editor SQL file lifecycle after its managed tab has a title owner. */
+    public void installSqlScriptFileController(SqlScriptFileStore.Loaded initial,
+            SqlScriptFileStore store, RecentSqlFiles recentFiles,
+            Consumer<String> titleConsumer, String fallbackTitle) {
+        if (!Platform.isFxApplicationThread()) {
+            throw new IllegalStateException(
+                    "SqlEditorPane.installSqlScriptFileController must run on the FX Application Thread");
+        }
+        if (fileController != null) throw new IllegalStateException("SQL file controller already installed");
+        SqlScriptFileController controller = new SqlScriptFileController(
+                editorArea, store, recentFiles, tasks,
+                () -> root.getScene() == null ? null : root.getScene().getWindow(),
+                titleConsumer, fallbackTitle, this::chooseSqlSavePath, this::confirmSqlOverwrite,
+                this::requestSqlFileCloseDecision, this::showAlert);
+        controller.install(initial);
+        fileController = controller;
+        saveSqlFileBtn.disableProperty().bind(fileController.busyProperty());
+        saveAsSqlFileBtn.disableProperty().bind(fileController.busyProperty());
+    }
+
     /** Captures history data on FX; persistence itself always runs on a virtual thread. */
     private HistorySnapshot captureHistory(String sql, ConnConfig connection, String schema) {
         return new HistorySnapshot(connection == null ? null : connection.name(), schema, sql);
@@ -425,6 +450,9 @@ public final class SqlEditorPane implements AutoCloseable {
             return java.util.concurrent.CompletableFuture.failedFuture(
                     new IllegalStateException("SqlEditorPane.requestClose must start on the FX Application Thread"));
         }
+        if (fileController != null) {
+            return fileController.guardClose(closeGuard::requestClose);
+        }
         return closeGuard.requestClose();
     }
 
@@ -440,6 +468,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
     void closeResources() {
+        if (fileController != null) fileController.close();
         detachDraftFromAnyThread();
         if (resourcesClosed.get()) return;
         if (resultExports != null) resultExports.close();
@@ -459,6 +488,7 @@ public final class SqlEditorPane implements AutoCloseable {
     /** Lightweight JavaFX phase; callers invoke this only on the FX Application Thread. */
     void finalizeCloseOnFx() {
         if (!uiFinalized.compareAndSet(false, true)) return;
+        if (fileController != null) fileController.detachUi();
         if (draftBinding != null) draftBinding.close();
         resultRowIndexes.clear();
         resultFilterState.clearAll();
@@ -756,6 +786,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void runDestructiveClose(ClosePlan snapshot) {
         sessionOperations.suppressCallbacks();
+        if (fileController != null) fileController.close();
         BestEffortCloseSequence.run(
                 () -> persistCloseSnapshot(snapshot),
                 metadataTasks::close,
@@ -809,6 +840,20 @@ public final class SqlEditorPane implements AutoCloseable {
         schemaField.setPromptText("schema（可选）");
         schemaField.setPrefWidth(160);
 
+        saveSqlFileBtn = new Button("保存 SQL");
+        saveSqlFileBtn.setId("sql-file-save");
+        saveSqlFileBtn.setDisable(true);
+        saveSqlFileBtn.setOnAction(event -> {
+            if (fileController != null) fileController.save();
+        });
+
+        saveAsSqlFileBtn = new Button("SQL 另存为");
+        saveAsSqlFileBtn.setId("sql-file-save-as");
+        saveAsSqlFileBtn.setDisable(true);
+        saveAsSqlFileBtn.setOnAction(event -> {
+            if (fileController != null) fileController.saveAs();
+        });
+
         executeBtn = new Button("执行 (" + shortcuts.get(ShortcutAction.SQL_EXECUTE).getDisplayText() + ")");
         executeBtn.setId("sql-execute");
         executeBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
@@ -849,7 +894,8 @@ public final class SqlEditorPane implements AutoCloseable {
         copyInsertBtn.setDisable(true);
         copyInsertBtn.setOnAction(e -> onCopyInsert());
 
-        primary.getChildren().addAll(new Label("Schema:"), schemaField, executeBtn, explainBtn,
+        primary.getChildren().addAll(new Label("Schema:"), schemaField,
+                saveSqlFileBtn, saveAsSqlFileBtn, executeBtn, explainBtn,
                 analyzeCheck, formatBtn, exportResultBtn, copyInsertBtn, clearBtn);
 
         environmentBadge = new Label();
@@ -881,6 +927,41 @@ public final class SqlEditorPane implements AutoCloseable {
         connectionGuidance.setWrapText(true);
         connectionGuidance.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
         return new VBox(4, primary, safety, connectionGuidance);
+    }
+
+    private java.nio.file.Path chooseSqlSavePath(Window owner) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("保存 SQL 文件");
+        chooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("SQL 文件 (*.sql)", "*.sql"));
+        java.io.File chosen = chooser.showSaveDialog(owner);
+        return chosen == null ? null : chosen.toPath();
+    }
+
+    private boolean confirmSqlOverwrite(Window owner, java.nio.file.Path ignoredTarget) {
+        ButtonType overwrite = new ButtonType("覆盖", ButtonBar.ButtonData.OK_DONE);
+        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                "目标文件已存在，是否覆盖？", overwrite, cancel);
+        alert.setTitle("覆盖 SQL 文件");
+        alert.setHeaderText(null);
+        if (owner != null) alert.initOwner(owner);
+        return alert.showAndWait().orElse(cancel) == overwrite;
+    }
+
+    private SqlScriptFileController.CloseDecision requestSqlFileCloseDecision(Window owner) {
+        ButtonType save = new ButtonType("保存并关闭", ButtonBar.ButtonData.YES);
+        ButtonType discard = new ButtonType("不保存", ButtonBar.ButtonData.NO);
+        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                "SQL 文件有未保存更改，请选择关闭方式。", save, discard, cancel);
+        alert.setTitle("关闭 SQL 文件");
+        alert.setHeaderText(null);
+        if (owner != null) alert.initOwner(owner);
+        ButtonType chosen = alert.showAndWait().orElse(cancel);
+        if (chosen == save) return SqlScriptFileController.CloseDecision.SAVE;
+        if (chosen == discard) return SqlScriptFileController.CloseDecision.DISCARD;
+        return SqlScriptFileController.CloseDecision.CANCEL;
     }
 
     private SqlConnectionGuidance guidance() {
