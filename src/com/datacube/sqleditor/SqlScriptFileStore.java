@@ -272,6 +272,7 @@ public final class SqlScriptFileStore {
         }
         if (bytes == null) throw new Failure(FailureCode.READ);
         if (bytes.length > MAX_BYTES) throw new Failure(FailureCode.TOO_LARGE);
+        if (!matchesFingerprint(target, bytes)) throw new Failure(FailureCode.CHANGED);
         if (!matches(target)) throw new Failure(FailureCode.CHANGED);
 
         try {
@@ -1358,9 +1359,22 @@ public final class SqlScriptFileStore {
 
     private static byte[] fingerprint(Path path) throws IOException {
         try {
-            return MessageDigest.getInstance("SHA-256").digest(readBoundedRegularFile(path));
+            return fingerprint(readBoundedRegularFile(path));
         } catch (NoSuchAlgorithmException impossible) {
             throw new IOException(impossible);
+        }
+    }
+
+    private static byte[] fingerprint(byte[] bytes) throws NoSuchAlgorithmException {
+        return MessageDigest.getInstance("SHA-256").digest(bytes);
+    }
+
+    private static boolean matchesFingerprint(Target expected, byte[] bytes) {
+        if (expected.fingerprint == null) return false;
+        try {
+            return MessageDigest.isEqual(expected.fingerprint, fingerprint(bytes));
+        } catch (NoSuchAlgorithmException impossible) {
+            return false;
         }
     }
 

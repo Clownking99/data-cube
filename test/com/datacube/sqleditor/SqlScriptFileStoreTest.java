@@ -133,6 +133,21 @@ class SqlScriptFileStoreTest {
     }
 
     @Test
+    void rejectsAbaReaderBytesThatDifferFromTheCapturedTarget() throws Exception {
+        Path target = Files.writeString(directory.resolve("aba.sql"), "select 1;");
+        byte[] replacement = "select 2;".getBytes(StandardCharsets.UTF_8);
+        SqlScriptFileStore store = store(path -> replacement,
+                SqlScriptFileStoreTest::writeBytes, SqlScriptFileStoreTest::moveNoReplace,
+                path -> Files.deleteIfExists(path), ignored -> { });
+
+        SqlScriptFileStore.Failure failure = assertThrows(SqlScriptFileStore.Failure.class,
+                () -> store.load(target));
+
+        assertEquals(SqlScriptFileStore.FailureCode.CHANGED, failure.code());
+        assertEquals("select 1;", Files.readString(target, StandardCharsets.UTF_8));
+    }
+
+    @Test
     void savesNewAndExistingFilesAsUtf8WithoutBom() throws Exception {
         SqlScriptFileStore store = new SqlScriptFileStore();
         Path selected = directory.resolve("saved.sql");

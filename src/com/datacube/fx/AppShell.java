@@ -524,7 +524,7 @@ public final class AppShell {
 
     /**
      * 打开 SQL 历史找回对话框：选中一条则在新的 SQL 编辑标签中载入其 SQL，
-     * 并按连接名解析回原连接（解析不到则不绑定）、回填其 schema。
+     * 使用隔离的空会话离线打开；连接名仅用于标签标题，并回填其 schema。
      */
     private void openSqlHistory() {
         javafx.stage.Window owner = root.getScene() == null ? null : root.getScene().getWindow();
