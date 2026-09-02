@@ -32,4 +32,15 @@ class AppShellTest {
         assertTrue(body.contains("new ContentTabPane.ManagedTabSpec("));
         assertFalse(body.contains("requestMandatoryClose"));
     }
+
+    @Test
+    void shutdownClosesTheAppOwnedSqlFileRegistryBeforeManagedTabShutdown() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/AppShell.java"));
+        int shutdown = source.indexOf("public CompletionStage<ShutdownOutcome> shutdownAsync()");
+        int nextMethod = source.indexOf("\n    /**", shutdown + 1);
+        String body = source.substring(shutdown, nextMethod);
+
+        assertTrue(body.contains("sqlFileTabs.close()"));
+        assertTrue(body.indexOf("sqlFileTabs.close()") < body.indexOf("shutdown.shutdown()"));
+    }
 }

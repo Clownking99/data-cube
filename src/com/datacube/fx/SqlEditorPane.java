@@ -334,12 +334,33 @@ public final class SqlEditorPane implements AutoCloseable {
             throw new IllegalStateException(
                     "SqlEditorPane.installSqlScriptFileController must run on the FX Application Thread");
         }
-        if (fileController != null) throw new IllegalStateException("SQL file controller already installed");
         SqlScriptFileController controller = new SqlScriptFileController(
                 editorArea, store, recentFiles, tasks,
                 () -> root.getScene() == null ? null : root.getScene().getWindow(),
                 titleConsumer, fallbackTitle, this::chooseSqlSavePath, this::confirmSqlOverwrite,
                 this::requestSqlFileCloseDecision, this::showAlert);
+        installSqlScriptFileController(initial, controller);
+    }
+
+    void installSqlScriptFileController(SqlScriptFileStore.Loaded initial,
+            SqlScriptFileStore store, RecentSqlFiles recentFiles,
+            Consumer<String> titleConsumer, String fallbackTitle,
+            SqlFileTabRegistry registry, SqlFileTabRegistry.Owner owner) {
+        if (!Platform.isFxApplicationThread()) {
+            throw new IllegalStateException(
+                    "SqlEditorPane.installSqlScriptFileController must run on the FX Application Thread");
+        }
+        SqlScriptFileController controller = new SqlScriptFileController(
+                editorArea, store, recentFiles, tasks,
+                () -> root.getScene() == null ? null : root.getScene().getWindow(),
+                titleConsumer, fallbackTitle, this::chooseSqlSavePath, this::confirmSqlOverwrite,
+                this::requestSqlFileCloseDecision, this::showAlert, registry, owner);
+        installSqlScriptFileController(initial, controller);
+    }
+
+    private void installSqlScriptFileController(SqlScriptFileStore.Loaded initial,
+            SqlScriptFileController controller) {
+        if (fileController != null) throw new IllegalStateException("SQL file controller already installed");
         controller.install(initial);
         fileController = controller;
         saveSqlFileBtn.disableProperty().bind(fileController.busyProperty());
@@ -489,15 +510,16 @@ public final class SqlEditorPane implements AutoCloseable {
     /** Lightweight JavaFX phase; callers invoke this only on the FX Application Thread. */
     void finalizeCloseOnFx() {
         if (!uiFinalized.compareAndSet(false, true)) return;
-        if (fileController != null) fileController.detachUi();
-        if (draftBinding != null) draftBinding.close();
-        resultRowIndexes.clear();
-        resultFilterState.clearAll();
-        renderResultFilterToolbar();
-        if (resultToolbar != null) resultToolbar.getNode().setDisable(true);
-        settings.commentModeProperty().removeListener(commentModeListener);
-        session.activeConnectionProperty().removeListener(activeConnectionListener);
-        if (autoComplete != null) autoComplete.hide();
+        BestEffortCloseSequence.run(
+                () -> { if (fileController != null) fileController.detachUi(); },
+                () -> { if (draftBinding != null) draftBinding.close(); },
+                resultRowIndexes::clear,
+                resultFilterState::clearAll,
+                this::renderResultFilterToolbar,
+                () -> { if (resultToolbar != null) resultToolbar.getNode().setDisable(true); },
+                () -> settings.commentModeProperty().removeListener(commentModeListener),
+                () -> session.activeConnectionProperty().removeListener(activeConnectionListener),
+                () -> { if (autoComplete != null) autoComplete.hide(); });
     }
 
     private ClosePlan captureClosePlan(SerialSessionOperationQueue.Snapshot operationSnapshot) {

@@ -104,3 +104,58 @@ draft bind/installed 后注入异常。断言标签和 selection 未发布，真
 最终提交通过 `git commit --amend --no-edit` 生成；提交后执行 `git rev-parse --verify HEAD` 记录该次
 验证对应的当前 HEAD，而不是把 amend 前 SHA 写入本文。未启动镜像，桌面交互仍未验证（避免入口
 更新检查的网络路径）。
+
+## 最终标签工作流修复（2026-09-02）
+
+`AppShell` 现在拥有一个仅在 FX 线程访问的 `SqlFileTabRegistry`。规范路径的已提交绑定与另存为
+临时声明都由不透明 owner token 管理；重复打开（含 store 解析后的别名）只选中已有 dirty 标签，
+不会再创建 pane、隔离 session、draft binding、controller 或第二个 recent callback。另存为在保留
+A 的同时声明 B：owner 碰撞不确认覆盖、不写磁盘；取消、capture/store 失败和关闭撤销 B；成功只在
+FX settlement 原子提交 A→B。应用 shutdown 会先关闭入口和 registry，标签 finalizer 的重复 release
+保持幂等。
+
+普通、历史和恢复草稿标签都会在初始文本装入后安装 `initial=null` 的文件控制器，因此第一次
+`Ctrl+S` 进入另存为；历史文本是干净基线，恢复标签继续保留原 draft handle。历史打开不再读取保存
+连接或构建 JDBC session。`SqlDraft`/`SqlWorkspace` 持久化 record 没有 `Path`/path component，文件
+路径仍只存在于文件 document/registry/recent index。`RecordAdmission` 在 load/save 获准时捕获，
+之后成功 clear 会淘汰迟到的 recent 写回。
+
+### 本轮 TDD 证据
+
+按行为分组先写测试并观察预期 RED：
+
+- `SqlFileTabRegistryTest` 首次运行在 `compileTestJava` 产生 15 个 missing-symbol 错误；最小 registry
+  实现后 focused GREEN。
+- duplicate-open/alias 测试先分别因缺少 registry-aware `SqlFileEntry` 构造器和
+  `openLoadedSqlFile(..., registry)` overload 编译失败；实现 admission gate 与受管标签绑定后 GREEN。
+- Save As/recent 测试先因缺少 controller 的 `(beforeSettlement, registry, owner)` seam 编译失败；实现
+  claim/rollback/commit 和 admission token 后 controller 全类 GREEN。
+- ordinary/history/recovered 测试先因缺少 `openSqlTab` 和 `SqlDraftRecoveryTabs` 文件生命周期 overload
+  产生 3 个编译错误；实现后通过。注入 text-unsubscribe 异常的 finalizer 测试随后在 draft 未解绑处
+  RED；逐项 `BestEffortCloseSequence` 后 GREEN。另一个 RED 证明 partial-close 首因必须保留原始反射
+  异常，而不是嵌套 aggregate。
+- shutdown registry 测试先在缺少 `sqlFileTabs.close()` 处 RED，加入 FX shutdown release 后 GREEN。
+
+focused 运行覆盖 registry、entry、controller、普通/历史/恢复、draft/workspace recovery、managed-tab
+lifecycle、finalizer、recent、store 和 document；扩展的 13 个最终相关 XML 为 222 tests、0 failures、
+0 errors、0 skipped。
+
+### fresh 完整回归
+
+最终重新执行：
+
+```powershell
+.\gradlew.bat clean test --no-daemon --console=plain
+```
+
+结果 `BUILD SUCCESSFUL in 1m 42s`。从 fresh `build/test-results/test/TEST-*.xml` 聚合得到 171 个
+文件、1,723 tests、0 failures、0 errors、3 skipped。
+
+前一次 clean run 曾出现两个失败：一个是既有 source-text 测试只接受
+`pane -> binding.bind(pane::closeResources)` 的具体拼写，已改为检查同一真实 abort-binding contract；
+另一个未改动的 `SchemaDiffServiceTest.providerAwareCompareReturnsOtherObjectsWhenOneRoutineRequiresManualReview`
+在全量并行时一次性报告 `Schema snapshot failed`，该方法立即独立复现通过，第二次 fresh 全量也通过。
+未修改无关 Schema Diff 生产代码。
+
+本轮仍未启动应用镜像、installer、真实用户 profile、数据库或网络；FileChooser/Alert 的真实桌面点击
+不在自动化证据内。

@@ -21,8 +21,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -116,6 +116,71 @@ class ContentTabPaneLifecycleContractTest {
             Thread closer = Thread.ofVirtual().start(drafts::closeFromBackground);
             closer.join();
             if (created.get() != null) created.get().closeResources();
+            runner.close();
+        }
+    }
+
+    @Test
+    void appShellCanonicalDuplicateReusesTheDirtyManagedTabAndReleasesRegistryOnFinalize()
+            throws Exception {
+        Path file = Files.writeString(directory.resolve("single.sql"), "select 1\r\n");
+        Path aliasDirectory = directory.resolve("alias");
+        try {
+            Files.createSymbolicLink(aliasDirectory, directory);
+        } catch (UnsupportedOperationException | java.io.IOException | SecurityException unavailable) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false,
+                    "symbolic links unavailable for this account");
+        }
+        SqlScriptFileStore store = new SqlScriptFileStore();
+        SqlScriptFileStore.Loaded loaded = store.load(file);
+        SqlScriptFileStore.Loaded alias = store.load(aliasDirectory.resolve("single.sql"));
+        FxTaskRunner runner = new FxTaskRunner();
+        ContentTabPane tabs = FxUiTestSupport.call(ContentTabPane::new);
+        SqlFileTabRegistry registry = FxUiTestSupport.call(SqlFileTabRegistry::new);
+        AtomicInteger draftBindings = new AtomicInteger();
+        AtomicInteger draftInstalls = new AtomicInteger();
+        AtomicReference<SqlEditorPane> created = new AtomicReference<>();
+        AppShell.SqlFileDraftLifecycle drafts = new AppShell.SqlFileDraftLifecycle() {
+            @Override public void bind(SqlEditorPane pane) {
+                draftBindings.incrementAndGet();
+                created.set(pane);
+            }
+            @Override public void installed(javafx.scene.Node content) {
+                draftInstalls.incrementAndGet();
+            }
+        };
+        AppSettings settings = new AppSettings(directory.resolve("settings.properties"));
+        RecentSqlFiles recent = new RecentSqlFiles(directory.resolve("recent.txt"));
+        try {
+            FxUiTestSupport.call(() -> {
+                assertTrue(AppShell.openLoadedSqlFile(tabs, loaded, new SessionContext(), null, null,
+                        settings, (id, table) -> { }, new SqlHistoryStore(directory.resolve("history.txt")),
+                        new ShortcutSettings(directory.resolve("shortcuts.properties")), runner, store,
+                        recent, drafts, registry));
+                editorArea(created.get()).replaceText("dirty text");
+
+                assertTrue(AppShell.openLoadedSqlFile(tabs, alias, new SessionContext(), null, null,
+                        settings, (id, table) -> { }, new SqlHistoryStore(directory.resolve("history.txt")),
+                        new ShortcutSettings(directory.resolve("shortcuts.properties")), runner, store,
+                        recent, drafts, registry));
+
+                TabPane pane = (TabPane) tabs.getNode();
+                assertEquals(1, pane.getTabs().size());
+                assertEquals("dirty text", editorArea(created.get()).getText());
+                assertEquals(1, draftBindings.get());
+                assertEquals(1, draftInstalls.get());
+                assertTrue(registry.select(loaded.path()));
+                return null;
+            });
+        } finally {
+            if (created.get() != null) {
+                created.get().closeResources();
+                FxUiTestSupport.call(() -> {
+                    created.get().finalizeCloseOnFx();
+                    assertFalse(registry.select(loaded.path()));
+                    return null;
+                });
+            }
             runner.close();
         }
     }

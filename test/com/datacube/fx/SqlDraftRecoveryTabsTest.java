@@ -1,6 +1,7 @@
 package com.datacube.fx;
 
 import com.datacube.config.AppSettings;
+import com.datacube.config.RecentSqlFiles;
 import com.datacube.config.ShortcutSettings;
 import com.datacube.config.SqlDraft;
 import com.datacube.config.SqlDraftCoordinator;
@@ -8,6 +9,8 @@ import com.datacube.config.SqlHistoryStore;
 import com.datacube.fx.task.FxTaskRunner;
 import com.datacube.service.DraftConnectionProbe;
 import com.datacube.service.ObjectTreeService;
+import com.datacube.sqleditor.SqlScriptDocument;
+import com.datacube.sqleditor.SqlScriptFileStore;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.DbType;
 import java.lang.reflect.Field;
@@ -48,6 +51,36 @@ class SqlDraftRecoveryTabsTest {
                 assertEquals(2, f.tabPane().getTabs().size());
                 assertEquals(1, f.created.size());
                 assertNull(f.context.getActiveConnection());
+            });
+            f.offline();
+        }
+    }
+
+    @Test void recoveredDraftKeepsDraftBindingAndGetsCleanUnboundFileLifecycle() throws Exception {
+        try (Fixture f = new Fixture()) {
+            SqlFileTabRegistry registry = f.call(SqlFileTabRegistry::new);
+            SqlScriptFileStore store = new SqlScriptFileStore();
+            RecentSqlFiles recent = new RecentSqlFiles(directory.resolve("recent.txt"));
+            SqlDraftRecoveryTabs recovery = f.call(() -> new SqlDraftRecoveryTabs(
+                    f.tabs, f.owner, f::create,
+                    pane -> pane.installRecoveryConnectionChooser(() -> List.of(f.replacement)),
+                    store, recent, registry));
+
+            assertTrue(f.call(() -> recovery.restore(f.draft)));
+            f.fx(() -> {
+                SqlEditorPane pane = f.created.getFirst();
+                SqlScriptFileController controller = (SqlScriptFileController)
+                        fieldUnchecked(pane, "fileController");
+                SqlScriptDocument document = (SqlScriptDocument)
+                        fieldUnchecked(controller, "document");
+                assertNull(document.target());
+                assertFalse(document.dirty());
+                assertEquals(f.draft.sql().replace("\r\n", "\n").replace('\r', '\n'),
+                        document.normalizedText());
+                assertNotNull(fieldUnchecked(pane, "draftBinding"));
+                assertNotNull(f.owner.installedBinding(pane.getNode()));
+                assertFalse(((Button) fieldUnchecked(pane, "saveSqlFileBtn")).isDisabled());
+                assertFalse(((Button) fieldUnchecked(pane, "saveAsSqlFileBtn")).isDisabled());
             });
             f.offline();
         }

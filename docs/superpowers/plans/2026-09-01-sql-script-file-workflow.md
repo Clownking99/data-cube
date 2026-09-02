@@ -4,7 +4,7 @@
 
 **Goal:** Add safe, explicit `.sql` open/save/save-as and recent-file workflows to the existing managed SQL editor.
 
-**Architecture:** Keep blocking file I/O in a pure `sqleditor` store and run it on existing virtual-thread scopes. A pure document model owns file identity and dirty semantics; a small JavaFX controller binds that model to an editor and tab title. `AppShell` owns only open/recent navigation and tab creation.
+**Architecture:** Keep blocking file I/O in a pure `sqleditor` store and run it on existing virtual-thread scopes. A pure document model owns file identity and dirty semantics; a small JavaFX controller binds that model to an editor and tab title. `AppShell` owns open/recent navigation, tab creation, and one FX-only canonical-path registry so duplicate open and Save As ownership are authoritative.
 
 **Tech Stack:** Java 25, JavaFX 25, RichTextFX, JUnit Jupiter 5.11.3, Gradle 9.2.0; no new dependencies.
 
@@ -175,3 +175,20 @@ Inspect XML counts and the app-image for production classes with no test helpers
 - [ ] **Step 5: Commit and integration gate**
 
 Commit as `feat: open and reuse SQL script files`. Review the complete branch against the design, fix blocking findings with focused regression, rerun the full suite, then fast-forward merge to local `main` under the existing user authorization. Do not push without a new explicit request.
+
+### Task 5: Final tab-workflow remediation
+
+**Files:**
+- Create: `src/com/datacube/fx/SqlFileTabRegistry.java`
+- Create: `test/com/datacube/fx/SqlFileTabRegistryTest.java`
+- Modify: `src/com/datacube/fx/AppShell.java`
+- Modify: `src/com/datacube/fx/SqlScriptFileController.java`
+- Modify: `src/com/datacube/fx/SqlEditorPane.java`
+- Modify: `src/com/datacube/fx/SqlDraftRecoveryTabs.java`
+- Modify/add focused FX tests and SQL-file documentation.
+
+- [x] **Registry/open RED-GREEN:** prove install/select, provisional collision, rollback, commit, release and canonical aliases; gate `SqlFileEntry` before session/tab/draft construction so duplicate open only selects the existing dirty tab and schedules no duplicate recent callback.
+- [x] **Save/recent RED-GREEN:** capture `RecordAdmission` at load/save admission; claim canonical Save As targets on FX, skip overwrite/store write on owner collision, rollback on cancellation/failure, and commit A→B only after durable save success settles on FX.
+- [x] **Ordinary/history/recovery RED-GREEN:** install `SqlScriptDocument(initial=null)` for every SQL editor workflow after initial history/recovery text is present; retain draft binding and unchanged draft/workspace formats; keep history/file-only construction off saved connections and provider/session/network paths.
+- [x] **Close RED-GREEN:** run controller detach/registry release, draft, result/toolbar, settings/session listeners and autocomplete through `BestEffortCloseSequence`; preserve the original first failure in the aggregate.
+- [x] **Final verification:** run focused suites, expanded FX/workspace/file suites, fresh `clean test`, parse XML counts, run `git diff --check`, write the final report, and commit once without push/merge/tag.

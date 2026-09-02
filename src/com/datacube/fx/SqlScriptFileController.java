@@ -51,6 +51,8 @@ public final class SqlScriptFileController implements AutoCloseable {
     private final Submitter submitter;
     private final Runnable beforeSubmit;
     private final Runnable beforeSettlement;
+    private final SqlFileTabRegistry registry;
+    private final SqlFileTabRegistry.Owner registryOwner;
     private final ReadOnlyBooleanWrapper busyProperty = new ReadOnlyBooleanWrapper();
     private final Object lifecycleLock = new Object();
     private SqlScriptDocument document;
@@ -72,6 +74,17 @@ public final class SqlScriptFileController implements AutoCloseable {
         this(editor, store, recent, tasks, owner, titleConsumer, fallbackTitle, savePathChooser,
                 overwriteConfirmer, closeDecisionProvider, feedback, new ScopeSubmitter(tasks),
                 () -> { }, () -> { });
+    }
+
+    SqlScriptFileController(CodeArea editor, SqlScriptFileStore store, RecentSqlFiles recent,
+            FxTaskScope tasks, Supplier<Window> owner, Consumer<String> titleConsumer,
+            String fallbackTitle, Function<Window, Path> savePathChooser,
+            BiPredicate<Window, Path> overwriteConfirmer,
+            Function<Window, CloseDecision> closeDecisionProvider, Consumer<String> feedback,
+            SqlFileTabRegistry registry, SqlFileTabRegistry.Owner registryOwner) {
+        this(editor, store, recent, tasks, owner, titleConsumer, fallbackTitle, savePathChooser,
+                overwriteConfirmer, closeDecisionProvider, feedback, new ScopeSubmitter(tasks),
+                () -> { }, () -> { }, registry, registryOwner);
     }
 
     SqlScriptFileController(CodeArea editor, SqlScriptFileStore store, RecentSqlFiles recent,
@@ -102,6 +115,18 @@ public final class SqlScriptFileController implements AutoCloseable {
             BiPredicate<Window, Path> overwriteConfirmer,
             Function<Window, CloseDecision> closeDecisionProvider, Consumer<String> feedback,
             Submitter submitter, Runnable beforeSubmit, Runnable beforeSettlement) {
+        this(editor, store, recent, tasks, owner, titleConsumer, fallbackTitle, savePathChooser,
+                overwriteConfirmer, closeDecisionProvider, feedback, submitter, beforeSubmit,
+                beforeSettlement, null, null);
+    }
+
+    SqlScriptFileController(CodeArea editor, SqlScriptFileStore store, RecentSqlFiles recent,
+            FxTaskScope tasks, Supplier<Window> owner, Consumer<String> titleConsumer,
+            String fallbackTitle, Function<Window, Path> savePathChooser,
+            BiPredicate<Window, Path> overwriteConfirmer,
+            Function<Window, CloseDecision> closeDecisionProvider, Consumer<String> feedback,
+            Submitter submitter, Runnable beforeSubmit, Runnable beforeSettlement,
+            SqlFileTabRegistry registry, SqlFileTabRegistry.Owner registryOwner) {
         this.editor = Objects.requireNonNull(editor, "editor");
         this.store = Objects.requireNonNull(store, "store");
         this.recent = Objects.requireNonNull(recent, "recent");
@@ -117,6 +142,11 @@ public final class SqlScriptFileController implements AutoCloseable {
         this.submitter = Objects.requireNonNull(submitter, "submitter");
         this.beforeSubmit = Objects.requireNonNull(beforeSubmit, "beforeSubmit");
         this.beforeSettlement = Objects.requireNonNull(beforeSettlement, "beforeSettlement");
+        if ((registry == null) != (registryOwner == null)) {
+            throw new IllegalArgumentException("registry and owner must be supplied together");
+        }
+        this.registry = registry;
+        this.registryOwner = registryOwner;
     }
 
     public void install(SqlScriptFileStore.Loaded initial) {
@@ -171,6 +201,14 @@ public final class SqlScriptFileController implements AutoCloseable {
                 submitSave(document.target(), snapshot, operation);
                 return;
             }
+            if (registry != null) {
+                SqlFileTabRegistry.Claim claim = registry.claim(registryOwner, target.path());
+                if (claim == SqlFileTabRegistry.Claim.COLLISION) {
+                    finish(operation, false);
+                    return;
+                }
+                operation.claimedPath = target.path();
+            }
             if (target.exists()) {
                 final boolean confirmed;
                 try {
@@ -193,10 +231,14 @@ public final class SqlScriptFileController implements AutoCloseable {
         submit(operation, () -> {
             SqlScriptFileStore.Loaded saved = store.save(target, snapshot);
             synchronized (lifecycleLock) {
-                if (currentLocked(operation)) recent.record(saved.path());
+                if (currentLocked(operation)) recent.record(operation.recentAdmission, saved.path());
             }
             return saved;
         }, saved -> {
+            if (registry != null && operation.claimedPath != null) {
+                registry.commit(registryOwner, saved.path());
+                operation.claimedPath = null;
+            }
             document.saved(saved);
             refreshTitle();
             finish(operation, true);
@@ -276,10 +318,29 @@ public final class SqlScriptFileController implements AutoCloseable {
     /** FX-only listener cleanup, intentionally separate from thread-safe resource invalidation. */
     public void detachUi() {
         requireFx("detachUi");
-        if (!listenerAttached) return;
-        unsubscribeTextChanges.run();
-        unsubscribeTextChanges = () -> { };
-        listenerAttached = false;
+        Throwable first = null;
+        try {
+            if (listenerAttached) {
+                try {
+                    unsubscribeTextChanges.run();
+                } finally {
+                    unsubscribeTextChanges = () -> { };
+                    listenerAttached = false;
+                }
+            }
+        } catch (Throwable failure) {
+            first = failure;
+        } finally {
+            try {
+                if (registry != null) registry.release(registryOwner);
+            } catch (Throwable releaseFailure) {
+                if (first == null) first = releaseFailure;
+                else first.addSuppressed(releaseFailure);
+            }
+        }
+        if (first instanceof RuntimeException runtime) throw runtime;
+        if (first instanceof Error error) throw error;
+        if (first != null) throw new IllegalStateException("Unable to detach SQL file UI", first);
     }
 
     @Override
@@ -308,7 +369,7 @@ public final class SqlScriptFileController implements AutoCloseable {
                 busy = true;
                 CompletableFuture<Boolean> result = new CompletableFuture<>();
                 pending = result;
-                operation = new Operation(generation, result);
+                operation = new Operation(generation, result, recent.recordAdmission());
             }
         }
         if (rejectedBusy) {
@@ -373,6 +434,10 @@ public final class SqlScriptFileController implements AutoCloseable {
 
     private void finishLocked(Operation operation, boolean value) {
         if (!currentLocked(operation)) return;
+        if (!value && registry != null && operation.claimedPath != null) {
+            registry.rollback(registryOwner, operation.claimedPath);
+            operation.claimedPath = null;
+        }
         pending = null;
         busy = false;
         try {
@@ -499,5 +564,20 @@ public final class SqlScriptFileController implements AutoCloseable {
         }
     }
 
-    private record Operation(long generation, CompletableFuture<Boolean> result) { }
+    private static final class Operation {
+        private final long generation;
+        private final CompletableFuture<Boolean> result;
+        private final RecentSqlFiles.RecordAdmission recentAdmission;
+        private Path claimedPath;
+
+        private Operation(long generation, CompletableFuture<Boolean> result,
+                RecentSqlFiles.RecordAdmission recentAdmission) {
+            this.generation = generation;
+            this.result = result;
+            this.recentAdmission = recentAdmission;
+        }
+
+        long generation() { return generation; }
+        CompletableFuture<Boolean> result() { return result; }
+    }
 }

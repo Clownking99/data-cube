@@ -488,6 +488,158 @@ class SqlScriptFileControllerTest {
         }
     }
 
+    @Test
+    void saveAsCollisionSelectsExistingOwnerWithoutPromptOrDiskWrite() throws Exception {
+        SqlScriptFileStore store = new SqlScriptFileStore();
+        Path a = Files.writeString(directory.resolve("owner-a.sql"), "a baseline");
+        Path b = Files.writeString(directory.resolve("owner-b.sql"), "b must stay");
+        Path canonicalA = store.load(a).path();
+        Path canonicalB = store.load(b).path();
+        SqlFileTabRegistry registry = FxUiTestSupport.call(SqlFileTabRegistry::new);
+        AtomicInteger firstSelections = new AtomicInteger();
+        AtomicInteger secondSelections = new AtomicInteger();
+        SqlFileTabRegistry.Owner first = FxUiTestSupport.call(
+                () -> registry.createOwner(firstSelections::incrementAndGet));
+        SqlFileTabRegistry.Owner second = FxUiTestSupport.call(
+                () -> registry.createOwner(secondSelections::incrementAndGet));
+        FxUiTestSupport.call(() -> {
+            assertTrue(registry.install(first, canonicalA));
+            assertTrue(registry.install(second, canonicalB));
+            return null;
+        });
+        try (Fixture fixture = new Fixture("ignored", store.load(a), store,
+                recent("registry-collision"), first, registry)) {
+            fixture.edit("replacement that must not publish");
+            fixture.chosen.set(b);
+
+            assertFalse(fixture.settle(fixture.saveAs()));
+
+            assertEquals("b must stay", Files.readString(b));
+            assertEquals(0, fixture.confirmations.get());
+            assertEquals(1, secondSelections.get());
+            fixture.fx(() -> assertTrue(registry.select(canonicalA)));
+            assertEquals(1, firstSelections.get());
+        } finally {
+            FxUiTestSupport.call(() -> {
+                registry.release(second);
+                return null;
+            });
+        }
+    }
+
+    @Test
+    void saveAsRollbackAndCommitKeepRegistryAlignedWithTheDocument() throws Exception {
+        SqlScriptFileStore store = new SqlScriptFileStore();
+        Path a = Files.writeString(directory.resolve("transaction-a.sql"), "a baseline");
+        Path b = Files.writeString(directory.resolve("transaction-b.sql"), "b baseline");
+        Path c = Files.writeString(directory.resolve("transaction-c.sql"), "c baseline");
+        Path d = directory.resolve("transaction-d.sql");
+        Path canonicalA = store.load(a).path();
+        Path canonicalB = store.load(b).path();
+        Path canonicalC = store.load(c).path();
+        Path canonicalD = store.capture(d).path();
+        SqlFileTabRegistry registry = FxUiTestSupport.call(SqlFileTabRegistry::new);
+        AtomicInteger selections = new AtomicInteger();
+        SqlFileTabRegistry.Owner owner = FxUiTestSupport.call(
+                () -> registry.createOwner(selections::incrementAndGet));
+        FxUiTestSupport.call(() -> {
+            assertTrue(registry.install(owner, canonicalA));
+            return null;
+        });
+        try (Fixture fixture = new Fixture("ignored", store.load(a), store,
+                recent("registry-transaction"), owner, registry)) {
+            fixture.edit("new contents");
+            fixture.chosen.set(b);
+            fixture.overwrite.set(false);
+            assertFalse(fixture.settle(fixture.saveAs()));
+            assertRegistryPathAvailable(registry, canonicalB);
+            fixture.fx(() -> assertTrue(registry.select(canonicalA)));
+
+            Path invalid = directory.resolve("missing-parent").resolve("capture-failure.sql");
+            fixture.chosen.set(invalid);
+            assertFalse(fixture.settle(fixture.saveAs()));
+            assertRegistryPathAvailable(registry, invalid.toAbsolutePath().normalize());
+            fixture.fx(() -> assertTrue(registry.select(canonicalA)));
+
+            fixture.chosen.set(c);
+            fixture.overwrite.set(true);
+            CompletionStage<Boolean> failed = fixture.saveAs();
+            fixture.submitter.runWorker();
+            fixture.fx(fixture.submitter::drainFx);
+            Files.writeString(c, "external change after capture");
+            assertFalse(fixture.settle(failed));
+            assertRegistryPathAvailable(registry, canonicalC);
+            fixture.fx(() -> assertTrue(registry.select(canonicalA)));
+
+            fixture.chosen.set(d);
+            assertTrue(fixture.settle(fixture.saveAs()));
+            assertEquals("new contents", Files.readString(d));
+            assertRegistryPathAvailable(registry, canonicalA);
+            fixture.fx(() -> assertTrue(registry.select(canonicalD)));
+            assertEquals("transaction-d.sql", fixture.title());
+        }
+    }
+
+    @Test
+    void clearDuringAdmittedSaveWinsAndFinalizationReleasesCommittedAndClaimedPaths()
+            throws Exception {
+        SqlScriptFileStore store = new SqlScriptFileStore();
+        Path a = Files.writeString(directory.resolve("close-a.sql"), "baseline");
+        Path b = directory.resolve("close-b.sql");
+        Path canonicalA = store.load(a).path();
+        Path canonicalB = store.capture(b).path();
+        SqlFileTabRegistry registry = FxUiTestSupport.call(SqlFileTabRegistry::new);
+        SqlFileTabRegistry.Owner owner = FxUiTestSupport.call(
+                () -> registry.createOwner(() -> { }));
+        FxUiTestSupport.call(() -> {
+            assertTrue(registry.install(owner, canonicalA));
+            return null;
+        });
+        Fixture fixture = new Fixture("ignored", store.load(a), store,
+                recent("save-admission"), owner, registry);
+        try {
+            fixture.edit("save snapshot");
+            fixture.chosen.set(b);
+            CompletionStage<Boolean> save = fixture.saveAs();
+            fixture.recent.clear();
+            fixture.submitter.runWorker();
+            fixture.fx(fixture.submitter::drainFx);
+            assertTrue(fixture.submitter.hasWorker(), "capture settlement must reserve B before write");
+
+            fixture.fx(() -> {
+                fixture.controller.close();
+                fixture.controller.detachUi();
+                assertFalse(registry.select(canonicalA));
+                assertFalse(registry.select(canonicalB));
+            });
+            assertFalse(save.toCompletableFuture().get(5, TimeUnit.SECONDS));
+            assertTrue(fixture.recent.recent().isEmpty());
+        } finally {
+            fixture.close();
+        }
+    }
+
+    @Test
+    void clearDuringAdmittedSuccessfulSaveIsNotUndoneByTheWorker() throws Exception {
+        try (Fixture fixture = fixture("snapshot", null)) {
+            fixture.chosen.set(directory.resolve("clear-save.sql"));
+            CompletionStage<Boolean> save = fixture.save();
+            fixture.recent.clear();
+
+            assertTrue(fixture.settle(save));
+            assertTrue(fixture.recent.recent().isEmpty());
+        }
+    }
+
+    private void assertRegistryPathAvailable(SqlFileTabRegistry registry, Path path) throws Exception {
+        FxUiTestSupport.call(() -> {
+            SqlFileTabRegistry.Owner probe = registry.createOwner(() -> { });
+            assertTrue(registry.install(probe, path));
+            registry.release(probe);
+            return null;
+        });
+    }
+
     private RecentSqlFiles recent(String name) {
         return new RecentSqlFiles(directory.resolve(name + ".txt"));
     }
@@ -515,6 +667,8 @@ class SqlScriptFileControllerTest {
         final RecentSqlFiles recent;
         final CodeArea editor;
         final SqlScriptFileController controller;
+        final SqlFileTabRegistry registry;
+        final SqlFileTabRegistry.Owner registryOwner;
         boolean throwDecision;
         volatile boolean throwTitle;
 
@@ -531,21 +685,46 @@ class SqlScriptFileControllerTest {
         Fixture(String text, SqlScriptFileStore.Loaded loaded, SqlScriptFileStore store,
                 RecentSqlFiles recent, Runnable beforeSubmit, Runnable beforeSettlement)
                 throws Exception {
+            this(text, loaded, store, recent, beforeSubmit, beforeSettlement, null, null);
+        }
+
+        Fixture(String text, SqlScriptFileStore.Loaded loaded, SqlScriptFileStore store,
+                RecentSqlFiles recent, SqlFileTabRegistry.Owner registryOwner,
+                SqlFileTabRegistry registry) throws Exception {
+            this(text, loaded, store, recent, () -> { }, () -> { }, registryOwner, registry);
+        }
+
+        private Fixture(String text, SqlScriptFileStore.Loaded loaded, SqlScriptFileStore store,
+                RecentSqlFiles recent, Runnable beforeSubmit, Runnable beforeSettlement,
+                SqlFileTabRegistry.Owner registryOwner, SqlFileTabRegistry registry)
+                throws Exception {
             this.recent = recent;
+            this.registry = registry;
+            this.registryOwner = registryOwner;
             editor = FxUiTestSupport.call(() -> new CodeArea(text));
             scope = runner.scope();
-            controller = FxUiTestSupport.call(() -> new SqlScriptFileController(
-                    editor, store, recent, scope, () -> null, title -> {
+            controller = FxUiTestSupport.call(() -> {
+                Consumer<String> titleConsumer = title -> {
                         if (throwTitle) throw new IllegalStateException("private title detail");
                         titles.add(title);
-                    }, "新建 SQL",
-                    ignored -> chosen.get(), (ignored, path) -> {
+                    };
+                java.util.function.BiPredicate<javafx.stage.Window, Path> confirmer = (ignored, path) -> {
                         confirmations.incrementAndGet();
                         return overwrite.get();
-                    }, ignored -> {
+                    };
+                java.util.function.Function<javafx.stage.Window, CloseDecision> closeDecision = ignored -> {
                         if (throwDecision) throw new IllegalStateException("private decision");
                         return decision.get();
-                    }, feedback::add, submitter, beforeSubmit, beforeSettlement));
+                    };
+                if (registry == null) return new SqlScriptFileController(
+                        editor, store, recent, scope, () -> null, titleConsumer, "新建 SQL",
+                        ignored -> chosen.get(), confirmer, closeDecision, feedback::add,
+                        submitter, beforeSubmit, beforeSettlement);
+                return new SqlScriptFileController(
+                        editor, store, recent, scope, () -> null, titleConsumer, "新建 SQL",
+                        ignored -> chosen.get(), confirmer, closeDecision, feedback::add,
+                        submitter, beforeSubmit, beforeSettlement, registry, registryOwner);
+            });
             fx(() -> controller.install(loaded));
         }
 
@@ -619,7 +798,10 @@ class SqlScriptFileControllerTest {
 
         @Override
         public void close() throws Exception {
-            fx(controller::close);
+            fx(() -> {
+                controller.close();
+                controller.detachUi();
+            });
             assertFalse(scope.isClosed(), "controller must not own the shared scope");
             scope.close();
             runner.close();

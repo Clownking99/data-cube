@@ -172,6 +172,82 @@ class SqlScriptFileEntryTest {
         }
     }
 
+    @Test
+    void clearRecentDuringAdmittedLoadWinsBeforeTheLoadCallbackExists() throws Exception {
+        Path file = Files.writeString(directory.resolve("in-flight-load.sql"), "select 1");
+        ControlledDispatcher dispatcher = new ControlledDispatcher();
+        RecentSqlFiles recent = new RecentSqlFiles(directory.resolve("recent.txt"));
+        AppShell.SqlFileEntry entry = new AppShell.SqlFileEntry(new SqlScriptFileStore(), recent,
+                dispatcher, SessionContext::new, (loaded, session) -> true, ignored -> fail());
+        try {
+            entry.open(file);
+            recent.clear();
+
+            dispatcher.runNext();
+            dispatcher.runNext();
+
+            assertTrue(recent.recent().isEmpty());
+        } finally {
+            entry.close();
+        }
+    }
+
+    @Test
+    void canonicalAliasReusesTheInstalledOwnerBeforeCreatingAnotherTabSessionOrDraft()
+            throws Exception {
+        Path file = Files.writeString(directory.resolve("single.sql"), "select 1");
+        Path aliasDirectory = directory.resolve("alias");
+        try {
+            Files.createSymbolicLink(aliasDirectory, directory);
+        } catch (UnsupportedOperationException | java.io.IOException | SecurityException unavailable) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false,
+                    "symbolic links unavailable for this account");
+        }
+        ControlledDispatcher dispatcher = new ControlledDispatcher();
+        RecentSqlFiles recent = new RecentSqlFiles(directory.resolve("recent.txt"));
+        SqlFileTabRegistry registry = FxUiTestSupport.call(SqlFileTabRegistry::new);
+        AtomicInteger sessions = new AtomicInteger();
+        AtomicInteger panes = new AtomicInteger();
+        AtomicInteger drafts = new AtomicInteger();
+        AtomicInteger selections = new AtomicInteger();
+        AtomicReference<String> editorText = new AtomicReference<>();
+        AtomicReference<SqlFileTabRegistry.Owner> registryOwner = new AtomicReference<>();
+        AppShell.SqlFileEntry entry = new AppShell.SqlFileEntry(new SqlScriptFileStore(), recent,
+                dispatcher, () -> { sessions.incrementAndGet(); return new SessionContext(); },
+                (loaded, session) -> {
+                    panes.incrementAndGet();
+                    drafts.incrementAndGet();
+                    editorText.set(loaded.text());
+                    SqlFileTabRegistry.Owner owner = registry.createOwner(selections::incrementAndGet);
+                    registryOwner.set(owner);
+                    assertTrue(registry.install(owner, loaded.path()));
+                    return true;
+                }, ignored -> fail(), registry);
+        try {
+            entry.open(file);
+            onFx(() -> { dispatcher.runNext(); return null; });
+            dispatcher.runNext();
+            editorText.set("dirty text must survive duplicate open");
+
+            entry.open(aliasDirectory.resolve("single.sql"));
+            onFx(() -> { dispatcher.runNext(); return null; });
+
+            assertEquals(1, sessions.get());
+            assertEquals(1, panes.get());
+            assertEquals(1, drafts.get());
+            assertEquals(1, selections.get());
+            assertEquals("dirty text must survive duplicate open", editorText.get());
+            assertEquals(0, dispatcher.queued(), "duplicate reuse must not queue another recent callback");
+            assertEquals(java.util.List.of(file.toRealPath()), recent.recent());
+        } finally {
+            entry.close();
+            if (registryOwner.get() != null) FxUiTestSupport.call(() -> {
+                registry.release(registryOwner.get());
+                return null;
+            });
+        }
+    }
+
     private static final class ControlledDispatcher implements AppShell.SqlFileTaskDispatcher {
         private final Queue<Runnable> work = new ArrayDeque<>();
         private boolean closed;
@@ -185,6 +261,7 @@ class SqlScriptFileEntryTest {
             });
         }
         void runNext() { work.remove().run(); }
+        int queued() { return work.size(); }
         @Override public void close() { closed = true; }
     }
 

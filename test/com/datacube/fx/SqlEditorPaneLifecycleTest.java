@@ -45,7 +45,7 @@ class SqlEditorPaneLifecycleTest {
 
         assertTrue(source.contains("pane::requestClose"));
         assertFalse(source.contains("AsyncTabCloseGuards.blocking(pane::closeResources)"));
-        assertTrue(source.contains("pane -> binding.bind(pane::closeResources)"));
+        assertTrue(source.contains("binding.bind(pane::closeResources)"));
         assertTrue(source.contains("pane -> pane.setSqlText(entry.sql())"));
     }
 

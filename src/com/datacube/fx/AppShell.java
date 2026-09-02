@@ -81,9 +81,10 @@ public final class AppShell {
     private final SqlScriptFileStore sqlScriptFileStore = new SqlScriptFileStore();
     private final RecentSqlFiles recentSqlFiles = new RecentSqlFiles(
             Path.of(System.getProperty("user.home"), ".datacube", "recent-sql-files.txt"));
+    private final SqlFileTabRegistry sqlFileTabs = new SqlFileTabRegistry();
     private final SqlFileEntry sqlFileEntry = new SqlFileEntry(sqlScriptFileStore, recentSqlFiles,
             new ScopeSqlFileTaskDispatcher(fileOpenTasks), SessionContext::new,
-            this::openLoadedSqlFile, ignored -> showSqlFileOpenFailure());
+            this::openLoadedSqlFile, ignored -> showSqlFileOpenFailure(), sqlFileTabs);
 
     private final ContentTabPane contentTabs = new ContentTabPane();
     private final AsyncShutdownCoordinator shutdown = new AsyncShutdownCoordinator(
@@ -248,6 +249,7 @@ public final class AppShell {
      */
     public CompletionStage<ShutdownOutcome> shutdownAsync() {
         sqlFileEntry.close();
+        sqlFileTabs.close();
         return shutdown.shutdown();
     }
 
@@ -325,7 +327,7 @@ public final class AppShell {
                 recentSqlFiles, new SqlFileDraftLifecycle() {
                     @Override public void bind(SqlEditorPane pane) { sqlDrafts.get().bind(pane); }
                     @Override public void installed(Node content) { sqlDrafts.get().installed(content); }
-                });
+                }, sqlFileTabs);
     }
 
     /** Production file-tab transaction shared by AppShell and its package-level lifecycle contract. */
@@ -335,14 +337,45 @@ public final class AppShell {
             SqlHistoryStore sqlHistory, ShortcutSettings shortcuts, FxTaskRunner tasks,
             SqlScriptFileStore sqlScriptFileStore, RecentSqlFiles recentSqlFiles,
             SqlFileDraftLifecycle drafts) {
+        return openLoadedSqlFile(contentTabs, loaded, fileSession, connMgr, treeSvc, settings,
+                openDesigner, sqlHistory, shortcuts, tasks, sqlScriptFileStore, recentSqlFiles,
+                drafts, null);
+    }
+
+    static boolean openLoadedSqlFile(ContentTabPane contentTabs, SqlScriptFileStore.Loaded loaded,
+            SessionContext fileSession, ConnectionManager connMgr, ObjectTreeService treeSvc,
+            AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
+            SqlHistoryStore sqlHistory, ShortcutSettings shortcuts, FxTaskRunner tasks,
+            SqlScriptFileStore sqlScriptFileStore, RecentSqlFiles recentSqlFiles,
+            SqlFileDraftLifecycle drafts, SqlFileTabRegistry registry) {
         String fallbackTitle = "SQL";
+        java.util.concurrent.atomic.AtomicReference<Tab> ownedTab = new java.util.concurrent.atomic.AtomicReference<>();
+        SqlFileTabRegistry.Owner fileOwner = null;
+        if (registry != null) {
+            if (registry.select(loaded.path())) return true;
+            fileOwner = registry.createOwner(() -> {
+                Tab existing = ownedTab.get();
+                if (existing != null) {
+                    ((javafx.scene.control.TabPane) contentTabs.getNode())
+                            .getSelectionModel().select(existing);
+                }
+            });
+            if (!registry.install(fileOwner, loaded.path())) return true;
+        }
+        SqlFileTabRegistry.Owner installedOwner = fileOwner;
         Tab opened = contentTabs.openManagedTab(fallbackTitle, (tab, binding) -> {
+            ownedTab.set(tab);
             SqlEditorPane pane = new SqlEditorPane(fileSession, connMgr, treeSvc, settings,
                     openDesigner, null, null, sqlHistory, shortcuts, tasks);
             binding.bind(pane::closeResources);
             try {
-                pane.installSqlScriptFileController(loaded, sqlScriptFileStore, recentSqlFiles,
-                        tab::setText, fallbackTitle);
+                if (registry == null) {
+                    pane.installSqlScriptFileController(loaded, sqlScriptFileStore, recentSqlFiles,
+                            tab::setText, fallbackTitle);
+                } else {
+                    pane.installSqlScriptFileController(loaded, sqlScriptFileStore, recentSqlFiles,
+                            tab::setText, fallbackTitle, registry, installedOwner);
+                }
                 drafts.bind(pane);
                 drafts.installed(pane.getNode());
                 return new ContentTabPane.ManagedTabSpec(pane.getNode(), pane::requestClose,
@@ -352,6 +385,7 @@ public final class AppShell {
                 throw failure;
             }
         });
+        if (opened == null && registry != null) registry.release(installedOwner);
         return opened != null;
     }
 
@@ -400,31 +434,43 @@ public final class AppShell {
         private final Supplier<SessionContext> fileSessionFactory;
         private final SqlFileTabOpener opener;
         private final Consumer<String> feedback;
+        private final SqlFileTabRegistry registry;
         private final AtomicBoolean closed = new AtomicBoolean();
 
         SqlFileEntry(SqlScriptFileStore store, RecentSqlFiles recentFiles, SqlFileTaskDispatcher tasks,
                 Supplier<SessionContext> fileSessionFactory, SqlFileTabOpener opener,
                 Consumer<String> feedback) {
+            this(store, recentFiles, tasks, fileSessionFactory, opener, feedback, null);
+        }
+
+        SqlFileEntry(SqlScriptFileStore store, RecentSqlFiles recentFiles, SqlFileTaskDispatcher tasks,
+                Supplier<SessionContext> fileSessionFactory, SqlFileTabOpener opener,
+                Consumer<String> feedback, SqlFileTabRegistry registry) {
             this.store = java.util.Objects.requireNonNull(store);
             this.recentFiles = java.util.Objects.requireNonNull(recentFiles);
             this.tasks = java.util.Objects.requireNonNull(tasks);
             this.fileSessionFactory = java.util.Objects.requireNonNull(fileSessionFactory);
             this.opener = java.util.Objects.requireNonNull(opener);
             this.feedback = java.util.Objects.requireNonNull(feedback);
+            this.registry = registry;
         }
 
         void open(Path path) {
             if (closed.get()) return;
             if (path == null) { reportFailure(); return; }
+            RecentSqlFiles.RecordAdmission admission = recentFiles.recordAdmission();
             try {
-                tasks.submit(() -> store.load(path), this::loaded, ignored -> reportFailure());
+                tasks.submit(() -> store.load(path), loaded -> loaded(loaded, admission),
+                        ignored -> reportFailure());
             } catch (RuntimeException ignored) {
                 reportFailure();
             }
         }
 
-        private void loaded(SqlScriptFileStore.Loaded loaded) {
+        private void loaded(SqlScriptFileStore.Loaded loaded,
+                RecentSqlFiles.RecordAdmission admission) {
             if (closed.get()) return;
+            if (registry != null && registry.select(loaded.path())) return;
             final boolean opened;
             try {
                 opened = opener.open(loaded, fileSessionFactory.get());
@@ -433,7 +479,6 @@ public final class AppShell {
                 return;
             }
             if (!opened || closed.get()) { if (!closed.get()) reportFailure(); return; }
-            RecentSqlFiles.RecordAdmission admission = recentFiles.recordAdmission();
             try {
                 tasks.submit(() -> {
                     if (!closed.get()) recentFiles.record(admission, loaded.path());
@@ -471,7 +516,8 @@ public final class AppShell {
         SqlDraftRecoveryTabs recovery = new SqlDraftRecoveryTabs(contentTabs, owner,
                 draft -> SqlEditorPane.recoverDraft(session, connMgr, treeSvc, settings,
                         treeActions::openTableDesigner, draft, sqlHistory, shortcuts, tasks),
-                pane -> pane.installRecoveryConnectionChooser(connectionTree::connectionConfigsSnapshot));
+                pane -> pane.installRecoveryConnectionChooser(connectionTree::connectionConfigsSnapshot),
+                sqlScriptFileStore, recentSqlFiles, sqlFileTabs);
         SqlDraftManagerDialog.show(owner, root.getScene() == null ? null : root.getScene().getWindow(),
                 themeManager, recovery::restore, new SqlWorkspaceRecoveryTabs(contentTabs, owner, recovery));
     }
@@ -483,25 +529,14 @@ public final class AppShell {
     private void openSqlHistory() {
         javafx.stage.Window owner = root.getScene() == null ? null : root.getScene().getWindow();
         SqlHistoryDialog.show(sqlHistory, owner, themeManager).ifPresent(entry -> {
-            ConnConfig resolved = resolveConnByName(entry.connName());
-            ConnConfig conn = resolved != null && resolved.type() == DbType.REDIS ? null : resolved;
-            if (conn != null) session.setActiveConnection(conn);
-            String name = conn == null ? "SQL" : "SQL - " + conn.name();
+            SessionContext historySession = new SessionContext();
+            String name = entry.connName() == null ? "SQL - 历史" : "SQL - " + entry.connName();
             openSqlTab(name,
-                    () -> new SqlEditorPane(session, connMgr, treeSvc, settings,
-                            treeActions::openTableDesigner, conn, entry.schema(), sqlHistory,
+                    () -> new SqlEditorPane(historySession, connMgr, treeSvc, settings,
+                            treeActions::openTableDesigner, null, entry.schema(), sqlHistory,
                             shortcuts, tasks),
                     pane -> pane.setSqlText(entry.sql()));
         });
-    }
-
-    /** 按连接名解析连接配置（历史仅存名字）；找不到返回 {@code null}。 */
-    private ConnConfig resolveConnByName(String name) {
-        if (name == null) return null;
-        for (ConnConfig c : store.loadAll()) {
-            if (name.equals(c.name())) return c;
-        }
-        return null;
     }
 
     private void openSqlTab(String title, Supplier<SqlEditorPane> factory) {
@@ -512,21 +547,46 @@ public final class AppShell {
             String title,
             Supplier<SqlEditorPane> factory,
             Consumer<SqlEditorPane> initialize) {
-        javafx.scene.control.Tab opened = contentTabs.openManagedTab(title, binding -> ManagedTabFactorySequence.create(
-                () -> {
-                    SqlEditorPane pane = factory.get();
-                    return pane;
-                },
-                pane -> binding.bind(pane::closeResources),
-                pane -> {
-                    initialize.accept(pane);
-                    sqlDrafts.get().bind(pane);
-                },
-                pane -> new ContentTabPane.ManagedTabSpec(
-                        pane.getNode(), pane::requestClose,
-                        pane::requestMandatoryClose,
-                        pane::finalizeCloseOnFx, pane::closeResources)));
-        if (opened != null) sqlDrafts.get().installed(opened.getContent());
+        SqlDraftUi owner = sqlDrafts.get();
+        openSqlTab(contentTabs, title, factory, initialize, sqlScriptFileStore, recentSqlFiles,
+                new SqlFileDraftLifecycle() {
+                    @Override public void bind(SqlEditorPane pane) { owner.bind(pane); }
+                    @Override public void installed(Node content) { owner.installed(content); }
+                }, sqlFileTabs);
+    }
+
+    static boolean openSqlTab(ContentTabPane contentTabs, String title,
+            Supplier<SqlEditorPane> factory, Consumer<SqlEditorPane> initialize,
+            SqlScriptFileStore sqlScriptFileStore, RecentSqlFiles recentSqlFiles,
+            SqlFileDraftLifecycle drafts, SqlFileTabRegistry registry) {
+        java.util.Objects.requireNonNull(registry, "registry");
+        java.util.concurrent.atomic.AtomicReference<Tab> ownedTab = new java.util.concurrent.atomic.AtomicReference<>();
+        SqlFileTabRegistry.Owner fileOwner = registry.createOwner(() -> {
+            Tab existing = ownedTab.get();
+            if (existing != null) {
+                ((javafx.scene.control.TabPane) contentTabs.getNode())
+                        .getSelectionModel().select(existing);
+            }
+        });
+        Tab opened = contentTabs.openManagedTab(title, (tab, binding) -> {
+            ownedTab.set(tab);
+            SqlEditorPane pane = factory.get();
+            binding.bind(pane::closeResources);
+            try {
+                initialize.accept(pane);
+                pane.installSqlScriptFileController(null, sqlScriptFileStore, recentSqlFiles,
+                        tab::setText, title, registry, fileOwner);
+                drafts.bind(pane);
+                drafts.installed(pane.getNode());
+                return new ContentTabPane.ManagedTabSpec(pane.getNode(), pane::requestClose,
+                        pane::requestMandatoryClose, pane::finalizeCloseOnFx, pane::closeResources);
+            } catch (Throwable failure) {
+                pane.finalizeCloseOnFx();
+                throw failure;
+            }
+        });
+        if (opened == null) registry.release(fileOwner);
+        return opened != null;
     }
 
     private void openBackgroundCleanupTab(String title, Supplier<BackgroundTab> factory) {
