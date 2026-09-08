@@ -35,3 +35,35 @@ Windows CI 中曾有一次 `ConnectionDialogTest` 的 5 秒超时，本机全量
 测试 XML 汇总为 1,724 tests、0 failures、0 errors、3 skipped（需要真实服务的既有用例）。
 `0.0.0` 仅用于本机桌面验收，利用既有 dev-version 分支跳过启动更新请求；
 不修改仓库默认版本或发布 tag。
+
+构建最终 `BUILD SUCCESSFUL in 2m 8s`；app-image 顶层只有 `DataCube.exe`，
+没有 `DataCubeCli.exe`。修复提交 `d856a58` 已合并并推送 main，
+[Verify #34172478954](https://github.com/Clownking99/data-cube/actions/runs/34172478954)
+的 Windows 测试及 jlink、Linux 测试、Redis integration、wrapper validation 全部通过。
+
+## 实际桌面验收
+
+使用 computer-use 技能操作本轮构建的 Windows app-image。
+仅在被 Git 忽略的 `build/desktop-profile` 和 `build/desktop-fixtures` 下使用合成配置与 SQL，
+未载入真实保存连接、未执行 SQL、未安装软件。通过生成包的 `DataCube.cfg` 指定独立 `user.home`，
+未改动源代码或系统设置；此配置不进入版本控制。
+
+| 操作 | 观察结果 |
+| --- | --- |
+| Ctrl+O 原生文件选择器打开含中文的 SQL | 正确载入 `opened.sql`，显示未绑定连接，没有发起 SQL 执行 |
+| 编辑后 Ctrl+S | 标签出现并随后清除 `*`；磁盘文件包含精确修改文本 |
+| Ctrl+Shift+S 保存新副本 | 创建 `saved-as.sql`，内容一致，标签改为新文件名 |
+| 选择已有合成文件 | 原生覆盖确认后仍显示应用覆盖确认；点击应用“取消”，原文件内容未变，标签不改绑 |
+| 关闭未保存标签并点击“取消” | 保留标签、`*` 和编辑文本，磁盘未提前写入 |
+| 再次关闭并点击“保存并关闭” | 磁盘包含最新修改，标签关闭，回到欢迎页 |
+| 最近 SQL 文件菜单 | 保存文件置顶，点击后正确重新载入刚保存的完整文本 |
+| 关闭应用 | 窗口与验收进程正常退出 |
+
+没有把自动化用例冒充桌面点击：本轮未实际点击应用的“覆盖”肯定分支或关闭的“不保存”分支，
+这些分支仍以既有自动化回归为证据。
+
+## 下一步产品改进
+
+实测发现两处易用性改进空间：另存为未预填当前文件目录和文件名；默认宽度下 SQL 工具栏多个
+主操作标签被省略。这两项不影响本轮保存正确性，下一阶段优先处理文件选择定位和工具栏布局，
+不继续扩大文件事务实现。
