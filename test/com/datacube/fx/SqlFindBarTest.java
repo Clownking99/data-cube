@@ -197,12 +197,12 @@ class SqlFindBarTest {
         Fixture(String text) {
             editor.replaceText(text);
             editor.getUndoManager().forgetHistory();
-            bar = new SqlFindBar(editor, (SqlFindBar.SearchSubmitter) (work, success, failure) -> {
+            bar = new SqlFindBar(editor, (work, success, failure) -> {
                 Job job = new Job(work, success, failure);
                 jobs.add(job);
                 submitted.countDown();
                 return job.future;
-            });
+            }, (work, success, failure) -> { throw new AssertionError("find must not submit replacements"); }, () -> true);
             VBox host = new VBox(bar.getNode(), editor);
             new Scene(host, 480, 400);
             host.applyCss();

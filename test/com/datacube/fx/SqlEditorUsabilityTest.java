@@ -71,6 +71,38 @@ class SqlEditorUsabilityTest {
     }
 
     @Test
+    void replaceEntryAndReboundShortcutRemainSeparateFromHistoryAndExecution() throws Exception {
+        try (var fixture = new Fixture(null)) {
+            FxUiTestSupport.call(() -> {
+                Parent root = (Parent) fixture.pane.getNode();
+                new Scene(root, 480, 800);
+                root.applyCss(); root.layout();
+                var editor = (org.fxmisc.richtext.CodeArea) root.lookup("#sql-editor");
+                editor.replaceText("select 'keep';");
+                editor.getUndoManager().forgetHistory();
+                editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.H, false, true, false, false));
+                assertTrue(root.lookup("#sql-replace-pane").isManaged());
+                ((Button) root.lookup("#sql-find-close")).fire();
+                fixture.shortcuts.apply(java.util.Map.of(ShortcutAction.SQL_REPLACE, KeyCombination.keyCombination("Ctrl+R")));
+                editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.H, false, true, false, false));
+                assertFalse(root.lookup("#sql-find-bar").isVisible());
+                editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.R, false, true, false, false));
+                assertTrue(root.lookup("#sql-replace-pane").isVisible());
+                ((Button) root.lookup("#sql-find-replace-toggle")).fire();
+                assertFalse(root.lookup("#sql-replace-pane").isManaged());
+                ((Button) root.lookup("#sql-find-replace-toggle")).fire();
+                assertTrue(root.lookup("#sql-replace-pane").isManaged());
+                assertEquals("select 'keep';", editor.getText());
+                assertFalse(editor.isUndoAvailable(), "opening replacement must not edit the script");
+                assertTrue(root.lookup("#sql-execute").isDisabled());
+                assertEquals(KeyCombination.keyCombination("Ctrl+Shift+H"), fixture.shortcuts.get(ShortcutAction.SQL_HISTORY));
+                editor.clear(); // Return to the clean baseline for fixture close.
+                return null;
+            });
+        }
+    }
+
+    @Test
     void saveChooserStartsAtTheCurrentFileIncludingUnicodeAndSpaces() throws Exception {
         Path file = Files.writeString(directory.resolve("月度 查询.sql"), "select 1;");
         var loaded = new SqlScriptFileStore().load(file);
@@ -100,6 +132,7 @@ class SqlEditorUsabilityTest {
                 root.applyCss();
                 root.layout();
                 ((Button) root.lookup("#sql-find")).fire();
+                ((Button) root.lookup("#sql-find-replace-toggle")).fire();
                 ((TextField) root.lookup("#sql-find-query")).setText("x".repeat(1025));
                 root.applyCss();
                 root.layout();
@@ -116,6 +149,14 @@ class SqlEditorUsabilityTest {
                                     && bounds.getMaxY() <= area.getMaxY() + 1,
                             id + " must stay inside the find bar at width " + width + ": " + bounds + " in " + area);
                     if (!id.equals("status")) assertTrue(control.getWidth() + 1 >= control.prefWidth(-1), id);
+                }
+                for (String id : List.of("text", "current", "all", "status")) {
+                    Region control = (Region) bar.lookup("#sql-replace-" + id);
+                    Bounds bounds = control.localToScene(control.getLayoutBounds());
+                    assertTrue(control.isVisible() && control.isManaged(), id);
+                    assertTrue(bounds.getMinX() >= area.getMinX() - 1 && bounds.getMaxX() <= area.getMaxX() + 1
+                                    && bounds.getMaxY() <= area.getMaxY() + 1,
+                            "replacement " + id + " must fit at width " + width);
                 }
                 var editor = root.lookup("#sql-editor");
                 Bounds editorBounds = editor.localToScene(editor.getLayoutBounds());

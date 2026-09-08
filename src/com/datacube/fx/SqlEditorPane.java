@@ -379,6 +379,7 @@ public final class SqlEditorPane implements AutoCloseable {
         if (fileController != null) throw new IllegalStateException("SQL file controller already installed");
         controller.install(initial);
         fileController = controller;
+        fileController.busyProperty().addListener((obs, before, busy) -> findBar.editingStateChanged());
         saveSqlFileBtn.disableProperty().bind(fileController.busyProperty());
         saveAsSqlFileBtn.disableProperty().bind(fileController.busyProperty());
     }
@@ -606,6 +607,7 @@ public final class SqlEditorPane implements AutoCloseable {
         if (draftBinding != null) draftBinding.freeze();
         if (autoComplete != null) autoComplete.hide();
         admission.beginClosing();
+        if (findBar != null) findBar.editingStateChanged();
         SerialSessionOperationQueue.Snapshot operationSnapshot = sessionOperations.snapshot();
         CompletionStage<Void> idle = sessionOperations.stopAcceptingAndCancelQueued();
         if (operationSnapshot.running() && !operationSnapshot.currentCancellable()) {
@@ -641,6 +643,7 @@ public final class SqlEditorPane implements AutoCloseable {
                     editorArea == null ? null : editorArea.getText(),
                     CloseDecision.CANCEL_ROLLBACK);
             admission.beginClosing();
+            if (findBar != null) findBar.editingStateChanged();
             sessionOperations.stopAcceptingAndCancelQueued();
             continueAfterDraftFlush(true, result, () -> {
                 sessionOperations.suppressCallbacks();
@@ -788,6 +791,7 @@ public final class SqlEditorPane implements AutoCloseable {
             running = running || snapshot.running() || snapshot.cancelling();
         }
         refreshOperationControls();
+        if (findBar != null) findBar.editingStateChanged();
     }
 
     private void reopenAdmissionWithoutUi() {
@@ -1268,10 +1272,17 @@ public final class SqlEditorPane implements AutoCloseable {
         installMetadataPrewarm();
         // 虚拟化滚动容器：为 CodeArea 提供垂直/水平滚动条（宽/长 SQL 友好）。
         VirtualizedScrollPane<CodeArea> scroll = new VirtualizedScrollPane<>(editorArea);
-        findBar = new SqlFindBar(editorArea, tasks);
+        // A wrapped find/replace panel must not consume the entire editor half of the split pane.
+        scroll.setMinHeight(80);
+        findBar = new SqlFindBar(editorArea, tasks, () -> !draftEditingBlocked() && !admission.closing()
+                && !resourcesClosing.get() && !tasks.isClosed()
+                && (fileController == null || !fileController.isBusy()));
         root.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (!draftEditingBlocked() && shortcuts.get(ShortcutAction.SQL_FIND).match(event)) {
                 findBar.show();
+                event.consume();
+            } else if (!draftEditingBlocked() && shortcuts.get(ShortcutAction.SQL_REPLACE).match(event)) {
+                findBar.showReplace();
                 event.consume();
             }
         });

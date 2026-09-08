@@ -18,6 +18,8 @@ public enum ShortcutAction {
 
     SQL_FIND("sql.find", "SQL 编辑器", "查找 SQL 文本",
             new KeyCodeCombination(KeyCode.F, KeyCombination.CONTROL_DOWN)),
+    SQL_REPLACE("sql.replace", "SQL 编辑器", "替换 SQL 文本",
+            new KeyCodeCombination(KeyCode.H, KeyCombination.CONTROL_DOWN)),
 
     SQL_EXECUTE("sql.execute", "SQL 编辑器", "执行 SQL",
             new KeyCodeCombination(KeyCode.F5)),
