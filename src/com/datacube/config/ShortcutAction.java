@@ -16,6 +16,9 @@ import javafx.scene.input.KeyCombination;
  */
 public enum ShortcutAction {
 
+    SQL_FIND("sql.find", "SQL 编辑器", "查找 SQL 文本",
+            new KeyCodeCombination(KeyCode.F, KeyCombination.CONTROL_DOWN)),
+
     SQL_EXECUTE("sql.execute", "SQL 编辑器", "执行 SQL",
             new KeyCodeCombination(KeyCode.F5)),
     SQL_COMPLETE("sql.complete", "SQL 编辑器", "触发自动补全",

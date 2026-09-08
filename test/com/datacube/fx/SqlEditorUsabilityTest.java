@@ -3,6 +3,7 @@ package com.datacube.fx;
 import com.datacube.config.AppSettings;
 import com.datacube.config.RecentSqlFiles;
 import com.datacube.config.ShortcutSettings;
+import com.datacube.config.ShortcutAction;
 import com.datacube.config.SqlHistoryStore;
 import com.datacube.fx.task.FxTaskRunner;
 import com.datacube.service.JdbcEditorSession.TransactionMode;
@@ -18,6 +19,11 @@ import javafx.scene.control.Labeled;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.skin.ComboBoxListViewSkin;
+import javafx.scene.control.Button;
+import javafx.scene.control.TextField;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCombination;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Region;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -31,6 +37,40 @@ class SqlEditorUsabilityTest {
     @TempDir Path directory;
 
     @Test
+    void findEntryAndReboundShortcutStayInsideTheUnboundEditor() throws Exception {
+        String sql = "select '查找';";
+        Path file = Files.writeString(directory.resolve("find.sql"), sql);
+        try (var fixture = new Fixture(new SqlScriptFileStore().load(file))) {
+            FxUiTestSupport.call(() -> {
+                Parent root = (Parent) fixture.pane.getNode();
+                new Scene(root, 480, 800);
+                root.resize(480, 800);
+                root.applyCss();
+                root.layout();
+                var editor = (org.fxmisc.richtext.CodeArea) root.lookup("#sql-editor");
+                editor.selectRange(0, 6);
+                editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.F, false, true, false, false));
+                assertTrue(root.lookup("#sql-find-bar").isVisible());
+                assertEquals("select", ((TextField) root.lookup("#sql-find-query")).getText());
+                ((Button) root.lookup("#sql-find-close")).fire();
+                assertFalse(root.lookup("#sql-find-bar").isManaged());
+                fixture.shortcuts.apply(java.util.Map.of(ShortcutAction.SQL_FIND, KeyCombination.keyCombination("Ctrl+G")));
+                editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.F, false, true, false, false));
+                assertFalse(root.lookup("#sql-find-bar").isVisible(), "old binding must stop opening find immediately");
+                editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.G, false, true, false, false));
+                assertTrue(root.lookup("#sql-find-bar").isVisible());
+                ((Button) root.lookup("#sql-find-close")).fire();
+                ((Button) root.lookup("#sql-find")).fire();
+                assertTrue(root.lookup("#sql-find-bar").isVisible(), "mouse entry remains available after rebinding");
+                assertEquals(sql, editor.getText());
+                assertTrue(root.lookup("#sql-execute").isDisabled(), "find must not admit a database execution");
+                return null;
+            });
+        }
+        assertEquals(sql, Files.readString(file), "finding must not write the file");
+    }
+
+    @Test
     void saveChooserStartsAtTheCurrentFileIncludingUnicodeAndSpaces() throws Exception {
         Path file = Files.writeString(directory.resolve("月度 查询.sql"), "select 1;");
         var loaded = new SqlScriptFileStore().load(file);
@@ -41,6 +81,51 @@ class SqlEditorUsabilityTest {
                 assertEquals("月度 查询.sql", chooser.getInitialFileName());
                 assertEquals(List.of("*.sql"), chooser.getExtensionFilters().getFirst().getExtensions());
                 assertEquals("select 1;", Files.readString(file), "choosing defaults must not write SQL");
+                return null;
+            });
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"880, dark", "640, dark", "480, dark", "880, light", "640, light", "480, light"})
+    void openFindBarWrapsWithoutClippingControlsOrCoveringTheEditor(double width, String theme) throws Exception {
+        try (var fixture = new Fixture(null)) {
+            FxUiTestSupport.call(() -> {
+                Parent root = (Parent) fixture.pane.getNode();
+                Scene scene = new Scene(root, width, 800);
+                scene.getStylesheets().addAll(
+                        ThemeManager.class.getResource("theme-base.css").toExternalForm(),
+                        ThemeManager.class.getResource("theme-" + theme + ".css").toExternalForm());
+                root.resize(width, 800);
+                root.applyCss();
+                root.layout();
+                ((Button) root.lookup("#sql-find")).fire();
+                ((TextField) root.lookup("#sql-find-query")).setText("x".repeat(1025));
+                root.applyCss();
+                root.layout();
+                Region bar = (Region) root.lookup("#sql-find-bar");
+                Bounds area = bar.localToScene(bar.getLayoutBounds());
+                assertTrue(area.getWidth() <= width, "find bar must not expand its host");
+                for (String id : List.of("query", "match-case", "previous", "next", "close", "status")) {
+                    Region control = (Region) bar.lookup("#sql-find-" + id);
+                    Bounds bounds = control.localToScene(control.getLayoutBounds());
+                    assertTrue(control.isVisible() && control.isManaged(), id);
+                    assertTrue(bounds.getMinX() >= area.getMinX() - 1
+                                    && bounds.getMaxX() <= area.getMaxX() + 1
+                                    && bounds.getMinY() >= area.getMinY() - 1
+                                    && bounds.getMaxY() <= area.getMaxY() + 1,
+                            id + " must stay inside the find bar at width " + width + ": " + bounds + " in " + area);
+                    if (!id.equals("status")) assertTrue(control.getWidth() + 1 >= control.prefWidth(-1), id);
+                }
+                var editor = root.lookup("#sql-editor");
+                Bounds editorBounds = editor.localToScene(editor.getLayoutBounds());
+                assertTrue(editorBounds.getMinY() >= area.getMaxY() - 1, "find must not overlay SQL");
+                assertTrue(editorBounds.getHeight() > 40, "SQL must retain usable vertical space");
+                ((Button) root.lookup("#sql-find-close")).fire();
+                root.layout();
+                assertFalse(bar.isManaged());
+                assertTrue(editor.localToScene(editor.getLayoutBounds()).getMinY() < editorBounds.getMinY(),
+                        "closing find must release its layout space");
                 return null;
             });
         }
@@ -96,7 +181,7 @@ class SqlEditorUsabilityTest {
                 for (String selector : List.of(".button", ".menu-button", ".check-box")) {
                     actions.addAll(toolbar.lookupAll(selector));
                 }
-                assertEquals(9, actions.size(), "all file, execution, editing and result actions remain present");
+                assertEquals(10, actions.size(), "all file, execution, editing and result actions remain present");
                 Bounds area = toolbar.localToScene(toolbar.getLayoutBounds());
                 for (var node : actions) {
                     Labeled action = (Labeled) node;
@@ -133,6 +218,7 @@ class SqlEditorUsabilityTest {
 
     private final class Fixture implements AutoCloseable {
         final FxTaskRunner runner = new FxTaskRunner();
+        final ShortcutSettings shortcuts = new ShortcutSettings(directory.resolve("shortcuts.properties"));
         final SqlEditorPane pane;
 
         Fixture(SqlScriptFileStore.Loaded loaded) throws Exception {
@@ -142,7 +228,7 @@ class SqlEditorUsabilityTest {
                             new AppSettings(directory.resolve("settings.properties")),
                             (id, table) -> fail("must not open a designer"), null, null,
                             new SqlHistoryStore(directory.resolve("history.txt")),
-                            new ShortcutSettings(directory.resolve("shortcuts.properties")), runner);
+                            shortcuts, runner);
                     editor.installSqlScriptFileController(loaded, new SqlScriptFileStore(),
                             new RecentSqlFiles(directory.resolve("recent.txt")), ignored -> { }, "SQL");
                     return editor;

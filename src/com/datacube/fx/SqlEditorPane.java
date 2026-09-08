@@ -159,6 +159,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private final Set<String> columnLoading = ConcurrentHashMap.newKeySet();
     private final VBox root = new VBox(8);
     private CodeArea editorArea;
+    private SqlFindBar findBar;
     private SqlAutoComplete autoComplete;
     private final ResultFilterState resultFilterState = new ResultFilterState();
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
@@ -292,6 +293,7 @@ public final class SqlEditorPane implements AutoCloseable {
             };
             construction.own(() -> settings.commentModeProperty().removeListener(commentModeListener));
             construction.own(() -> session.activeConnectionProperty().removeListener(activeConnectionListener));
+            construction.own(() -> { if (findBar != null) findBar.detachUi(); });
             build();
             resultExports = new SqlResultExportCoordinator(tasks, this::captureResultExportSnapshot,
                     () -> resultStatusRevision, (text, error) -> {
@@ -491,6 +493,7 @@ public final class SqlEditorPane implements AutoCloseable {
     /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
     void closeResources() {
         if (!resourcesClosing.compareAndSet(false, true)) return;
+        if (findBar != null) findBar.close();
         if (fileController != null) fileController.close();
         detachDraftFromAnyThread();
         if (resultExports != null) resultExports.close();
@@ -511,6 +514,7 @@ public final class SqlEditorPane implements AutoCloseable {
     void finalizeCloseOnFx() {
         if (!uiFinalized.compareAndSet(false, true)) return;
         BestEffortCloseSequence.run(
+                () -> { if (findBar != null) findBar.detachUi(); },
                 () -> { if (fileController != null) fileController.detachUi(); },
                 () -> { if (draftBinding != null) draftBinding.close(); },
                 resultRowIndexes::clear,
@@ -809,6 +813,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void runDestructiveClose(ClosePlan snapshot) {
         sessionOperations.suppressCallbacks();
+        if (findBar != null) findBar.close();
         if (fileController != null) fileController.close();
         BestEffortCloseSequence.run(
                 () -> persistCloseSnapshot(snapshot),
@@ -918,11 +923,14 @@ public final class SqlEditorPane implements AutoCloseable {
         copyInsertBtn.setDisable(true);
         copyInsertBtn.setOnAction(e -> onCopyInsert());
 
+        Button find = new Button("查找");
+        find.setId("sql-find");
+        find.setOnAction(event -> findBar.show());
         primary.getChildren().addAll(
                 sqlActionGroup(new Label("Schema:"), schemaField),
                 sqlActionGroup(saveSqlFileBtn, saveAsSqlFileBtn),
                 sqlActionGroup(executeBtn, explainBtn, analyzeCheck),
-                sqlActionGroup(formatBtn, clearBtn),
+                sqlActionGroup(find, formatBtn, clearBtn),
                 sqlActionGroup(exportResultBtn, copyInsertBtn));
 
         environmentBadge = new Label();
@@ -1192,7 +1200,16 @@ public final class SqlEditorPane implements AutoCloseable {
         installMetadataPrewarm();
         // 虚拟化滚动容器：为 CodeArea 提供垂直/水平滚动条（宽/长 SQL 友好）。
         VirtualizedScrollPane<CodeArea> scroll = new VirtualizedScrollPane<>(editorArea);
-        TitledPane pane = new TitledPane("SQL 编辑器", scroll);
+        findBar = new SqlFindBar(editorArea, tasks);
+        root.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (!draftEditingBlocked() && shortcuts.get(ShortcutAction.SQL_FIND).match(event)) {
+                findBar.show();
+                event.consume();
+            }
+        });
+        VBox content = new VBox(findBar.getNode(), scroll);
+        VBox.setVgrow(scroll, Priority.ALWAYS);
+        TitledPane pane = new TitledPane("SQL 编辑器", content);
         // SplitPane 中不可折叠，改用分隔条调整高度；去除固定 prefHeight 以尊重用户拖拽。
         pane.setCollapsible(false);
         pane.setExpanded(true);
