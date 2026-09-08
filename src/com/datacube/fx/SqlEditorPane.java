@@ -932,7 +932,21 @@ public final class SqlEditorPane implements AutoCloseable {
         connectionBadge.setId("sql-connection");
         transactionModeBox = new ComboBox<>(FXCollections.observableArrayList(
                 JdbcEditorSession.TransactionMode.values()));
+        transactionModeBox.setId("sql-transaction-mode");
+        transactionModeBox.setAccessibleText("事务模式");
+        transactionModeBox.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(JdbcEditorSession.TransactionMode mode) {
+                if (mode == null) return "";
+                return switch (mode) {
+                    case AUTO_COMMIT -> "自动提交";
+                    case MANUAL -> "手动提交";
+                };
+            }
+            @Override public JdbcEditorSession.TransactionMode fromString(String text) { return null; }
+        });
+        transactionModeBox.setTooltip(new Tooltip("选择事务提交方式；手动模式下使用“提交”或“回滚”处理待提交事务。"));
         transactionModeBox.setPrefWidth(125);
+        transactionModeBox.setMinWidth(Region.USE_PREF_SIZE);
         transactionModeBox.setOnAction(e -> onTransactionModeChanged());
         commitBtn = new Button("提交");
         commitBtn.setOnAction(e -> submitTransactionAction(true));

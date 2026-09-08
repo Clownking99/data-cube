@@ -22,8 +22,7 @@ import javafx.scene.control.MenuItem;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.FlowPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 
@@ -119,7 +118,7 @@ public final class SqlResultToolbar {
         search.setPromptText("搜索当前结果…");
         search.setAccessibleText("搜索当前结果");
         search.setPrefWidth(220);
-        HBox.setHgrow(search, Priority.ALWAYS);
+        search.setMinWidth(Region.USE_PREF_SIZE);
         search.textProperty().addListener((ignored, oldValue, newValue) -> {
             if (!rendering) searchDebounce.playFromStart();
         });
@@ -154,14 +153,24 @@ public final class SqlResultToolbar {
         clear.setOnAction(ignored -> actions.clearFilters().run());
 
         conditions.setAlignment(Pos.CENTER_LEFT);
+        conditions.setMinWidth(0);
         summary.setId("sql-result-summary");
         summary.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
+        summary.setWrapText(true);
+        summary.setMinWidth(0);
+        summary.setMinHeight(Region.USE_PREF_SIZE);
     }
 
     private void composeLayout(MenuButton columnMenu) {
-        HBox actionsRow = new HBox(6, search, addCondition, applyDatabase, copy, clear);
+        FlowPane actionsRow = new FlowPane(6, 4, search, addCondition, applyDatabase, copy, clear);
         if (columnMenu != null) actionsRow.getChildren().add(3, columnMenu);
+        actionsRow.setId("sql-result-actions");
         actionsRow.setAlignment(Pos.CENTER_LEFT);
+        actionsRow.setMinHeight(Region.USE_PREF_SIZE);
+        // Keep action labels readable; move controls to another row when space runs out.
+        for (var control : actionsRow.getChildren()) {
+            ((Region) control).setMinWidth(Region.USE_PREF_SIZE);
+        }
         root.setPadding(new Insets(4, 0, 4, 0));
         root.getStyleClass().add("sql-result-toolbar");
         root.getChildren().addAll(actionsRow, conditions, summary);
@@ -198,6 +207,10 @@ public final class SqlResultToolbar {
             chip.setId("sql-result-filter-remove-" + index);
             chip.setAccessibleText("删除筛选条件：" + description);
             chip.getStyleClass().add("tag-chip");
+            chip.setWrapText(true);
+            chip.setMinWidth(0);
+            chip.maxWidthProperty().bind(conditions.widthProperty());
+            chip.setMinHeight(Region.USE_PREF_SIZE);
             chip.setDisable(!hasQuery);
             int stableIndex = index;
             chip.setOnAction(ignored -> actions.removeCondition().accept(stableIndex));

@@ -5,6 +5,7 @@ import com.datacube.config.RecentSqlFiles;
 import com.datacube.config.ShortcutSettings;
 import com.datacube.config.SqlHistoryStore;
 import com.datacube.fx.task.FxTaskRunner;
+import com.datacube.service.JdbcEditorSession.TransactionMode;
 import com.datacube.sqleditor.SqlScriptFileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +15,9 @@ import javafx.geometry.Bounds;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Labeled;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.skin.ComboBoxListViewSkin;
 import javafx.scene.layout.Region;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -109,6 +113,19 @@ class SqlEditorUsabilityTest {
                 assertTrue(toolbar.getHeight() > 40, "the toolbar must wrap instead of squeezing labels");
                 assertFalse(root.lookup("#sql-format").isDisabled());
                 assertTrue(root.lookup("#sql-execute").isDisabled(), "layout must not admit an unbound execution");
+                @SuppressWarnings("unchecked")
+                ComboBox<TransactionMode> mode = (ComboBox<TransactionMode>) root.lookup("#sql-transaction-mode");
+                assertNotNull(mode);
+                assertFalse(mode.isEditable(), "display labels must not become free-form mode input");
+                assertEquals(List.of(TransactionMode.AUTO_COMMIT, TransactionMode.MANUAL), mode.getItems());
+                assertEquals(TransactionMode.AUTO_COMMIT, mode.getValue());
+                assertTrue(mode.isDisabled(), "an unbound editor must not change transactions");
+                assertEquals("自动提交", mode.getConverter().toString(TransactionMode.AUTO_COMMIT));
+                assertEquals("手动提交", mode.getConverter().toString(TransactionMode.MANUAL));
+                assertEquals("", mode.getConverter().toString(null));
+                ListCell<?> displayed = (ListCell<?>) ((ComboBoxListViewSkin<?>) mode.getSkin()).getDisplayNode();
+                assertEquals("自动提交", displayed.getText());
+                assertTrue(displayed.getWidth() + 1 >= displayed.prefWidth(-1), "transaction label must fit");
                 return null;
             });
         }
