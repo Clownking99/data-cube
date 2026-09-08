@@ -856,7 +856,8 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private Node toolbar() {
-        HBox primary = new HBox(8);
+        FlowPane primary = new FlowPane(12, 6);
+        primary.setId("sql-primary-toolbar");
         primary.setAlignment(Pos.CENTER_LEFT);
 
         schemaField = new TextField();
@@ -917,9 +918,12 @@ public final class SqlEditorPane implements AutoCloseable {
         copyInsertBtn.setDisable(true);
         copyInsertBtn.setOnAction(e -> onCopyInsert());
 
-        primary.getChildren().addAll(new Label("Schema:"), schemaField,
-                saveSqlFileBtn, saveAsSqlFileBtn, executeBtn, explainBtn,
-                analyzeCheck, formatBtn, exportResultBtn, copyInsertBtn, clearBtn);
+        primary.getChildren().addAll(
+                sqlActionGroup(new Label("Schema:"), schemaField),
+                sqlActionGroup(saveSqlFileBtn, saveAsSqlFileBtn),
+                sqlActionGroup(executeBtn, explainBtn, analyzeCheck),
+                sqlActionGroup(formatBtn, clearBtn),
+                sqlActionGroup(exportResultBtn, copyInsertBtn));
 
         environmentBadge = new Label();
         environmentBadge.setId("sql-environment");
@@ -939,10 +943,10 @@ public final class SqlEditorPane implements AutoCloseable {
         transactionStatus = new Label();
         transactionStatus.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
-        HBox safety = new HBox(8,
+        FlowPane safety = new FlowPane(8, 4,
                 connectionBadge, environmentBadge, readOnlyBadge,
-                new Label("事务:"), transactionModeBox,
-                commitBtn, rollbackBtn, cancelBtn, transactionStatus);
+                sqlActionGroup(new Label("事务:"), transactionModeBox, commitBtn, rollbackBtn),
+                cancelBtn, transactionStatus);
         safety.setAlignment(Pos.CENTER_LEFT);
         safety.setPadding(new Insets(2, 0, 0, 0));
         connectionGuidance = new Label();
@@ -952,13 +956,33 @@ public final class SqlEditorPane implements AutoCloseable {
         return new VBox(4, primary, safety, connectionGuidance);
     }
 
+    private static HBox sqlActionGroup(Node... actions) {
+        HBox group = new HBox(8, actions);
+        group.setAlignment(Pos.CENTER_LEFT);
+        // Wrap a whole group instead of squeezing its controls down to ellipses.
+        group.setMinWidth(Region.USE_PREF_SIZE);
+        return group;
+    }
+
     private java.nio.file.Path chooseSqlSavePath(Window owner) {
+        java.io.File chosen = createSqlSaveChooser().showSaveDialog(owner);
+        return chosen == null ? null : chosen.toPath();
+    }
+
+    FileChooser createSqlSaveChooser() {
         FileChooser chooser = new FileChooser();
         chooser.setTitle("保存 SQL 文件");
         chooser.getExtensionFilters().add(
                 new FileChooser.ExtensionFilter("SQL 文件 (*.sql)", "*.sql"));
-        java.io.File chosen = chooser.showSaveDialog(owner);
-        return chosen == null ? null : chosen.toPath();
+        java.nio.file.Path current = fileController == null ? null : fileController.currentPath();
+        chooser.setInitialFileName(current == null ? "query.sql" : current.getFileName().toString());
+        if (current != null) {
+            java.nio.file.Path parent = current.getParent();
+            if (parent != null && java.nio.file.Files.isDirectory(parent)) {
+                chooser.setInitialDirectory(parent.toFile());
+            }
+        }
+        return chooser;
     }
 
     private boolean confirmSqlOverwrite(Window owner, java.nio.file.Path ignoredTarget) {

@@ -315,6 +315,12 @@ public final class SqlScriptFileController implements AutoCloseable {
         return busy;
     }
 
+    /** Last successfully bound file, used only to suggest Save As defaults on FX. */
+    Path currentPath() {
+        requireFx("currentPath");
+        return installed && !closed ? document.path() : null;
+    }
+
     /** FX-only listener cleanup, intentionally separate from thread-safe resource invalidation. */
     public void detachUi() {
         requireFx("detachUi");

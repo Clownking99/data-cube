@@ -30,6 +30,7 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SqlScriptFileControllerTest {
@@ -127,6 +128,7 @@ class SqlScriptFileControllerTest {
     @Test
     void firstSaveNormalSaveAndSaveAsPublishExactSnapshotsAndRebind() throws Exception {
         try (Fixture fixture = fixture("select 1", null)) {
+            assertNull(FxUiTestSupport.call(fixture.controller::currentPath));
             Path first = directory.resolve("first.sql");
             fixture.chosen.set(first);
             fixture.edit("select 'first';\n");
@@ -134,6 +136,7 @@ class SqlScriptFileControllerTest {
             assertEquals("select 'first';\n", Files.readString(first));
             assertEquals("first.sql", fixture.title());
             assertEquals(List.of(first.toRealPath()), fixture.recent.recent());
+            assertEquals(first.toRealPath(), FxUiTestSupport.call(fixture.controller::currentPath));
 
             fixture.edit("select 'second';\n  ");
             fixture.chosen.set(directory.resolve("must-not-be-used.sql"));
@@ -148,6 +151,7 @@ class SqlScriptFileControllerTest {
             assertEquals("select 'save-as';", Files.readString(second));
             assertEquals("second.sql", fixture.title());
             assertEquals(second.toRealPath(), fixture.recent.recent().getFirst());
+            assertEquals(second.toRealPath(), FxUiTestSupport.call(fixture.controller::currentPath));
         }
     }
 
@@ -178,6 +182,7 @@ class SqlScriptFileControllerTest {
             assertEquals(1, fixture.confirmations.get());
             assertEquals("keep", Files.readString(existing));
             assertEquals("original.sql*", fixture.title());
+            assertEquals(original.toRealPath(), FxUiTestSupport.call(fixture.controller::currentPath));
             assertTrue(fixture.recent.recent().isEmpty());
         }
     }
