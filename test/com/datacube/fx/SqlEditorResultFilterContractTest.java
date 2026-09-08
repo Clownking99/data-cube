@@ -87,6 +87,60 @@ class SqlEditorResultFilterContractTest {
 
     @TempDir Path directory;
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "button,true", "button,false", "shortcut,true", "shortcut,false", "explain,true", "explain,false"})
+    void visibleScopeIsTheTextSubmittedByExecuteShortcutAndExplain(String action, boolean selected) throws Exception {
+        PreparedRunner prepared = new PreparedRunner(result(false, row("synthetic", 1, "2026-09-08 00:00:00")));
+        boolean explain = action.equals("explain");
+        prepared.blockScript = !explain;
+        prepared.captureExplain = explain;
+        String script = "select 1;\nselect 2;";
+        try (PaneFixture fixture = databaseFixture(prepared)) {
+            FxUiTestSupport.call(() -> {
+                var editor = (org.fxmisc.richtext.CodeArea) field(fixture.pane, "editorArea");
+                editor.replaceText(script);
+                if (selected) editor.selectRange(script.length(), 10);
+                else editor.selectRange(9, 10); // Whitespace selection must still submit the complete script.
+                var execute = (Button) fixture.pane.getNode().lookup("#sql-execute");
+                assertEquals(selected ? "执行选中 (F5)" : "执行全部 (F5)", execute.getText());
+                assertFalse(execute.isDisabled());
+                if (action.equals("shortcut")) {
+                    ((ShortcutSettings) field(fixture.pane, "shortcuts")).apply(Map.of(
+                            com.datacube.config.ShortcutAction.SQL_EXECUTE,
+                            javafx.scene.input.KeyCombination.keyCombination("F6")));
+                    assertEquals(selected ? "执行选中 (F6)" : "执行全部 (F6)", execute.getText());
+                    editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.F5, false, false, false, false));
+                    assertFalse((boolean) field(fixture.pane, "running"), "old binding must no longer admit execution");
+                    editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.F6, false, false, false, false));
+                } else if (explain) ((Button) fixture.pane.getNode().lookup("#sql-explain")).fire();
+                else execute.fire();
+                return null;
+            });
+            if (explain) {
+                assertTrue(prepared.explainEntered.await(5, TimeUnit.SECONDS));
+                assertEquals(selected ? "select 2" : "select 1", prepared.lastExplainSql,
+                        "explain must keep selecting only the first statement in the displayed range");
+            } else {
+                assertTrue(prepared.scriptEntered.await(5, TimeUnit.SECONDS));
+                FxUiTestSupport.call(() -> {
+                    var editor = (org.fxmisc.richtext.CodeArea) field(fixture.pane, "editorArea");
+                    if (selected) editor.moveTo(0);
+                    else editor.selectRange(0, 6);
+                    assertTrue(fixture.pane.getNode().lookup("#sql-execute").isDisabled(),
+                            "scope refresh must not enable a running execution");
+                    assertEquals(script, editor.getText());
+                    return null;
+                });
+                assertEquals(selected ? "select 2;" : script, prepared.lastScriptSql,
+                        "later selection changes must not alter the admitted execution snapshot");
+            }
+            prepared.scriptRelease.countDown();
+            operations(fixture.pane).idle().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            FxUiTestSupport.call(() -> null);
+        } finally { prepared.scriptRelease.countDown(); }
+    }
+
     @Test
     void commentModeChangesRefreshExistingHeadersWithoutResettingColumnView() throws Exception {
         try (PaneFixture fixture = new PaneFixture(null, null)) {
@@ -1863,6 +1917,10 @@ class SqlEditorResultFilterContractTest {
         volatile String lastSql;
         volatile String lastSchema;
         volatile String lastScriptSchema;
+        volatile String lastScriptSql;
+        volatile String lastExplainSql;
+        volatile boolean captureExplain;
+        final CountDownLatch explainEntered = new CountDownLatch(1);
         volatile List<SqlParameter> lastParameters = List.of();
         volatile boolean blockScript;
 
@@ -1933,6 +1991,7 @@ class SqlEditorResultFilterContractTest {
         public List<ScriptOutcome> executeScript(Connection connection, String script,
                 String schema, SqlExecutionOptions options, ScriptErrorPolicy policy) {
             lastScriptSchema = schema;
+            lastScriptSql = script;
             if (blockScript) {
                 scriptEntered.countDown();
                 try {
@@ -1952,6 +2011,11 @@ class SqlEditorResultFilterContractTest {
         @Override
         public QueryResult explain(Connection connection, String sql, String schema,
                 boolean analyze, SqlExecutionOptions options) {
+            if (captureExplain) {
+                lastExplainSql = sql;
+                explainEntered.countDown();
+                return result;
+            }
             return QueryResult.error("unexpected explain", 0);
         }
     }

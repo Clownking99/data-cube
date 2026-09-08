@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 
 /**
@@ -28,6 +30,7 @@ public final class ShortcutSettings {
 
     private final Path file;
     private final Map<ShortcutAction, KeyCombination> overrides = new EnumMap<>(ShortcutAction.class);
+    private final CopyOnWriteArrayList<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
     public ShortcutSettings() {
         this(Path.of(System.getProperty("user.home"), ".datacube", "shortcuts.properties"));
@@ -49,6 +52,11 @@ public final class ShortcutSettings {
         return overrides.containsKey(action);
     }
 
+    /** UI listeners marshal notifications to FX; subscriptions can be removed during background apply. */
+    public void addChangeListener(Runnable listener) { changeListeners.add(Objects.requireNonNull(listener)); }
+
+    public void removeChangeListener(Runnable listener) { changeListeners.remove(listener); }
+
     /**
      * 用给定映射整体替换当前绑定：与默认相同的项不落库，其余作为覆盖值保存。
      * {@code null} 值表示恢复该动作为默认。变更后立即写回（best-effort）。
@@ -62,6 +70,7 @@ public final class ShortcutSettings {
             }
         }
         save();
+        changeListeners.forEach(Runnable::run);
     }
 
     // ---------- 持久化 ----------

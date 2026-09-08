@@ -22,6 +22,34 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SqlFindBarTest {
+    @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory;
+
+    @Test void findingAPhraseUpdatesExecutionScopeAndClosingFindDoesNotClearTheSelection() throws Exception {
+        FxUiTestSupport.call(() -> {
+            try (var f = new Fixture("select a; select b;");
+                 var scope = new SqlEditorScopeBar(f.editor,
+                         new com.datacube.config.ShortcutSettings(directory.resolve("shortcuts.properties")))) {
+                f.editor.moveTo(0);
+                assertEquals("执行全部 (F5)", scope.executeLabelProperty().get());
+                f.bar.show();
+                f.startScan("select");
+                f.jobs.getLast().publish();
+                f.button("next").fire();
+                assertEquals("select", f.editor.getSelectedText());
+                assertEquals("执行选中 (F5)", scope.executeLabelProperty().get());
+                assertTrue(((Label) scope.getNode().lookup("#sql-editor-position")).getText().endsWith("选中 6"));
+                f.button("close").fire();
+                assertEquals("执行选中 (F5)", scope.executeLabelProperty().get(),
+                        "closing find retains the selection that execution will consume");
+                f.editor.moveTo(f.editor.getSelection().getEnd());
+                assertEquals("执行全部 (F5)", scope.executeLabelProperty().get());
+                assertEquals("select a; select b;", f.editor.getText());
+                assertFalse(f.editor.isUndoAvailable());
+            }
+            return null;
+        });
+    }
+
     @Test void typingIsDebouncedWithoutDoingWorkForEveryKeystroke() throws Exception {
         Fixture f = FxUiTestSupport.call(() -> new Fixture("abc abc"));
         try {

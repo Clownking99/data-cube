@@ -37,9 +37,8 @@ class SqlEditorConnectionGuidanceTest {
         try (var fixture = new Fixture()) {
             FxUiTestSupport.call(() -> {
                 var root = fixture.pane.getNode();
-                // Locate by existing text so the first red fails on behavior, not a missing new ID.
-                var execute = root.lookupAll(".button").stream().filter(Button.class::isInstance)
-                        .map(Button.class::cast).filter(b -> b.getText().startsWith("执行 (")).findFirst().orElseThrow();
+                var execute = button(root, "execute");
+                assertEquals("执行全部 (F5)", execute.getText());
                 assertTrue(execute.isDisabled(), "unbound SQL must not offer execution");
                 int windows = Window.getWindows().size();
                 fixture.pane.setSqlText("SELECT 1");

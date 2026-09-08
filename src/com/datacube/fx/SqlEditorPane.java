@@ -160,6 +160,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private final VBox root = new VBox(8);
     private CodeArea editorArea;
     private SqlFindBar findBar;
+    private SqlEditorScopeBar editorScopeBar;
     private SqlAutoComplete autoComplete;
     private final ResultFilterState resultFilterState = new ResultFilterState();
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
@@ -308,6 +309,7 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(() -> settings.commentModeProperty().removeListener(commentModeListener));
             construction.own(() -> session.activeConnectionProperty().removeListener(activeConnectionListener));
             construction.own(() -> { if (findBar != null) findBar.detachUi(); });
+            construction.own(() -> { if (editorScopeBar != null) editorScopeBar.close(); });
             build();
             resultExports = new SqlResultExportCoordinator(tasks, this::captureResultExportSnapshot,
                     () -> resultStatusRevision, (text, error) -> {
@@ -569,6 +571,7 @@ public final class SqlEditorPane implements AutoCloseable {
         if (!uiFinalized.compareAndSet(false, true)) return;
         BestEffortCloseSequence.run(
                 () -> { if (findBar != null) findBar.detachUi(); },
+                () -> { if (editorScopeBar != null) editorScopeBar.close(); },
                 () -> { if (fileController != null) fileController.detachUi(); },
                 () -> { if (draftBinding != null) draftBinding.close(); },
                 resultRowIndexes::clear,
@@ -940,7 +943,8 @@ public final class SqlEditorPane implements AutoCloseable {
             if (fileController != null) fileController.saveAs();
         });
 
-        executeBtn = new Button("执行 (" + shortcuts.get(ShortcutAction.SQL_EXECUTE).getDisplayText() + ")");
+        executeBtn = new Button();
+        executeBtn.textProperty().bind(editorScopeBar.executeLabelProperty());
         executeBtn.setId("sql-execute");
         executeBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
         executeBtn.setOnAction(e -> onExecute());
@@ -1291,7 +1295,8 @@ public final class SqlEditorPane implements AutoCloseable {
                 event.consume();
             }
         });
-        VBox content = new VBox(findBar.getNode(), scroll);
+        editorScopeBar = new SqlEditorScopeBar(editorArea, shortcuts);
+        VBox content = new VBox(findBar.getNode(), scroll, editorScopeBar.getNode());
         VBox.setVgrow(scroll, Priority.ALWAYS);
         TitledPane pane = new TitledPane("SQL 编辑器", content);
         // SplitPane 中不可折叠，改用分隔条调整高度；去除固定 prefHeight 以尊重用户拖拽。
@@ -1384,9 +1389,9 @@ public final class SqlEditorPane implements AutoCloseable {
      * 待执行 SQL 文本：有非空文本选区时只取选区（“执行选中”），否则取全部内容。
      */
     private String selectedOrAllSql() {
-        String selected = editorArea.getSelectedText();
-        if (selected != null && !selected.trim().isEmpty()) return selected;
-        return editorArea.getText();
+        String text = editorArea.getText();
+        return com.datacube.sqleditor.SqlExecutionRange.resolve(text,
+                editorArea.getSelection().getStart(), editorArea.getSelection().getEnd()).extract(text);
     }
 
     private void onExecute() {

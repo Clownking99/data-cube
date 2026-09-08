@@ -36,6 +36,46 @@ import static org.junit.jupiter.api.Assertions.*;
 class SqlEditorUsabilityTest {
     @TempDir Path directory;
 
+    @Test
+    void visibleScopeMatchesTheExecutionTextWithoutChangingFileState() throws Exception {
+        String sql = "select 1;\n\t select 2;";
+        Path file = Files.writeString(directory.resolve("scope.sql"), sql);
+        try (var fixture = new Fixture(new SqlScriptFileStore().load(file))) {
+            FxUiTestSupport.call(() -> {
+                Parent root = (Parent) fixture.pane.getNode();
+                new Scene(root, 880, 800);
+                root.applyCss(); root.layout();
+                var editor = (org.fxmisc.richtext.CodeArea) root.lookup("#sql-editor");
+                var button = (Button) root.lookup("#sql-execute");
+                var scope = (Labeled) root.lookup("#sql-execution-scope");
+                var consume = SqlEditorPane.class.getDeclaredMethod("selectedOrAllSql");
+                consume.setAccessible(true);
+                assertEquals(sql, consume.invoke(fixture.pane));
+                assertEquals("执行全部 (F5)", button.getText());
+                editor.selectRange(sql.length(), 12);
+                assertEquals("select 2;", consume.invoke(fixture.pane));
+                assertEquals("执行选中 (F5)", button.getText());
+                assertEquals("执行范围：选中内容", scope.getText());
+                editor.selectRange(9, 12);
+                assertEquals(sql, consume.invoke(fixture.pane));
+                assertEquals("执行全部 (F5)", button.getText());
+                assertTrue(scope.getText().contains("选区仅含空白"));
+                fixture.shortcuts.apply(java.util.Map.of(ShortcutAction.SQL_EXECUTE, KeyCombination.keyCombination("F6")));
+                assertEquals("执行全部 (F6)", button.getText());
+                assertTrue(button.isDisabled(), "scope must not admit an unbound execution");
+                assertEquals(sql, editor.getText());
+                var fileField = SqlEditorPane.class.getDeclaredField("fileController");
+                fileField.setAccessible(true);
+                var documentField = SqlScriptFileController.class.getDeclaredField("document");
+                documentField.setAccessible(true);
+                assertFalse(((com.datacube.sqleditor.SqlScriptDocument)
+                        documentField.get(fileField.get(fixture.pane))).dirty());
+                return null;
+            });
+        }
+        assertEquals(sql, Files.readString(file), "scope presentation must not write the SQL file");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"toolbar", "find", "replace"})
     void findAndReplaceDismissCompletionBeforeTakingFocus(String entry) throws Exception {
@@ -202,6 +242,18 @@ class SqlEditorUsabilityTest {
                 Bounds editorBounds = editor.localToScene(editor.getLayoutBounds());
                 assertTrue(editorBounds.getMinY() >= area.getMaxY() - 1, "find must not overlay SQL");
                 assertTrue(editorBounds.getHeight() > 40, "SQL must retain usable vertical space");
+                Region scopeBar = (Region) root.lookup("#sql-editor-scope-bar");
+                Bounds scopeBounds = scopeBar.localToScene(scopeBar.getLayoutBounds());
+                assertTrue(scopeBounds.getMinY() >= editorBounds.getMaxY() - 1,
+                        "scope information belongs below the editable SQL, not over it");
+                assertTrue(scopeBounds.getMaxX() <= width + 1, "scope bar must fit the editor width");
+                for (String id : List.of("sql-editor-position", "sql-execution-scope")) {
+                    Region part = (Region) root.lookup("#" + id);
+                    Bounds bounds = part.localToScene(part.getLayoutBounds());
+                    assertTrue(bounds.getMaxX() <= scopeBounds.getMaxX() + 1
+                                    && bounds.getMaxY() <= scopeBounds.getMaxY() + 1,
+                            id + " must fit the wrapped context bar");
+                }
                 ((Button) root.lookup("#sql-find-close")).fire();
                 root.layout();
                 assertFalse(bar.isManaged());
