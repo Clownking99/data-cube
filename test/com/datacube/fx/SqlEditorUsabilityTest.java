@@ -36,6 +36,46 @@ import static org.junit.jupiter.api.Assertions.*;
 class SqlEditorUsabilityTest {
     @TempDir Path directory;
 
+    @ParameterizedTest
+    @ValueSource(strings = {"toolbar", "find", "replace"})
+    void findAndReplaceDismissCompletionBeforeTakingFocus(String entry) throws Exception {
+        try (var fixture = new Fixture(null)) {
+            FxUiTestSupport.call(() -> {
+                Parent root = (Parent) fixture.pane.getNode();
+                var stage = new javafx.stage.Stage();
+                stage.setScene(new Scene(root, 880, 800));
+                root.applyCss(); root.layout();
+                var editor = (org.fxmisc.richtext.CodeArea) root.lookup("#sql-editor");
+                try {
+                    stage.show();
+                    root.applyCss(); root.layout();
+                    editor.replaceText("sel");
+                    editor.moveTo(3);
+                    editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.SPACE,
+                            false, true, false, false));
+                    var completionField = SqlEditorPane.class.getDeclaredField("autoComplete");
+                    completionField.setAccessible(true);
+                    var popupField = SqlAutoComplete.class.getDeclaredField("popup");
+                    popupField.setAccessible(true);
+                    var popup = (javafx.stage.Popup) popupField.get(completionField.get(fixture.pane));
+                    assertTrue(popup.isShowing(), "start with actual SQL completion candidates");
+                    if (entry.equals("toolbar")) ((Button) root.lookup("#sql-find")).fire();
+                    else editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "",
+                            entry.equals("find") ? KeyCode.F : KeyCode.H, false, true, false, false));
+                    assertTrue(root.lookup("#sql-find-bar").isVisible());
+                    assertFalse(popup.isShowing(), "completion must not cover or intercept the find/replace controls");
+                    if (entry.equals("replace")) assertTrue(root.lookup("#sql-replace-pane").isManaged());
+                    assertEquals("sel", editor.getText(), "opening find must not accept a completion");
+                    assertTrue(root.lookup("#sql-execute").isDisabled());
+                } finally {
+                    editor.clear();
+                    stage.hide();
+                }
+                return null;
+            });
+        }
+    }
+
     @Test
     void findEntryAndReboundShortcutStayInsideTheUnboundEditor() throws Exception {
         String sql = "select '查找';";

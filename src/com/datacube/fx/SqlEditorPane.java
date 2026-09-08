@@ -982,7 +982,10 @@ public final class SqlEditorPane implements AutoCloseable {
 
         Button find = new Button("查找");
         find.setId("sql-find");
-        find.setOnAction(event -> findBar.show());
+        find.setOnAction(event -> {
+            autoComplete.hide();
+            findBar.show();
+        });
         primary.getChildren().addAll(
                 sqlActionGroup(new Label("Schema:"), schemaField),
                 sqlActionGroup(saveSqlFileBtn, saveAsSqlFileBtn),
@@ -1279,9 +1282,11 @@ public final class SqlEditorPane implements AutoCloseable {
                 && (fileController == null || !fileController.isBusy()));
         root.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (!draftEditingBlocked() && shortcuts.get(ShortcutAction.SQL_FIND).match(event)) {
+                autoComplete.hide();
                 findBar.show();
                 event.consume();
             } else if (!draftEditingBlocked() && shortcuts.get(ShortcutAction.SQL_REPLACE).match(event)) {
+                autoComplete.hide();
                 findBar.showReplace();
                 event.consume();
             }
