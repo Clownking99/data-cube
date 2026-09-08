@@ -69,6 +69,15 @@
 功能提交 `39ca72d` 的 [Verify](https://github.com/Clownking99/data-cube/actions/runs/34214147682) 全部通过：
 wrapper-validation、Ubuntu/Windows 单测、Windows linked image、Redis integration。
 
+弹窗修正后第二轮开发镜像已启动，Ctrl+O 打开同一合成文件，Ctrl+H 正常展开并查到 3 处。
+此后输入替换值时 Computer Use 返回 `failed to activate captured window`，重新只读观察为黑屏，
+已停止桌面输入并请求保持解锁。再次核对合成文件 SHA-256 未变。
+此轮尚未完成弹窗修正的真实窗口复验和明暗窄栏实测；这两项目前仅有自动回归证据，不能写为桌面已通过。
+
+弹窗修正提交 `885b790` 的 [Verify](https://github.com/Clownking99/data-cube/actions/runs/34215458200)
+亦全部通过：Ubuntu 1m 5s、Windows（含 linked image）3m 42s、Redis integration 54s、wrapper-validation 5s。
+其后仅补充本验收文档，无生产或测试代码变化；未创建 tag、安装包 Release 或接触真实连接。
+
 ## 不涵盖
 
 - 无真实数据库执行、安装升级、发布版本或用户任务耗时统计。
