@@ -46,6 +46,7 @@ import javafx.scene.layout.StackPane;
 import javafx.stage.FileChooser;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -327,7 +328,7 @@ public final class AppShell {
                 recentSqlFiles, new SqlFileDraftLifecycle() {
                     @Override public void bind(SqlEditorPane pane) { sqlDrafts.get().bind(pane); }
                     @Override public void installed(Node content) { sqlDrafts.get().installed(content); }
-                }, sqlFileTabs);
+                }, sqlFileTabs, connectionTree::connectionConfigsSnapshot);
     }
 
     /** Production file-tab transaction shared by AppShell and its package-level lifecycle contract. */
@@ -348,6 +349,18 @@ public final class AppShell {
             SqlHistoryStore sqlHistory, ShortcutSettings shortcuts, FxTaskRunner tasks,
             SqlScriptFileStore sqlScriptFileStore, RecentSqlFiles recentSqlFiles,
             SqlFileDraftLifecycle drafts, SqlFileTabRegistry registry) {
+        return openLoadedSqlFile(contentTabs, loaded, fileSession, connMgr, treeSvc, settings,
+                openDesigner, sqlHistory, shortcuts, tasks, sqlScriptFileStore, recentSqlFiles,
+                drafts, registry, List::of);
+    }
+
+    static boolean openLoadedSqlFile(ContentTabPane contentTabs, SqlScriptFileStore.Loaded loaded,
+            SessionContext fileSession, ConnectionManager connMgr, ObjectTreeService treeSvc,
+            AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
+            SqlHistoryStore sqlHistory, ShortcutSettings shortcuts, FxTaskRunner tasks,
+            SqlScriptFileStore sqlScriptFileStore, RecentSqlFiles recentSqlFiles,
+            SqlFileDraftLifecycle drafts, SqlFileTabRegistry registry,
+            Supplier<List<ConnConfig>> connectionChoices) {
         String fallbackTitle = "SQL";
         java.util.concurrent.atomic.AtomicReference<Tab> ownedTab = new java.util.concurrent.atomic.AtomicReference<>();
         SqlFileTabRegistry.Owner fileOwner = null;
@@ -365,10 +378,11 @@ public final class AppShell {
         SqlFileTabRegistry.Owner installedOwner = fileOwner;
         Tab opened = contentTabs.openManagedTab(fallbackTitle, (tab, binding) -> {
             ownedTab.set(tab);
-            SqlEditorPane pane = new SqlEditorPane(fileSession, connMgr, treeSvc, settings,
-                    openDesigner, null, null, sqlHistory, shortcuts, tasks);
+            SqlEditorPane pane = SqlEditorPane.openSqlFile(fileSession, connMgr, treeSvc, settings,
+                    openDesigner, sqlHistory, shortcuts, tasks);
             binding.bind(pane::closeResources);
             try {
+                pane.installFileConnectionChooser(connectionChoices);
                 if (registry == null) {
                     pane.installSqlScriptFileController(loaded, sqlScriptFileStore, recentSqlFiles,
                             tab::setText, fallbackTitle);

@@ -177,6 +177,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private Button executeBtn, explainBtn, formatBtn, clearBtn;
     private Button saveSqlFileBtn, saveAsSqlFileBtn;
     private Button recoveryConnectionButton;
+    private Button fileConnectionButton;
     private MenuButton exportResultBtn;
     private Button copyInsertBtn;
     private CheckBox analyzeCheck;
@@ -201,7 +202,9 @@ public final class SqlEditorPane implements AutoCloseable {
     /** 最近一次单条查询的原 SQL（用于安全重查与「复制 INSERT」解析目标表）。 */
     private String lastQuerySql;
     private SqlDraftEditorBinding draftBinding;
+    // Credential-free passive intent shared by recovered drafts and explicitly opened files.
     private SqlDraftRecoveryIntent recoveryIntent;
+    private final boolean fileConnectionSelection;
     private String recoveredUneditedSql;
 
     SqlDraftEditorBinding bindDraft(SqlDraftCoordinator runtime, java.util.UUID id, Long savedAt,
@@ -235,7 +238,7 @@ public final class SqlEditorPane implements AutoCloseable {
                          ConnConfig boundConn, String initialSchema, SqlHistoryStore history,
                          ShortcutSettings shortcuts, FxTaskRunner runner) {
         this(session, connections, treeSvc, settings, openDesigner, boundConn, initialSchema,
-                history, shortcuts, runner, null);
+                history, shortcuts, runner, null, false);
     }
 
     static SqlEditorPane recoverDraft(SessionContext session, ConnectionManager connections,
@@ -244,13 +247,22 @@ public final class SqlEditorPane implements AutoCloseable {
             SqlHistoryStore history, ShortcutSettings shortcuts, FxTaskRunner runner) {
         java.util.Objects.requireNonNull(draft, "draft");
         return new SqlEditorPane(session, connections, treeSvc, settings, openDesigner, null,
-                draft.schema(), history, shortcuts, runner, draft);
+                draft.schema(), history, shortcuts, runner, draft, false);
+    }
+
+    static SqlEditorPane openSqlFile(SessionContext session, ConnectionManager connections,
+            ObjectTreeService treeSvc, AppSettings settings,
+            java.util.function.BiConsumer<String, TableRef> openDesigner,
+            SqlHistoryStore history, ShortcutSettings shortcuts, FxTaskRunner runner) {
+        return new SqlEditorPane(session, connections, treeSvc, settings, openDesigner, null,
+                null, history, shortcuts, runner, null, true);
     }
 
     private SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
                          AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
                          ConnConfig boundConn, String initialSchema, SqlHistoryStore history,
-                         ShortcutSettings shortcuts, FxTaskRunner runner, SqlDraft recoveredDraft) {
+                         ShortcutSettings shortcuts, FxTaskRunner runner, SqlDraft recoveredDraft,
+                         boolean fileConnectionSelection) {
         this.session = session;
         this.connections = connections;
         this.treeSvc = treeSvc;
@@ -260,7 +272,9 @@ public final class SqlEditorPane implements AutoCloseable {
         this.editorConnection = boundConn;
         this.history = history;
         this.shortcuts = shortcuts;
-        this.recoveryIntent = recoveredDraft == null ? null : new SqlDraftRecoveryIntent(
+        this.fileConnectionSelection = fileConnectionSelection;
+        this.recoveryIntent = recoveredDraft == null
+                ? (fileConnectionSelection ? SqlDraftRecoveryIntent.from(null) : null) : new SqlDraftRecoveryIntent(
                 recoveredDraft.connectionId(), recoveredDraft.connectionType(), recoveredDraft.connectionName());
         ConstructionOwner construction = new ConstructionOwner();
         try {
@@ -394,7 +408,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private ConnConfig currentConn() {
         ConnConfig pinned = admission.pinned();
         if (pinned != null) return pinned;
-        if (recoveryIntent != null) return recoveryIntent.resolve(connections::config);
+        if (recoveryIntent != null) return connections == null ? null : recoveryIntent.resolve(connections::config);
         ConnConfig candidate = session.getActiveConnection();
         return candidate == null || candidate.type() == DbType.REDIS ? null : candidate;
     }
@@ -404,7 +418,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     boolean chooseRecoveryConnection(ConnConfig choice) {
-        if (!recoveryPassive() || draftEditingBlocked() || !sessionOperations.snapshot().accepting()
+        if (fileConnectionSelection || !recoveryPassive() || draftEditingBlocked() || !sessionOperations.snapshot().accepting()
                 || choice == null || choice.id() == null || choice.id().isBlank()
                 || (choice.type() != DbType.POSTGRESQL && choice.type() != DbType.ORACLE)) return false;
         recoveryIntent = SqlDraftRecoveryIntent.from(choice);
@@ -414,7 +428,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     void installRecoveryConnectionChooser(java.util.function.Supplier<List<ConnConfig>> configs) {
-        if (recoveryIntent == null || recoveryConnectionButton != null) return;
+        if (fileConnectionSelection || recoveryIntent == null || recoveryConnectionButton != null) return;
         recoveryConnectionButton = new Button("重新选择草稿连接");
         recoveryConnectionButton.setId("sql-draft-connection");
         recoveryConnectionButton.setOnAction(event -> {
@@ -430,11 +444,50 @@ public final class SqlEditorPane implements AutoCloseable {
         renderConnectionGuidance();
     }
 
+    private boolean canChooseFileConnection() {
+        var operation = sessionOperations.snapshot();
+        return fileConnectionSelection && recoveryPassive() && !draftEditingBlocked()
+                && !admission.closing() && !resourcesClosing.get() && !tasks.isClosed()
+                && operation.accepting() && !operation.pending() && !running;
+    }
+
+    boolean chooseFileConnection(ConnConfig choice) {
+        if (!canChooseFileConnection() || choice == null || connections == null) return false;
+        ConnConfig current = SqlDraftRecoveryIntent.from(choice).resolve(connections::config);
+        if (current == null || current.id() == null || current.id().isBlank()
+                || (current.type() != DbType.POSTGRESQL && current.type() != DbType.ORACLE)) return false;
+        recoveryIntent = SqlDraftRecoveryIntent.from(current);
+        renderDisconnectedCandidate(current);
+        draftEdited();
+        return true;
+    }
+
+    void installFileConnectionChooser(java.util.function.Supplier<List<ConnConfig>> configs) {
+        if (!fileConnectionSelection || fileConnectionButton != null) return;
+        fileConnectionButton = new Button("选择脚本连接");
+        fileConnectionButton.setId("sql-file-connection");
+        fileConnectionButton.setOnAction(event -> {
+            if (!canChooseFileConnection()) return;
+            SqlDraftConnectionChooser.show(configs.get(),
+                    root.getScene() == null ? null : root.getScene().getWindow(), "选择脚本连接")
+                    .ifPresent(choice -> {
+                        if (!canChooseFileConnection()) return;
+                        if (!chooseFileConnection(choice)) {
+                            renderDisconnectedCandidate(currentConn());
+                            showAlert("所选连接已不可用，请重新选择。脚本内容未改变。");
+                        }
+                    });
+        });
+        root.getChildren().add(1, fileConnectionButton);
+        renderConnectionGuidance();
+    }
+
     /** FX admission point: pin before safety/schema/oracle decisions or worker submission. */
     private ConnConfig admitCurrentConnection() {
         ConnConfig candidate = currentConn();
         if (recoveryPassive() && candidate == null) {
-            throw new IllegalStateException("草稿连接不可用，请重新选择连接");
+            throw new IllegalStateException(fileConnectionSelection
+                    ? "脚本连接不可用，请重新选择连接" : "草稿连接不可用，请重新选择连接");
         }
         ConnConfig pinned = admission.admit(candidate);
         editorConnection = pinned;
@@ -1043,7 +1096,16 @@ public final class SqlEditorPane implements AutoCloseable {
         if (recoveryConnectionButton != null)
             recoveryConnectionButton.setDisable(!recoveryPassive() || draftEditingBlocked());
         SqlConnectionGuidance state = guidance();
-        String text = recoveryPassive()
+        if (fileConnectionButton != null) {
+            fileConnectionButton.setDisable(!canChooseFileConnection());
+            fileConnectionButton.setText(admission.pinned() != null ? "脚本连接已锁定"
+                    : state.hasConnection() ? "更换脚本连接" : "选择脚本连接");
+        }
+        String text = fileConnectionSelection
+                ? (admission.pinned() != null ? "脚本连接已锁定；其他标签和左侧连接选择不会改变本页目标。"
+                    : state.hasConnection() ? "目标已选择，尚未连接；首次执行或会话操作将锁定该连接。"
+                    : "请点击“选择脚本连接”选择 PostgreSQL 或 Oracle；选择本身不会连接或执行 SQL。")
+                : recoveryPassive()
                 ? (state.hasConnection() ? "草稿已恢复，尚未连接；执行时将绑定原连接。"
                     : "草稿连接不可用，请为此草稿重新选择连接后执行。")
                 : state.text();
@@ -1061,6 +1123,12 @@ public final class SqlEditorPane implements AutoCloseable {
         renderConnectionGuidance();
         setButtonsRunning(false);
         return true;
+    }
+
+    private String missingConnectionMessage() {
+        if (fileConnectionSelection) return "请通过“选择脚本连接”选择可用的 PostgreSQL 或 Oracle 连接。";
+        if (recoveryIntent != null) return "草稿连接不可用，请重新选择草稿连接。";
+        return "请先在左侧选择一个活动连接";
     }
 
     private void renderInitialSessionState() {
@@ -1317,7 +1385,7 @@ public final class SqlEditorPane implements AutoCloseable {
         try {
             active = admitCurrentConnection();
         } catch (RuntimeException rejected) {
-            showAlert("请先在左侧选择一个活动连接");
+            showAlert(missingConnectionMessage());
             return;
         }
         if (!allowBySafetyPolicy(sql, active)) return;
@@ -1503,7 +1571,7 @@ public final class SqlEditorPane implements AutoCloseable {
         try {
             admitCurrentConnection();
         } catch (RuntimeException rejected) {
-            showAlert("请先在左侧选择一个活动连接");
+            showAlert(missingConnectionMessage());
             renderDisconnectedCandidate(null);
             return;
         }
@@ -1694,7 +1762,7 @@ public final class SqlEditorPane implements AutoCloseable {
         try {
             active = admitCurrentConnection();
         } catch (RuntimeException rejected) {
-            showAlert("请先在左侧选择一个活动连接");
+            showAlert(missingConnectionMessage());
             return;
         }
         List<String> stmts = SqlScriptSplitter.split(text, active.type() == DbType.ORACLE);

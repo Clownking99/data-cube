@@ -26,10 +26,16 @@ final class SqlDraftConnectionChooser {
     }
 
     static Optional<ConnConfig> show(List<ConnConfig> configs, Window owner) {
-        ChoiceDialog<Choice> dialog = new ChoiceDialog<>(null, choices(configs));
+        return show(configs, owner, "选择草稿连接");
+    }
+
+    static Optional<ConnConfig> show(List<ConnConfig> configs, Window owner, String title) {
+        List<Choice> available = choices(configs);
+        ChoiceDialog<Choice> dialog = new ChoiceDialog<>(null, available);
         if (owner != null) dialog.initOwner(owner);
-        dialog.setTitle("选择草稿连接");
-        dialog.setHeaderText("仅选择连接意图；执行时才连接数据库");
+        dialog.setTitle(title);
+        dialog.setHeaderText(available.isEmpty() ? "没有可用连接，请先新建 PostgreSQL 或 Oracle 连接。"
+                : "仅选择目标，不连接或执行 SQL；首次执行或会话操作将锁定连接。");
         dialog.setContentText("PostgreSQL / Oracle：");
         dialog.setSelectedItem(null);
         dialog.getDialogPane().lookupButton(ButtonType.OK).disableProperty()
