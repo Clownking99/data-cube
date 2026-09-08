@@ -1,6 +1,7 @@
 package com.datacube.sqleditor;
 
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -36,6 +37,13 @@ import static org.junit.jupiter.api.Assertions.fail;
 class SqlScriptFileStoreTest {
 
     @TempDir Path directory;
+
+    @BeforeEach
+    void resolveFixtureDirectory() throws IOException {
+        // The store returns canonical paths; callbacks must use the same spelling,
+        // including when the runner's temporary directory uses a Windows 8.3 alias.
+        directory = directory.toRealPath();
+    }
 
     @Test
     void loadsStrictUtf8WithOptionalBomAndPreservesText() throws Exception {
@@ -1787,7 +1795,11 @@ class SqlScriptFileStoreTest {
 
     private Path findWitness(Path temporary) throws IOException {
         try (var paths = Files.list(directory)) {
-            return paths.filter(path -> !path.equals(temporary)).filter(path -> {
+            return paths.filter(path -> {
+                String name = path.getFileName().toString();
+                return name.startsWith(".datacube-sql-owner-")
+                        && !name.startsWith(".datacube-sql-owner-guard-");
+            }).filter(path -> {
                 try {
                     return Files.isSameFile(path, temporary);
                 } catch (IOException failure) {
@@ -2121,7 +2133,9 @@ class SqlScriptFileStoreTest {
             assertNull(failure.recoveryPath());
         } else {
             assertEquals("old", Files.readString(target));
-            assertNull(failure.recoveryPath());
+            // File-key providers can identify the original target without its guards.
+            assertTrue(failure.recoveryPath() == null || target.equals(failure.recoveryPath()),
+                    "only the original target may be reported for recovery");
         }
     }
 
@@ -2250,7 +2264,8 @@ class SqlScriptFileStoreTest {
         if (deleteResult == GuardDeleteResult.REPLACE) {
             assertEquals("foreign-guard", Files.readString(restoredGuard.get()));
             assertFalse(failure.retainedPaths().contains(restoredGuard.get()));
-            assertNull(failure.recoveryPath());
+            assertTrue(failure.recoveryPath() == null || target.equals(failure.recoveryPath()),
+                    "only the original target may be reported for recovery");
         } else {
             assertEquals("old", Files.readString(restoredGuard.get()));
             assertEquals(restoredGuard.get(), failure.recoveryPath());

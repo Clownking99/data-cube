@@ -255,7 +255,9 @@ public final class RecentSqlFiles {
             if (!attributes.isDirectory() || attributes.isSymbolicLink()) throw new IOException();
         }
         Path real = normalized.toRealPath(LinkOption.NOFOLLOW_LINKS);
-        if (!real.equals(normalized)
+        // Windows expands 8.3 aliases (for example RUNNER~1) even with NOFOLLOW_LINKS.
+        // Compare resolved paths so aliases remain valid while link traversal is rejected.
+        if (!real.equals(normalized.toRealPath())
                 || !Files.isDirectory(real, LinkOption.NOFOLLOW_LINKS)
                 || Files.isSymbolicLink(real)) throw new IOException();
     }

@@ -133,7 +133,7 @@ class SqlScriptFileControllerTest {
             assertTrue(fixture.settle(fixture.save()));
             assertEquals("select 'first';\n", Files.readString(first));
             assertEquals("first.sql", fixture.title());
-            assertEquals(List.of(first.toAbsolutePath().normalize()), fixture.recent.recent());
+            assertEquals(List.of(first.toRealPath()), fixture.recent.recent());
 
             fixture.edit("select 'second';\n  ");
             fixture.chosen.set(directory.resolve("must-not-be-used.sql"));
@@ -147,7 +147,7 @@ class SqlScriptFileControllerTest {
             assertTrue(fixture.settle(fixture.saveAs()));
             assertEquals("select 'save-as';", Files.readString(second));
             assertEquals("second.sql", fixture.title());
-            assertEquals(second.toAbsolutePath().normalize(), fixture.recent.recent().getFirst());
+            assertEquals(second.toRealPath(), fixture.recent.recent().getFirst());
         }
     }
 
