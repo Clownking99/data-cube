@@ -97,6 +97,7 @@ public final class ConnectionTreePane implements AutoCloseable {
 
     private final VBox root = new VBox(6);
     private final TreeView<NodeData> tree = new TreeView<>();
+    private ConnectionTreeFindBar findBar;
 
     // 快速检索：直接键入字母即在可见行内增量定位（不含 WHERE 那种搜索框）。
     private final Label searchHint = new Label();
@@ -128,6 +129,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     @Override
     public void close() {
         tasks.close();
+        if (findBar != null) findBar.close();
     }
 
     /** 新建连接（供上方应用头工具栏调用）。 */
@@ -154,6 +156,7 @@ public final class ConnectionTreePane implements AutoCloseable {
         root.setPadding(new Insets(6));
 
         tree.setShowRoot(false);
+        tree.setId("connection-tree");
         tree.setRoot(new TreeItem<>(new NodeData(Kind.CONNECTION, "root", null, null, null, null)));
         tree.setCellFactory(tv -> new TreeCellImpl());
 
@@ -178,7 +181,8 @@ public final class ConnectionTreePane implements AutoCloseable {
             }
         });
 
-        root.getChildren().addAll(tree, searchHint);
+        findBar = new ConnectionTreeFindBar(tree);
+        root.getChildren().addAll(findBar.getNode(), tree, searchHint);
         VBox.setVgrow(tree, Priority.ALWAYS);
         installQuickSearch();
         reload();

@@ -166,7 +166,7 @@ class WorkspaceStartPaneTest {
                 // No metadata/action collaborator: focusing must never invoke either.
                 try (ConnectionTreePane pane = new ConnectionTreePane(store, manager, null, session, null, runner)) {
                     Scene scene = new Scene(new VBox(pane.getNode()));
-                    TreeView<?> tree = (TreeView<?>) ((VBox) pane.getNode()).getChildren().getFirst();
+                    TreeView<?> tree = (TreeView<?>) pane.getNode().lookup("#connection-tree");
                     pane.focusConnections();
                     assertSame(tree, scene.getFocusOwner());
                     assertNull(tree.getSelectionModel().getSelectedItem());
