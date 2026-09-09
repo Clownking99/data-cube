@@ -77,7 +77,7 @@ class SqlEditorUsabilityTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"toolbar", "find", "replace"})
+    @ValueSource(strings = {"toolbar", "find", "replace", "goto-button", "goto-key"})
     void findAndReplaceDismissCompletionBeforeTakingFocus(String entry) throws Exception {
         try (var fixture = new Fixture(null)) {
             FxUiTestSupport.call(() -> {
@@ -99,10 +99,12 @@ class SqlEditorUsabilityTest {
                     popupField.setAccessible(true);
                     var popup = (javafx.stage.Popup) popupField.get(completionField.get(fixture.pane));
                     assertTrue(popup.isShowing(), "start with actual SQL completion candidates");
-                    if (entry.equals("toolbar")) ((Button) root.lookup("#sql-find")).fire();
+                    boolean goTo = entry.startsWith("goto");
+                    if (entry.equals("goto-button")) ((Button) root.lookup("#sql-go-to-line")).fire();
+                    else if (entry.equals("toolbar")) ((Button) root.lookup("#sql-find")).fire();
                     else editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "",
-                            entry.equals("find") ? KeyCode.F : KeyCode.H, false, true, false, false));
-                    assertTrue(root.lookup("#sql-find-bar").isVisible());
+                            goTo ? KeyCode.G : entry.equals("find") ? KeyCode.F : KeyCode.H, false, true, false, false));
+                    assertTrue(root.lookup(goTo ? "#sql-go-to-line-bar" : "#sql-find-bar").isVisible());
                     assertFalse(popup.isShowing(), "completion must not cover or intercept the find/replace controls");
                     if (entry.equals("replace")) assertTrue(root.lookup("#sql-replace-pane").isManaged());
                     assertEquals("sel", editor.getText(), "opening find must not accept a completion");
@@ -344,6 +346,110 @@ class SqlEditorUsabilityTest {
                 ListCell<?> displayed = (ListCell<?>) ((ComboBoxListViewSkin<?>) mode.getSkin()).getDisplayNode();
                 assertEquals("自动提交", displayed.getText());
                 assertTrue(displayed.getWidth() + 1 >= displayed.prefWidth(-1), "transaction label must fit");
+                return null;
+            });
+        }
+    }
+
+    @Test
+    void goToLineRebindingAndFindSwitchingPreserveFileAndEditorIsolation() throws Exception {
+        String sql = "select 1;\nselect 2;\n";
+        Path file = Files.writeString(directory.resolve("navigate.sql"), sql);
+        try (var first = new Fixture(new SqlScriptFileStore().load(file)); var second = new Fixture(null)) {
+            FxUiTestSupport.call(() -> {
+                new Scene((Parent) second.pane.getNode(), 880, 800);
+                second.pane.getNode().applyCss();
+                Parent root = (Parent) first.pane.getNode();
+                new Scene(root, 880, 800);
+                root.applyCss(); root.layout();
+                var editor = (org.fxmisc.richtext.CodeArea) root.lookup("#sql-editor");
+                boolean undoBefore = editor.isUndoAvailable();
+                editor.selectRange(9, 0);
+                var input = (TextField) root.lookup("#sql-go-to-line-input");
+                editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.G, false, true, false, false));
+                assertTrue(root.lookup("#sql-go-to-line-bar").isVisible());
+                assertEquals("1", input.getSelectedText());
+                assertEquals("执行选中 (F5)", ((Button) root.lookup("#sql-execute")).getText());
+                input.setText("2");
+                input.fireEvent(new javafx.event.ActionEvent());
+                assertEquals(10, editor.getCaretPosition());
+                assertEquals(10, editor.getAnchor());
+                assertEquals("行 2 · 列 1", ((Labeled) root.lookup("#sql-editor-position")).getText());
+                assertEquals("执行全部 (F5)", ((Button) root.lookup("#sql-execute")).getText());
+                assertFalse(root.lookup("#sql-go-to-line-bar").isManaged());
+                first.shortcuts.apply(java.util.Map.of(ShortcutAction.SQL_GO_TO_LINE,
+                        KeyCombination.keyCombination("Ctrl+L")));
+                editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.G, false, true, false, false));
+                assertFalse(root.lookup("#sql-go-to-line-bar").isVisible());
+                editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.L, false, true, false, false));
+                assertTrue(root.lookup("#sql-go-to-line-bar").isVisible());
+                assertEquals("2", input.getText());
+                // A real replacement panel must be hidden/cancelled when navigation opens, and vice versa.
+                input.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.H, false, true, false, false));
+                assertFalse(root.lookup("#sql-go-to-line-bar").isVisible());
+                assertTrue(root.lookup("#sql-replace-pane").isVisible());
+                ((Button) root.lookup("#sql-go-to-line")).fire();
+                assertFalse(root.lookup("#sql-find-bar").isManaged());
+                assertTrue(root.lookup("#sql-go-to-line-bar").isVisible());
+                ((Button) root.lookup("#sql-find")).fire();
+                assertFalse(root.lookup("#sql-go-to-line-bar").isManaged());
+                assertTrue(root.lookup("#sql-find-bar").isVisible());
+                assertEquals(10, editor.getCaretPosition());
+                assertEquals(sql, editor.getText());
+                assertEquals(undoBefore, editor.isUndoAvailable(), "navigation must preserve existing undo history");
+                assertTrue(root.lookup("#sql-execute").isDisabled());
+                assertFalse(second.pane.getNode().lookup("#sql-go-to-line-bar").isVisible());
+                assertEquals("", ((org.fxmisc.richtext.CodeArea)
+                        second.pane.getNode().lookup("#sql-editor")).getText());
+                var controllerField = SqlEditorPane.class.getDeclaredField("fileController");
+                controllerField.setAccessible(true);
+                var documentField = SqlScriptFileController.class.getDeclaredField("document");
+                documentField.setAccessible(true);
+                assertFalse(((com.datacube.sqleditor.SqlScriptDocument)
+                        documentField.get(controllerField.get(first.pane))).dirty());
+                assertEquals(KeyCombination.keyCombination("Ctrl+L"), new ShortcutSettings(
+                        directory.resolve("shortcuts.properties")).get(ShortcutAction.SQL_GO_TO_LINE));
+                return null;
+            });
+        }
+        assertEquals(sql, Files.readString(file));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"880, dark", "640, dark", "480, dark", "880, light", "640, light", "480, light"})
+    void goToLineWrapsWithoutClippingOrCoveringSql(double width, String theme) throws Exception {
+        try (var fixture = new Fixture(null)) {
+            FxUiTestSupport.call(() -> {
+                Parent root = (Parent) fixture.pane.getNode();
+                Scene scene = new Scene(root, width, 850);
+                scene.getStylesheets().addAll(
+                        ThemeManager.class.getResource("theme-base.css").toExternalForm(),
+                        ThemeManager.class.getResource("theme-" + theme + ".css").toExternalForm());
+                root.resize(width, 850);
+                root.applyCss(); root.layout();
+                ((Button) root.lookup("#sql-go-to-line")).fire();
+                ((TextField) root.lookup("#sql-go-to-line-input")).setText("999999999999999999999");
+                root.applyCss(); root.layout();
+                Region panel = (Region) root.lookup("#sql-go-to-line-bar");
+                Bounds area = panel.localToScene(panel.getLayoutBounds());
+                for (String id : List.of("input", "submit", "cancel", "status")) {
+                    Region part = (Region) root.lookup("#sql-go-to-line-" + id);
+                    Bounds bounds = part.localToScene(part.getLayoutBounds());
+                    assertTrue(bounds.getMinX() >= area.getMinX() - 1 && bounds.getMaxX() <= area.getMaxX() + 1
+                            && bounds.getMinY() >= area.getMinY() - 1 && bounds.getMaxY() <= area.getMaxY() + 1, id);
+                }
+                Region editor = (Region) root.lookup("#sql-editor");
+                Bounds editable = editor.localToScene(editor.getLayoutBounds());
+                assertTrue(editable.getMinY() >= area.getMaxY() - 1);
+                assertTrue(editable.getHeight() >= 40);
+                Region scope = (Region) root.lookup("#sql-editor-scope-bar");
+                Bounds scopeBounds = scope.localToScene(scope.getLayoutBounds());
+                assertTrue(scopeBounds.getMinY() >= editable.getMaxY() - 1);
+                Bounds launcher = root.lookup("#sql-go-to-line").localToScene(
+                        root.lookup("#sql-go-to-line").getLayoutBounds());
+                assertTrue(launcher.getMaxX() <= scopeBounds.getMaxX() + 1
+                        && launcher.getMaxY() <= scopeBounds.getMaxY() + 1);
+                assertTrue(root.lookup("#sql-go-to-line-submit").isDisabled());
                 return null;
             });
         }

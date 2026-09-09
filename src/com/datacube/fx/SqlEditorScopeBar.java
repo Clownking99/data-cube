@@ -33,6 +33,10 @@ final class SqlEditorScopeBar implements AutoCloseable {
     private boolean closed;
 
     SqlEditorScopeBar(CodeArea editor, ShortcutSettings shortcuts) {
+        this(editor, shortcuts, null);
+    }
+
+    SqlEditorScopeBar(CodeArea editor, ShortcutSettings shortcuts, javafx.scene.Node navigation) {
         this.editor = editor;
         this.shortcuts = shortcuts;
         root.setId("sql-editor-scope-bar");
@@ -48,6 +52,7 @@ final class SqlEditorScopeBar implements AutoCloseable {
         scope.setMinHeight(Region.USE_PREF_SIZE);
         scope.setTooltip(new Tooltip("提示下一次执行的文本范围，不表示已执行；执行计划仍只处理范围内第一条语句。"));
         root.getChildren().addAll(position, scope);
+        if (navigation != null) root.getChildren().add(navigation);
         editor.textProperty().addListener(editorListener);
         editor.selectionProperty().addListener(editorListener);
         editor.caretPositionProperty().addListener(editorListener);

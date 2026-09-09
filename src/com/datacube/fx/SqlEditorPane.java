@@ -161,6 +161,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private CodeArea editorArea;
     private SqlFindBar findBar;
     private SqlEditorScopeBar editorScopeBar;
+    private SqlGoToLineBar goToLineBar;
     private SqlAutoComplete autoComplete;
     private final ResultFilterState resultFilterState = new ResultFilterState();
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
@@ -310,6 +311,7 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(() -> session.activeConnectionProperty().removeListener(activeConnectionListener));
             construction.own(() -> { if (findBar != null) findBar.detachUi(); });
             construction.own(() -> { if (editorScopeBar != null) editorScopeBar.close(); });
+            construction.own(() -> { if (goToLineBar != null) goToLineBar.close(); });
             build();
             resultExports = new SqlResultExportCoordinator(tasks, this::captureResultExportSnapshot,
                     () -> resultStatusRevision, (text, error) -> {
@@ -572,6 +574,7 @@ public final class SqlEditorPane implements AutoCloseable {
         BestEffortCloseSequence.run(
                 () -> { if (findBar != null) findBar.detachUi(); },
                 () -> { if (editorScopeBar != null) editorScopeBar.close(); },
+                () -> { if (goToLineBar != null) goToLineBar.close(); },
                 () -> { if (fileController != null) fileController.detachUi(); },
                 () -> { if (draftBinding != null) draftBinding.close(); },
                 resultRowIndexes::clear,
@@ -987,6 +990,7 @@ public final class SqlEditorPane implements AutoCloseable {
         Button find = new Button("查找");
         find.setId("sql-find");
         find.setOnAction(event -> {
+            goToLineBar.hide(false);
             autoComplete.hide();
             findBar.show();
         });
@@ -1284,19 +1288,28 @@ public final class SqlEditorPane implements AutoCloseable {
         findBar = new SqlFindBar(editorArea, tasks, () -> !draftEditingBlocked() && !admission.closing()
                 && !resourcesClosing.get() && !tasks.isClosed()
                 && (fileController == null || !fileController.isBusy()));
+        goToLineBar = new SqlGoToLineBar(editorArea,
+                () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get()
+                        && !tasks.isClosed() && (fileController == null || !fileController.isBusy()),
+                () -> { autoComplete.hide(); findBar.hide(); });
         root.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (!draftEditingBlocked() && shortcuts.get(ShortcutAction.SQL_FIND).match(event)) {
+                goToLineBar.hide(false);
                 autoComplete.hide();
                 findBar.show();
                 event.consume();
             } else if (!draftEditingBlocked() && shortcuts.get(ShortcutAction.SQL_REPLACE).match(event)) {
+                goToLineBar.hide(false);
                 autoComplete.hide();
                 findBar.showReplace();
                 event.consume();
+            } else if (shortcuts.get(ShortcutAction.SQL_GO_TO_LINE).match(event)) {
+                goToLineBar.show();
+                event.consume();
             }
         });
-        editorScopeBar = new SqlEditorScopeBar(editorArea, shortcuts);
-        VBox content = new VBox(findBar.getNode(), scroll, editorScopeBar.getNode());
+        editorScopeBar = new SqlEditorScopeBar(editorArea, shortcuts, goToLineBar.launcher());
+        VBox content = new VBox(findBar.getNode(), goToLineBar.getNode(), scroll, editorScopeBar.getNode());
         VBox.setVgrow(scroll, Priority.ALWAYS);
         TitledPane pane = new TitledPane("SQL 编辑器", content);
         // SplitPane 中不可折叠，改用分隔条调整高度；去除固定 prefHeight 以尊重用户拖拽。
