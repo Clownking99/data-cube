@@ -34,6 +34,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.function.BiConsumer;
+import java.util.function.Predicate;
 
 /**
  * 连接树面板：左栏 {@link TreeView}，懒加载 schema/表/视图/函数/序列。
@@ -99,6 +101,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     private final VBox root = new VBox(6);
     private final TreeView<NodeData> tree = new TreeView<>();
     private ConnectionTreeFindBar findBar;
+    private final ConnectionTreeClipboard objectClipboard;
 
     // 快速检索：直接键入字母即在可见行内增量定位（不含 WHERE 那种搜索框）。
     private final Label searchHint = new Label();
@@ -108,6 +111,12 @@ public final class ConnectionTreePane implements AutoCloseable {
     public ConnectionTreePane(ConnectionStore store, ConnectionManager connMgr,
                               ObjectTreeService treeSvc, SessionContext session, Actions actions,
                               FxTaskRunner runner) {
+        this(store, connMgr, treeSvc, session, actions, runner, ConnectionTreeClipboard::writeSystemClipboard);
+    }
+
+    ConnectionTreePane(ConnectionStore store, ConnectionManager connMgr,
+                       ObjectTreeService treeSvc, SessionContext session, Actions actions,
+                       FxTaskRunner runner, Predicate<String> clipboardWriter) {
         this.store = store;
         this.connMgr = connMgr;
         this.treeSvc = treeSvc;
@@ -115,6 +124,7 @@ public final class ConnectionTreePane implements AutoCloseable {
         this.actions = actions;
         this.runner = runner;
         this.tasks = runner.scope();
+        this.objectClipboard = new ConnectionTreeClipboard(connMgr, clipboardWriter);
         build();
     }
 
@@ -183,7 +193,7 @@ public final class ConnectionTreePane implements AutoCloseable {
         });
 
         findBar = new ConnectionTreeFindBar(tree);
-        root.getChildren().addAll(findBar.getNode(), tree, searchHint);
+        root.getChildren().addAll(findBar.getNode(), tree, objectClipboard.getNode(), searchHint);
         VBox.setVgrow(tree, Priority.ALWAYS);
         installQuickSearch();
         reload();
@@ -191,6 +201,7 @@ public final class ConnectionTreePane implements AutoCloseable {
 
     /** 重新加载连接列表（从存储读取并注册到 ConnectionManager）。 */
     public void reload() {
+        objectClipboard.clearStatus();
         tree.getRoot().getChildren().clear();
         List<ConnConfig> configs = store.loadAll();
         for (ConnConfig cfg : configs) {
@@ -524,11 +535,22 @@ public final class ConnectionTreePane implements AutoCloseable {
 
     // ---------- 自定义单元格（含右键菜单） ----------
 
-    /** Capture the exact node, not a recyclable cell or the selection when a menu action fires. */
     MenuItem selectSqlItem(TreeItem<NodeData> target) {
+        return tableActionItem(target, "生成 SELECT 到新 SQL（不执行）", "tree-generate-select",
+                (connection, table) -> actions.openSelectSql(connection, table));
+    }
+
+    MenuItem copyQualifiedNameItem(TreeItem<NodeData> target) {
+        return tableActionItem(target, "复制限定名称", "tree-copy-qualified-name", objectClipboard::copy);
+    }
+
+    /** Capture the exact node and connection, not a recyclable cell or the current selection. */
+    private MenuItem tableActionItem(TreeItem<NodeData> target, String label, String id,
+                                    BiConsumer<ConnConfig, TableRef> action) {
         NodeData expected = target == null ? null : target.getValue();
-        MenuItem sql = new MenuItem("生成 SELECT 到新 SQL（不执行）");
-        sql.setId("tree-generate-select");
+        ConnConfig expectedConnection = target == null ? null : connOf(target);
+        MenuItem sql = new MenuItem(label);
+        sql.setId(id);
         sql.setOnAction(event -> {
             if (tasks.isClosed() || expected == null || target.getValue() != expected
                     || (expected.kind != Kind.TABLE && expected.kind != Kind.VIEW)) return;
@@ -536,9 +558,10 @@ public final class ConnectionTreePane implements AutoCloseable {
             while (ancestor.getParent() != null) ancestor = ancestor.getParent();
             if (ancestor != tree.getRoot()) return;
             ConnConfig connection = connOf(target);
-            if (connection == null || connection.type() == DbType.REDIS
+            if (connection == null || !connection.equals(expectedConnection)
+                    || (connection.type() != DbType.POSTGRESQL && connection.type() != DbType.ORACLE)
                     || !java.util.Objects.equals(connection.id(), expected.connId)) return;
-            actions.openSelectSql(connection, new TableRef(expected.schema, expected.name));
+            action.accept(connection, new TableRef(expected.schema, expected.name));
         });
         return sql;
     }
@@ -617,7 +640,8 @@ public final class ConnectionTreePane implements AutoCloseable {
                     export.setOnAction(e -> actions.exportTable(d.connId, new TableRef(d.schema, d.name)));
                     MenuItem sql = new MenuItem("打开 SQL 编辑器");
                     sql.setOnAction(e -> actions.openSqlEditor(connOf(getTreeItem()), d.schema));
-                    menu.getItems().addAll(data, selectSqlItem(getTreeItem()), design, ddl, export, sql);
+                    menu.getItems().addAll(data, selectSqlItem(getTreeItem()), copyQualifiedNameItem(getTreeItem()),
+                            design, ddl, export, sql);
                 }
                 case VIEW -> {
                     MenuItem data = new MenuItem("查看数据");
@@ -626,7 +650,7 @@ public final class ConnectionTreePane implements AutoCloseable {
                     ddl.setOnAction(e -> actions.openDdl(d.connId, d));
                     MenuItem edit = new MenuItem("编辑");
                     edit.setOnAction(e -> actions.editObject(d.connId, d));
-                    menu.getItems().addAll(data, selectSqlItem(getTreeItem()), ddl, edit);
+                    menu.getItems().addAll(data, selectSqlItem(getTreeItem()), copyQualifiedNameItem(getTreeItem()), ddl, edit);
                 }
                 case ROUTINE, PACKAGE, TRIGGER, TYPE -> {
                     MenuItem ddl = new MenuItem("查看 DDL");
