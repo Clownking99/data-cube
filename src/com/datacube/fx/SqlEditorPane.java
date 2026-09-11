@@ -165,6 +165,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlAutoComplete autoComplete;
     private SqlIndentActions indentActions;
     private ResultCellDialog resultCellDialog;
+    private ResultRowDialog resultRowDialog;
     private SqlResultRowDisplay resultRowDisplay;
     private final ResultFilterState resultFilterState = new ResultFilterState();
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
@@ -580,6 +581,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> { if (goToLineBar != null) goToLineBar.close(); },
                 () -> { if (indentActions != null) indentActions.close(); },
                 () -> { if (resultCellDialog != null) resultCellDialog.close(); },
+                () -> { if (resultRowDialog != null) resultRowDialog.close(); },
                 () -> { if (resultRowDisplay != null) resultRowDisplay.close(); },
                 () -> { if (resultColumnMenu != null) resultColumnMenu.close(); },
                 () -> { if (fileController != null) fileController.detachUi(); },
@@ -1357,7 +1359,10 @@ public final class SqlEditorPane implements AutoCloseable {
         MenuItem viewCellItem = new MenuItem("查看当前单元格");
         viewCellItem.setId("sql-result-view-cell-menu");
         viewCellItem.setOnAction(event -> showResultCell());
-        resultTable.setContextMenu(new ContextMenu(viewCellItem, copyItem, insertItem));
+        MenuItem viewRowItem = new MenuItem("查看当前行（可见列）");
+        viewRowItem.setId("sql-result-view-row-menu");
+        viewRowItem.setOnAction(event -> showResultRow());
+        resultTable.setContextMenu(new ContextMenu(viewCellItem, viewRowItem, copyItem, insertItem));
         // 执行计划文本区（等宽、只读、不换行）；与结果表格共用同一 TitledPane，按需切换。
         planArea = new TextArea();
         planArea.setEditable(false);
@@ -2035,7 +2040,46 @@ public final class SqlEditorPane implements AutoCloseable {
                 && resultPane.getContent() == resultTable;
     }
 
+    private void showResultRow() {
+        if (!resultCellViewingAllowed() || resultRowDialog != null) return;
+        var position = selectedResultCellPosition();
+        var snapshot = captureResultRowPreview(position);
+        if (position == null || snapshot == null) {
+            statusLabel.setText("请先选择一个结果数据单元格，再查看其所在行的可见字段。");
+            return;
+        }
+        if (!resultCellViewingAllowed()) return;
+        var dialog = new ResultRowDialog(root.getScene() == null ? null : root.getScene().getWindow(), snapshot, position.column() + 1);
+        resultRowDialog = dialog;
+        dialog.setOnHidden(event -> { if (resultRowDialog == dialog) resultRowDialog = null; });
+        try { dialog.show(); }
+        catch (RuntimeException failure) { resultRowDialog = null; throw failure; }
+    }
+
+    com.datacube.sqleditor.result.ResultRowPreview captureResultRowPreview() {
+        return captureResultRowPreview(selectedResultCellPosition());
+    }
+
+    private com.datacube.sqleditor.result.ResultRowPreview captureResultRowPreview(ResultCellPosition position) {
+        if (position == null) return null;
+        List<Integer> visibleColumns = new ArrayList<>();
+        for (var column : resultTable.getVisibleLeafColumns()) {
+            if (column.getUserData() instanceof Integer index && index >= 0) visibleColumns.add(index);
+        }
+        try {
+            return com.datacube.sqleditor.result.ResultRowPreview.capture(position.result(), position.sourceRow(), visibleColumns, position.displayRow());
+        } catch (IllegalArgumentException invalidProjection) { return null; }
+    }
+
     com.datacube.sqleditor.result.ResultCellPreview captureResultCellPreview() {
+        var position = selectedResultCellPosition();
+        return position == null ? null : com.datacube.sqleditor.result.ResultCellPreview.capture(
+                position.result(), position.sourceRow(), position.column(), position.displayRow());
+    }
+
+    private record ResultCellPosition(QueryResult result, int sourceRow, int column, int displayRow) { }
+
+    private ResultCellPosition selectedResultCellPosition() {
         if (!Platform.isFxApplicationThread()) throw new IllegalStateException("Cell capture requires FX thread");
         if (!resultCellViewingAllowed()) return null;
         QueryResult active = resultFilterState.snapshot().activeResult();
@@ -2052,7 +2096,7 @@ public final class SqlEditorPane implements AutoCloseable {
         Integer sourceRow = resultRowIndexes.get(resultTable.getItems().get(row));
         if (sourceRow == null || sourceRow < 0 || sourceRow >= active.rows.size()
                 || index >= active.rows.get(sourceRow).size()) return null;
-        return com.datacube.sqleditor.result.ResultCellPreview.capture(active, sourceRow, index, row);
+        return new ResultCellPosition(active, sourceRow, index, row);
     }
 
     /** Copies only formatted values in the table's current visible order. */

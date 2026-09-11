@@ -11,6 +11,11 @@ public record ResultCellPreview(int displayRow, int sourceRow, int column, Strin
     public static final int MAX_METADATA_LENGTH = 512;
 
     public static ResultCellPreview capture(QueryResult result, int sourceRow, int column, int displayRow) {
+        return capture(result, sourceRow, column, displayRow, MAX_TEXT_LENGTH);
+    }
+
+    static ResultCellPreview capture(QueryResult result, int sourceRow, int column, int displayRow, int textLimit) {
+        if (textLimit < 1 || textLimit > MAX_TEXT_LENGTH) throw new IllegalArgumentException("Invalid preview text limit");
         if (result == null || result.kind != QueryResult.Kind.QUERY || displayRow < 0
                 || sourceRow < 0 || sourceRow >= result.rows.size()
                 || column < 0 || column >= result.resultColumns.size()
@@ -19,7 +24,7 @@ public record ResultCellPreview(int displayRow, int sourceRow, int column, Strin
         Object value = result.rows.get(sourceRow).get(column);
         var metadata = result.resultColumns.get(column);
         String formatted = ResultValueFormatter.format(value);
-        String text = prefix(formatted, MAX_TEXT_LENGTH);
+        String text = prefix(formatted, textLimit);
         return new ResultCellPreview(displayRow + 1, sourceRow + 1, column + 1,
                 metadataText(metadata.label()), metadataText(metadata.jdbcTypeName()), metadata.jdbcType(),
                 text, formatted.length(), value == null, value instanceof String s && s.isEmpty(),

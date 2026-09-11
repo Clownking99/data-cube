@@ -36,6 +36,63 @@ import static org.junit.jupiter.api.Assertions.*;
 class SqlResultCellIntegrationTest {
     @TempDir Path directory;
 
+    @Test void rowDetailsCaptureSortedFilteredVisibleProjectionWithoutChangingSourceAndRemainFrozen() throws Exception {
+        try (var f = new Fixture()) {
+            FxUiTestSupport.call(() -> {
+                f.show(sample());
+                ((ResultFilterState) field(f.pane, "resultFilterState")).setSearchText("keep");
+                invoke(f.pane, "renderResultFilterSnapshot");
+                var seq = f.table.getColumns().get(0); var id = f.table.getColumns().get(1);
+                var hidden = f.table.getColumns().get(2); var value = f.table.getColumns().get(3);
+                hidden.setVisible(false); value.setPrefWidth(183);
+                f.table.getColumns().setAll(List.of(seq, value, hidden, id));
+                id.setSortType(TableColumn.SortType.DESCENDING); f.table.getSortOrder().setAll(List.of(id)); f.table.sort();
+                f.select(0, 0); f.table.getSelectionModel().select(1, value); f.table.getFocusModel().focus(1, value);
+                f.editor.selectRange(9, 2);
+                var rows = List.copyOf(f.table.getItems()); var selection = List.copyOf(f.table.getSelectionModel().getSelectedCells());
+                var snapshot = f.pane.captureResultRowPreview();
+                assertEquals(2, snapshot.displayRow()); assertEquals(2, snapshot.sourceRow());
+                assertEquals(List.of(3, 1), snapshot.fields().stream().map(com.datacube.sqleditor.result.ResultCellPreview::column).toList());
+                assertEquals(List.of("one-B", "1"), snapshot.fields().stream().map(com.datacube.sqleditor.result.ResultCellPreview::text).toList());
+                f.rowMenu().fire(); var dialog = f.rowDialog(); assertTrue(dialog.isShowing());
+                f.rowMenu().fire(); assertSame(dialog, f.rowDialog());
+                assertEquals("one-B", ResultRowDialogTest.text(dialog).getText());
+                ResultRowDialogTest.fields(dialog).getSelectionModel().selectLast(); assertEquals("1", ResultRowDialogTest.text(dialog).getText());
+                assertEquals(selection, f.table.getSelectionModel().getSelectedCells()); assertSame(value, f.table.getFocusModel().getFocusedCell().getTableColumn());
+                assertEquals(1, f.table.getFocusModel().getFocusedCell().getRow());
+                assertSame(rows.getFirst(), f.table.getItems().getFirst()); assertSame(rows.getLast(), f.table.getItems().getLast());
+                assertEquals(List.of(seq, value, hidden, id), f.table.getColumns()); assertFalse(hidden.isVisible());
+                assertEquals(List.of(id), f.table.getSortOrder()); assertEquals(183, value.getPrefWidth());
+                assertEquals(9, f.editor.getAnchor()); assertEquals(2, f.editor.getCaretPosition());
+                assertFalse(f.document().dirty()); assertFalse(f.editor.isUndoAvailable());
+                hidden.setVisible(true); f.show(sample()); invoke(f.pane, "clearResultFilterState");
+                assertEquals(List.of("one-B", "1"), ResultRowDialogTest.fields(dialog).getItems().stream()
+                        .map(com.datacube.sqleditor.result.ResultCellPreview::text).toList());
+                ResultRowDialogTest.fields(dialog).getSelectionModel().selectFirst(); assertEquals("one-B", ResultRowDialogTest.text(dialog).getText());
+                dialog.close(); assertNull(f.rowDialog());
+                f.show(sample()); f.select(2, 1); f.rowMenu().fire(); var latest = f.rowDialog();
+                assertEquals("keep", ResultRowDialogTest.text(latest).getText());
+                assertEquals(3, ResultRowDialogTest.fields(latest).getItems().size());
+                f.pane.finalizeCloseOnFx(); assertFalse(latest.isShowing()); assertNull(f.rowDialog());
+                return null;
+            });
+            assertEquals("select 'offline';", Files.readString(f.file)); f.assertOffline();
+        }
+    }
+
+    @Test void invalidNonFocusedVisibleFieldRejectsWholeRowInsteadOfShowingPartialData() throws Exception {
+        try (var f = new Fixture()) {
+            FxUiTestSupport.call(() -> {
+                f.show(QueryResult.query(List.of("a", "b"), List.of(List.of("only-a")), 0)); f.select(0, 0);
+                assertEquals("only-a", f.pane.captureResultCellPreview().text());
+                assertNull(f.pane.captureResultRowPreview()); f.rowMenu().fire(); assertNull(f.rowDialog());
+                assertEquals("请先选择一个结果数据单元格，再查看其所在行的可见字段。", ((javafx.scene.control.Label) field(f.pane, "statusLabel")).getText());
+                return null;
+            });
+            f.assertOffline();
+        }
+    }
+
     @Test void resultColumnFindPreservesFilteredSortedRowsAndOnlyExplicitlyRevealsTheChosenColumn() throws Exception {
         try (var f = new Fixture()) {
             FxUiTestSupport.call(() -> {
@@ -222,6 +279,8 @@ class SqlResultCellIntegrationTest {
                 ((javafx.scene.control.TextField) f.pane.getNode().lookup("#sql-result-search")).setText("keep");
                 ((javafx.scene.control.CheckBox) f.pane.getNode().lookup("#sql-result-compact-rows")).fire();
                 f.findColumnItem().fire(); assertNotNull(f.columnFinder()); f.columnFinder().close();
+                f.rowMenu().fire(); var rowDialog = f.rowDialog();
+                assertEquals("two-B", ResultRowDialogTest.text(rowDialog).getText());
                 f.button().fire();
                 var text = (TextArea) f.dialog().getDialogPane().lookup("#result-cell-text");
                 assertEquals("two-B", text.getText());
@@ -229,6 +288,7 @@ class SqlResultCellIntegrationTest {
                 assertTrue(toolbar.flushPendingSearch(), "viewer must not flush or implicitly change selection");
                 assertEquals(2, f.table.getItems().size());
                 assertEquals("two-B", text.getText(), "later local filtering cannot retarget the snapshot");
+                assertEquals("two-B", ResultRowDialogTest.text(rowDialog).getText()); rowDialog.close();
                 f.dialog().close();
                 return null;
             });
@@ -262,6 +322,8 @@ class SqlResultCellIntegrationTest {
                 assertNull(f.pane.captureResultCellPreview());
                 f.menu().fire(); assertNull(f.dialog());
                 assertEquals("请先选择一个结果数据单元格，再查看其内容。", ((javafx.scene.control.Label) field(f.pane, "statusLabel")).getText());
+                assertNull(f.pane.captureResultRowPreview()); f.rowMenu().fire(); assertNull(f.rowDialog());
+                assertEquals("请先选择一个结果数据单元格，再查看其所在行的可见字段。", ((javafx.scene.control.Label) field(f.pane, "statusLabel")).getText());
                 return null;
             });
             f.assertOffline();
@@ -292,6 +354,7 @@ class SqlResultCellIntegrationTest {
                 }
                 try {
                     assertNull(f.pane.captureResultCellPreview());
+                    assertNull(f.pane.captureResultRowPreview()); f.rowMenu().fire(); assertNull(f.rowDialog());
                     f.menu().getOnAction().handle(new javafx.event.ActionEvent());
                     f.button().getOnAction().handle(new javafx.event.ActionEvent());
                     var compact = (javafx.scene.control.CheckBox) f.pane.getNode().lookup("#sql-result-compact-rows");
@@ -348,6 +411,8 @@ class SqlResultCellIntegrationTest {
         Button button() { return (Button) pane.getNode().lookup("#sql-result-view-cell"); }
         MenuItem menu() { return table.getContextMenu().getItems().stream().filter(i -> "sql-result-view-cell-menu".equals(i.getId())).findFirst().orElseThrow(); }
         ResultCellDialog dialog() { return (ResultCellDialog) field(pane, "resultCellDialog"); }
+        MenuItem rowMenu() { return table.getContextMenu().getItems().stream().filter(i -> "sql-result-view-row-menu".equals(i.getId())).findFirst().orElseThrow(); }
+        ResultRowDialog rowDialog() { return (ResultRowDialog) field(pane, "resultRowDialog"); }
         MenuItem findColumnItem() {
             var columns = (javafx.scene.control.MenuButton) pane.getNode().lookup("#sql-result-columns");
             return columns.getItems().stream().filter(item -> "sql-result-columns-find".equals(item.getId())).findFirst().orElseThrow();
