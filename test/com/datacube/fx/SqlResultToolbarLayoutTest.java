@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SqlResultToolbarLayoutTest {
     private static final List<String> ACTION_IDS = List.of("sql-result-add-filter",
-            "sql-result-apply-database", "sql-result-columns", "sql-result-copy", "sql-result-clear-filter");
+            "sql-result-apply-database", "sql-result-columns", "sql-result-copy", "sql-result-clear-filter", "sql-result-view-cell");
 
     @ParameterizedTest
     @CsvSource({"880, dark", "640, dark", "480, dark", "880, light", "640, light", "480, light"})

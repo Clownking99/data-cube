@@ -40,7 +40,12 @@ public final class SqlResultToolbar {
             IntConsumer removeCondition,
             Runnable applyDatabaseFilter,
             Runnable clearFilters,
-            Consumer<CopyMode> copyRequested) {
+            Consumer<CopyMode> copyRequested,
+            Runnable viewCell) {
+        public Actions(Consumer<String> searchChanged, Runnable addCondition, IntConsumer removeCondition,
+                       Runnable applyDatabaseFilter, Runnable clearFilters, Consumer<CopyMode> copyRequested) {
+            this(searchChanged, addCondition, removeCondition, applyDatabaseFilter, clearFilters, copyRequested, () -> { });
+        }
         public Actions {
             Objects.requireNonNull(searchChanged, "searchChanged");
             Objects.requireNonNull(addCondition, "addCondition");
@@ -48,6 +53,7 @@ public final class SqlResultToolbar {
             Objects.requireNonNull(applyDatabaseFilter, "applyDatabaseFilter");
             Objects.requireNonNull(clearFilters, "clearFilters");
             Objects.requireNonNull(copyRequested, "copyRequested");
+            Objects.requireNonNull(viewCell, "viewCell");
         }
     }
 
@@ -59,6 +65,7 @@ public final class SqlResultToolbar {
     private final Button applyDatabase = new Button("数据库筛选");
     private final MenuButton copy = new MenuButton("复制");
     private final Button clear = new Button("清除筛选");
+    private final Button viewCell = new Button("查看单元格");
     private final Label summary = new Label();
     private final PauseTransition searchDebounce =
             new PauseTransition(Duration.millis(SEARCH_DEBOUNCE_MILLIS));
@@ -96,6 +103,7 @@ public final class SqlResultToolbar {
         search.setDisable(!hasQuery);
         addCondition.setDisable(!hasQuery);
         copy.setDisable(!hasQuery);
+        viewCell.setDisable(!hasQuery || snapshot.visibleRowIndexes().isEmpty());
         rebuildConditionChips(snapshot, hasQuery);
 
         String applyDisabledReason = applyDisabledReason(snapshot, hasQuery);
@@ -152,6 +160,10 @@ public final class SqlResultToolbar {
         clear.setAccessibleText("清除结果筛选");
         clear.setOnAction(ignored -> actions.clearFilters().run());
 
+        viewCell.setId("sql-result-view-cell");
+        viewCell.setTooltip(new Tooltip("先选择数据单元格；只读查看焦点格的已加载内容，不重新查询"));
+        viewCell.setOnAction(ignored -> actions.viewCell().run());
+
         conditions.setAlignment(Pos.CENTER_LEFT);
         conditions.setMinWidth(0);
         summary.setId("sql-result-summary");
@@ -162,7 +174,7 @@ public final class SqlResultToolbar {
     }
 
     private void composeLayout(MenuButton columnMenu) {
-        FlowPane actionsRow = new FlowPane(6, 4, search, addCondition, applyDatabase, copy, clear);
+        FlowPane actionsRow = new FlowPane(6, 4, search, addCondition, applyDatabase, viewCell, copy, clear);
         if (columnMenu != null) actionsRow.getChildren().add(3, columnMenu);
         actionsRow.setId("sql-result-actions");
         actionsRow.setAlignment(Pos.CENTER_LEFT);

@@ -562,7 +562,8 @@ class SqlEditorResultFilterContractTest {
                     return true;
                 });
                 confirmNextResultExport(confirmations);
-                table.getContextMenu().getItems().get(1).fire();
+                table.getContextMenu().getItems().stream()
+                        .filter(item -> "复制为 INSERT 语句".equals(item.getText())).findFirst().orElseThrow().fire();
                 assertEquals(2, confirmations.get());
                 assertTrue(captured.get().startsWith("INSERT INTO people"));
                 assertTrue(labelText(fixture.pane, "statusLabel").startsWith("已复制 1 条 INSERT"));

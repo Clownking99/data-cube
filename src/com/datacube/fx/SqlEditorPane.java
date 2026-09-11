@@ -164,6 +164,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlGoToLineBar goToLineBar;
     private SqlAutoComplete autoComplete;
     private SqlIndentActions indentActions;
+    private ResultCellDialog resultCellDialog;
     private final ResultFilterState resultFilterState = new ResultFilterState();
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
     private ClipboardWriter clipboardWriter = SqlEditorPane::writeSystemClipboard;
@@ -577,6 +578,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> { if (editorScopeBar != null) editorScopeBar.close(); },
                 () -> { if (goToLineBar != null) goToLineBar.close(); },
                 () -> { if (indentActions != null) indentActions.close(); },
+                () -> { if (resultCellDialog != null) resultCellDialog.close(); },
                 () -> { if (fileController != null) fileController.detachUi(); },
                 () -> { if (draftBinding != null) draftBinding.close(); },
                 resultRowIndexes::clear,
@@ -1348,7 +1350,10 @@ public final class SqlEditorPane implements AutoCloseable {
         copyItem.setOnAction(e -> copyResultSelection(SqlResultToolbar.CopyMode.SELECTION));
         MenuItem insertItem = new MenuItem("复制为 INSERT 语句");
         insertItem.setOnAction(e -> onCopyInsert());
-        resultTable.setContextMenu(new ContextMenu(copyItem, insertItem));
+        MenuItem viewCellItem = new MenuItem("查看当前单元格");
+        viewCellItem.setId("sql-result-view-cell-menu");
+        viewCellItem.setOnAction(event -> showResultCell());
+        resultTable.setContextMenu(new ContextMenu(viewCellItem, copyItem, insertItem));
         // 执行计划文本区（等宽、只读、不换行）；与结果表格共用同一 TitledPane，按需切换。
         planArea = new TextArea();
         planArea.setEditable(false);
@@ -1368,7 +1373,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 this::onRemoveResultFilterCondition,
                 this::onApplyDatabaseFilter,
                 this::onClearResultFilters,
-                this::copyResultSelection), resultColumnMenu.getNode());
+                this::copyResultSelection, this::showResultCell), resultColumnMenu.getNode());
         renderResultFilterToolbar();
         VBox box = new VBox(resultToolbar.getNode(), resultPane);
         VBox.setVgrow(resultPane, Priority.ALWAYS);
@@ -2002,6 +2007,48 @@ public final class SqlEditorPane implements AutoCloseable {
             case TIMEOUT -> "数据库筛选超时";
             case SQL_ERROR -> "数据库筛选执行失败";
         };
+    }
+
+    private void showResultCell() {
+        if (!resultCellViewingAllowed() || resultCellDialog != null) return;
+        var snapshot = captureResultCellPreview();
+        if (snapshot == null) {
+            statusLabel.setText("请先选择一个结果数据单元格，再查看其内容。");
+            return;
+        }
+        if (!resultCellViewingAllowed()) return;
+        var dialog = new ResultCellDialog(root.getScene() == null ? null : root.getScene().getWindow(), snapshot);
+        resultCellDialog = dialog;
+        dialog.setOnHidden(event -> { if (resultCellDialog == dialog) resultCellDialog = null; });
+        try { dialog.show(); }
+        catch (RuntimeException failure) { resultCellDialog = null; throw failure; }
+    }
+
+    private boolean resultCellViewingAllowed() {
+        return !admission.closing() && !resourcesClosing.get() && !uiFinalized.get() && !tasks.isClosed()
+                && !root.isDisabled() && !resultTable.isDisabled() && !running
+                && sessionOperations.snapshot().accepting() && !sessionOperations.snapshot().pending()
+                && resultPane.getContent() == resultTable;
+    }
+
+    com.datacube.sqleditor.result.ResultCellPreview captureResultCellPreview() {
+        if (!Platform.isFxApplicationThread()) throw new IllegalStateException("Cell capture requires FX thread");
+        if (!resultCellViewingAllowed()) return null;
+        QueryResult active = resultFilterState.snapshot().activeResult();
+        if (active == null || active != displayedResult || active.kind != QueryResult.Kind.QUERY) return null;
+        var focused = resultTable.getFocusModel().getFocusedCell();
+        TableColumn<ObservableList<Object>, ?> column = resultTable.getVisibleLeafColumns().stream()
+                .filter(candidate -> candidate == focused.getTableColumn()).findFirst().orElse(null);
+        int row = focused.getRow();
+        if (row < 0 || row >= resultTable.getItems().size() || column == null
+                || !resultTable.getVisibleLeafColumns().contains(column)
+                || !resultTable.getSelectionModel().isSelected(row, column)
+                || !(column.getUserData() instanceof Integer index) || index < 0
+                || index >= active.resultColumns.size()) return null;
+        Integer sourceRow = resultRowIndexes.get(resultTable.getItems().get(row));
+        if (sourceRow == null || sourceRow < 0 || sourceRow >= active.rows.size()
+                || index >= active.rows.get(sourceRow).size()) return null;
+        return com.datacube.sqleditor.result.ResultCellPreview.capture(active, sourceRow, index, row);
     }
 
     /** Copies only formatted values in the table's current visible order. */
