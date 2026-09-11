@@ -37,6 +37,7 @@ import javafx.scene.control.MenuItem;
 import javafx.scene.control.Separator;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -202,6 +203,12 @@ public final class AppShell {
         Button draftsBtn = new Button("SQL 草稿");
         draftsBtn.setId("sql-drafts");
         draftsBtn.setOnAction(event -> openSqlDrafts());
+        Button openTabsBtn = new Button("查找标签");
+        openTabsBtn.setId("open-tabs-search");
+        openTabsBtn.disableProperty().bind(contentTabs.emptyProperty());
+        openTabsBtn.setOnAction(event -> OpenTabsDialog.show((TabPane) contentTabs.getNode(),
+                root.getScene() == null ? null : root.getScene().getWindow(), themeManager,
+                () -> !root.isDisabled() && !fileOpenTasks.isClosed()));
         Separator sep = new Separator(Orientation.VERTICAL);
 
         // 弹性留白：把右侧功能按钮推向右端（“活动连接”不再在头部展示，改由各页面自行标识）
@@ -224,7 +231,7 @@ public final class AppShell {
         settingsBtn.setOnAction(e ->
                 SettingsDialog.show(settings, shortcuts, root.getScene() == null ? null : root.getScene().getWindow(), themeManager));
 
-        HBox bar = new HBox(6, logo, addConnBtn, refreshBtn, newSqlBtn, sqlFilesMenu, historyBtn, draftsBtn, sep, spacer,
+        HBox bar = new HBox(6, logo, addConnBtn, refreshBtn, newSqlBtn, sqlFilesMenu, historyBtn, draftsBtn, openTabsBtn, sep, spacer,
                 migrationBtn, themeBtn, aboutBtn, settingsBtn);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPadding(new Insets(6, 12, 6, 12));
