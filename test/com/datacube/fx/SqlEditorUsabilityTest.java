@@ -323,7 +323,8 @@ class SqlEditorUsabilityTest {
                 for (String selector : List.of(".button", ".menu-button", ".check-box")) {
                     actions.addAll(toolbar.lookupAll(selector));
                 }
-                assertEquals(12, actions.size(), "all file, execution, editing and result actions remain present");
+                assertEquals(13, actions.size(), "all file, execution, editing and result actions remain present");
+                assertTrue(actions.contains(root.lookup("#sql-line-comment")), "line comment is an explicit editing action");
                 Bounds area = toolbar.localToScene(toolbar.getLayoutBounds());
                 for (var node : actions) {
                     Labeled action = (Labeled) node;

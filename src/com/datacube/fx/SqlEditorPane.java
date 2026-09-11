@@ -65,7 +65,6 @@ import javafx.util.Duration;
 import org.fxmisc.flowless.VirtualizedScrollPane;
 import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.LineNumberFactory;
-import org.fxmisc.richtext.model.TwoDimensional;
 
 
 import java.util.ArrayList;
@@ -164,6 +163,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlGoToLineBar goToLineBar;
     private SqlAutoComplete autoComplete;
     private SqlIndentActions indentActions;
+    private SqlLineCommentAction lineCommentAction;
     private ResultCellDialog resultCellDialog;
     private ResultRowDialog resultRowDialog;
     private SqlResultRowDisplay resultRowDisplay;
@@ -316,6 +316,7 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(() -> { if (findBar != null) findBar.detachUi(); });
             construction.own(() -> { if (editorScopeBar != null) editorScopeBar.close(); });
             construction.own(() -> { if (goToLineBar != null) goToLineBar.close(); });
+            construction.own(() -> { if (lineCommentAction != null) lineCommentAction.close(); });
             build();
             resultExports = new SqlResultExportCoordinator(tasks, this::captureResultExportSnapshot,
                     () -> resultStatusRevision, (text, error) -> {
@@ -580,6 +581,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> { if (editorScopeBar != null) editorScopeBar.close(); },
                 () -> { if (goToLineBar != null) goToLineBar.close(); },
                 () -> { if (indentActions != null) indentActions.close(); },
+                () -> { if (lineCommentAction != null) lineCommentAction.close(); },
                 () -> { if (resultCellDialog != null) resultCellDialog.close(); },
                 () -> { if (resultRowDialog != null) resultRowDialog.close(); },
                 () -> { if (resultRowDisplay != null) resultRowDisplay.close(); },
@@ -1008,7 +1010,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 sqlActionGroup(saveSqlFileBtn, saveAsSqlFileBtn),
                 sqlActionGroup(executeBtn, explainBtn, analyzeCheck),
                 sqlActionGroup(find, formatBtn, clearBtn),
-                sqlActionGroup(indentActions.indentButton(), indentActions.outdentButton()),
+                sqlActionGroup(indentActions.indentButton(), indentActions.outdentButton(), lineCommentAction.button()),
                 sqlActionGroup(exportResultBtn, copyInsertBtn));
 
         environmentBadge = new Label();
@@ -1291,6 +1293,10 @@ public final class SqlEditorPane implements AutoCloseable {
         indentActions = new SqlIndentActions(editorArea, shortcuts,
                 () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get()
                         && !tasks.isClosed() && (fileController == null || !fileController.isBusy()),
+                () -> autoComplete.hide(), message -> statusLabel.setText(message));
+        lineCommentAction = new SqlLineCommentAction(editorArea, shortcuts,
+                () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get()
+                        && !uiFinalized.get() && !tasks.isClosed() && (fileController == null || !fileController.isBusy()),
                 () -> autoComplete.hide(), message -> statusLabel.setText(message));
         autoComplete = new SqlAutoComplete(editorArea, this::completionCandidates, shortcuts);
         autoComplete.setMemberProvider(this::membersFor);
@@ -2797,48 +2803,9 @@ public final class SqlEditorPane implements AutoCloseable {
 
     // ---------- 注释切换（Ctrl+/ 行注释；Ctrl+Shift+/ 块注释） ----------
 
-    /**
-     * 行注释切换：选区跨越的整行（无选区取光标行）若非空行全部以 {@code --} 开头则去注释，
-     * 否则每行行首加 {@code -- }。空行在添加时跳过，判定时忽略。
-     */
+    /** Button and existing configurable shortcut use the same bounded edit path. */
     private void toggleLineComment() {
-        if (draftEditingBlocked()) return;
-        IndexRange sel = editorArea.getSelection();
-        int startPar = editorArea.offsetToPosition(sel.getStart(), TwoDimensional.Bias.Forward).getMajor();
-        int endPar = editorArea.offsetToPosition(sel.getEnd(), TwoDimensional.Bias.Backward).getMajor();
-        // 选区跨行且末尾恰在行首时，末行不计入
-        if (endPar > startPar
-                && editorArea.offsetToPosition(sel.getEnd(), TwoDimensional.Bias.Forward).getMinor() == 0) {
-            endPar--;
-        }
-        List<String> lines = new ArrayList<>();
-        for (int p = startPar; p <= endPar; p++) lines.add(editorArea.getParagraph(p).getText());
-
-        boolean allCommented = true;
-        for (String ln : lines) {
-            if (ln.trim().isEmpty()) continue;
-            if (!ln.stripLeading().startsWith("--")) { allCommented = false; break; }
-        }
-
-        List<String> out = new ArrayList<>(lines.size());
-        for (String ln : lines) {
-            if (ln.trim().isEmpty()) { out.add(ln); continue; }
-            if (allCommented) {
-                int idx = ln.indexOf("--");
-                String after = ln.substring(idx + 2);
-                if (after.startsWith(" ")) after = after.substring(1);
-                out.add(ln.substring(0, idx) + after);
-            } else {
-                out.add("-- " + ln);
-            }
-        }
-
-        int repStart = editorArea.getAbsolutePosition(startPar, 0);
-        int repEnd = editorArea.getAbsolutePosition(endPar, editorArea.getParagraph(endPar).length());
-        String joined = String.join("\n", out);
-        editorArea.replaceText(repStart, repEnd, joined);
-        editorArea.selectRange(repStart, repStart + joined.length());
-        applyHighlighting(editorArea.getText());
+        lineCommentAction.apply();
     }
 
     /**
