@@ -46,6 +46,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     /** 树操作回调（由 AppShell 实现，打开对应内容标签）。 */
     public interface Actions {
         void openSqlEditor(ConnConfig conn, String schema);
+        void openSelectSql(ConnConfig conn, TableRef table);
         void openSchemaDiff(ConnConfig source, String sourceSchema);
         void openDataGrid(String connId, TableRef table, boolean readOnly);
         void openDdl(String connId, NodeData node);
@@ -523,6 +524,25 @@ public final class ConnectionTreePane implements AutoCloseable {
 
     // ---------- 自定义单元格（含右键菜单） ----------
 
+    /** Capture the exact node, not a recyclable cell or the selection when a menu action fires. */
+    MenuItem selectSqlItem(TreeItem<NodeData> target) {
+        NodeData expected = target == null ? null : target.getValue();
+        MenuItem sql = new MenuItem("生成 SELECT 到新 SQL（不执行）");
+        sql.setId("tree-generate-select");
+        sql.setOnAction(event -> {
+            if (tasks.isClosed() || expected == null || target.getValue() != expected
+                    || (expected.kind != Kind.TABLE && expected.kind != Kind.VIEW)) return;
+            TreeItem<NodeData> ancestor = target;
+            while (ancestor.getParent() != null) ancestor = ancestor.getParent();
+            if (ancestor != tree.getRoot()) return;
+            ConnConfig connection = connOf(target);
+            if (connection == null || connection.type() == DbType.REDIS
+                    || !java.util.Objects.equals(connection.id(), expected.connId)) return;
+            actions.openSelectSql(connection, new TableRef(expected.schema, expected.name));
+        });
+        return sql;
+    }
+
     private final class TreeCellImpl extends TreeCell<NodeData> {
         @Override
         protected void updateItem(NodeData item, boolean empty) {
@@ -597,7 +617,7 @@ public final class ConnectionTreePane implements AutoCloseable {
                     export.setOnAction(e -> actions.exportTable(d.connId, new TableRef(d.schema, d.name)));
                     MenuItem sql = new MenuItem("打开 SQL 编辑器");
                     sql.setOnAction(e -> actions.openSqlEditor(connOf(getTreeItem()), d.schema));
-                    menu.getItems().addAll(data, design, ddl, export, sql);
+                    menu.getItems().addAll(data, selectSqlItem(getTreeItem()), design, ddl, export, sql);
                 }
                 case VIEW -> {
                     MenuItem data = new MenuItem("查看数据");
@@ -606,7 +626,7 @@ public final class ConnectionTreePane implements AutoCloseable {
                     ddl.setOnAction(e -> actions.openDdl(d.connId, d));
                     MenuItem edit = new MenuItem("编辑");
                     edit.setOnAction(e -> actions.editObject(d.connId, d));
-                    menu.getItems().addAll(data, ddl, edit);
+                    menu.getItems().addAll(data, selectSqlItem(getTreeItem()), ddl, edit);
                 }
                 case ROUTINE, PACKAGE, TRIGGER, TYPE -> {
                     MenuItem ddl = new MenuItem("查看 DDL");

@@ -633,6 +633,26 @@ public final class AppShell {
         }
 
         @Override
+        public void openSelectSql(ConnConfig conn, TableRef table) {
+            try {
+                TableSelectSqlTabs.open(contentTabs, conn, table, connMgr,
+                        () -> SqlEditorPane.openSqlFile(new SessionContext(), connMgr, treeSvc, settings,
+                                this::openTableDesigner, sqlHistory, shortcuts, tasks),
+                        connectionTree::connectionConfigsSnapshot, sqlScriptFileStore, recentSqlFiles,
+                        new SqlFileDraftLifecycle() {
+                            @Override public void bind(SqlEditorPane pane) { sqlDrafts.get().bind(pane); }
+                            @Override public void installed(Node content) { sqlDrafts.get().installed(content); }
+                        }, sqlFileTabs);
+            } catch (IllegalArgumentException invalid) {
+                Alert alert = new Alert(Alert.AlertType.WARNING, invalid.getMessage(), ButtonType.OK);
+                alert.setTitle("无法生成 SELECT");
+                alert.setHeaderText(null);
+                if (root.getScene() != null) alert.initOwner(root.getScene().getWindow());
+                alert.showAndWait();
+            }
+        }
+
+        @Override
         public void openSchemaDiff(ConnConfig source, String sourceSchema) {
             if (source == null || source.type() == DbType.REDIS) return;
             var capability = connMgr.provider(source.id()).schemaDiffCapability()
