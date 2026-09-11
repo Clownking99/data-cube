@@ -2,6 +2,7 @@ package com.datacube.fx;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 import javafx.collections.ObservableList;
 import javafx.scene.control.CheckMenuItem;
 import javafx.scene.control.MenuButton;
@@ -12,16 +13,24 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
 
 /** Controls visible result columns without changing result rows or their order. */
-final class SqlResultColumnMenu {
+final class SqlResultColumnMenu implements AutoCloseable {
     private final TableView<ObservableList<Object>> table;
     private final MenuButton menu = new MenuButton("列（0/0）");
     private boolean available;
+    private boolean closed;
+    private final BooleanSupplier navigationAllowed;
+    private ResultColumnFindDialog finder;
 
     SqlResultColumnMenu(TableView<ObservableList<Object>> table) {
+        this(table, () -> true);
+    }
+
+    SqlResultColumnMenu(TableView<ObservableList<Object>> table, BooleanSupplier navigationAllowed) {
         this.table = Objects.requireNonNull(table);
+        this.navigationAllowed = Objects.requireNonNull(navigationAllowed);
         menu.setId("sql-result-columns");
-        menu.setAccessibleText("显示或隐藏结果列");
-        menu.setTooltip(new Tooltip("仅调整当前结果的可见列；导出仅包含可见列。至少保留一列。"));
+        menu.setAccessibleText("查找、显示或隐藏结果列");
+        menu.setTooltip(new Tooltip("查找定位或调整当前结果的可见列；导出仅包含可见列。至少保留一列。"));
         menu.setOnShowing(event -> rebuild());
         refresh(false);
     }
@@ -30,7 +39,7 @@ final class SqlResultColumnMenu {
 
     void refresh(boolean available) {
         menu.hide();
-        this.available = available;
+        this.available = available && !closed;
         rebuild();
     }
 
@@ -67,6 +76,13 @@ final class SqlResultColumnMenu {
                 updateState();
             });
             menu.getItems().addAll(new SeparatorMenuItem(), all);
+            MenuItem find = new MenuItem("查找列…");
+            find.setId("sql-result-columns-find");
+            find.setOnAction(event -> {
+                if (available && columns().equals(captured)) showFinder();
+            });
+            // Keep navigation reachable before a potentially long list of column toggles.
+            menu.getItems().addAll(0, List.of(find, new SeparatorMenuItem()));
         }
         updateState();
     }
@@ -84,5 +100,22 @@ final class SqlResultColumnMenu {
                 item.setDisable(visible == current.size());
             }
         }
+    }
+
+    private void showFinder() {
+        if (closed || finder != null || !available || menu.isDisabled() || table.isDisabled()
+                || !navigationAllowed.getAsBoolean()) return;
+        var dialog = new ResultColumnFindDialog(table, table.getScene() == null ? null : table.getScene().getWindow(),
+                () -> !closed && available && !menu.isDisabled() && navigationAllowed.getAsBoolean());
+        finder = dialog;
+        dialog.setOnHidden(event -> { dialog.dispose(); if (finder == dialog) finder = null; updateState(); });
+        try { dialog.show(); }
+        catch (RuntimeException failure) { dialog.dispose(); finder = null; throw failure; }
+    }
+
+    @Override public void close() {
+        closed = true; available = false;
+        if (finder != null) { finder.close(); if (finder != null) finder.dispose(); finder = null; }
+        menu.hide(); updateState();
     }
 }

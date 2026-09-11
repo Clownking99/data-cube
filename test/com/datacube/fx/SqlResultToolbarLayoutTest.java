@@ -86,7 +86,8 @@ class SqlResultToolbarLayoutTest {
                     "remove:0", "clear"), events);
 
             MenuButton columns = (MenuButton) root.lookup("#sql-result-columns");
-            columns.getItems().getFirst().fire();
+            assertEquals("sql-result-columns-find", columns.getItems().getFirst().getId(), "lookup precedes the potentially long toggle list");
+            columns.getItems().stream().filter(item -> "sql-result-column-0".equals(item.getId())).findFirst().orElseThrow().fire();
             assertEquals("列（1/2）", columns.getText(), "column visibility still updates independently");
             assertEquals(9, events.size(), "column changes must not query or copy data");
             return null;

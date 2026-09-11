@@ -581,6 +581,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> { if (indentActions != null) indentActions.close(); },
                 () -> { if (resultCellDialog != null) resultCellDialog.close(); },
                 () -> { if (resultRowDisplay != null) resultRowDisplay.close(); },
+                () -> { if (resultColumnMenu != null) resultColumnMenu.close(); },
                 () -> { if (fileController != null) fileController.detachUi(); },
                 () -> { if (draftBinding != null) draftBinding.close(); },
                 resultRowIndexes::clear,
@@ -1336,7 +1337,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private VBox resultContainer() {
         resultTable = new TableView<>();
         resultRowDisplay = new SqlResultRowDisplay(resultTable, this::resultCellViewingAllowed);
-        resultColumnMenu = new SqlResultColumnMenu(resultTable);
+        resultColumnMenu = new SqlResultColumnMenu(resultTable, this::resultCellViewingAllowed);
         resultTable.setPlaceholder(new Label("（无结果）"));
         // UNCONSTRAINED：保留列自然宽度与底部横向滚动条（宽表友好）。
         resultTable.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);

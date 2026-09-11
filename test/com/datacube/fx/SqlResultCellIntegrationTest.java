@@ -36,6 +36,69 @@ import static org.junit.jupiter.api.Assertions.*;
 class SqlResultCellIntegrationTest {
     @TempDir Path directory;
 
+    @Test void resultColumnFindPreservesFilteredSortedRowsAndOnlyExplicitlyRevealsTheChosenColumn() throws Exception {
+        try (var f = new Fixture()) {
+            FxUiTestSupport.call(() -> {
+                f.show(sample());
+                ((ResultFilterState) field(f.pane, "resultFilterState")).setSearchText("keep");
+                invoke(f.pane, "renderResultFilterSnapshot");
+                var seq = f.table.getColumns().get(0); var id = f.table.getColumns().get(1);
+                var hidden = f.table.getColumns().get(2); var value = f.table.getColumns().get(3);
+                hidden.setVisible(false); value.setPrefWidth(179);
+                f.table.getColumns().setAll(List.of(seq, value, id, hidden));
+                id.setSortType(TableColumn.SortType.DESCENDING); f.table.getSortOrder().setAll(List.of(id)); f.table.sort();
+                invoke(f.pane, "renderResultFilterToolbar");
+                f.select(1, 2); f.editor.selectRange(9, 2);
+                var rows = List.copyOf(f.table.getItems());
+                var selection = List.copyOf(f.table.getSelectionModel().getSelectedCells());
+                f.findColumnItem().fire(); var dialog = f.columnFinder(); assertTrue(dialog.isShowing());
+                f.findColumnItem().fire(); assertSame(dialog, f.columnFinder());
+                ResultColumnFindDialogTest.query(dialog).setText("one-B");
+                assertTrue(ResultColumnFindDialogTest.list(dialog).getItems().isEmpty(), "column lookup must not search row values");
+                ResultColumnFindDialogTest.query(dialog).setText("VALUE");
+                assertEquals(List.of(value, hidden), ResultColumnFindDialogTest.list(dialog).getItems());
+                ResultColumnFindDialogTest.list(dialog).getSelectionModel().select(hidden);
+                dialog.close(); assertNull(f.columnFinder()); assertFalse(hidden.isVisible());
+                f.findColumnItem().fire(); dialog = f.columnFinder();
+                ResultColumnFindDialogTest.query(dialog).setText("value");
+                ResultColumnFindDialogTest.list(dialog).getSelectionModel().select(hidden);
+                ResultColumnFindDialogTest.confirm(dialog).fire();
+                assertNull(f.columnFinder()); assertTrue(hidden.isVisible());
+                assertEquals("列（3/3）", ((javafx.scene.control.MenuButton) f.pane.getNode().lookup("#sql-result-columns")).getText());
+                assertSame(rows.get(0), f.table.getItems().get(0)); assertSame(rows.get(1), f.table.getItems().get(1));
+                assertEquals(selection, f.table.getSelectionModel().getSelectedCells());
+                assertSame(value, f.table.getFocusModel().getFocusedCell().getTableColumn());
+                assertEquals(1, f.table.getFocusModel().getFocusedCell().getRow());
+                assertEquals(List.of(seq, value, id, hidden), f.table.getColumns());
+                assertEquals(List.of(id), f.table.getSortOrder()); assertEquals(179, value.getPrefWidth());
+                assertEquals("one-B", f.pane.captureResultCellPreview().text());
+                assertEquals(List.of("value", "id", "value"), f.pane.captureResultExportSnapshot().columns());
+                assertEquals(9, f.editor.getAnchor()); assertEquals(2, f.editor.getCaretPosition());
+                assertFalse(f.document().dirty()); assertFalse(f.editor.isUndoAvailable());
+                return null;
+            });
+            assertEquals("select 'offline';", Files.readString(f.file)); f.assertOffline();
+        }
+    }
+
+    @Test void newResultsRejectOldFindMenuAndOpenCandidatesAndFinalizationClosesFinder() throws Exception {
+        try (var f = new Fixture()) {
+            FxUiTestSupport.call(() -> {
+                f.show(sample()); var oldItem = f.findColumnItem();
+                f.show(sample()); oldItem.fire(); assertNull(f.columnFinder());
+                f.findColumnItem().fire(); var oldDialog = f.columnFinder();
+                f.show(sample()); assertTrue(ResultColumnFindDialogTest.confirm(oldDialog).isDisabled());
+                ResultColumnFindDialogTest.confirm(oldDialog).fireEvent(new javafx.event.ActionEvent());
+                assertTrue(oldDialog.isShowing()); assertNull(oldDialog.getResult());
+                oldDialog.close(); f.findColumnItem().fire(); var latest = f.columnFinder();
+                f.pane.finalizeCloseOnFx(); assertFalse(latest.isShowing()); assertNull(f.columnFinder());
+                oldItem.fire(); assertNull(f.columnFinder());
+                return null;
+            });
+            f.assertOffline();
+        }
+    }
+
     @Test void compactRowsKeepSortedFilteredCellCopyExportAndSqlOnOriginalValues() throws Exception {
         String original = "first\r\nsecond\n" + "中😀".repeat(150);
         try (var f = new Fixture()) {
@@ -158,6 +221,7 @@ class SqlResultCellIntegrationTest {
                 f.show(sample()); f.select(0, 2);
                 ((javafx.scene.control.TextField) f.pane.getNode().lookup("#sql-result-search")).setText("keep");
                 ((javafx.scene.control.CheckBox) f.pane.getNode().lookup("#sql-result-compact-rows")).fire();
+                f.findColumnItem().fire(); assertNotNull(f.columnFinder()); f.columnFinder().close();
                 f.button().fire();
                 var text = (TextArea) f.dialog().getDialogPane().lookup("#result-cell-text");
                 assertEquals("two-B", text.getText());
@@ -209,6 +273,7 @@ class SqlResultCellIntegrationTest {
         try (var f = new Fixture()) {
             FxUiTestSupport.call(() -> {
                 f.show(sample()); f.select(0, 2);
+                var oldFindItem = f.findColumnItem();
                 var release = new java.util.concurrent.CountDownLatch(1);
                 switch (state) {
                     case "admission" -> ((SqlEditorConnectionAdmission) field(f.pane, "admission")).beginClosing();
@@ -232,6 +297,7 @@ class SqlResultCellIntegrationTest {
                     var compact = (javafx.scene.control.CheckBox) f.pane.getNode().lookup("#sql-result-compact-rows");
                     compact.setSelected(true); compact.getOnAction().handle(new javafx.event.ActionEvent());
                     assertFalse(compact.isSelected(), "stale display action must restore the actual mode");
+                    oldFindItem.fire(); assertNull(f.columnFinder());
                     assertNull(f.dialog());
                     assertFalse(f.document().dirty());
                 } finally {
@@ -282,6 +348,11 @@ class SqlResultCellIntegrationTest {
         Button button() { return (Button) pane.getNode().lookup("#sql-result-view-cell"); }
         MenuItem menu() { return table.getContextMenu().getItems().stream().filter(i -> "sql-result-view-cell-menu".equals(i.getId())).findFirst().orElseThrow(); }
         ResultCellDialog dialog() { return (ResultCellDialog) field(pane, "resultCellDialog"); }
+        MenuItem findColumnItem() {
+            var columns = (javafx.scene.control.MenuButton) pane.getNode().lookup("#sql-result-columns");
+            return columns.getItems().stream().filter(item -> "sql-result-columns-find".equals(item.getId())).findFirst().orElseThrow();
+        }
+        ResultColumnFindDialog columnFinder() { return (ResultColumnFindDialog) field(field(pane, "resultColumnMenu"), "finder"); }
         SqlScriptDocument document() { return (SqlScriptDocument) field(field(pane, "fileController"), "document"); }
         void assertOffline() {
             assertEquals(0, probe.providers.get()); assertEquals(0, probe.sessions.get());
