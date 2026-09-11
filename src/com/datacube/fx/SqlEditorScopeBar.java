@@ -11,13 +11,15 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.control.Label;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.Region;
 import org.fxmisc.richtext.CodeArea;
 import org.fxmisc.richtext.model.TwoDimensional.Bias;
+import java.util.function.BooleanSupplier;
 
-/** Read-only editor context; never moves a caret, edits text, or admits an execution. */
+/** Editor context and display-only wrapping; never moves a caret, edits text, or admits execution. */
 final class SqlEditorScopeBar implements AutoCloseable {
     private final CodeArea editor;
     private final ReadOnlyStringWrapper executeLabel = new ReadOnlyStringWrapper();
@@ -25,6 +27,7 @@ final class SqlEditorScopeBar implements AutoCloseable {
     private final FlowPane root = new FlowPane(12, 4);
     private final Label position = new Label();
     private final Label scope = new Label();
+    private final CheckBox wrap = new CheckBox("自动换行");
     private final InvalidationListener editorListener = ignored -> refresh();
     private final Runnable shortcutsListener = () -> {
         if (Platform.isFxApplicationThread()) refresh();
@@ -37,6 +40,11 @@ final class SqlEditorScopeBar implements AutoCloseable {
     }
 
     SqlEditorScopeBar(CodeArea editor, ShortcutSettings shortcuts, javafx.scene.Node navigation) {
+        this(editor, shortcuts, navigation, () -> true);
+    }
+
+    SqlEditorScopeBar(CodeArea editor, ShortcutSettings shortcuts, javafx.scene.Node navigation,
+                      BooleanSupplier viewChangesAllowed) {
         this.editor = editor;
         this.shortcuts = shortcuts;
         root.setId("sql-editor-scope-bar");
@@ -45,7 +53,7 @@ final class SqlEditorScopeBar implements AutoCloseable {
         root.setMinHeight(Region.USE_PREF_SIZE);
         position.setId("sql-editor-position");
         position.setMinWidth(Region.USE_PREF_SIZE);
-        position.setTooltip(new Tooltip("行列从 1 开始；列和选区长度按 UTF-16 单元计，Tab 为一个单元。"));
+        position.setTooltip(new Tooltip("行列按原始文本从 1 开始，不按显示折行计算；列和选区长度按 UTF-16 单元计，Tab 为一个单元。"));
         scope.setId("sql-execution-scope");
         scope.setWrapText(true);
         scope.setMinWidth(0);
@@ -53,6 +61,19 @@ final class SqlEditorScopeBar implements AutoCloseable {
         scope.setTooltip(new Tooltip("提示下一次执行的文本范围，不表示已执行；执行计划仍只处理范围内第一条语句。"));
         root.getChildren().addAll(position, scope);
         if (navigation != null) root.getChildren().add(navigation);
+        wrap.setId("sql-editor-wrap");
+        wrap.setMinWidth(Region.USE_PREF_SIZE);
+        wrap.setSelected(editor.isWrapText());
+        wrap.setTooltip(new Tooltip("仅调整当前标签的显示，不修改 SQL；行号仍按原始文本计算。关闭标签后不保留此选项。"));
+        wrap.setOnAction(event -> {
+            if (closed || editor.isDisabled() || !viewChangesAllowed.getAsBoolean()) {
+                wrap.setSelected(editor.isWrapText());
+                return;
+            }
+            editor.setWrapText(wrap.isSelected());
+            editor.requestFollowCaret();
+        });
+        root.getChildren().add(wrap);
         editor.textProperty().addListener(editorListener);
         editor.selectionProperty().addListener(editorListener);
         editor.caretPositionProperty().addListener(editorListener);
@@ -85,6 +106,7 @@ final class SqlEditorScopeBar implements AutoCloseable {
     @Override public void close() {
         if (closed) return;
         closed = true;
+        wrap.setDisable(true);
         editor.textProperty().removeListener(editorListener);
         editor.selectionProperty().removeListener(editorListener);
         editor.caretPositionProperty().removeListener(editorListener);

@@ -249,12 +249,19 @@ class SqlEditorUsabilityTest {
                 assertTrue(scopeBounds.getMinY() >= editorBounds.getMaxY() - 1,
                         "scope information belongs below the editable SQL, not over it");
                 assertTrue(scopeBounds.getMaxX() <= width + 1, "scope bar must fit the editor width");
-                for (String id : List.of("sql-editor-position", "sql-execution-scope")) {
+                for (String id : List.of("sql-editor-position", "sql-execution-scope", "sql-editor-wrap")) {
                     Region part = (Region) root.lookup("#" + id);
                     Bounds bounds = part.localToScene(part.getLayoutBounds());
                     assertTrue(bounds.getMaxX() <= scopeBounds.getMaxX() + 1
                                     && bounds.getMaxY() <= scopeBounds.getMaxY() + 1,
                             id + " must fit the wrapped context bar");
+                    if (id.equals("sql-editor-wrap")) {
+                        assertTrue(part.getWidth() + 1 >= part.prefWidth(-1), "wrapping label must not be truncated");
+                        var wrap = (javafx.scene.control.CheckBox) part;
+                        assertTrue(wrap.isFocusTraversable());
+                        wrap.fire();
+                        assertTrue(((org.fxmisc.richtext.CodeArea) editor).isWrapText());
+                    }
                 }
                 ((Button) root.lookup("#sql-find-close")).fire();
                 root.layout();

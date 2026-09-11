@@ -1308,7 +1308,8 @@ public final class SqlEditorPane implements AutoCloseable {
                 event.consume();
             }
         });
-        editorScopeBar = new SqlEditorScopeBar(editorArea, shortcuts, goToLineBar.launcher());
+        editorScopeBar = new SqlEditorScopeBar(editorArea, shortcuts, goToLineBar.launcher(),
+                () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get() && !tasks.isClosed());
         VBox content = new VBox(findBar.getNode(), goToLineBar.getNode(), scroll, editorScopeBar.getNode());
         VBox.setVgrow(scroll, Priority.ALWAYS);
         TitledPane pane = new TitledPane("SQL 编辑器", content);
