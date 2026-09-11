@@ -22,6 +22,10 @@ public enum ShortcutAction {
             new KeyCodeCombination(KeyCode.H, KeyCombination.CONTROL_DOWN)),
     SQL_GO_TO_LINE("sql.goToLine", "SQL 编辑器", "跳转到行",
             new KeyCodeCombination(KeyCode.G, KeyCombination.CONTROL_DOWN)),
+    SQL_INDENT("sql.indent", "SQL 编辑器", "缩进当前行或选中行",
+            new KeyCodeCombination(KeyCode.CLOSE_BRACKET, KeyCombination.CONTROL_DOWN)),
+    SQL_OUTDENT("sql.outdent", "SQL 编辑器", "反缩进当前行或选中行",
+            new KeyCodeCombination(KeyCode.OPEN_BRACKET, KeyCombination.CONTROL_DOWN)),
 
     SQL_EXECUTE("sql.execute", "SQL 编辑器", "执行 SQL",
             new KeyCodeCombination(KeyCode.F5)),

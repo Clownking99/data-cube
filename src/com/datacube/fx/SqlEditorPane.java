@@ -163,6 +163,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlEditorScopeBar editorScopeBar;
     private SqlGoToLineBar goToLineBar;
     private SqlAutoComplete autoComplete;
+    private SqlIndentActions indentActions;
     private final ResultFilterState resultFilterState = new ResultFilterState();
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
     private ClipboardWriter clipboardWriter = SqlEditorPane::writeSystemClipboard;
@@ -575,6 +576,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> { if (findBar != null) findBar.detachUi(); },
                 () -> { if (editorScopeBar != null) editorScopeBar.close(); },
                 () -> { if (goToLineBar != null) goToLineBar.close(); },
+                () -> { if (indentActions != null) indentActions.close(); },
                 () -> { if (fileController != null) fileController.detachUi(); },
                 () -> { if (draftBinding != null) draftBinding.close(); },
                 resultRowIndexes::clear,
@@ -999,6 +1001,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 sqlActionGroup(saveSqlFileBtn, saveAsSqlFileBtn),
                 sqlActionGroup(executeBtn, explainBtn, analyzeCheck),
                 sqlActionGroup(find, formatBtn, clearBtn),
+                sqlActionGroup(indentActions.indentButton(), indentActions.outdentButton()),
                 sqlActionGroup(exportResultBtn, copyInsertBtn));
 
         environmentBadge = new Label();
@@ -1278,6 +1281,10 @@ public final class SqlEditorPane implements AutoCloseable {
         });
         // 自动补全：关键字 + 预热的元数据名称（Ctrl+Space 强制触发）；
         // 并为「别名./表名.」提供列名成员补全。
+        indentActions = new SqlIndentActions(editorArea, shortcuts,
+                () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get()
+                        && !tasks.isClosed() && (fileController == null || !fileController.isBusy()),
+                () -> autoComplete.hide(), message -> statusLabel.setText(message));
         autoComplete = new SqlAutoComplete(editorArea, this::completionCandidates, shortcuts);
         autoComplete.setMemberProvider(this::membersFor);
         installMetadataPrewarm();

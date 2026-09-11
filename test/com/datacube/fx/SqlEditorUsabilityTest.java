@@ -323,7 +323,7 @@ class SqlEditorUsabilityTest {
                 for (String selector : List.of(".button", ".menu-button", ".check-box")) {
                     actions.addAll(toolbar.lookupAll(selector));
                 }
-                assertEquals(10, actions.size(), "all file, execution, editing and result actions remain present");
+                assertEquals(12, actions.size(), "all file, execution, editing and result actions remain present");
                 Bounds area = toolbar.localToScene(toolbar.getLayoutBounds());
                 for (var node : actions) {
                     Labeled action = (Labeled) node;
