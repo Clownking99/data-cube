@@ -77,9 +77,13 @@ public final class SqlResultToolbar {
     }
 
     SqlResultToolbar(Actions actions, MenuButton columnMenu) {
+        this(actions, columnMenu, null);
+    }
+
+    SqlResultToolbar(Actions actions, MenuButton columnMenu, javafx.scene.control.CheckBox rowDisplay) {
         this.actions = Objects.requireNonNull(actions, "actions");
         configureControls();
-        composeLayout(columnMenu);
+        composeLayout(columnMenu, rowDisplay);
     }
 
     public Parent getNode() {
@@ -173,9 +177,10 @@ public final class SqlResultToolbar {
         summary.setMinHeight(Region.USE_PREF_SIZE);
     }
 
-    private void composeLayout(MenuButton columnMenu) {
+    private void composeLayout(MenuButton columnMenu, javafx.scene.control.CheckBox rowDisplay) {
         FlowPane actionsRow = new FlowPane(6, 4, search, addCondition, applyDatabase, viewCell, copy, clear);
         if (columnMenu != null) actionsRow.getChildren().add(3, columnMenu);
+        if (rowDisplay != null) actionsRow.getChildren().add(rowDisplay);
         actionsRow.setId("sql-result-actions");
         actionsRow.setAlignment(Pos.CENTER_LEFT);
         actionsRow.setMinHeight(Region.USE_PREF_SIZE);

@@ -36,6 +36,54 @@ import static org.junit.jupiter.api.Assertions.*;
 class SqlResultCellIntegrationTest {
     @TempDir Path directory;
 
+    @Test void compactRowsKeepSortedFilteredCellCopyExportAndSqlOnOriginalValues() throws Exception {
+        String original = "first\r\nsecond\n" + "中😀".repeat(150);
+        try (var f = new Fixture()) {
+            FxUiTestSupport.call(() -> {
+                var toggle = (javafx.scene.control.CheckBox) f.pane.getNode().lookup("#sql-result-compact-rows");
+                assertTrue(toggle.isDisabled()); assertFalse(toggle.isSelected());
+                f.show(QueryResult.query(List.of("id", "value", "value"),
+                        List.of(List.of(2, "skip", "skip"), List.of(1, "keep", original), List.of(3, "keep", "other")), 0));
+                ((ResultFilterState) field(f.pane, "resultFilterState")).setSearchText("keep");
+                invoke(f.pane, "renderResultFilterSnapshot");
+                var seq = f.table.getColumns().get(0); var id = f.table.getColumns().get(1);
+                var hidden = f.table.getColumns().get(2); var value = f.table.getColumns().get(3);
+                hidden.setVisible(false); value.setPrefWidth(173);
+                f.table.getColumns().setAll(List.of(seq, value, id, hidden));
+                id.setSortType(TableColumn.SortType.DESCENDING); f.table.getSortOrder().setAll(List.of(id)); f.table.sort();
+                f.select(1, 2); f.editor.selectRange(9, 2);
+                var rows = List.copyOf(f.table.getItems());
+                var selection = List.copyOf(f.table.getSelectionModel().getSelectedCells());
+                var copied = new java.util.concurrent.atomic.AtomicReference<String>();
+                f.pane.setClipboardWriterForTesting(text -> { copied.set(text); return true; });
+                for (boolean compact : List.of(true, false, true)) {
+                    toggle.fire(); assertEquals(compact, toggle.isSelected());
+                    assertSame(rows.get(0), f.table.getItems().get(0)); assertSame(rows.get(1), f.table.getItems().get(1));
+                    assertEquals(selection, f.table.getSelectionModel().getSelectedCells());
+                    assertEquals(1, f.table.getFocusModel().getFocusedCell().getRow());
+                    assertSame(value, f.table.getFocusModel().getFocusedCell().getTableColumn());
+                    assertEquals(List.of(id), f.table.getSortOrder()); assertFalse(hidden.isVisible());
+                    assertEquals(173, value.getPrefWidth()); assertEquals(List.of(seq, value, id, hidden), f.table.getColumns());
+                    var preview = f.pane.captureResultCellPreview();
+                    assertEquals(original, preview.text()); assertEquals(2, preview.sourceRow()); assertEquals(3, preview.column());
+                    var copy = (javafx.scene.control.MenuButton) f.pane.getNode().lookup("#sql-result-copy");
+                    copy.getItems().stream().filter(item -> "当前单元格".equals(item.getText())).findFirst().orElseThrow().fire();
+                    assertEquals("\"" + original + "\"", copied.get(), "existing TSV quoting must preserve the whole multiline value");
+                    var exported = f.pane.captureResultExportSnapshot();
+                    assertEquals(List.of("value", "id"), exported.columns());
+                    assertEquals(List.of(original, 1), exported.rows(com.datacube.sqleditor.result.ResultExportScope.CURRENT_FILTERED).get(1));
+                    assertEquals(9, f.editor.getAnchor()); assertEquals(2, f.editor.getCaretPosition());
+                    assertFalse(f.editor.isUndoAvailable()); assertFalse(f.document().dirty());
+                }
+                f.show(QueryResult.query(List.of("new"), List.of(List.of("replacement\nvalue")), 0));
+                assertTrue(toggle.isSelected(), "same editor keeps its display choice for new results");
+                invoke(f.pane, "clearResultFilterState"); assertTrue(toggle.isDisabled()); assertTrue(toggle.isSelected());
+                return null;
+            });
+            assertEquals("select 'offline';", Files.readString(f.file)); f.assertOffline();
+        }
+    }
+
     @Test void sortedFilteredReorderedDuplicateColumnsResolveByIdentityWithoutChangingEditorOrFile() throws Exception {
         try (var f = new Fixture()) {
             FxUiTestSupport.call(() -> {
@@ -109,6 +157,7 @@ class SqlResultCellIntegrationTest {
             FxUiTestSupport.call(() -> {
                 f.show(sample()); f.select(0, 2);
                 ((javafx.scene.control.TextField) f.pane.getNode().lookup("#sql-result-search")).setText("keep");
+                ((javafx.scene.control.CheckBox) f.pane.getNode().lookup("#sql-result-compact-rows")).fire();
                 f.button().fire();
                 var text = (TextArea) f.dialog().getDialogPane().lookup("#result-cell-text");
                 assertEquals("two-B", text.getText());
@@ -155,11 +204,12 @@ class SqlResultCellIntegrationTest {
         }
     }
 
-    @ParameterizedTest @ValueSource(strings = {"admission", "resources", "tasks", "running", "queue-closed", "disabled", "plan"})
+    @ParameterizedTest @ValueSource(strings = {"admission", "resources", "tasks", "running", "queue-closed", "disabled", "plan", "finalized", "queue-pending"})
     void closedBusyOrNonTableStatesRejectOldViewActions(String state) throws Exception {
         try (var f = new Fixture()) {
             FxUiTestSupport.call(() -> {
                 f.show(sample()); f.select(0, 2);
+                var release = new java.util.concurrent.CountDownLatch(1);
                 switch (state) {
                     case "admission" -> ((SqlEditorConnectionAdmission) field(f.pane, "admission")).beginClosing();
                     case "resources" -> ((AtomicBoolean) field(f.pane, "resourcesClosing")).set(true);
@@ -168,15 +218,24 @@ class SqlResultCellIntegrationTest {
                     case "queue-closed" -> ((SerialSessionOperationQueue) field(f.pane, "sessionOperations")).stopAcceptingAndCancelQueued();
                     case "disabled" -> f.pane.getNode().setDisable(true);
                     case "plan" -> invoke(f.pane, "usePlan");
+                    case "finalized" -> f.pane.finalizeCloseOnFx();
+                    case "queue-pending" -> ((SerialSessionOperationQueue) field(f.pane, "sessionOperations")).submit(
+                            SerialSessionOperationQueue.OperationKind.SET_MODE,
+                            () -> { if (!release.await(3, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("test gate timed out"); return null; },
+                            ignored -> { }, error -> fail(error));
                     default -> throw new AssertionError(state);
                 }
                 try {
                     assertNull(f.pane.captureResultCellPreview());
                     f.menu().getOnAction().handle(new javafx.event.ActionEvent());
                     f.button().getOnAction().handle(new javafx.event.ActionEvent());
+                    var compact = (javafx.scene.control.CheckBox) f.pane.getNode().lookup("#sql-result-compact-rows");
+                    compact.setSelected(true); compact.getOnAction().handle(new javafx.event.ActionEvent());
+                    assertFalse(compact.isSelected(), "stale display action must restore the actual mode");
                     assertNull(f.dialog());
                     assertFalse(f.document().dirty());
                 } finally {
+                    release.countDown();
                     if (state.equals("resources")) ((AtomicBoolean) field(f.pane, "resourcesClosing")).set(false);
                     if (state.equals("running")) setField(f.pane, "running", false);
                 }

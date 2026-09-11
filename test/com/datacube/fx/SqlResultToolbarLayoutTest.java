@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SqlResultToolbarLayoutTest {
     private static final List<String> ACTION_IDS = List.of("sql-result-add-filter",
-            "sql-result-apply-database", "sql-result-columns", "sql-result-copy", "sql-result-clear-filter", "sql-result-view-cell");
+            "sql-result-apply-database", "sql-result-columns", "sql-result-copy", "sql-result-clear-filter", "sql-result-view-cell", "sql-result-compact-rows");
 
     @ParameterizedTest
     @CsvSource({"880, dark", "640, dark", "480, dark", "880, light", "640, light", "480, light"})
@@ -139,9 +139,11 @@ class SqlResultToolbarLayoutTest {
         }
         SqlResultColumnMenu columns = new SqlResultColumnMenu(table);
         columns.refresh(true);
+        SqlResultRowDisplay rowDisplay = new SqlResultRowDisplay(table, () -> true);
+        rowDisplay.refreshAvailability(true);
         return new SqlResultToolbar(new SqlResultToolbar.Actions(text -> events.add("search:" + text),
                 () -> events.add("add"), index -> events.add("remove:" + index), () -> events.add("apply"),
-                () -> events.add("clear"), mode -> events.add("copy:" + mode)), columns.getNode());
+                () -> events.add("clear"), mode -> events.add("copy:" + mode)), columns.getNode(), rowDisplay.getNode());
     }
 
     private static ResultFilterState.Snapshot snapshot(ResultFilterState.DatabaseStatus status) {

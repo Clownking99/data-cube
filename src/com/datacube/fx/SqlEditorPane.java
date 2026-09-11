@@ -165,6 +165,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlAutoComplete autoComplete;
     private SqlIndentActions indentActions;
     private ResultCellDialog resultCellDialog;
+    private SqlResultRowDisplay resultRowDisplay;
     private final ResultFilterState resultFilterState = new ResultFilterState();
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
     private ClipboardWriter clipboardWriter = SqlEditorPane::writeSystemClipboard;
@@ -579,6 +580,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> { if (goToLineBar != null) goToLineBar.close(); },
                 () -> { if (indentActions != null) indentActions.close(); },
                 () -> { if (resultCellDialog != null) resultCellDialog.close(); },
+                () -> { if (resultRowDisplay != null) resultRowDisplay.close(); },
                 () -> { if (fileController != null) fileController.detachUi(); },
                 () -> { if (draftBinding != null) draftBinding.close(); },
                 resultRowIndexes::clear,
@@ -1333,6 +1335,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private VBox resultContainer() {
         resultTable = new TableView<>();
+        resultRowDisplay = new SqlResultRowDisplay(resultTable, this::resultCellViewingAllowed);
         resultColumnMenu = new SqlResultColumnMenu(resultTable);
         resultTable.setPlaceholder(new Label("（无结果）"));
         // UNCONSTRAINED：保留列自然宽度与底部横向滚动条（宽表友好）。
@@ -1373,7 +1376,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 this::onRemoveResultFilterCondition,
                 this::onApplyDatabaseFilter,
                 this::onClearResultFilters,
-                this::copyResultSelection, this::showResultCell), resultColumnMenu.getNode());
+                this::copyResultSelection, this::showResultCell), resultColumnMenu.getNode(), resultRowDisplay.getNode());
         renderResultFilterToolbar();
         VBox box = new VBox(resultToolbar.getNode(), resultPane);
         VBox.setVgrow(resultPane, Priority.ALWAYS);
@@ -2347,6 +2350,10 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void renderResultFilterToolbar(ResultFilterState.Snapshot snapshot) {
         if (resultToolbar != null) resultToolbar.render(snapshot);
+        if (resultRowDisplay != null) {
+            QueryResult active = snapshot.activeResult();
+            resultRowDisplay.refreshAvailability(active != null && active.kind == QueryResult.Kind.QUERY);
+        }
         if (resultColumnMenu != null) {
             QueryResult active = snapshot.activeResult();
             resultColumnMenu.refresh(active != null && active.kind == QueryResult.Kind.QUERY);
@@ -2492,13 +2499,7 @@ public final class SqlEditorPane implements AutoCloseable {
         c.getProperties().put("sql-result-label", name);
         c.setCellValueFactory(d -> new javafx.beans.property.SimpleObjectProperty<>(
                 idx < d.getValue().size() ? d.getValue().get(idx) : null));
-        c.setCellFactory(ignored -> new TableCell<>() {
-            @Override
-            protected void updateItem(Object item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty ? null : ResultValueFormatter.format(item));
-            }
-        });
+        c.setCellFactory(ignored -> resultRowDisplay.createCell());
         applyColumnHeader(c, name, comment);
         return c;
     }
