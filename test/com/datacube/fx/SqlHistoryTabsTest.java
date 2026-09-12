@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
-import javafx.scene.control.ComboBox;
+import javafx.scene.control.ListView;
 import javafx.scene.control.Label;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
@@ -71,10 +71,12 @@ class SqlHistoryTabsTest {
                 f.register(selected, other, config("redis", DbType.REDIS)); assertTrue(f.open(HISTORY));
                 var pane = f.created.getFirst();
                 SqlDraftManagerTest.respondToDialog(() -> chooser(pane).fire(), dialog -> {
-                    var combo = (ComboBox<?>) dialog.lookup(".combo-box");
-                    assertEquals(2, combo.getItems().size()); assertNull(combo.getValue());
+                    var combo = (ListView<?>) dialog.lookup("#sql-connection-list");
+                    assertEquals(2, combo.getItems().size()); assertNull(combo.getSelectionModel().getSelectedItem());
                     assertTrue(dialog.lookupButton(ButtonType.OK).isDisabled());
                     assertNotEquals(combo.getItems().get(0).toString(), combo.getItems().get(1).toString());
+                    ((TextField) dialog.lookup("#sql-connection-query")).setText("selected");
+                    assertEquals(1, combo.getItems().size()); assertNull(combo.getSelectionModel().getSelectedItem());
                     combo.getSelectionModel().selectFirst(); ((Button) dialog.lookupButton(ButtonType.OK)).fire();
                 });
                 assertSame(selected, intent(pane).resolve(f.probe.manager::config));
@@ -109,7 +111,7 @@ class SqlHistoryTabsTest {
                 var first = config("first", DbType.POSTGRESQL); var second = config("second", DbType.ORACLE);
                 f.register(first, second); assertTrue(pane.chooseFileConnection(first));
                 SqlDraftManagerTest.respondToDialog(() -> chooser(pane).fire(), dialog -> {
-                    ((ComboBox<?>) dialog.lookup(".combo-box")).getSelectionModel().selectLast();
+                    ((ListView<?>) dialog.lookup("#sql-connection-list")).getSelectionModel().selectLast();
                     ((Button) dialog.lookupButton(ButtonType.CANCEL)).fire();
                 });
                 assertSame(first, intent(pane).resolve(f.probe.manager::config));
@@ -147,7 +149,7 @@ class SqlHistoryTabsTest {
             FxUiTestSupport.call(() -> {
                 f.register(config("target", DbType.POSTGRESQL)); assertTrue(f.open(HISTORY)); var pane = f.created.getFirst();
                 SqlDraftManagerTest.respondToDialog(() -> chooser(pane).fire(), dialog -> {
-                    ((ComboBox<?>) dialog.lookup(".combo-box")).getSelectionModel().selectFirst();
+                    ((ListView<?>) dialog.lookup("#sql-connection-list")).getSelectionModel().selectFirst();
                     pane.closeResources(); ((Button) dialog.lookupButton(ButtonType.OK)).fire();
                 });
                 assertNull(intent(pane).resolve(f.probe.manager::config)); assertNull(admission(pane).pinned());

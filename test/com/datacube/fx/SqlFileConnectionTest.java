@@ -21,6 +21,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ListView;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.TextField;
 import javafx.scene.input.*;
@@ -57,13 +58,16 @@ class SqlFileConnectionTest {
             FxUiTestSupport.call(() -> {
                 SqlDraftManagerTest.respondToDialog(() -> f.chooser().fire(), dialog -> {
                     @SuppressWarnings("unchecked")
-                    var choices = (ComboBox<SqlDraftConnectionChooser.Choice>) dialog.lookup(".combo-box");
+                    var choices = (ListView<SqlDraftConnectionChooser.Choice>) dialog.lookup("#sql-connection-list");
                     assertEquals(List.of(pg, oracle), choices.getItems().stream().map(SqlDraftConnectionChooser.Choice::config).toList());
-                    assertNull(choices.getValue(), "there must be no implicit target");
+                    assertNull(choices.getSelectionModel().getSelectedItem(), "there must be no implicit target");
                     assertTrue(dialog.lookupButton(ButtonType.OK).isDisabled());
                     assertNotEquals(choices.getItems().get(0).toString(), choices.getItems().get(1).toString());
                     assertFalse(choices.getItems().toString().contains("synthetic-secret"));
-                    choices.getSelectionModel().select(1);
+                    ((TextField) dialog.lookup("#sql-connection-query")).setText("oracle");
+                    assertEquals(List.of(oracle), choices.getItems().stream().map(SqlDraftConnectionChooser.Choice::config).toList());
+                    assertNull(choices.getSelectionModel().getSelectedItem());
+                    choices.getSelectionModel().selectFirst();
                     ((Button) dialog.lookupButton(ButtonType.OK)).fire();
                 });
                 assertSame(oracle, invoke(f.pane, "currentConn"));
@@ -113,7 +117,7 @@ class SqlFileConnectionTest {
                 assertTrue(f.pane.chooseFileConnection(first));
                 f.schema().setText("keep_schema");
                 SqlDraftManagerTest.respondToDialog(() -> f.chooser().fire(), dialog -> {
-                    ((ComboBox<?>) dialog.lookup(".combo-box")).getSelectionModel().selectLast();
+                    ((ListView<?>) dialog.lookup("#sql-connection-list")).getSelectionModel().selectLast();
                     ((Button) dialog.lookupButton(ButtonType.CANCEL)).fire();
                 });
                 assertSame(first, invoke(f.pane, "currentConn"));
@@ -225,7 +229,7 @@ class SqlFileConnectionTest {
             f.register(chosen);
             FxUiTestSupport.call(() -> {
                 SqlDraftManagerTest.respondToDialog(() -> f.chooser().fire(), dialog -> {
-                    ((ComboBox<?>) dialog.lookup(".combo-box")).getSelectionModel().selectFirst();
+                    ((ListView<?>) dialog.lookup("#sql-connection-list")).getSelectionModel().selectFirst();
                     f.pane.closeResources();
                     ((Button) dialog.lookupButton(ButtonType.OK)).fire();
                 });

@@ -28,7 +28,7 @@ import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
-import javafx.scene.control.ComboBox;
+import javafx.scene.control.ListView;
 import javafx.scene.control.Label;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
@@ -241,10 +241,12 @@ class SqlDraftRecoveryTabsTest {
                 Button choose = (Button) pane.getNode().lookup("#sql-draft-connection");
                 assertNotNull(choose);
                 SqlDraftManagerTest.respondToDialog(choose::fire, dialog -> {
-                    ComboBox<?> combo = (ComboBox<?>) dialog.lookup(".combo-box");
+                    ListView<?> combo = (ListView<?>) dialog.lookup("#sql-connection-list");
                     assertNull(combo.getSelectionModel().getSelectedItem());
                     assertTrue(dialog.lookupButton(ButtonType.OK).isDisabled());
                     assertFalse(combo.getItems().toString().contains("SECRET"));
+                    ((TextField) dialog.lookup("#sql-connection-query")).setText("replacement");
+                    assertEquals(1, combo.getItems().size()); assertNull(combo.getSelectionModel().getSelectedItem());
                     combo.getSelectionModel().selectFirst();
                     ((Button) dialog.lookupButton(ButtonType.OK)).fire();
                 });
