@@ -58,7 +58,8 @@ final class ResultCellDialog extends Dialog<Void> {
         metadata.setPrefViewportHeight(60);
         metadata.setMinHeight(45);
         metadata.setMaxHeight(100);
-        VBox content = new VBox(8, metadata, summary, boundary, wrap, value);
+        var find = new ResultCellFindBar(value);
+        VBox content = new VBox(8, metadata, summary, boundary, find, wrap, value);
         content.setId("result-cell-content");
         content.setPrefWidth(640);
         content.setMinWidth(320);
@@ -68,9 +69,17 @@ final class ResultCellDialog extends Dialog<Void> {
         getDialogPane().getButtonTypes().add(closeType);
         Button close = (Button) getDialogPane().lookupButton(closeType);
         close.setId("result-cell-close");
-        content.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+        getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (event.getCode() == KeyCode.ESCAPE) { event.consume(); close.fire(); }
+            else if (event.getCode() == KeyCode.F && event.isShortcutDown() && !event.isAltDown() && !event.isShiftDown()) {
+                event.consume(); find.focusQuery();
+            } else if (!event.isControlDown() && !event.isAltDown() && !event.isMetaDown()
+                    && (event.getCode() == KeyCode.F3 || event.getCode() == KeyCode.ENTER && find.queryFocused())) {
+                event.consume(); find.navigate(!event.isShiftDown());
+            }
         });
+        // The owning SQL pane installs its own onHidden callback; keep cleanup independent of it.
+        showingProperty().addListener((obs, before, showing) -> { if (!showing) find.close(); });
         setOnShown(event -> { value.positionCaret(0); value.requestFocus(); });
     }
 

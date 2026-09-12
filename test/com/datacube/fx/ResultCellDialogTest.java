@@ -73,6 +73,33 @@ class ResultCellDialogTest {
                 owner.show(); dialog.show();
                 dialog.setWidth(width); dialog.setHeight(550);
                 var root = dialog.getDialogPane(); root.applyCss(); root.layout();
+                var query = ResultCellFindTest.query(dialog);
+                query.requestFocus();
+                query.pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("focused"), true);
+                root.applyCss(); root.layout();
+                var prompt = query.lookupAll(".text").stream().filter(javafx.scene.text.Text.class::isInstance)
+                        .map(javafx.scene.text.Text.class::cast).filter(t -> query.getPromptText().equals(t.getText())).findFirst().orElseThrow();
+                assertTrue(prompt.isVisible());
+                assertEquals(javafx.scene.paint.Color.web(theme.equals("dark") ? "#A8A8B8" : "#555555"), prompt.getFill());
+                query.setText("x"); ResultCellFindTest.button(dialog, "next").fire(); root.applyCss(); root.layout();
+                var area = ResultCellFindTest.area(dialog);
+                assertSame(query, root.getScene().getFocusOwner()); assertFalse(area.isFocused());
+                assertEquals("x", area.getSelectedText());
+                assertTrue(area.lookupAll("Path").stream().filter(javafx.scene.shape.Path.class::isInstance)
+                        .map(javafx.scene.shape.Path.class::cast).anyMatch(p -> p.isVisible() && !p.getElements().isEmpty()
+                                && javafx.scene.paint.Color.web("#6C5CE7").equals(p.getFill())),
+                        "unfocused body selection must have a visible contrasting highlight");
+                for (String search : List.of("x", "x".repeat(1025), "")) {
+                    query.setText(search); root.applyCss(); root.layout();
+                    for (String id : List.of("find-query", "find-previous", "find-next", "find-case", "find-status", "wrap", "text", "close")) {
+                        Region control = (Region) root.lookup("#result-cell-" + id);
+                        var bounds = control.localToScene(control.getLayoutBounds());
+                        assertTrue(bounds.getMinX() >= -1 && bounds.getMaxX() <= root.getWidth() + 1, id);
+                        assertTrue(bounds.getMinY() >= -1 && bounds.getMaxY() <= root.getHeight() + 1, id);
+                        if (control instanceof Label) assertTrue(control.getHeight() + 1 >= control.prefHeight(control.getWidth()), id);
+                    }
+                    assertTrue(((TextArea) root.lookup("#result-cell-text")).getHeight() >= 100);
+                }
                 var summary = (Label) root.lookup("#result-cell-summary");
                 assertTrue(summary.getText().contains("已截断"));
                 assertTrue(summary.getHeight() + 1 >= summary.prefHeight(summary.getWidth()));

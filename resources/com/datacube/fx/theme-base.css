@@ -22,9 +22,15 @@
     -fx-prompt-text-fill: -brand-fg-dim;
 }
 
-/* Row details must identify the name-only filter even while the empty field is focused. */
-#result-row-query {
+/* Read-only detail searches must stay discoverable even while the empty field is focused. */
+#result-row-query, #result-cell-find-query {
     -fx-prompt-text-fill: -brand-fg-dim;
+}
+
+/* Find keeps focus in its query; the selected body match must still be visible. */
+#result-cell-text {
+    -fx-highlight-fill: -brand-accent-solid;
+    -fx-highlight-text-fill: white;
 }
 
 /* ── 顶部工具栏 ── */
