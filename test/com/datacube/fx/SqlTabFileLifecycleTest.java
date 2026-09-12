@@ -92,6 +92,7 @@ class SqlTabFileLifecycleTest {
                 return (SqlDraftCoordinator.Handle) field(
                         field(ordinary.get(), "draftBinding"), "handle");
             });
+            awaitDraftInitialization(draftUi);
             FxUiTestSupport.call(handle::flush).get(5, TimeUnit.SECONDS);
             FxUiTestSupport.call(() -> null);
             var snapshot = FxUiTestSupport.call(() -> draftUi.runtime().refresh())
@@ -117,6 +118,20 @@ class SqlTabFileLifecycleTest {
             runner.close();
             probe.manager.closeAll();
         }
+    }
+
+    private static void awaitDraftInitialization(SqlDraftUi drafts) throws Exception {
+        // Binding is allowed during startup, but flush intentionally refuses INITIALIZING.
+        // Observe completion instead of relying on editor construction taking longer than disk I/O.
+        var ready = new java.util.concurrent.CountDownLatch(1);
+        AutoCloseable observer = FxUiTestSupport.call(() -> {
+            Runnable check = () -> { if (!drafts.runtime().managementPending()) ready.countDown(); };
+            var subscription = drafts.observe(check); check.run(); return subscription;
+        });
+        try {
+            assertTrue(ready.await(5, TimeUnit.SECONDS), "draft initialization did not finish");
+            FxUiTestSupport.call(() -> { assertEquals(SqlDraftCoordinator.Mode.ENABLED, drafts.runtime().mode()); return null; });
+        } finally { FxUiTestSupport.call(() -> { observer.close(); return null; }); }
     }
 
     private static void assertUnboundCleanDraft(SqlEditorPane pane, String expectedText)

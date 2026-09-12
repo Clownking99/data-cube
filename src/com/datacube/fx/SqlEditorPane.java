@@ -165,6 +165,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlIndentActions indentActions;
     private SqlLineCommentAction lineCommentAction;
     private ResultCellDialog resultCellDialog;
+    private ResultRowLocateDialog resultRowLocator;
     private ResultRowDialog resultRowDialog;
     private SqlResultRowDisplay resultRowDisplay;
     private final ResultFilterState resultFilterState = new ResultFilterState();
@@ -583,6 +584,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> { if (indentActions != null) indentActions.close(); },
                 () -> { if (lineCommentAction != null) lineCommentAction.close(); },
                 () -> { if (resultCellDialog != null) resultCellDialog.close(); },
+                () -> { if (resultRowLocator != null) resultRowLocator.close(); },
                 () -> { if (resultRowDialog != null) resultRowDialog.close(); },
                 () -> { if (resultRowDisplay != null) resultRowDisplay.close(); },
                 () -> { if (resultColumnMenu != null) resultColumnMenu.close(); },
@@ -1368,7 +1370,10 @@ public final class SqlEditorPane implements AutoCloseable {
         MenuItem viewRowItem = new MenuItem("查看当前行（可见列）");
         viewRowItem.setId("sql-result-view-row-menu");
         viewRowItem.setOnAction(event -> showResultRow());
-        resultTable.setContextMenu(new ContextMenu(viewCellItem, viewRowItem, copyItem, insertItem));
+        MenuItem locateRowItem = new MenuItem("定位到行…");
+        locateRowItem.setId("sql-result-locate-row-menu");
+        locateRowItem.setOnAction(event -> showResultRowLocator());
+        resultTable.setContextMenu(new ContextMenu(viewCellItem, viewRowItem, locateRowItem, copyItem, insertItem));
         // 执行计划文本区（等宽、只读、不换行）；与结果表格共用同一 TitledPane，按需切换。
         planArea = new TextArea();
         planArea.setEditable(false);
@@ -2022,6 +2027,24 @@ public final class SqlEditorPane implements AutoCloseable {
             case TIMEOUT -> "数据库筛选超时";
             case SQL_ERROR -> "数据库筛选执行失败";
         };
+    }
+
+    private void showResultRowLocator() {
+        if (!resultCellViewingAllowed() || resultRowLocator != null || resultTable.getItems().isEmpty()) return;
+        QueryResult expected = displayedResult;
+        if (expected == null || expected.kind != QueryResult.Kind.QUERY || resultFilterState.snapshot().activeResult() != expected) return;
+        var dialog = new ResultRowLocateDialog(resultTable, root.getScene() == null ? null : root.getScene().getWindow(),
+                (row, column) -> {
+                    if (!resultCellViewingAllowed() || displayedResult != expected || resultFilterState.snapshot().activeResult() != expected
+                            || row < 0 || row >= resultTable.getItems().size()
+                            || !(column.getUserData() instanceof Integer index) || index < 0 || index >= expected.resultColumns.size()) return false;
+                    Integer source = resultRowIndexes.get(resultTable.getItems().get(row));
+                    return source != null && source >= 0 && source < expected.rows.size() && index < expected.rows.get(source).size();
+                });
+        resultRowLocator = dialog;
+        dialog.setOnHidden(event -> { if (resultRowLocator == dialog) resultRowLocator = null; });
+        try { dialog.show(); }
+        catch (RuntimeException failure) { dialog.dispose(); resultRowLocator = null; throw failure; }
     }
 
     private void showResultCell() {

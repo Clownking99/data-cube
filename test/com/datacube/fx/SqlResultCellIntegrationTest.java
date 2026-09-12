@@ -36,6 +36,99 @@ import static org.junit.jupiter.api.Assertions.*;
 class SqlResultCellIntegrationTest {
     @TempDir Path directory;
 
+    @Test void rowLocationMenuIsPresentButEmptyResultsDoNotOpenIt() throws Exception {
+        try (var f = new Fixture()) {
+            FxUiTestSupport.call(() -> {
+                var item = f.table.getContextMenu().getItems().stream()
+                        .filter(i -> "sql-result-locate-row-menu".equals(i.getId())).findFirst().orElseThrow();
+                item.fire(); assertNull(field(f.pane, "resultRowLocator"));
+                f.show(QueryResult.query(List.of("value"), List.of(), 0));
+                item.fire(); assertNull(field(f.pane, "resultRowLocator"));
+                return null;
+            });
+            f.assertOffline();
+        }
+    }
+
+    @Test void rowLocationUsesSortedFilteredDisplayOrderAndOnlyChangesTheExplicitTargetSelection() throws Exception {
+        try (var f = new Fixture()) {
+            FxUiTestSupport.call(() -> {
+                f.show(sample());
+                ((ResultFilterState) field(f.pane, "resultFilterState")).setSearchText("keep"); invoke(f.pane, "renderResultFilterSnapshot");
+                var seq = f.table.getColumns().get(0); var id = f.table.getColumns().get(1);
+                var hidden = f.table.getColumns().get(2); var value = f.table.getColumns().get(3);
+                hidden.setVisible(false); value.setPrefWidth(187); f.table.getColumns().setAll(List.of(seq, value, id, hidden));
+                id.setSortType(TableColumn.SortType.DESCENDING); f.table.getSortOrder().setAll(List.of(id)); f.table.sort();
+                f.select(0, 2); f.table.getSelectionModel().select(1, id); f.table.getFocusModel().focus(0, value); f.editor.selectRange(9, 2);
+                var rows = List.copyOf(f.table.getItems()); var selected = List.copyOf(f.table.getSelectionModel().getSelectedCells());
+                var beforeExport = f.pane.captureResultExportSnapshot(); var copied = new java.util.concurrent.atomic.AtomicReference<String>();
+                f.pane.setClipboardWriterForTesting(text -> { copied.set(text); return true; });
+                f.locateRowItem().fire(); var dialog = f.rowLocator(); assertTrue(dialog.isShowing());
+                f.locateRowItem().fire(); assertSame(dialog, f.rowLocator());
+                ResultRowLocateDialogTest.query(dialog).setText("2"); assertEquals(selected, f.table.getSelectionModel().getSelectedCells());
+                ResultRowLocateDialogTest.confirm(dialog).fire(); assertNull(f.rowLocator()); assertNull(copied.get(), "navigation must not copy");
+                assertEquals(1, f.table.getFocusModel().getFocusedCell().getRow()); assertSame(value, f.table.getFocusModel().getFocusedCell().getTableColumn());
+                assertEquals(1, f.table.getSelectionModel().getSelectedCells().size()); assertTrue(f.table.getSelectionModel().isSelected(1, value));
+                assertEquals("one-B", f.pane.captureResultCellPreview().text()); assertEquals(2, f.pane.captureResultCellPreview().sourceRow());
+                assertEquals(List.of(seq, value, id, hidden), f.table.getColumns()); assertFalse(hidden.isVisible()); assertEquals(187, value.getPrefWidth());
+                assertEquals(List.of(id), f.table.getSortOrder()); assertSame(rows.getFirst(), f.table.getItems().getFirst()); assertSame(rows.getLast(), f.table.getItems().getLast());
+                assertEquals(beforeExport.rows(com.datacube.sqleditor.result.ResultExportScope.CURRENT_FILTERED),
+                        f.pane.captureResultExportSnapshot().rows(com.datacube.sqleditor.result.ResultExportScope.CURRENT_FILTERED));
+                var copy = (javafx.scene.control.MenuButton) f.pane.getNode().lookup("#sql-result-copy");
+                copy.getItems().stream().filter(i -> "当前单元格".equals(i.getText())).findFirst().orElseThrow().fire(); assertEquals("one-B", copied.get());
+                assertEquals(9, f.editor.getAnchor()); assertEquals(2, f.editor.getCaretPosition()); assertEquals("select 'offline';", f.editor.getText());
+                assertFalse(f.editor.isUndoAvailable()); assertFalse(f.document().dirty());
+                return null;
+            });
+            assertEquals("select 'offline';", Files.readString(f.file)); f.assertOffline();
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"new-result", "filter", "mismatched-result", "missing-row-id", "invalid-column", "closed"})
+    void resultChangesOrInvalidIdentityRejectAnAlreadyOpenRowLocator(String state) throws Exception {
+        try (var f = new Fixture()) {
+            FxUiTestSupport.call(() -> {
+                f.show(sample()); f.select(0, 2); f.locateRowItem().fire(); var d = f.rowLocator();
+                ResultRowLocateDialogTest.query(d).setText("2");
+                switch (state) {
+                    case "new-result" -> f.show(sample());
+                    case "filter" -> {
+                        ((ResultFilterState) field(f.pane, "resultFilterState")).setSearchText("keep"); invoke(f.pane, "renderResultFilterSnapshot");
+                    }
+                    case "mismatched-result" -> ((ResultFilterState) field(f.pane, "resultFilterState")).showOriginal(sample(), "synthetic", null, "unsupported");
+                    case "missing-row-id" -> ((java.util.Map<?, ?>) field(f.pane, "resultRowIndexes")).clear();
+                    case "invalid-column" -> f.table.getColumns().get(3).setUserData(99);
+                    case "closed" -> f.pane.finalizeCloseOnFx();
+                    default -> throw new AssertionError(state);
+                }
+                var selection = List.copyOf(f.table.getSelectionModel().getSelectedCells());
+                ResultRowLocateDialogTest.confirm(d).fireEvent(new javafx.event.ActionEvent());
+                assertEquals(selection, f.table.getSelectionModel().getSelectedCells()); assertNull(d.getResult());
+                assertTrue(ResultRowLocateDialogTest.confirm(d).isDisabled());
+                if (state.equals("closed")) { assertFalse(d.isShowing()); assertNull(f.rowLocator()); }
+                else { assertTrue(d.isShowing()); d.close(); assertNull(f.rowLocator()); }
+                return null;
+            }); f.assertOffline();
+        }
+    }
+
+    @Test void openingRowLocatorDoesNotFlushPendingFilterAndLaterFilteringInvalidatesIt() throws Exception {
+        try (var f = new Fixture()) {
+            FxUiTestSupport.call(() -> {
+                f.show(sample()); f.select(0, 2);
+                ((javafx.scene.control.TextField) f.pane.getNode().lookup("#sql-result-search")).setText("keep");
+                f.locateRowItem().fire(); var d = f.rowLocator(); assertNotNull(d); assertEquals(3, f.table.getItems().size());
+                assertTrue(((javafx.scene.control.Label) d.getDialogPane().lookup("#result-row-locate-range")).getText().contains("3 行"));
+                ResultRowLocateDialogTest.query(d).setText("3"); assertFalse(ResultRowLocateDialogTest.confirm(d).isDisabled());
+                assertTrue(((SqlResultToolbar) field(f.pane, "resultToolbar")).flushPendingSearch()); assertEquals(2, f.table.getItems().size());
+                assertTrue(ResultRowLocateDialogTest.confirm(d).isDisabled());
+                var selection = List.copyOf(f.table.getSelectionModel().getSelectedCells()); ResultRowLocateDialogTest.confirm(d).fireEvent(new javafx.event.ActionEvent());
+                assertEquals(selection, f.table.getSelectionModel().getSelectedCells()); d.close();
+                return null;
+            }); f.assertOffline();
+        }
+    }
+
     @Test void rowDetailsCaptureSortedFilteredVisibleProjectionWithoutChangingSourceAndRemainFrozen() throws Exception {
         try (var f = new Fixture()) {
             FxUiTestSupport.call(() -> {
@@ -387,6 +480,7 @@ class SqlResultCellIntegrationTest {
                     default -> throw new AssertionError(state);
                 }
                 try {
+                    f.locateRowItem().fire(); assertNull(f.rowLocator());
                     assertNull(f.pane.captureResultCellPreview());
                     assertNull(f.pane.captureResultRowPreview()); f.rowMenu().fire(); assertNull(f.rowDialog());
                     f.menu().getOnAction().handle(new javafx.event.ActionEvent());
@@ -447,6 +541,8 @@ class SqlResultCellIntegrationTest {
         ResultCellDialog dialog() { return (ResultCellDialog) field(pane, "resultCellDialog"); }
         MenuItem rowMenu() { return table.getContextMenu().getItems().stream().filter(i -> "sql-result-view-row-menu".equals(i.getId())).findFirst().orElseThrow(); }
         ResultRowDialog rowDialog() { return (ResultRowDialog) field(pane, "resultRowDialog"); }
+        MenuItem locateRowItem() { return table.getContextMenu().getItems().stream().filter(i -> "sql-result-locate-row-menu".equals(i.getId())).findFirst().orElseThrow(); }
+        ResultRowLocateDialog rowLocator() { return (ResultRowLocateDialog) field(pane, "resultRowLocator"); }
         MenuItem findColumnItem() {
             var columns = (javafx.scene.control.MenuButton) pane.getNode().lookup("#sql-result-columns");
             return columns.getItems().stream().filter(item -> "sql-result-columns-find".equals(item.getId())).findFirst().orElseThrow();
