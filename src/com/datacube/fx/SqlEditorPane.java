@@ -164,6 +164,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlAutoComplete autoComplete;
     private SqlIndentActions indentActions;
     private SqlLineCommentAction lineCommentAction;
+    private SqlDuplicateLinesAction duplicateLinesAction;
     private ResultCellDialog resultCellDialog;
     private ResultRowLocateDialog resultRowLocator;
     private ResultRowDialog resultRowDialog;
@@ -318,6 +319,7 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(() -> { if (editorScopeBar != null) editorScopeBar.close(); });
             construction.own(() -> { if (goToLineBar != null) goToLineBar.close(); });
             construction.own(() -> { if (lineCommentAction != null) lineCommentAction.close(); });
+            construction.own(() -> { if (duplicateLinesAction != null) duplicateLinesAction.close(); });
             build();
             resultExports = new SqlResultExportCoordinator(tasks, this::captureResultExportSnapshot,
                     () -> resultStatusRevision, (text, error) -> {
@@ -583,6 +585,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> { if (goToLineBar != null) goToLineBar.close(); },
                 () -> { if (indentActions != null) indentActions.close(); },
                 () -> { if (lineCommentAction != null) lineCommentAction.close(); },
+                () -> { if (duplicateLinesAction != null) duplicateLinesAction.close(); },
                 () -> { if (resultCellDialog != null) resultCellDialog.close(); },
                 () -> { if (resultRowLocator != null) resultRowLocator.close(); },
                 () -> { if (resultRowDialog != null) resultRowDialog.close(); },
@@ -1012,7 +1015,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 sqlActionGroup(saveSqlFileBtn, saveAsSqlFileBtn),
                 sqlActionGroup(executeBtn, explainBtn, analyzeCheck),
                 sqlActionGroup(find, formatBtn, clearBtn),
-                sqlActionGroup(indentActions.indentButton(), indentActions.outdentButton(), lineCommentAction.button()),
+                sqlActionGroup(indentActions.indentButton(), indentActions.outdentButton(), lineCommentAction.button(), duplicateLinesAction.button()),
                 sqlActionGroup(exportResultBtn, copyInsertBtn));
 
         environmentBadge = new Label();
@@ -1297,6 +1300,10 @@ public final class SqlEditorPane implements AutoCloseable {
                         && !tasks.isClosed() && (fileController == null || !fileController.isBusy()),
                 () -> autoComplete.hide(), message -> statusLabel.setText(message));
         lineCommentAction = new SqlLineCommentAction(editorArea, shortcuts,
+                () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get()
+                        && !uiFinalized.get() && !tasks.isClosed() && (fileController == null || !fileController.isBusy()),
+                () -> autoComplete.hide(), message -> statusLabel.setText(message));
+        duplicateLinesAction = new SqlDuplicateLinesAction(editorArea, shortcuts,
                 () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get()
                         && !uiFinalized.get() && !tasks.isClosed() && (fileController == null || !fileController.isBusy()),
                 () -> autoComplete.hide(), message -> statusLabel.setText(message));

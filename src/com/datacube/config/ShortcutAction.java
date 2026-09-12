@@ -26,6 +26,8 @@ public enum ShortcutAction {
             new KeyCodeCombination(KeyCode.CLOSE_BRACKET, KeyCombination.CONTROL_DOWN)),
     SQL_OUTDENT("sql.outdent", "SQL 编辑器", "反缩进当前行或选中行",
             new KeyCodeCombination(KeyCode.OPEN_BRACKET, KeyCombination.CONTROL_DOWN)),
+    SQL_DUPLICATE_LINES("sql.duplicateLines", "SQL 编辑器", "向下重复当前行或选中行",
+            new KeyCodeCombination(KeyCode.D, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN)),
 
     SQL_EXECUTE("sql.execute", "SQL 编辑器", "执行 SQL",
             new KeyCodeCombination(KeyCode.F5)),
