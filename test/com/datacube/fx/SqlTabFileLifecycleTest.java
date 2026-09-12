@@ -66,14 +66,15 @@ class SqlTabFileLifecycleTest {
 
             AtomicReference<SqlEditorPane> restoredHistory = new AtomicReference<>();
             FxUiTestSupport.call(() -> {
-                assertTrue(AppShell.openSqlTab(tabs, "SQL - 历史", () -> {
-                    SqlEditorPane pane = new SqlEditorPane(new SessionContext(), probe.manager,
-                            new ObjectTreeService(probe.manager), settings, null, null, "public",
+                assertTrue(SqlHistoryTabs.open(tabs,
+                        new SqlHistoryStore.Entry(1000, null, "public", "select *\r\nfrom history"), schema -> {
+                    SqlEditorPane pane = SqlEditorPane.openSqlHistory(new SessionContext(), probe.manager,
+                            new ObjectTreeService(probe.manager), settings, null, schema,
                             history, shortcuts, runner);
                     restoredHistory.set(pane);
                     created.add(pane);
                     return pane;
-                }, pane -> pane.setSqlText("select *\r\nfrom history"), store, recent, drafts,
+                }, List::of, store, recent, drafts,
                         registry));
                 return null;
             });

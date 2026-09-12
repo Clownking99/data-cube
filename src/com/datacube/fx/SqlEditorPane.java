@@ -266,6 +266,14 @@ public final class SqlEditorPane implements AutoCloseable {
                 null, history, shortcuts, runner, null, true);
     }
 
+    static SqlEditorPane openSqlHistory(SessionContext session, ConnectionManager connections,
+            ObjectTreeService treeSvc, AppSettings settings,
+            java.util.function.BiConsumer<String, TableRef> openDesigner, String initialSchema,
+            SqlHistoryStore history, ShortcutSettings shortcuts, FxTaskRunner runner) {
+        return new SqlEditorPane(session, connections, treeSvc, settings, openDesigner, null,
+                initialSchema, history, shortcuts, runner, null, true);
+    }
+
     private SqlEditorPane(SessionContext session, ConnectionManager connections, ObjectTreeService treeSvc,
                          AppSettings settings, java.util.function.BiConsumer<String, TableRef> openDesigner,
                          ConnConfig boundConn, String initialSchema, SqlHistoryStore history,

@@ -46,7 +46,11 @@ class SqlEditorPaneLifecycleTest {
         assertTrue(source.contains("pane::requestClose"));
         assertFalse(source.contains("AsyncTabCloseGuards.blocking(pane::closeResources)"));
         assertTrue(source.contains("binding.bind(pane::closeResources)"));
-        assertTrue(source.contains("pane -> pane.setSqlText(entry.sql())"));
+        assertTrue(source.contains("SqlHistoryTabs.open("));
+        assertTrue(source.contains("SqlEditorPane.openSqlHistory("));
+        String historySource = Files.readString(Path.of("src/com/datacube/fx/SqlHistoryTabs.java"));
+        assertTrue(historySource.contains("AppShell.openSqlTab("));
+        assertTrue(historySource.contains("pane.setSqlText(entry.sql())"));
     }
 
     @Test

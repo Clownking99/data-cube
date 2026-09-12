@@ -545,19 +545,19 @@ public final class AppShell {
 
     /**
      * 打开 SQL 历史找回对话框：选中一条则在新的 SQL 编辑标签中载入其 SQL，
-     * 使用隔离的空会话离线打开；连接名仅用于标签标题，并回填其 schema。
+     * 使用隔离的空会话离线打开，允许显式选择脚本连接；历史连接名仅用于标题，并回填 schema 提示。
      */
     private void openSqlHistory() {
         javafx.stage.Window owner = root.getScene() == null ? null : root.getScene().getWindow();
-        SqlHistoryDialog.show(sqlHistory, owner, themeManager).ifPresent(entry -> {
-            SessionContext historySession = new SessionContext();
-            String name = entry.connName() == null ? "SQL - 历史" : "SQL - " + entry.connName();
-            openSqlTab(name,
-                    () -> new SqlEditorPane(historySession, connMgr, treeSvc, settings,
-                            treeActions::openTableDesigner, null, entry.schema(), sqlHistory,
-                            shortcuts, tasks),
-                    pane -> pane.setSqlText(entry.sql()));
-        });
+        SqlHistoryDialog.show(sqlHistory, owner, themeManager).ifPresent(entry ->
+                SqlHistoryTabs.open(contentTabs, entry,
+                        schema -> SqlEditorPane.openSqlHistory(new SessionContext(), connMgr, treeSvc, settings,
+                                treeActions::openTableDesigner, schema, sqlHistory, shortcuts, tasks),
+                        connectionTree::connectionConfigsSnapshot, sqlScriptFileStore, recentSqlFiles,
+                        new SqlFileDraftLifecycle() {
+                            @Override public void bind(SqlEditorPane pane) { sqlDrafts.get().bind(pane); }
+                            @Override public void installed(Node content) { sqlDrafts.get().installed(content); }
+                        }, sqlFileTabs));
     }
 
     private void openSqlTab(String title, Supplier<SqlEditorPane> factory) {
