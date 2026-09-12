@@ -13,6 +13,7 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Region;
@@ -68,7 +69,7 @@ class ResultRowDialogTest {
         });
     }
 
-    @ParameterizedTest @ValueSource(strings = {"fields", "text"})
+    @ParameterizedTest @ValueSource(strings = {"fields", "text", "query"})
     void escapeFromEitherReadingAreaCloses(String control) throws Exception {
         FxUiTestSupport.call(() -> {
             var result = QueryResult.query(List.of("value"), List.of(List.of("unchanged")), 0);
@@ -95,11 +96,19 @@ class ResultRowDialogTest {
                 owner.show(); dialog.show(); dialog.setWidth(width); dialog.setHeight(700);
                 var root = dialog.getDialogPane(); root.applyCss(); root.layout();
                 assertEquals(owner.getScene().getStylesheets(), root.getStylesheets());
+                query(dialog).requestFocus();
+                query(dialog).pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("focused"), true);
+                root.applyCss(); root.layout();
+                var prompt = query(dialog).lookupAll(".text").stream()
+                        .filter(node -> node instanceof javafx.scene.text.Text text && text.getText().equals(query(dialog).getPromptText()))
+                        .map(node -> (javafx.scene.text.Text) node).findFirst().orElseThrow();
+                assertTrue(prompt.isVisible());
+                assertEquals(javafx.scene.paint.Color.web(theme.equals("dark") ? "#A8A8B8" : "#555555"), prompt.getFill());
                 assertEquals(4096, text(dialog).getText().length());
                 assertTrue(label(dialog, "summary").getText().contains("正文已截断"));
                 assertTrue(label(dialog, "detail").getText().contains("列名或类型名过长"));
                 assertFalse(fields(dialog).getColumns().getFirst().getCellData(0).toString().contains("\n"));
-                for (String id : List.of("identity", "fields", "metadata", "summary", "boundary", "wrap", "text", "close")) {
+                for (String id : List.of("identity", "query", "clear", "filter-status", "fields", "metadata", "summary", "boundary", "wrap", "text", "close")) {
                     Region node = (Region) root.lookup("#result-row-" + id); var bounds = node.localToScene(node.getLayoutBounds());
                     assertTrue(bounds.getMinX() >= -1 && bounds.getMaxX() <= root.getWidth() + 1, id);
                     assertTrue(bounds.getMinY() >= -1 && bounds.getMaxY() <= root.getHeight() + 1, id);
@@ -144,6 +153,114 @@ class ResultRowDialogTest {
         });
     }
 
+    @ParameterizedTest @CsvSource({"' SAME ', '3:2'", "'客户', '4'", "'[.*]', '5'", "'only-in-value', ''", "'OTHER', ''", "'原列 1', ''", "'a b', '6'"})
+    void nameFilterIsLiteralCaseInsensitiveAndKeepsSnapshotOrder(String query, String expectedColumns) throws Exception {
+        FxUiTestSupport.call(() -> {
+            var result = QueryResult.query(List.of("id", "same", "SAME", "客户", "[.*]", "a\nb"),
+                    List.of(List.of("only-in-value", "left", "right", "four", "five", "six")), 0);
+            var dialog = new ResultRowDialog(null, ResultRowPreview.capture(result, 0, List.of(2, 0, 1, 3, 4, 5), 0), 1);
+            try {
+                dialog.show(); query(dialog).setText(query);
+                var columns = fields(dialog).getItems().stream().map(f -> String.valueOf(f.column())).toList();
+                assertEquals(expectedColumns, String.join(":", columns));
+                assertEquals("匹配 " + columns.size() + " / 6 个快照字段", label(dialog, "filter-status").getText());
+                assertNull(fields(dialog).getSelectionModel().getSelectedItem()); assertEquals("", text(dialog).getText());
+                assertTrue(dialog.isShowing());
+            } finally { dialog.close(); }
+            return null;
+        });
+    }
+
+    @Test void survivingDuplicateKeepsIdentityAndTextSelectionThenExclusionClearsDetails() throws Exception {
+        FxUiTestSupport.call(() -> {
+            var result = QueryResult.query(List.of("same", "same", "other"), List.of(List.of("first-value", "second-value", "third")), 0);
+            var snapshot = ResultRowPreview.capture(result, 0, List.of(1, 2, 0), 0);
+            var dialog = new ResultRowDialog(null, snapshot, 1);
+            try {
+                dialog.show(); text(dialog).selectRange(7, 2);
+                query(dialog).setText("SAME");
+                assertSame(snapshot.fields().getLast(), fields(dialog).getSelectionModel().getSelectedItem());
+                assertEquals(1, fields(dialog).getSelectionModel().getSelectedIndex());
+                assertEquals("first-value", text(dialog).getText()); assertEquals(7, text(dialog).getAnchor()); assertEquals(2, text(dialog).getCaretPosition());
+                query(dialog).setText("other");
+                assertNull(fields(dialog).getSelectionModel().getSelectedItem()); assertEquals("", text(dialog).getText());
+                assertEquals("", label(dialog, "summary").getText()); assertEquals("请选择字段查看正文。", label(dialog, "detail").getText());
+                query(dialog).setText("not-found");
+                assertEquals("没有匹配的字段。", label(dialog, "detail").getText());
+                assertEquals("没有匹配的字段", ((Label) fields(dialog).getPlaceholder()).getText());
+                ((Button) dialog.getDialogPane().lookup("#result-row-clear")).fire();
+                assertEquals("", query(dialog).getText()); assertEquals(snapshot.fields(), fields(dialog).getItems());
+                assertNull(fields(dialog).getSelectionModel().getSelectedItem()); assertEquals("", text(dialog).getText());
+                assertTrue(dialog.getDialogPane().lookup("#result-row-clear").isDisabled());
+            } finally { dialog.close(); }
+            return null;
+        });
+    }
+
+    @ParameterizedTest @ValueSource(ints = {255, 256, 257})
+    void overlongQueryIsRejectedWithoutSearchingItsPrefix(int length) throws Exception {
+        FxUiTestSupport.call(() -> {
+            var result = QueryResult.query(List.of("x".repeat(300)), List.of(List.of("value")), 0);
+            var dialog = new ResultRowDialog(null, ResultRowPreview.capture(result, 0, List.of(0), 0), 1);
+            try {
+                dialog.show(); query(dialog).setText("x".repeat(length));
+                assertEquals(length <= 256 ? 1 : 0, fields(dialog).getItems().size());
+                if (length > 256) {
+                    assertTrue(label(dialog, "filter-status").getText().contains("最多 256"));
+                    assertEquals("", text(dialog).getText()); assertNull(fields(dialog).getSelectionModel().getSelectedItem());
+                    query(dialog).fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.ENTER, false, false, false, false));
+                    assertTrue(dialog.isShowing());
+                    assertNull(fields(dialog).getSelectionModel().getSelectedItem());
+                } else assertEquals("value", text(dialog).getText());
+                query(dialog).clear(); assertEquals(1, fields(dialog).getItems().size());
+            } finally { dialog.close(); }
+            return null;
+        });
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"ENTER", "DOWN"})
+    void queryKeyboardExplicitlySelectsFirstMatchAndShortcutFocusesQuery(String key) throws Exception {
+        FxUiTestSupport.call(() -> {
+            var result = QueryResult.query(List.of("id", "same", "same"), List.of(List.of("zero", "one", "two")), 0);
+            var dialog = new ResultRowDialog(null, ResultRowPreview.capture(result, 0, List.of(0, 2, 1), 0), 1);
+            try {
+                dialog.show(); query(dialog).setText("same");
+                assertEquals("", text(dialog).getText());
+                query(dialog).fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.valueOf(key), false, false, false, false));
+                assertEquals(3, fields(dialog).getSelectionModel().getSelectedItem().column()); assertEquals("two", text(dialog).getText());
+                assertSame(fields(dialog), dialog.getDialogPane().getScene().getFocusOwner()); assertTrue(dialog.isShowing());
+                fields(dialog).getSelectionModel().selectLast();
+                fields(dialog).fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.F, false, true, false, false));
+                assertSame(query(dialog), dialog.getDialogPane().getScene().getFocusOwner()); assertEquals("same", query(dialog).getSelectedText());
+                query(dialog).fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.valueOf(key), false, false, false, false));
+                assertEquals(2, fields(dialog).getSelectionModel().getSelectedItem().column()); assertEquals("one", text(dialog).getText());
+            } finally { dialog.close(); }
+            return null;
+        });
+    }
+
+    @Test void filteringNeverIncludesHiddenOmittedOrTruncatedNamesAndBlankRestoresSnapshot() throws Exception {
+        FxUiTestSupport.call(() -> {
+            var names = new java.util.ArrayList<>(java.util.stream.IntStream.range(0, 202).mapToObj(i -> "field" + i).toList());
+            names.set(0, "hidden_marker"); names.set(1, "x".repeat(512) + "tail_marker"); names.set(201, "omitted_marker");
+            var result = QueryResult.query(names, List.of(names.stream().map(n -> (Object) n).toList()), 0);
+            var snapshot = ResultRowPreview.capture(result, 0, java.util.stream.IntStream.range(1, 202).boxed().toList(), 0);
+            var dialog = new ResultRowDialog(null, snapshot, 2);
+            try {
+                dialog.show();
+                for (String marker : List.of("hidden_marker", "omitted_marker", "tail_marker")) {
+                    query(dialog).setText(marker); assertTrue(fields(dialog).getItems().isEmpty(), marker);
+                    assertEquals("", text(dialog).getText()); assertTrue(label(dialog, "identity").getText().contains("前 200"));
+                }
+                query(dialog).setText("   "); assertEquals(snapshot.fields(), fields(dialog).getItems());
+                assertEquals("匹配 200 / 200 个快照字段", label(dialog, "filter-status").getText());
+                assertTrue(label(dialog, "boundary").getText().contains("仅匹配窗口已列出的字段名"));
+            } finally { dialog.close(); }
+            return null;
+        });
+    }
+
+    static TextField query(ResultRowDialog dialog) { return (TextField) dialog.getDialogPane().lookup("#result-row-query"); }
     @SuppressWarnings("unchecked") static TableView<ResultCellPreview> fields(ResultRowDialog dialog) { return (TableView<ResultCellPreview>) dialog.getDialogPane().lookup("#result-row-fields"); }
     static TextArea text(ResultRowDialog dialog) { return (TextArea) dialog.getDialogPane().lookup("#result-row-text"); }
     static Label label(ResultRowDialog dialog, String suffix) { return (Label) dialog.getDialogPane().lookup("#result-row-" + suffix); }

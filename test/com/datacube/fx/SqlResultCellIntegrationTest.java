@@ -57,6 +57,15 @@ class SqlResultCellIntegrationTest {
                 f.rowMenu().fire(); var dialog = f.rowDialog(); assertTrue(dialog.isShowing());
                 f.rowMenu().fire(); assertSame(dialog, f.rowDialog());
                 assertEquals("one-B", ResultRowDialogTest.text(dialog).getText());
+                f.pane.setClipboardWriterForTesting(text -> { throw new AssertionError("Row filtering must not copy"); });
+                ResultRowDialogTest.query(dialog).setText("VALUE");
+                assertEquals(List.of(3), ResultRowDialogTest.fields(dialog).getItems().stream()
+                        .map(com.datacube.sqleditor.result.ResultCellPreview::column).toList());
+                assertEquals("one-B", ResultRowDialogTest.text(dialog).getText());
+                ResultRowDialogTest.query(dialog).setText("ID");
+                assertEquals("", ResultRowDialogTest.text(dialog).getText());
+                assertNull(ResultRowDialogTest.fields(dialog).getSelectionModel().getSelectedItem());
+                ResultRowDialogTest.query(dialog).clear();
                 ResultRowDialogTest.fields(dialog).getSelectionModel().selectLast(); assertEquals("1", ResultRowDialogTest.text(dialog).getText());
                 assertEquals(selection, f.table.getSelectionModel().getSelectedCells()); assertSame(value, f.table.getFocusModel().getFocusedCell().getTableColumn());
                 assertEquals(1, f.table.getFocusModel().getFocusedCell().getRow());
@@ -66,6 +75,10 @@ class SqlResultCellIntegrationTest {
                 assertEquals(9, f.editor.getAnchor()); assertEquals(2, f.editor.getCaretPosition());
                 assertFalse(f.document().dirty()); assertFalse(f.editor.isUndoAvailable());
                 hidden.setVisible(true); f.show(sample()); invoke(f.pane, "clearResultFilterState");
+                ResultRowDialogTest.query(dialog).setText("value");
+                assertEquals(List.of(3), ResultRowDialogTest.fields(dialog).getItems().stream()
+                        .map(com.datacube.sqleditor.result.ResultCellPreview::column).toList());
+                ResultRowDialogTest.query(dialog).clear();
                 assertEquals(List.of("one-B", "1"), ResultRowDialogTest.fields(dialog).getItems().stream()
                         .map(com.datacube.sqleditor.result.ResultCellPreview::text).toList());
                 ResultRowDialogTest.fields(dialog).getSelectionModel().selectFirst(); assertEquals("one-B", ResultRowDialogTest.text(dialog).getText());

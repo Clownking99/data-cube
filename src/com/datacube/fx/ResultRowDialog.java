@@ -4,6 +4,8 @@ import com.datacube.sqleditor.result.CompactResultText;
 import com.datacube.sqleditor.result.ResultCellPreview;
 import com.datacube.sqleditor.result.ResultRowPreview;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
@@ -15,9 +17,11 @@ import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
@@ -25,6 +29,8 @@ import javafx.stage.Window;
 
 /** A fixed row snapshot: field browsing never selects rows or exposes hidden columns in the source table. */
 final class ResultRowDialog extends Dialog<Void> {
+    private static final int MAX_QUERY_LENGTH = 256;
+
     ResultRowDialog(Window owner, ResultRowPreview snapshot, int focusedColumn) {
         setTitle("查看当前行（只读）"); setHeaderText(null); setResizable(true);
         if (owner != null) {
@@ -44,6 +50,7 @@ final class ResultRowDialog extends Dialog<Void> {
         preview.setCellValueFactory(cell -> new ReadOnlyStringWrapper(preview(cell.getValue())));
         preview.setPrefWidth(400); preview.setMinWidth(100); preview.setSortable(false); preview.setReorderable(false);
         fields.getColumns().setAll(List.of(name, preview)); fields.getItems().setAll(snapshot.fields());
+        Label empty = new Label("没有匹配的字段"); fields.setPlaceholder(empty);
         fields.setPrefHeight(180); fields.setMinHeight(100);
         Label detail = label("result-row-detail", "");
         Label summary = label("result-row-summary", "");
@@ -55,28 +62,79 @@ final class ResultRowDialog extends Dialog<Void> {
         CheckBox wrap = new CheckBox("正文自动换行"); wrap.setId("result-row-wrap"); wrap.setSelected(true);
         wrap.selectedProperty().addListener((o, before, after) -> value.setWrapText(after));
         Label boundary = label("result-row-boundary", "只读：打开时的可见列快照，不查询或修改数据。隐藏列不包含在内。\n"
+                + "仅匹配窗口已列出的字段名，不搜索值、未列出的字段或被截断的名称尾部。\n"
                 + "每字段正文最多 4,096 UTF-16 单元；更长内容请关闭后使用“查看单元格”。Esc 关闭。");
+        TextField query = new TextField(); query.setId("result-row-query");
+        query.setPromptText("按字段名筛选（不搜索值）"); query.setAccessibleText("按快照字段名筛选");
+        query.setMinWidth(80); HBox.setHgrow(query, Priority.ALWAYS);
+        Button clear = new Button("清空"); clear.setId("result-row-clear"); clear.setMinWidth(Region.USE_PREF_SIZE);
+        clear.disableProperty().bind(query.textProperty().isEmpty());
+        clear.setOnAction(event -> { query.clear(); query.requestFocus(); });
+        Label filterStatus = label("result-row-filter-status", "匹配 " + snapshot.fields().size() + " / " + snapshot.fields().size() + " 个快照字段");
+        query.setTooltip(new javafx.scene.control.Tooltip("忽略大小写的字面匹配；最多 256 UTF-16 单元。Ctrl+F 聚焦，Enter / ↓ 进入字段列表。"));
+        // Replacing table items can emit transient selections; never render a different duplicate.
+        boolean[] filtering = {false};
         fields.getSelectionModel().selectedItemProperty().addListener((o, before, field) -> {
-            if (field == null) { detail.setText("请选择字段查看正文。"); summary.setText(""); value.clear(); return; }
-            detail.setText("原列 " + field.column() + " · " + singleLine(field.label()) + "\n类型：" + singleLine(field.type())
-                    + "（JDBC " + field.jdbcType() + "）"
-                    + (field.metadataTruncated() ? "\n列名或类型名过长，已省略部分显示。" : ""));
-            summary.setText(kind(field) + " · 显示表示长度 " + field.displayLength() + " UTF-16 单元"
-                    + (field.truncated() ? "\n正文已截断，仅保留前 " + field.text().length() + " 个单元。" : "")
-                    + (field.displayOnly() ? "\n特殊类型的显示表示可能已在读取时截断，不代表完整原值。" : ""));
-            value.setText(field.text()); value.positionCaret(0);
+            if (!filtering[0]) renderField(field, detail, summary, value);
         });
-        VBox content = new VBox(8, identity, fields, metadata, summary, boundary, wrap, value);
+        query.textProperty().addListener((o, before, after) -> {
+            String raw = Objects.requireNonNullElse(after, "");
+            boolean tooLong = raw.length() > MAX_QUERY_LENGTH;
+            String needle = tooLong ? "" : raw.strip().toLowerCase(Locale.ROOT);
+            var matches = tooLong ? List.<ResultCellPreview>of() : snapshot.fields().stream()
+                    .filter(field -> singleLine(field.label()).toLowerCase(Locale.ROOT).contains(needle)).toList();
+            var selected = fields.getSelectionModel().getSelectedItem();
+            boolean keep = selected != null && matches.stream().anyMatch(field -> field == selected);
+            filtering[0] = true;
+            try {
+                fields.getItems().setAll(matches); fields.getSelectionModel().clearSelection();
+                if (keep) {
+                    fields.getSelectionModel().select(selected);
+                    fields.scrollTo(fields.getSelectionModel().getSelectedIndex());
+                }
+            } finally { filtering[0] = false; }
+            if (!keep) {
+                renderField(null, detail, summary, value);
+                if (tooLong) detail.setText("请缩短查找词后选择字段。");
+                else if (matches.isEmpty()) detail.setText("没有匹配的字段。");
+            }
+            empty.setText(tooLong ? "查找词过长，请缩短后重试" : "没有匹配的字段");
+            filterStatus.setText(tooLong ? "查找词过长：最多 256 个 UTF-16 单元，请缩短后重试。"
+                    : "匹配 " + matches.size() + " / " + snapshot.fields().size() + " 个快照字段");
+        });
+        VBox content = new VBox(8, identity, new HBox(8, query, clear), filterStatus, fields, metadata, summary, boundary, wrap, value);
         content.setId("result-row-content"); content.setPrefWidth(680); content.setMinWidth(320);
         VBox.setVgrow(value, Priority.ALWAYS); getDialogPane().setContent(content);
         var closeType = new ButtonType("关闭", ButtonBar.ButtonData.CANCEL_CLOSE); getDialogPane().getButtonTypes().add(closeType);
         Button close = (Button) getDialogPane().lookupButton(closeType); close.setId("result-row-close");
         content.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (event.getCode() == KeyCode.ESCAPE) { event.consume(); close.fire(); }
+            else if (event.getCode() == KeyCode.F && event.isShortcutDown() && !event.isAltDown() && !event.isShiftDown()) {
+                event.consume(); query.requestFocus(); query.selectAll();
+            } else if (event.getTarget() == query && !event.isControlDown() && !event.isAltDown()
+                    && !event.isMetaDown() && !event.isShiftDown()
+                    && (event.getCode() == KeyCode.ENTER || event.getCode() == KeyCode.DOWN)) {
+                event.consume();
+                if (!fields.getItems().isEmpty()) {
+                    if (fields.getSelectionModel().getSelectedItem() == null) fields.getSelectionModel().selectFirst();
+                    fields.scrollTo(fields.getSelectionModel().getSelectedIndex()); fields.requestFocus();
+                }
+            }
         });
         fields.getSelectionModel().select(snapshot.fields().stream().filter(field -> field.column() == focusedColumn)
                 .findFirst().orElse(snapshot.fields().getFirst()));
         setOnShown(event -> { fields.scrollTo(fields.getSelectionModel().getSelectedIndex()); fields.requestFocus(); });
+    }
+
+    private static void renderField(ResultCellPreview field, Label detail, Label summary, TextArea value) {
+        if (field == null) { detail.setText("请选择字段查看正文。"); summary.setText(""); value.clear(); return; }
+        detail.setText("原列 " + field.column() + " · " + singleLine(field.label()) + "\n类型：" + singleLine(field.type())
+                + "（JDBC " + field.jdbcType() + "）"
+                + (field.metadataTruncated() ? "\n列名或类型名过长，已省略部分显示。" : ""));
+        summary.setText(kind(field) + " · 显示表示长度 " + field.displayLength() + " UTF-16 单元"
+                + (field.truncated() ? "\n正文已截断，仅保留前 " + field.text().length() + " 个单元。" : "")
+                + (field.displayOnly() ? "\n特殊类型的显示表示可能已在读取时截断，不代表完整原值。" : ""));
+        value.setText(field.text()); value.positionCaret(0);
     }
 
     private static String kind(ResultCellPreview field) {
