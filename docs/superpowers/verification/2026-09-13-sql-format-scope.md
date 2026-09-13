@@ -85,7 +85,14 @@ jlink / jpackageImage 实际执行，保留既有 unchecked、JAVA_TOOL_OPTIONS 
 
 复查范围及索引边界、单次替换/撤销、前后快照准入、设置监听与构造失败/最终关闭清理、
 程序化编辑对补全/成员候选的隔离及异常恢复、生产模块与夹具分离。源码与文档差异检查通过。
-待提交并本地快进 main 后追加集成结果；不推送、不打 tag。
+- 实现提交 `02f5a09`（`feat: format SQL within explicit editing scope`）已从独立 worktree 快进合并至本地 main。
+  合并时 main 与功能分支的 Git tree 均为 `03480e50f2e966df9ddce61ee6a029f9f2755806`。
+- main 合并后复验范围、动作、Pane 集成、真实焦点补全、现有美化器、快捷键设置、编辑器易用性与草稿集成：
+  118 项 / 118 通过 / 0 failures/errors/skipped；构建期 8 项已通过，本次 up-to-date。
+  测试与 `jpackageImage -PappVersion=0.0.0` 合并运行 50 秒 exit 0，jlink / jpackageImage 实际执行。
+- main 新镜像的运行时 modules SHA-256 与上方功能分支验收镜像一致，入口仍为
+  `com.datacube/com.datacube.DataCubeFx`；未把测试夹具设为生产入口。
+- 功能 worktree 提交后干净；根目录已有 `.testagent/` 未读取、修改或暂存。本轮仅本地提交和集成，不推送、不打 tag。
 
 ## 边界
 
