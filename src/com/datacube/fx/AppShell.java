@@ -285,12 +285,17 @@ public final class AppShell {
     }
 
     private void rebuildSqlFilesMenu(MenuButton sqlFilesMenu) {
-        rebuildSqlFilesMenu(sqlFilesMenu, recentSqlFiles, this::chooseSqlFileToOpen, this::openSqlFile);
+        rebuildSqlFilesMenu(sqlFilesMenu, recentSqlFiles, this::openNewSqlScript,
+                this::chooseSqlFileToOpen, this::openSqlFile);
     }
 
     static void rebuildSqlFilesMenu(MenuButton sqlFilesMenu, RecentSqlFiles recentFiles,
-            Runnable chooseOpen, Consumer<Path> openPath) {
+            Runnable newScript, Runnable chooseOpen, Consumer<Path> openPath) {
         sqlFilesMenu.getItems().clear();
+        MenuItem create = new MenuItem("新建 SQL 脚本（离线）");
+        create.setId("sql-file-new");
+        create.setOnAction(event -> newScript.run());
+        sqlFilesMenu.getItems().add(create);
         MenuItem open = new MenuItem("打开 SQL 文件…");
         open.setId("sql-file-open");
         open.setOnAction(event -> chooseOpen.run());
@@ -309,9 +314,20 @@ public final class AppShell {
         clear.setDisable(index == 0);
         clear.setOnAction(event -> {
             recentFiles.clear();
-            rebuildSqlFilesMenu(sqlFilesMenu, recentFiles, chooseOpen, openPath);
+            rebuildSqlFilesMenu(sqlFilesMenu, recentFiles, newScript, chooseOpen, openPath);
         });
         sqlFilesMenu.getItems().add(clear);
+    }
+
+    private void openNewSqlScript() {
+        SqlNewScriptTabs.open(contentTabs,
+                () -> SqlEditorPane.openSqlFile(new SessionContext(), connMgr, treeSvc, settings,
+                        treeActions::openTableDesigner, sqlHistory, shortcuts, tasks),
+                connectionTree::connectionConfigsSnapshot, sqlScriptFileStore, recentSqlFiles,
+                new SqlFileDraftLifecycle() {
+                    @Override public void bind(SqlEditorPane pane) { sqlDrafts.get().bind(pane); }
+                    @Override public void installed(Node content) { sqlDrafts.get().installed(content); }
+                }, sqlFileTabs);
     }
 
     private void chooseSqlFileToOpen() {

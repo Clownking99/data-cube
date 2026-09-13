@@ -29,6 +29,46 @@ class SqlScriptFileEntryTest {
     @TempDir Path directory;
 
     @Test
+    void sqlFilesMenuOffersNewOfflineScriptBeforeOpen() throws Exception {
+        FxUiTestSupport.call(() -> {
+            MenuButton menu = new MenuButton();
+            AppShell.rebuildSqlFilesMenu(menu, new RecentSqlFiles(directory.resolve("recent")),
+                    () -> { }, () -> { }, path -> { });
+            assertEquals("sql-file-new", menu.getItems().getFirst().getId(),
+                    "starting an independent script must not require an existing SQL file");
+            assertEquals("新建 SQL 脚本（离线）", menu.getItems().getFirst().getText());
+            return null;
+        });
+    }
+
+    @Test
+    void newScriptCallbackSurvivesRecentMenuRebuildWithoutOpeningFiles() throws Exception {
+        RecentSqlFiles recent = new RecentSqlFiles(directory.resolve("recent"));
+        Path file = directory.resolve("synthetic.sql").toAbsolutePath();
+        recent.record(file);
+        AtomicInteger created = new AtomicInteger();
+        AtomicInteger opened = new AtomicInteger();
+        java.util.List<Path> paths = new java.util.ArrayList<>();
+        FxUiTestSupport.call(() -> {
+            MenuButton menu = new MenuButton();
+            AppShell.rebuildSqlFilesMenu(menu, recent, created::incrementAndGet,
+                    opened::incrementAndGet, paths::add);
+            assertEquals(0, created.get());
+            menu.getItems().getFirst().fire();
+            assertEquals(1, created.get()); assertEquals(0, opened.get()); assertTrue(paths.isEmpty());
+            menu.getItems().stream().filter(i -> "sql-file-recent-0".equals(i.getId())).findFirst().orElseThrow().fire();
+            assertEquals(java.util.List.of(file), paths);
+            menu.getItems().getLast().fire();
+            assertTrue(recent.recent().isEmpty()); assertTrue(menu.getItems().getLast().isDisable());
+            assertEquals(3, menu.getItems().size());
+            menu.getItems().getFirst().fire(); menu.getItems().get(1).fire();
+            assertEquals(2, created.get()); assertEquals(1, opened.get());
+            assertEquals(java.util.List.of(file), paths);
+            return null;
+        });
+    }
+
+    @Test
     void defaultsExposeOpenSaveAndSaveAsShortcuts() {
         assertEquals("Ctrl+O", ShortcutAction.SQL_OPEN_FILE.defaultCombo().getName());
         assertEquals("Ctrl+S", ShortcutAction.SQL_SAVE_FILE.defaultCombo().getName());
@@ -81,7 +121,7 @@ class SqlScriptFileEntryTest {
 
             MenuButton menu = FxUiTestSupport.call(MenuButton::new);
             FxUiTestSupport.call(() -> {
-                AppShell.rebuildSqlFilesMenu(menu, recent, () -> { }, entry::open);
+                AppShell.rebuildSqlFilesMenu(menu, recent, () -> { }, () -> { }, entry::open);
                 assertNotNull(menu.getItems().stream()
                         .filter(item -> "sql-file-recent-0".equals(item.getId())).findFirst().orElse(null));
                 assertNotNull(menu.getItems().stream()
