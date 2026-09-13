@@ -20,6 +20,8 @@ public enum ShortcutAction {
             new KeyCodeCombination(KeyCode.F, KeyCombination.CONTROL_DOWN)),
     SQL_REPLACE("sql.replace", "SQL 编辑器", "替换 SQL 文本",
             new KeyCodeCombination(KeyCode.H, KeyCombination.CONTROL_DOWN)),
+    SQL_FORMAT("sql.format", "SQL 编辑器", "美化选中 SQL 或全文",
+            new KeyCodeCombination(KeyCode.L, KeyCombination.CONTROL_DOWN, KeyCombination.ALT_DOWN)),
     SQL_GO_TO_LINE("sql.goToLine", "SQL 编辑器", "跳转到行",
             new KeyCodeCombination(KeyCode.G, KeyCombination.CONTROL_DOWN)),
     SQL_INDENT("sql.indent", "SQL 编辑器", "缩进当前行或选中行",

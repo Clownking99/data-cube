@@ -16,7 +16,6 @@ import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.JdbcEditorSession;
 import com.datacube.service.ObjectTreeService;
-import com.datacube.sqleditor.SqlFormatter;
 import com.datacube.sqleditor.SqlSafetyAnalyzer;
 import com.datacube.sqleditor.SqlSafetyPolicy;
 import com.datacube.sqleditor.SqlScriptSplitter;
@@ -165,6 +164,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlIndentActions indentActions;
     private SqlLineCommentAction lineCommentAction;
     private SqlDuplicateLinesAction duplicateLinesAction;
+    private SqlFormatAction formatAction;
     private ResultCellDialog resultCellDialog;
     private ResultRowLocateDialog resultRowLocator;
     private ResultRowDialog resultRowDialog;
@@ -328,6 +328,7 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(() -> { if (goToLineBar != null) goToLineBar.close(); });
             construction.own(() -> { if (lineCommentAction != null) lineCommentAction.close(); });
             construction.own(() -> { if (duplicateLinesAction != null) duplicateLinesAction.close(); });
+            construction.own(() -> { if (formatAction != null) formatAction.close(); });
             build();
             resultExports = new SqlResultExportCoordinator(tasks, this::captureResultExportSnapshot,
                     () -> resultStatusRevision, (text, error) -> {
@@ -399,7 +400,9 @@ public final class SqlEditorPane implements AutoCloseable {
         if (fileController != null) throw new IllegalStateException("SQL file controller already installed");
         controller.install(initial);
         fileController = controller;
-        fileController.busyProperty().addListener((obs, before, busy) -> findBar.editingStateChanged());
+        fileController.busyProperty().addListener((obs, before, busy) -> {
+            findBar.editingStateChanged(); formatAction.refreshAvailability();
+        });
         saveSqlFileBtn.disableProperty().bind(fileController.busyProperty());
         saveAsSqlFileBtn.disableProperty().bind(fileController.busyProperty());
     }
@@ -594,6 +597,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> { if (indentActions != null) indentActions.close(); },
                 () -> { if (lineCommentAction != null) lineCommentAction.close(); },
                 () -> { if (duplicateLinesAction != null) duplicateLinesAction.close(); },
+                () -> { if (formatAction != null) formatAction.close(); },
                 () -> { if (resultCellDialog != null) resultCellDialog.close(); },
                 () -> { if (resultRowLocator != null) resultRowLocator.close(); },
                 () -> { if (resultRowDialog != null) resultRowDialog.close(); },
@@ -981,9 +985,7 @@ public final class SqlEditorPane implements AutoCloseable {
         explainBtn.setOnAction(e -> onExplain());
         analyzeCheck = new CheckBox("ANALYZE(实际执行)");
 
-        formatBtn = new Button("美化 SQL");
-        formatBtn.setId("sql-format");
-        formatBtn.setOnAction(e -> onFormat());
+        formatBtn = formatAction.button();
 
         clearBtn = new Button("清空");
         clearBtn.setOnAction(e -> {
@@ -1315,6 +1317,14 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get()
                         && !uiFinalized.get() && !tasks.isClosed() && (fileController == null || !fileController.isBusy()),
                 () -> autoComplete.hide(), message -> statusLabel.setText(message));
+        formatAction = new SqlFormatAction(editorArea, shortcuts,
+                () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get()
+                        && !uiFinalized.get() && !tasks.isClosed() && !running
+                        && sessionOperations.snapshot().accepting() && !sessionOperations.snapshot().pending()
+                        && (fileController == null || !fileController.isBusy()),
+                () -> { autoComplete.hide(); goToLineBar.hide(false); },
+                () -> applyHighlighting(editorArea.getText()), message -> statusLabel.setText(message),
+                edit -> autoComplete.withoutSuggestions(edit));
         autoComplete = new SqlAutoComplete(editorArea, this::completionCandidates, shortcuts);
         autoComplete.setMemberProvider(this::membersFor);
         installMetadataPrewarm();
@@ -1425,20 +1435,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void onFormat() {
-        if (draftEditingBlocked()) return;
-        String sql = editorArea.getText();
-        if (sql.trim().isEmpty()) return;
-        try {
-            String formatted = SqlFormatter.format(sql);
-            editorArea.replaceText(formatted);
-            // replaceText 为一次性整体替换，textProperty 监听在挂起更新周期内
-            // 应用的样式会被替换收尾重置为默认样式；此处在替换返回后再次
-            // 应用高亮，确保美化后色彩不丢失。
-            applyHighlighting(formatted);
-            statusLabel.setText("已美化");
-        } catch (Exception e) {
-            showAlert("美化失败：" + e.getMessage());
-        }
+        formatAction.apply();
     }
 
     /** 依据当前文本重算并应用语法高亮样式区间（供文本监听与美化后复用）。 */
@@ -2658,7 +2655,7 @@ public final class SqlEditorPane implements AutoCloseable {
         boolean disabled = guidance().blocksExecution(busy);
         executeBtn.setDisable(disabled);
         explainBtn.setDisable(disabled);
-        formatBtn.setDisable(busy);
+        formatAction.setBusy(busy);
         clearBtn.setDisable(busy);
         if (resultToolbar != null) resultToolbar.getNode().setDisable(busy);
     }

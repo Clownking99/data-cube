@@ -48,6 +48,7 @@ final class SqlAutoComplete {
 
     /** 抑制补全替换文本时触发的 textProperty 递归。 */
     private boolean mutating = false;
+    private long automaticGeneration;
 
     SqlAutoComplete(CodeArea area, Supplier<Collection<String>> candidateSupplier, ShortcutSettings shortcuts) {
         this.area = area;
@@ -75,8 +76,9 @@ final class SqlAutoComplete {
         area.textProperty().addListener((obs, o, n) -> {
             // Programmatic unfocused loads are not input, and queued completion may outlive focus.
             if (mutating || !area.isFocused()) return;
+            long requestGeneration = automaticGeneration;
             Platform.runLater(() -> {
-                if (area.isFocused()) maybeShow();
+                if (requestGeneration == automaticGeneration && area.isFocused()) maybeShow();
             });
         });
 
@@ -239,6 +241,16 @@ final class SqlAutoComplete {
             else break;
         }
         return i;
+    }
+
+    /** Explicit text transforms must neither request members nor reopen an older queued popup. */
+    void withoutSuggestions(Runnable edit) {
+        boolean previous = mutating;
+        mutating = true;
+        automaticGeneration++;
+        hide();
+        try { edit.run(); }
+        finally { mutating = previous; }
     }
 
     void hide() {

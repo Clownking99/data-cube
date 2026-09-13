@@ -147,6 +147,52 @@ class SqlAutoCompleteFocusTest {
         }
     }
 
+    @Test void explicitFormatCancelsQueuedCompletionAndNeverRequestsMembers() throws Exception {
+        try (Fixture fixture = new Fixture(directory.resolve("format-suppressed.properties"))) {
+            fixture.focus(fixture.area); var members = new AtomicInteger();
+            FxUiTestSupport.call(() -> {
+                fixture.completion.setMemberProvider(qualifier -> { members.incrementAndGet(); return List.of("column_name"); });
+                assertTrue(fixture.area.isFocused());
+                fixture.area.replaceText("select t.c from t;"); fixture.area.moveTo(10);
+                try (var action = new SqlFormatAction(fixture.area, new ShortcutSettings(directory.resolve("format-keys")),
+                        () -> true, fixture.completion::hide, () -> { }, ignored -> { }, fixture.completion::withoutSuggestions)) {
+                    action.button().fire(); assertEquals("SELECT t.c\n  FROM t;", fixture.area.getText());
+                }
+                return null;
+            });
+            fixture.drain();
+            FxUiTestSupport.call(() -> {
+                assertEquals(0, fixture.requests.get()); assertEquals(0, members.get()); assertFalse(fixture.popup().isShowing());
+                return null;
+            });
+            fixture.focus(fixture.area);
+            FxUiTestSupport.call(() -> { fixture.area.replaceText("sel"); return null; });
+            fixture.drain();
+            FxUiTestSupport.call(() -> {
+                assertEquals(1, fixture.requests.get(), "Ordinary focused editing must still complete after formatting");
+                assertTrue(fixture.popup().isShowing()); return null;
+            });
+        }
+    }
+
+    @Test void explicitTransformHidesVisiblePopupAndRestoresSuppressionAfterFailure() throws Exception {
+        try (Fixture fixture = new Fixture(directory.resolve("format-failure.properties"))) {
+            fixture.focus(fixture.area);
+            FxUiTestSupport.call(() -> { fixture.area.replaceText("sel"); return null; }); fixture.drain();
+            FxUiTestSupport.call(() -> {
+                assertTrue(fixture.popup().isShowing());
+                assertThrows(IllegalStateException.class, () -> fixture.completion.withoutSuggestions(() -> {
+                    fixture.completion.withoutSuggestions(() -> fixture.area.replaceText("se"));
+                    throw new IllegalStateException("synthetic");
+                }));
+                assertFalse(fixture.popup().isShowing()); return null;
+            }); fixture.drain();
+            assertEquals(1, fixture.requests.get()); fixture.focus(fixture.area);
+            FxUiTestSupport.call(() -> { fixture.area.replaceText("sel"); return null; }); fixture.drain();
+            FxUiTestSupport.call(() -> { assertEquals(2, fixture.requests.get()); assertTrue(fixture.popup().isShowing()); return null; });
+        }
+    }
+
     private static final class Fixture implements AutoCloseable {
         final AtomicInteger requests = new AtomicInteger();
         final CodeArea area;
