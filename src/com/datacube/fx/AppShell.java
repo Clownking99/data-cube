@@ -186,7 +186,7 @@ public final class AppShell {
 
     private HBox topBar(ConnectionTreePane treePane) {
         // 品牌以小立方体图标呈现（标题文字与系统标题栏重复，故省略）
-        Node logo = BrandLogo.cube(20);
+        Node logo = BrandLogo.mark(20);
 
         Button addConnBtn = new Button("＋ 新建连接");
         addConnBtn.setOnAction(e -> treePane.newConnection());

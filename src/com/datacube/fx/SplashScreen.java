@@ -20,7 +20,7 @@ import javafx.stage.StageStyle;
 import javafx.util.Duration;
 
 /**
- * 启动闪屏：无边框深色圆角卡片，展示品牌立方体 + 字标 + Slogan。
+ * 启动闪屏：无边框深色圆角卡片，展示雾紫折页图标 + 字标 + Slogan。
  *
  * <p>在主窗口就绪前短暂呈现，随后淡出关闭（见 {@link DataCubeFx}）。
  */
@@ -47,7 +47,7 @@ public final class SplashScreen {
         slogan.setFont(Font.font("Microsoft YaHei", FontWeight.NORMAL, 12));
         slogan.setFill(BrandLogo.FG_DEEP_MUTED);
 
-        VBox card = new VBox(6, BrandLogo.cube(84), word, cn, divider, slogan);
+        VBox card = new VBox(6, BrandLogo.mark(84), word, cn, divider, slogan);
         card.setAlignment(Pos.CENTER);
         card.setPadding(new Insets(48, 56, 44, 56));
         card.setBackground(new Background(new BackgroundFill(

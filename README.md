@@ -6,6 +6,9 @@
 
 发布产物内置运行时（jlink），终端用户无需安装 Java。
 
+软件图标采用雾紫数据折页方案，工具栏、窗口、启动页、关于页与安装包同源生成，
+并为 16–32 px 小尺寸提供无底板版本。素材与维护方式见[图标说明](datacube-brand-assets/README.md)。
+
 ## 功能特性
 
 - **多数据库支持**：通过 SPI 抽象（`spi/`）+ 提供者实现（`provider/oracle`、`provider/postgres`）统一 Oracle 与 PostgreSQL 的元数据读取、DDL 生成、SQL 方言与执行。

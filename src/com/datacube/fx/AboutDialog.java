@@ -21,7 +21,7 @@ import javafx.stage.Stage;
 import javafx.stage.Window;
 
 /**
- * “关于”对话框：品牌立方体 + 字标 + 简介 + 数据库标签 + Slogan，
+ * “关于”对话框：雾紫折页图标 + 字标 + 简介 + 数据库标签 + Slogan，
  * 展示当前版本、项目仓库链接，并提供手动“检查更新”入口。
  */
 final class AboutDialog {
@@ -41,10 +41,10 @@ final class AboutDialog {
         dialog.setResizable(false);
         BrandLogo.applyIcons(dialog);
 
-        // 头部：立方体 + datacube / 数据魔方
+        // 头部：雾紫折页 + datacube / 数据魔方
         VBox nameBox = new VBox(1, BrandLogo.wordmark(20), BrandLogo.subtitle(11));
         nameBox.setAlignment(Pos.CENTER_LEFT);
-        HBox header = new HBox(14, BrandLogo.cube(44), nameBox);
+        HBox header = new HBox(14, BrandLogo.mark(44), nameBox);
         header.setAlignment(Pos.CENTER_LEFT);
 
         Label version = new Label("版本 " + AppVersion.current());

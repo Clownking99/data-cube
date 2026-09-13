@@ -74,15 +74,19 @@ tasks.named('processResources') {
     dependsOn 'generateBrandIcons'
 }
 
+// 两个入库母版是唯一输入；运行时 PNG 与安装包 ICO 采用同一尺寸适配规则。
+def brandStandard = file('datacube-brand-assets/assets/icon-mist-violet.png')
+def brandCompact = file('datacube-brand-assets/assets/icon-mist-violet-compact.png')
 // 运行时品牌图标：用 buildSrc IcoGenerator 生成各尺寸 PNG 到 generated 资源目录，
 // 打进模块后由 BrandLogo.applyIcons 从 classpath 加载为窗口/任务栏图标
 // （与打包 .ico 同一渲染，像素一致）。
 tasks.register('generateBrandIcons') {
     description = '生成运行时窗口图标 PNG 资源'
     def outDir = file('build/generated/brand/com/datacube/fx')
+    inputs.files(brandStandard, brandCompact)
     outputs.dir(outDir)
     doLast {
-        datacube.build.IcoGenerator.writePngs(outDir.toPath())
+        datacube.build.IcoGenerator.writePngs(brandStandard.toPath(), brandCompact.toPath(), outDir.toPath())
     }
 }
 
@@ -145,16 +149,17 @@ run {
                '--enable-native-access=com.datacube']
 }
 
-// 应用图标：由 generateIcon 任务用 buildSrc 的 IcoGenerator（Java2D）从品牌立方体
+// 应用图标：由 generateIcon 任务用 buildSrc 的 IcoGenerator（Java2D）从雾紫折页母版
 // 生成到 packaging/DataCube.ico；jpackage/jpackageImage 打包前自动重新生成。
 def iconFile = file('packaging/DataCube.ico')
 
 tasks.register('generateIcon') {
     description = '用 buildSrc IcoGenerator 生成品牌 .ico 图标'
     group = 'build'
+    inputs.files(brandStandard, brandCompact)
     outputs.file(iconFile)
     doLast {
-        datacube.build.IcoGenerator.write(iconFile.toPath())
+        datacube.build.IcoGenerator.write(brandStandard.toPath(), brandCompact.toPath(), iconFile.toPath())
         println "Generated icon: ${iconFile}"
     }
 }

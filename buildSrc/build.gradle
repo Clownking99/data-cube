@@ -1,6 +1,19 @@
-// buildSrc：仅承载构建期工具类（IcoGenerator 用 Java2D 生成 .ico）。
+// buildSrc：仅承载构建期工具类（IcoGenerator 用 Java2D 适配品牌素材）。
 // 这些类在 java.desktop（构建 JVM 自带）上运行，不进入 app 模块，
 // 因此不会给运行时引入 java.desktop 依赖。
 plugins {
     id 'java'
+}
+
+repositories { mavenCentral() }
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.11.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+tasks.named('test') {
+    useJUnitPlatform()
+    inputs.files(file('../datacube-brand-assets/assets/icon-mist-violet.png'),
+            file('../datacube-brand-assets/assets/icon-mist-violet-compact.png'))
+    systemProperty 'brand.assetDir', file('../datacube-brand-assets/assets').absolutePath
 }

@@ -39,7 +39,7 @@ jobs:
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v6
       - name: Unit tests
-        run: ${{ matrix.gradle }} clean test --no-daemon --console=plain
+        run: ${{ matrix.gradle }} clean :buildSrc:test test --no-daemon --console=plain
       - name: Windows linked image
         if: runner.os == 'Windows'
         run: .\gradlew.bat jlink --no-daemon --console=plain

@@ -25,7 +25,8 @@ class CiWorkflowContractTest {
                 () -> assertTrue(workflow.contains("java-version: '25'")),
                 () -> assertTrue(workflow.contains("gradle/actions/setup-gradle@v6")),
                 () -> assertTrue(workflow.contains("gradle/actions/wrapper-validation@v6")),
-                () -> assertTrue(workflow.contains("clean test")),
+                () -> assertTrue(workflow.contains("clean :buildSrc:test test"),
+                        "verification must run icon-generator tests as well as application tests"),
                 () -> assertTrue(workflow.contains("RedisLiveIntegrationTest")),
                 () -> assertTrue(workflow.contains("redis:7.4-alpine")),
                 () -> assertTrue(workflow.contains("jlink"))
@@ -42,7 +43,8 @@ class CiWorkflowContractTest {
                 () -> assertTrue(workflow.contains("actions/checkout@v6")),
                 () -> assertTrue(workflow.contains("actions/setup-java@v5")),
                 () -> assertTrue(workflow.contains("gradle/actions/setup-gradle@v6")),
-                () -> assertTrue(workflow.contains("clean test")),
+                () -> assertTrue(workflow.contains("clean :buildSrc:test test"),
+                        "release must gate packaging on icon-generator and application tests"),
                 () -> assertTrue(workflow.contains("jpackageImage")),
                 () -> assertTrue(workflow.contains("jpackage -PinstallerType=exe")),
                 () -> assertTrue(workflow.contains("gh release"))
