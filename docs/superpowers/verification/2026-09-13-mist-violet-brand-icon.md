@@ -26,6 +26,10 @@
   （7 秒，exit 1）；随后将契约加强为同时要求构建期与应用测试，不删除检查。
 - 最终定向回归：`gradlew.bat :buildSrc:test test --tests '*BrandLogoTest' --tests '*CiWorkflowContractTest' generateIcon --no-daemon --console=plain`，
   9 秒，exit 0；10 项应用/CI 契约通过，构建期 8 项 up-to-date；没有失败或跳过。
+- 合并后在本地 main 再次执行上述全量 clean / 构建期测试 / 应用测试 / jpackageImage 命令：
+  2 分 24 秒，exit 0，19 个任务全部实际执行。
+  XML 汇总：应用 2442 项 / 2439 passed / 3 既有 skipped / 0 failures/errors；
+  构建期 8 项全部通过，无失败或跳过；包含最终更新的 CI 工作流契约。
 
 | 要求 | 证据 |
 | --- | --- |
@@ -60,10 +64,15 @@
 - 验收构建的生产 exe SHA-256：`B6E87225695F176A042A202475AB908A06180AA2B4F5FBAD8D135F5A554F2169`
 - icon-32.png SHA-256：`F444D62C9576BB138847624B0CF6111F0B53179579BF1E9706CCBE44479FE72C`
 - 生产镜像在隔离工作区 `build/jpackage/DataCube/`。版本号 0.0.0 仅为本地验收，不用于正式发布。
+- main 的 `build/jpackage/DataCube/` 已重新生成；上述 ICO、exe、icon-32.png 的 SHA-256
+  与隔离工作区验收产物分别一致，生产入口仍为 `com.datacube/com.datacube.DataCubeFx`。
 
 ## 本地集成
 
-待最终差异审查与 main 快进；不推送、不打 tag。
+- 功能提交 `74e3ebb`（`feat: adopt mist-violet data page app icon`）已从
+  `codex/brand-mist-violet` 快进合并到本地 main。
+- 合并前后差异检查通过，main 完成全量测试与 Windows 镜像复建。
+- 原有未跟踪 `.testagent/` 保持不动；未推送、未打 tag、未删除隔离工作区。
 
 ## 已知边界
 
