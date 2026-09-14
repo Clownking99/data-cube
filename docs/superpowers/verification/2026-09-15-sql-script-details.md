@@ -52,4 +52,7 @@
 
 ## 本地集成
 
-功能提交及 main 合并后的定向测试/镜像核对在集成后补记。本轮不推送、不打 tag。
+功能提交 `a31acd4 feat: add read-only SQL script execution details`，已从独立 worktree 快进合并到本地 main。
+合并后定向运行 `SqlScriptDetails*Test`、`SqlScriptExecutionReportTest`、`SqlEditorResultFilterContractTest`、`SqlPanelLayout*Test` 并重新 `jpackageImage -PappVersion=0.0.0`：55 秒 exit 0，103 项通过，无失败/错误/跳过。
+主分支与已验收 worktree 的 runtime/lib/modules SHA-256 完全一致（见上）。主分支本地预览已更新，入口保持 DataCubeFx；未将测试夹具混入生产运行时。
+工作树仅保留既有未跟踪 `.testagent/`，不读取其内容。本轮新增功能和验收记录提交；未推送、未打 tag。
