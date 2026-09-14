@@ -291,6 +291,15 @@ public final class AppShell {
 
     static void rebuildSqlFilesMenu(MenuButton sqlFilesMenu, RecentSqlFiles recentFiles,
             Runnable newScript, Runnable chooseOpen, Consumer<Path> openPath) {
+        rebuildSqlFilesMenu(sqlFilesMenu, recentFiles, newScript, chooseOpen, openPath,
+                paths -> RecentSqlFilesDialog.create(paths,
+                        sqlFilesMenu.getScene() == null ? null : sqlFilesMenu.getScene().getWindow(),
+                        () -> !sqlFilesMenu.isDisabled()).showAndWait());
+    }
+
+    static void rebuildSqlFilesMenu(MenuButton sqlFilesMenu, RecentSqlFiles recentFiles,
+            Runnable newScript, Runnable chooseOpen, Consumer<Path> openPath,
+            java.util.function.Function<List<Path>, java.util.Optional<Path>> chooseRecent) {
         sqlFilesMenu.getItems().clear();
         MenuItem create = new MenuItem("新建 SQL 脚本（离线）");
         create.setId("sql-file-new");
@@ -301,20 +310,22 @@ public final class AppShell {
         open.setOnAction(event -> chooseOpen.run());
         sqlFilesMenu.getItems().add(open);
 
-        int index = 0;
-        for (Path path : recentFiles.recent()) {
-            MenuItem recent = new MenuItem(path.toString());
-            recent.setId("sql-file-recent-" + index);
-            recent.setOnAction(event -> openPath.accept(path));
-            sqlFilesMenu.getItems().add(recent);
-            index++;
-        }
+        MenuItem recent = new MenuItem("最近文件…");
+        recent.setId("sql-file-recent-search");
+        recent.setOnAction(event -> {
+            if (sqlFilesMenu.isDisabled()) return;
+            List<Path> snapshot = recentFiles.recent();
+            chooseRecent.apply(snapshot).filter(snapshot::contains)
+                    .filter(path -> !sqlFilesMenu.isDisabled() && recentFiles.recent().contains(path))
+                    .ifPresent(openPath);
+        });
+        sqlFilesMenu.getItems().add(recent);
         MenuItem clear = new MenuItem("清空最近文件");
         clear.setId("sql-file-recent-clear");
-        clear.setDisable(index == 0);
+        clear.setDisable(recentFiles.recent().isEmpty());
         clear.setOnAction(event -> {
             recentFiles.clear();
-            rebuildSqlFilesMenu(sqlFilesMenu, recentFiles, newScript, chooseOpen, openPath);
+            rebuildSqlFilesMenu(sqlFilesMenu, recentFiles, newScript, chooseOpen, openPath, chooseRecent);
         });
         sqlFilesMenu.getItems().add(clear);
     }

@@ -28,6 +28,19 @@ import static org.junit.jupiter.api.Assertions.*;
 class SqlScriptFileEntryTest {
     @TempDir Path directory;
 
+    @Test void recentPathsHaveOneSearchableEntryInsteadOfUnboundedMenuLabels() throws Exception {
+        RecentSqlFiles recent = new RecentSqlFiles(directory.resolve("recent"));
+        recent.record(directory.resolve("one/same.sql")); recent.record(directory.resolve("two/same.sql"));
+        FxUiTestSupport.call(() -> {
+            MenuButton menu = new MenuButton();
+            AppShell.rebuildSqlFilesMenu(menu, recent, () -> fail(), () -> fail(), path -> fail());
+            assertEquals(java.util.List.of("sql-file-new", "sql-file-open", "sql-file-recent-search", "sql-file-recent-clear"),
+                    menu.getItems().stream().map(javafx.scene.control.MenuItem::getId).toList());
+            assertEquals("最近文件…", menu.getItems().get(2).getText());
+            assertFalse(menu.getItems().get(2).isDisable()); return null;
+        });
+    }
+
     @Test
     void sqlFilesMenuOffersNewOfflineScriptBeforeOpen() throws Exception {
         FxUiTestSupport.call(() -> {
@@ -52,15 +65,15 @@ class SqlScriptFileEntryTest {
         FxUiTestSupport.call(() -> {
             MenuButton menu = new MenuButton();
             AppShell.rebuildSqlFilesMenu(menu, recent, created::incrementAndGet,
-                    opened::incrementAndGet, paths::add);
+                    opened::incrementAndGet, paths::add, choices -> java.util.Optional.of(choices.getFirst()));
             assertEquals(0, created.get());
             menu.getItems().getFirst().fire();
             assertEquals(1, created.get()); assertEquals(0, opened.get()); assertTrue(paths.isEmpty());
-            menu.getItems().stream().filter(i -> "sql-file-recent-0".equals(i.getId())).findFirst().orElseThrow().fire();
+            menu.getItems().stream().filter(i -> "sql-file-recent-search".equals(i.getId())).findFirst().orElseThrow().fire();
             assertEquals(java.util.List.of(file), paths);
             menu.getItems().getLast().fire();
             assertTrue(recent.recent().isEmpty()); assertTrue(menu.getItems().getLast().isDisable());
-            assertEquals(3, menu.getItems().size());
+            assertEquals(4, menu.getItems().size());
             menu.getItems().getFirst().fire(); menu.getItems().get(1).fire();
             assertEquals(2, created.get()); assertEquals(1, opened.get());
             assertEquals(java.util.List.of(file), paths);
@@ -74,6 +87,32 @@ class SqlScriptFileEntryTest {
         assertEquals("Ctrl+S", ShortcutAction.SQL_SAVE_FILE.defaultCombo().getName());
         assertTrue(ShortcutAction.SQL_SAVE_AS.defaultCombo().match(new KeyEvent(
                 KeyEvent.KEY_PRESSED, "", "", KeyCode.S, true, true, false, false)));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"confirm", "cancel", "cleared", "foreign", "disabled", "preDisabled"})
+    void recentPickerRevalidatesSnapshotAndCurrentIndexBeforeOpening(String scenario) throws Exception {
+        Path first = directory.resolve("one/same.sql"), second = directory.resolve("two/same.sql");
+        var recent = new RecentSqlFiles(directory.resolve("recent")); recent.record(first); recent.record(second);
+        byte[] index = Files.readAllBytes(directory.resolve("recent"));
+        var opened = new java.util.ArrayList<Path>(); var calls = new AtomicInteger();
+        FxUiTestSupport.call(() -> {
+            var menu = new MenuButton();
+            AppShell.rebuildSqlFilesMenu(menu, recent, () -> fail(), () -> fail(), opened::add, choices -> {
+                calls.incrementAndGet(); assertEquals(java.util.List.of(second, first), choices);
+                if (scenario.equals("cleared")) recent.clear();
+                if (scenario.equals("disabled")) menu.setDisable(true);
+                return scenario.equals("cancel") ? java.util.Optional.empty()
+                        : java.util.Optional.of(scenario.equals("foreign") ? directory.resolve("not-recent.sql") : first);
+            });
+            if (scenario.equals("preDisabled")) menu.setDisable(true);
+            menu.getItems().get(2).fire();
+            assertEquals(scenario.equals("preDisabled") ? 0 : 1, calls.get());
+            assertEquals(scenario.equals("confirm") ? java.util.List.of(first) : java.util.List.of(), opened);
+            return null;
+        });
+        if (!scenario.equals("cleared")) assertArrayEquals(index, Files.readAllBytes(directory.resolve("recent")));
+        assertFalse(Files.exists(first)); assertFalse(Files.exists(second));
     }
 
     @Test
@@ -123,7 +162,7 @@ class SqlScriptFileEntryTest {
             FxUiTestSupport.call(() -> {
                 AppShell.rebuildSqlFilesMenu(menu, recent, () -> { }, () -> { }, entry::open);
                 assertNotNull(menu.getItems().stream()
-                        .filter(item -> "sql-file-recent-0".equals(item.getId())).findFirst().orElse(null));
+                        .filter(item -> "sql-file-recent-search".equals(item.getId())).findFirst().orElse(null));
                 assertNotNull(menu.getItems().stream()
                         .filter(item -> "sql-file-recent-clear".equals(item.getId())).findFirst().orElse(null));
                 return null;
