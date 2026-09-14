@@ -49,3 +49,20 @@ computer-use 操作从最终生产镜像复制出的独立程序，仅副本 `--
 - 正常关闭后精确 exe 路径进程数为 0，隔离 profile 内不存在 SQL 文件；最近索引 SHA-256 仍为 `439A4CB37DB2714D844A53D16843ACBCEB3898FE63AB034C11E5185F0369FE4F`，与启动后初始值相同。
 
 生产模块包含 `RecentSqlFilesDialog`，不含 `DesktopFixture` 或 `DraftConnectionProbe`；入口仍为 `com.datacube/com.datacube.DataCubeFx`，无 fixture patch/profile 参数。最终 modules SHA-256：`96865E16D0336C0533583B617579B9ADECE4129AB8AB19ACE6AE45427543EB43`。本地版本 0.0.0，不代表正式发布、真实数据库、安装升级或远端 CI 验收。
+
+## 本地 main 集成
+
+实现 `7ad4852` 快进合并至 main；合并前跟踪文件和暂存区干净，仅保留用户 `.testagent/`。没有推送或打 tag。
+
+合并后运行以下定向回归并重新打包：42 秒 exit 0，97 项全部通过，无失败/错误/跳过。
+
+```text
+test --tests com.datacube.fx.RecentSqlFilesDialogTest
+     --tests com.datacube.fx.SqlScriptFileEntryTest
+     --tests com.datacube.config.RecentSqlFilesTest
+     --tests com.datacube.fx.SqlHistoryDialogTest
+     --tests com.datacube.fx.SqlFileReloadIntegrationTest
+     jpackageImage -PappVersion=0.0.0 --no-daemon --console=plain
+```
+
+main 预览为 `build/jpackage/DataCube/DataCube.exe`，生产入口及不含测试夹具检查再次通过。主分支 modules SHA-256 为 `73E7386549733147BFAD0CD3C0DDE7B1A3E3A2140EFE3E5102530B698414DA9E`，与 worktree 不同：逐文件核对 789 个编译产物、14 个资源，并从两个 runtime 提取 `com.datacube` 模块各 804 项后比较，唯一差异均为 `theme-base.css`。Git 将 main 检出为 CRLF，而 worktree 编辑后为 LF，换行规范化后 CSS 内容完全相同；不声称两个镜像逐字节相同。全量报告保留在独立 worktree，main 报告为这次 97 项定向验证。
