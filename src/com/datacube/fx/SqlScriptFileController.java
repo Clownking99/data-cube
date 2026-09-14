@@ -17,6 +17,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BiPredicate;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -26,9 +27,10 @@ public final class SqlScriptFileController implements AutoCloseable {
     private static final String CHANGED_FEEDBACK = "文件已被外部修改，未覆盖磁盘内容。";
     private static final String TOO_LARGE_FEEDBACK = "SQL 文件超过 8 MiB，未保存。";
     private static final String INVALID_TARGET_FEEDBACK = "保存位置无效，请重新选择。";
-    private static final String BUSY_FEEDBACK = "文件保存正在进行中，请稍后重试。";
+    private static final String BUSY_FEEDBACK = "文件操作正在进行中，请稍后重试。";
     private static final String TARGET_BUSY_FEEDBACK = "目标文件正在被其他保存操作使用，请稍后重试。";
     private static final String GENERIC_FEEDBACK = "SQL 文件保存失败，磁盘内容未被替换。";
+    private static final String RELOAD_FEEDBACK = "SQL 文件读取失败，编辑器内容未被替换。";
 
     public enum CloseDecision { SAVE, DISCARD, CANCEL }
 
@@ -63,6 +65,7 @@ public final class SqlScriptFileController implements AutoCloseable {
     private boolean listenerAttached;
     private volatile boolean closed;
     private long generation;
+    private long textRevision;
     private volatile boolean busy;
     private CompletableFuture<Boolean> pending;
 
@@ -180,6 +183,46 @@ public final class SqlScriptFileController implements AutoCloseable {
         Operation operation = beginOperation();
         if (operation == null) return CompletableFuture.completedFuture(false);
         return startSaveAs(operation);
+    }
+
+    /** Explicit read-only disk operation; a newer editor revision always wins. */
+    CompletionStage<Boolean> reload(BooleanSupplier confirm, BooleanSupplier applyAllowed,
+            Consumer<Runnable> replaceWithoutSuggestions) {
+        requireFx("reload");
+        Objects.requireNonNull(confirm); Objects.requireNonNull(applyAllowed); Objects.requireNonNull(replaceWithoutSuggestions);
+        if (closed || !installed || document.path() == null || !applyAllowed.getAsBoolean())
+            return CompletableFuture.completedFuture(false);
+        long revision = textRevision;
+        Path path = document.path();
+        int anchor = editor.getAnchor(), caret = editor.getCaretPosition();
+        Operation operation = beginOperation();
+        if (operation == null) return CompletableFuture.completedFuture(false);
+        operation.reload = true;
+        try {
+            if (!confirm.getAsBoolean()) { finish(operation, false); return operation.result(); }
+            if (!applyAllowed.getAsBoolean() || revision != textRevision) {
+                fail(operation, "编辑器状态已变化，未重新加载文件。"); return operation.result();
+            }
+        } catch (RuntimeException failure) { fail(operation, RELOAD_FEEDBACK); return operation.result(); }
+        submit(operation, () -> store.load(path), loaded -> {
+            if (!applyAllowed.getAsBoolean() || revision != textRevision) {
+                fail(operation, "编辑器状态已变化，未重新加载文件。"); return;
+            }
+            if (!path.equals(loaded.path())) {
+                fail(operation, "文件路径已变化，未重新加载文件。"); return;
+            }
+            var replacement = new SqlScriptDocument(); replacement.attach(loaded);
+            String normalized = replacement.normalizedText();
+            replaceWithoutSuggestions.accept(() -> {
+                editor.replaceText(normalized);
+                document = replacement;
+                editor.selectRange(Math.min(anchor, normalized.length()), Math.min(caret, normalized.length()));
+                editor.getUndoManager().forgetHistory();
+            });
+            refreshTitle();
+            finish(operation, true);
+        });
+        return operation.result();
     }
 
     private CompletionStage<Boolean> startSaveAs(Operation operation) {
@@ -418,7 +461,7 @@ public final class SqlScriptFileController implements AutoCloseable {
     private void settleFailure(Operation operation, Throwable failure) {
         if (!beforeSettlement(operation)) return;
         synchronized (lifecycleLock) {
-            failLocked(operation, feedbackFor(failure));
+            failLocked(operation, operation.reload ? reloadFeedbackFor(failure) : feedbackFor(failure));
         }
     }
 
@@ -434,7 +477,7 @@ public final class SqlScriptFileController implements AutoCloseable {
 
     private void failLocked(Operation operation, String message) {
         if (!currentLocked(operation)) return;
-        report(message);
+        report(operation.reload && GENERIC_FEEDBACK.equals(message) ? RELOAD_FEEDBACK : message);
         finishLocked(operation, false);
     }
 
@@ -489,6 +532,7 @@ public final class SqlScriptFileController implements AutoCloseable {
     }
 
     private void plainTextChanged(Object change) {
+        textRevision++;
         try {
             Class<?> type = change.getClass();
             int position = (Integer) type.getMethod("getPosition").invoke(change);
@@ -550,6 +594,18 @@ public final class SqlScriptFileController implements AutoCloseable {
         return GENERIC_FEEDBACK;
     }
 
+    static String reloadFeedbackFor(Throwable failure) {
+        if (failure instanceof SqlScriptFileStore.Failure storeFailure) {
+            return switch (storeFailure.code()) {
+                case TOO_LARGE -> "SQL 文件超过 8 MiB，未重新加载。";
+                case INVALID_UTF8 -> "SQL 文件不是有效 UTF-8，未重新加载。";
+                case CHANGED -> "文件在读取期间发生变化，未重新加载，请重试。";
+                default -> RELOAD_FEEDBACK;
+            };
+        }
+        return RELOAD_FEEDBACK;
+    }
+
     private static void requireFx(String operation) {
         if (!Platform.isFxApplicationThread()) {
             throw new IllegalStateException(operation + " must run on the FX Application Thread");
@@ -575,6 +631,7 @@ public final class SqlScriptFileController implements AutoCloseable {
         private final CompletableFuture<Boolean> result;
         private final RecentSqlFiles.RecordAdmission recentAdmission;
         private Path claimedPath;
+        private boolean reload;
 
         private Operation(long generation, CompletableFuture<Boolean> result,
                 RecentSqlFiles.RecordAdmission recentAdmission) {

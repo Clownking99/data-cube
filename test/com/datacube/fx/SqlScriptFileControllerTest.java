@@ -11,6 +11,8 @@ import org.fxmisc.richtext.CodeArea;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,6 +37,130 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SqlScriptFileControllerTest {
     @TempDir Path directory;
+
+    @Test void reloadAdoptsExternalTextAndBaselineButDoesNotWriteDiskOrRecentIndex() throws Exception {
+        var store = new SqlScriptFileStore();
+        Path file = Files.writeString(directory.resolve("reload-mixed.sql"), "select old;\n");
+        Path index = directory.resolve("reload-recent.txt");
+        try (Fixture f = new Fixture("", store.load(file), store, new RecentSqlFiles(index))) {
+            f.edit("unsaved text and selection"); f.fx(() -> f.editor.selectRange(22, 4));
+            String external = "new\r\n磁盘\rversion\n"; Files.writeString(file, external);
+            assertTrue(f.settle(f.reload(() -> true, () -> true)));
+            assertEquals("new\n磁盘\nversion\n", f.text());
+            assertEquals("reload-mixed.sql", f.title());
+            assertEquals(external, Files.readString(file)); assertFalse(Files.exists(index));
+            assertFalse(f.documentDirty(f.text())); assertFalse(f.busy());
+            f.fx(() -> {
+                assertEquals(f.editor.getLength(), f.editor.getAnchor()); assertEquals(4, f.editor.getCaretPosition());
+                assertFalse(f.editor.isUndoAvailable()); assertFalse(f.editor.isRedoAvailable());
+            });
+            assertTrue(f.settle(f.save()), "saving must use the newly loaded disk version");
+            assertEquals(external, Files.readString(file), "physical CRLF/CR/LF must be preserved");
+            Files.writeString(file, "newer external"); f.edit("my later edit");
+            assertFalse(f.settle(f.save())); assertEquals("newer external", Files.readString(file));
+            assertTrue(f.feedback.getLast().contains("外部修改"));
+        }
+    }
+
+    @Test void reloadCancelPreservesDirtyTextSelectionUndoAndSubmitsNothing() throws Exception {
+        var store = new SqlScriptFileStore(); Path file = Files.writeString(directory.resolve("cancel.sql"), "baseline");
+        try (Fixture f = fixture("", store.load(file))) {
+            f.edit("unsaved"); f.fx(() -> f.editor.selectRange(6, 2));
+            assertFalse(f.settle(f.reload(() -> false, () -> true)));
+            assertEquals("unsaved", f.text()); assertEquals("cancel.sql*", f.title());
+            assertEquals(0, f.submitter.submissions.get()); assertFalse(f.busy());
+            f.fx(() -> { assertEquals(6, f.editor.getAnchor()); assertEquals(2, f.editor.getCaretPosition()); assertTrue(f.editor.isUndoAvailable()); });
+            assertEquals("baseline", Files.readString(file));
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"missing", "invalidUtf8", "tooLarge"})
+    void reloadReadFailureKeepsWorkingTextBaselineAndUndoAndCanRetry(String failure) throws Exception {
+        var store = new SqlScriptFileStore(); Path file = Files.writeString(directory.resolve("failure.sql"), "baseline");
+        try (Fixture f = fixture("", store.load(file))) {
+            f.fx(() -> f.editor.getUndoManager().forgetHistory());
+            f.edit("working"); f.fx(() -> f.editor.selectRange(1, 5));
+            switch (failure) {
+                case "missing" -> Files.delete(file);
+                case "invalidUtf8" -> Files.write(file, new byte[]{(byte) 0xC3, (byte) 0x28});
+                case "tooLarge" -> Files.write(file, new byte[(int) SqlScriptFileStore.MAX_BYTES + 1]);
+            }
+            assertFalse(f.settle(f.reload(() -> true, () -> true)));
+            assertEquals("working", f.text()); assertEquals("failure.sql*", f.title()); assertFalse(f.busy());
+            assertFalse(f.feedback.getLast().contains(file.toString()));
+            assertTrue(f.feedback.getLast().contains(failure.equals("invalidUtf8") ? "UTF-8" : failure.equals("tooLarge") ? "8 MiB" : "读取失败"));
+            f.fx(() -> { assertEquals(1, f.editor.getAnchor()); assertEquals(5, f.editor.getCaretPosition()); f.editor.undo(); });
+            assertEquals("baseline", f.text()); assertFalse(f.documentDirty(f.text()));
+            Files.writeString(file, "retry"); assertTrue(f.settle(f.reload(() -> true, () -> true))); assertEquals("retry", f.text());
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"edit", "editUndo", "close", "guard"})
+    void lateReloadCannotReplaceNewerOrClosedEditor(String race) throws Exception {
+        var store = new SqlScriptFileStore(); Path file = Files.writeString(directory.resolve("race.sql"), "baseline");
+        try (Fixture f = fixture("", store.load(file))) {
+            f.fx(() -> f.editor.getUndoManager().forgetHistory());
+            var allowed = new java.util.concurrent.atomic.AtomicBoolean(true);
+            Files.writeString(file, "external");
+            var pending = f.reload(() -> true, allowed::get);
+            f.submitter.runWorker();
+            switch (race) {
+                case "edit" -> f.edit("new edit");
+                case "editUndo" -> { f.edit("temporary"); f.fx(f.editor::undo); }
+                case "close" -> f.controller.close();
+                case "guard" -> allowed.set(false);
+            }
+            f.fx(f.submitter::drainFx);
+            assertFalse(pending.toCompletableFuture().get(5, TimeUnit.SECONDS));
+            assertEquals(race.equals("edit") ? "new edit" : "baseline", f.text());
+            assertEquals("external", Files.readString(file)); assertFalse(f.busy());
+        }
+    }
+
+    @Test void editingDuringConfirmationRejectsReloadBeforeReading() throws Exception {
+        var store = new SqlScriptFileStore(); Path file = Files.writeString(directory.resolve("confirm.sql"), "baseline");
+        try (Fixture f = fixture("", store.load(file))) {
+            assertFalse(f.settle(f.reload(() -> { f.editor.appendText("new edit"); return true; }, () -> true)));
+            assertEquals(0, f.submitter.submissions.get()); assertEquals("baselinenew edit", f.text()); assertFalse(f.busy());
+        }
+    }
+
+    @Test void unboundOrBlockedReloadDoesNotConfirmOrReadAndBusyDoesNotAdmitAnotherOperation() throws Exception {
+        try (Fixture unbound = fixture("offline", null)) {
+            assertFalse(unbound.settle(unbound.reload(() -> { throw new AssertionError("no confirmation for unbound file"); }, () -> true)));
+            assertEquals(0, unbound.submitter.submissions.get());
+        }
+        var store = new SqlScriptFileStore(); Path file = Files.writeString(directory.resolve("busy.sql"), "baseline");
+        try (Fixture f = fixture("", store.load(file))) {
+            assertFalse(f.settle(f.reload(() -> { throw new AssertionError("blocked"); }, () -> false)));
+            var first = f.reload(() -> true, () -> true);
+            assertFalse(f.reload(() -> { throw new AssertionError("duplicate"); }, () -> true).toCompletableFuture().get());
+            assertFalse(f.save().toCompletableFuture().get());
+            assertEquals(1, f.submitter.submissions.get()); assertTrue(f.settle(first));
+        }
+    }
+
+    @Test void reloadConfirmationExceptionReleasesBusyWithoutLeakingDiagnostic() throws Exception {
+        var store = new SqlScriptFileStore(); Path file = Files.writeString(directory.resolve("exception.sql"), "baseline");
+        try (Fixture f = fixture("", store.load(file))) {
+            assertFalse(f.settle(f.reload(() -> { throw new IllegalStateException("private-path-secret"); }, () -> true)));
+            assertEquals("SQL 文件读取失败，编辑器内容未被替换。", f.feedback.getLast());
+            assertEquals(0, f.submitter.submissions.get()); assertEquals("baseline", f.text()); assertFalse(f.busy());
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"", "\uFEFFselect '中文';\r\n"})
+    void reloadAcceptsEmptyAndUtf8BomFilesAndClampsSelection(String disk) throws Exception {
+        var store = new SqlScriptFileStore(); Path file = Files.writeString(directory.resolve("boundary.sql"), "old text with a longer selection");
+        try (Fixture f = fixture("", store.load(file))) {
+            f.fx(() -> f.editor.selectRange(25, 20)); Files.writeString(file, disk);
+            assertTrue(f.settle(f.reload(() -> true, () -> true)));
+            String expected = disk.startsWith("\uFEFF") ? disk.substring(1) : disk;
+            assertEquals(expected.replace("\r\n", "\n"), f.text()); assertFalse(f.documentDirty(f.text()));
+            f.fx(() -> { assertEquals(f.editor.getLength(), f.editor.getAnchor()); assertEquals(f.editor.getLength(), f.editor.getCaretPosition()); assertFalse(f.editor.isUndoAvailable()); });
+            assertEquals(disk, Files.readString(file));
+        }
+    }
 
     @Test
     void composedStoreFailuresKeepFixedFeedbackAndNeverExposeArtifactPaths() throws Exception {
@@ -739,6 +865,10 @@ class SqlScriptFileControllerTest {
 
         CompletionStage<Boolean> saveAs() throws Exception {
             return FxUiTestSupport.call(controller::saveAs);
+        }
+
+        CompletionStage<Boolean> reload(java.util.function.BooleanSupplier confirm, java.util.function.BooleanSupplier allowed) throws Exception {
+            return FxUiTestSupport.call(() -> controller.reload(confirm, allowed, Runnable::run));
         }
 
         boolean settle(CompletionStage<Boolean> stage) throws Exception {

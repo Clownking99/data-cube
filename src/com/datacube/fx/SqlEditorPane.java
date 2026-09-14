@@ -184,7 +184,9 @@ public final class SqlEditorPane implements AutoCloseable {
     private Label statusLabel;
     private TextField schemaField;
     private Button executeBtn, explainBtn, formatBtn, clearBtn;
-    private Button saveSqlFileBtn, saveAsSqlFileBtn;
+    private Button saveSqlFileBtn, saveAsSqlFileBtn, reloadSqlFileBtn;
+    private java.util.function.BooleanSupplier reloadSqlFileConfirmation = () ->
+            SqlFileReloadDialog.confirm(root.getScene() == null ? null : root.getScene().getWindow());
     private Button recoveryConnectionButton;
     private Button fileConnectionButton;
     private MenuButton exportResultBtn;
@@ -405,9 +407,36 @@ public final class SqlEditorPane implements AutoCloseable {
         fileController = controller;
         fileController.busyProperty().addListener((obs, before, busy) -> {
             findBar.editingStateChanged(); formatAction.refreshAvailability();
+            refreshSqlFileReload();
         });
         saveSqlFileBtn.disableProperty().bind(fileController.busyProperty());
         saveAsSqlFileBtn.disableProperty().bind(fileController.busyProperty());
+        refreshSqlFileReload();
+    }
+
+    private boolean sqlFileReloadAllowed() {
+        return fileController != null && fileController.currentPath() != null && !draftEditingBlocked()
+                && !admission.closing() && !resourcesClosing.get() && !uiFinalized.get() && !tasks.isClosed()
+                && !root.isDisabled() && !editorArea.isDisabled() && !running
+                && sessionOperations.snapshot().accepting() && !sessionOperations.snapshot().pending();
+    }
+
+    private void refreshSqlFileReload() {
+        if (reloadSqlFileBtn != null) reloadSqlFileBtn.setDisable(!sqlFileReloadAllowed() || fileController.isBusy());
+    }
+
+    CompletionStage<Boolean> reloadSqlFile() {
+        if (!sqlFileReloadAllowed()) return CompletableFuture.completedFuture(false);
+        return fileController.reload(reloadSqlFileConfirmation, this::sqlFileReloadAllowed, edit -> {
+            findBar.hide(false); goToLineBar.hide(false);
+            autoComplete.withoutSuggestions(edit);
+        }).thenApply(reloaded -> {
+            if (Boolean.TRUE.equals(reloaded)) {
+                statusLabel.setText("已从磁盘重新加载 SQL；撤销记录已清空，未执行 SQL。");
+                statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
+            }
+            return reloaded;
+        });
     }
 
     /** Captures history data on FX; persistence itself always runs on a virtual thread. */
@@ -978,6 +1007,10 @@ public final class SqlEditorPane implements AutoCloseable {
         saveAsSqlFileBtn.setOnAction(event -> {
             if (fileController != null) fileController.saveAs();
         });
+        reloadSqlFileBtn = new Button("重新加载");
+        reloadSqlFileBtn.setId("sql-file-reload"); reloadSqlFileBtn.setDisable(true);
+        reloadSqlFileBtn.setTooltip(new Tooltip("从磁盘重新读取当前 SQL 文件；需确认丢弃未保存修改和撤销记录，不执行 SQL。"));
+        reloadSqlFileBtn.setOnAction(event -> reloadSqlFile());
 
         executeBtn = new Button();
         executeBtn.textProperty().bind(editorScopeBar.executeLabelProperty());
@@ -1028,7 +1061,7 @@ public final class SqlEditorPane implements AutoCloseable {
         });
         primary.getChildren().addAll(
                 sqlActionGroup(new Label("Schema:"), schemaField),
-                sqlActionGroup(saveSqlFileBtn, saveAsSqlFileBtn),
+                sqlActionGroup(saveSqlFileBtn, saveAsSqlFileBtn, reloadSqlFileBtn),
                 sqlActionGroup(executeBtn, explainBtn, analyzeCheck),
                 sqlActionGroup(find, formatBtn, clearBtn),
                 sqlActionGroup(panelLayout.menu()),
@@ -2660,6 +2693,7 @@ public final class SqlEditorPane implements AutoCloseable {
         formatAction.setBusy(busy);
         clearBtn.setDisable(busy);
         if (resultToolbar != null) resultToolbar.getNode().setDisable(busy);
+        refreshSqlFileReload();
         if (scriptDetails != null) {
             scriptDetails.getNode().setDisable(busy);
             scriptDetails.refresh();
