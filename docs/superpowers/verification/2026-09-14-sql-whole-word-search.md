@@ -63,7 +63,13 @@
 
 复查默认 API 兼容、UTF-16/代理对、拒绝候选的重叠恢复、有效匹配限额、选项切换的异步代际失效、
 只应用一致匹配集、单步撤销与控件折行。生产代码只改两个文件，无新的 I/O、连接、依赖或持久化格式。
-本地合并及合并后复验待记录；本轮不推送、不打 tag。
+- 实现提交 `a36b4d0`（`feat: add whole-word SQL find and replace`）已快进本地 main。
+  合并时 main 与功能分支 Git tree 均为 `122ecc593e5adbea3d5f4479f30146524ece9b7d`，功能 worktree 干净。
+- 首次合并后验证随会话中断，没有完成记录；恢复时检查无存活 Java 进程且 XML/镜像仍为旧版，未将其算为通过。
+  随后重新运行 buildSrc、整词/旧字面查找与替换、实际 Pane、易用性测试及 jpackageImage：
+  1 分 24 秒 exit 0，98 项全部通过 / 0 failures/errors/skipped；构建期 8 项原已通过、本次 up-to-date。
+  jlink / jpackageImage 实际执行；main 镜像 modules 哈希与上方验收镜像完全一致，入口仍为 DataCubeFx。
+- 根目录仅保留既有未跟踪 `.testagent/`，未读取、修改或暂存。本轮不推送、不打 tag。
 
 ## 已知边界
 
