@@ -28,6 +28,11 @@ public final class SqlTextSearch {
     }
 
     public static Result find(String text, String query, boolean matchCase) {
+        return find(text, query, matchCase, false);
+    }
+
+    /** Whole words use Unicode identifier-part boundaries plus SQL's dollar/hash characters, not SQL parsing. */
+    public static Result find(String text, String query, boolean matchCase, boolean wholeWord) {
         Objects.requireNonNull(text);
         Objects.requireNonNull(query);
         checkCancelled();
@@ -36,13 +41,36 @@ public final class SqlTextSearch {
         int flags = Pattern.LITERAL | (matchCase ? 0 : Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
         var matcher = Pattern.compile(query, flags).matcher(new InterruptibleText(text));
         List<Match> matches = new ArrayList<>();
-        while (matcher.find()) {
+        int from = 0;
+        while (matcher.find(from)) {
             checkCancelled();
+            int start = matcher.start(), end = matcher.end();
+            if (wholeWord && !wholeWordBoundary(text, start, end)) {
+                // An invalid candidate may overlap a later valid phrase; do not skip its entire length.
+                from = start + Character.charCount(text.codePointAt(start));
+                continue;
+            }
             if (matches.size() == MAX_MATCHES) return new Result(matches, true);
-            matches.add(new Match(matcher.start(), matcher.end()));
+            matches.add(new Match(start, end));
+            from = end;
         }
         checkCancelled();
         return new Result(matches, false);
+    }
+
+    private static boolean wholeWordBoundary(String text, int start, int end) {
+        return !splitsCodePoint(text, start) && !splitsCodePoint(text, end)
+                && (start == 0 || !identifierPart(text.codePointBefore(start)))
+                && (end == text.length() || !identifierPart(text.codePointAt(end)));
+    }
+
+    private static boolean identifierPart(int codePoint) {
+        return Character.isUnicodeIdentifierPart(codePoint) || codePoint == '$' || codePoint == '#';
+    }
+
+    private static boolean splitsCodePoint(String text, int offset) {
+        return offset > 0 && offset < text.length() && Character.isHighSurrogate(text.charAt(offset - 1))
+                && Character.isLowSurrogate(text.charAt(offset));
     }
 
     private static void checkCancelled() {

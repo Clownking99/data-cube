@@ -221,7 +221,7 @@ class SqlEditorUsabilityTest {
                 Region bar = (Region) root.lookup("#sql-find-bar");
                 Bounds area = bar.localToScene(bar.getLayoutBounds());
                 assertTrue(area.getWidth() <= width, "find bar must not expand its host");
-                for (String id : List.of("query", "match-case", "previous", "next", "close", "status")) {
+                for (String id : List.of("query", "match-case", "whole-word", "previous", "next", "close", "status")) {
                     Region control = (Region) bar.lookup("#sql-find-" + id);
                     Bounds bounds = control.localToScene(control.getLayoutBounds());
                     assertTrue(control.isVisible() && control.isManaged(), id);

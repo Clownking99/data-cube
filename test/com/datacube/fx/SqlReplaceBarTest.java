@@ -22,6 +22,53 @@ import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SqlReplaceBarTest {
+    @Test void wholeWordReplacementChangesOnlyCountedMatchesAndUndoRestoresAllText() throws Exception {
+        FxUiTestSupport.call(() -> {
+            String text = "id user_id id2 ID t.id";
+            try (var f = new Fixture(text)) {
+                f.bar.showReplace();
+                ((CheckBox) f.bar.getNode().lookup("#sql-find-whole-word")).setSelected(true);
+                f.scan("id"); f.replacement().setText("key");
+                assertEquals("共 3 处", ((Label) f.bar.getNode().lookup("#sql-find-status")).getText());
+                f.editor.selectRange(8, 10);
+                assertTrue(f.button("current").isDisabled(), "substring excluded by whole-word mode cannot be replaced");
+                f.button("current").getOnAction().handle(new javafx.event.ActionEvent());
+                assertTrue(f.edits.isEmpty());
+                f.editor.selectRange(15, 17); f.button("current").fire(); f.edits.getLast().publish();
+                assertEquals("id user_id id2 key t.id", f.editor.getText());
+                assertEquals("key", f.editor.getSelectedText());
+                f.editor.undo(); assertEquals(text, f.editor.getText());
+                f.scan("id"); f.button("all").fire(); f.edits.getLast().publish();
+                assertEquals("key user_id id2 key t.key", f.editor.getText());
+                assertTrue(f.feedback().startsWith("已替换 3 处"));
+                f.editor.undo(); assertEquals(text, f.editor.getText());
+                assertFalse(f.editor.isUndoAvailable());
+            }
+            return null;
+        });
+    }
+
+    @Test void switchingToWholeWordsRejectsOldReplacementAndZeroMatchesCannotEdit() throws Exception {
+        FxUiTestSupport.call(() -> {
+            try (var f = new Fixture("user_id id2")) {
+                f.bar.showReplace(); f.scan("id"); f.replacement().setText("key");
+                f.button("all").fire(); var old = f.edits.getLast();
+                ((CheckBox) f.bar.getNode().lookup("#sql-find-whole-word")).setSelected(true);
+                assertTrue(old.future.isCancelled());
+                assertTrue(f.button("all").isDisabled());
+                f.button("all").getOnAction().handle(new javafx.event.ActionEvent());
+                assertEquals(1, f.edits.size(), "no replacement may use the stale substring matches");
+                f.scan("id"); old.publish();
+                assertEquals("无匹配", ((Label) f.bar.getNode().lookup("#sql-find-status")).getText());
+                assertTrue(f.button("all").isDisabled()); assertTrue(f.button("current").isDisabled());
+                f.button("all").getOnAction().handle(new javafx.event.ActionEvent());
+                assertEquals(1, f.edits.size());
+                assertEquals("user_id id2", f.editor.getText()); assertFalse(f.editor.isUndoAvailable());
+            }
+            return null;
+        });
+    }
+
     @Test void replaceCurrentRequiresAnExactMatchAndIsAnIndependentUndoUnit() throws Exception {
         FxUiTestSupport.call(() -> {
             try (var f = new Fixture("one ONE one")) {
@@ -100,7 +147,7 @@ class SqlReplaceBarTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"edit", "query", "case", "replacement", "selection", "hide", "collapse", "close", "freeze", "disabled", "thaw", "focus", "scene"})
+    @ValueSource(strings = {"edit", "query", "case", "words", "replacement", "selection", "hide", "collapse", "close", "freeze", "disabled", "thaw", "focus", "scene"})
     void staleCandidatesNeverOverwriteNewEditorState(String change) throws Exception {
         FxUiTestSupport.call(() -> {
             try (var f = new Fixture("a a")) {
@@ -113,6 +160,7 @@ class SqlReplaceBarTest {
                     case "edit" -> f.editor.replaceText("new SQL");
                     case "query" -> f.query().setText("other");
                     case "case" -> ((CheckBox) f.bar.getNode().lookup("#sql-find-match-case")).setSelected(true);
+                    case "words" -> ((CheckBox) f.bar.getNode().lookup("#sql-find-whole-word")).setSelected(true);
                     case "replacement" -> f.replacement().setText("new value");
                     case "selection" -> f.editor.selectRange(0, 1);
                     case "hide" -> f.bar.hide();

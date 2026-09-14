@@ -24,6 +24,43 @@ import static org.junit.jupiter.api.Assertions.*;
 class SqlFindBarTest {
     @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory;
 
+    @Test void wholeWordsShareCountsAndNavigationWithoutMovingSelectionOnToggle() throws Exception {
+        FxUiTestSupport.call(() -> {
+            try (var f = new Fixture("id user_id id2 ID t.id")) {
+                f.editor.moveTo(0);
+                f.bar.show();
+                f.startScan("id");
+                f.jobs.getLast().publish();
+                assertEquals("共 5 处", f.status());
+                CheckBox words = (CheckBox) f.bar.getNode().lookup("#sql-find-whole-word");
+                assertNotNull(words, "find needs an explicit whole-word option");
+                assertFalse(words.isSelected());
+                f.editor.selectRange(10, 8);
+                words.setSelected(true);
+                assertEquals(10, f.editor.getAnchor());
+                assertEquals(8, f.editor.getCaretPosition());
+                assertTrue(f.button("next").isDisabled());
+                f.startScan("id");
+                f.jobs.getLast().publish();
+                assertEquals("共 3 处", f.status());
+                f.button("next").fire();
+                assertEquals(15, f.editor.getSelection().getStart());
+                assertEquals("ID", f.editor.getSelectedText());
+                f.button("next").fire();
+                assertEquals(20, f.editor.getSelection().getStart());
+                f.button("next").fire();
+                assertEquals(0, f.editor.getSelection().getStart());
+                assertEquals("1 / 3 · 已回到开头", f.status());
+                f.button("previous").fire();
+                assertEquals(20, f.editor.getSelection().getStart());
+                assertEquals("3 / 3 · 已回到末尾", f.status());
+                assertEquals("id user_id id2 ID t.id", f.editor.getText());
+                assertFalse(f.editor.isUndoAvailable());
+            }
+            return null;
+        });
+    }
+
     @Test void findingAPhraseUpdatesExecutionScopeAndClosingFindDoesNotClearTheSelection() throws Exception {
         FxUiTestSupport.call(() -> {
             try (var f = new Fixture("select a; select b;");
@@ -73,6 +110,35 @@ class SqlFindBarTest {
                 return null;
             });
         } finally { FxUiTestSupport.call(() -> { f.close(); return null; }); }
+    }
+
+    @Test void wholeWordToggleInvalidatesLateCallbacksAndCombinesWithCaseWithoutLeakingAcrossEditors() throws Exception {
+        FxUiTestSupport.call(() -> {
+            try (var f = new Fixture("id id2 ID"); var other = new Fixture("id2")) {
+                f.editor.moveTo(0);
+                f.bar.show(); f.startScan("id");
+                Job old = f.jobs.getLast();
+                CheckBox words = (CheckBox) f.bar.getNode().lookup("#sql-find-whole-word");
+                words.setSelected(true);
+                assertTrue(old.future.isCancelled());
+                f.startScan("id"); f.jobs.getLast().publish();
+                old.publish(); old.failure.accept(new IllegalStateException("private SQL"));
+                assertEquals("共 2 处", f.status());
+                assertEquals(0, f.editor.getCaretPosition());
+                ((CheckBox) f.bar.getNode().lookup("#sql-find-match-case")).setSelected(true);
+                f.startScan("id"); f.jobs.getLast().publish();
+                assertEquals("共 1 处", f.status());
+                f.bar.hide(); f.bar.showReplace();
+                assertTrue(words.isSelected(), "reopening keeps this editor's option");
+                f.startScan("id"); f.jobs.getLast().publish();
+                assertEquals("共 1 处", f.status());
+                assertFalse(((CheckBox) other.bar.getNode().lookup("#sql-find-whole-word")).isSelected());
+                words.setSelected(false); f.startScan("id"); f.jobs.getLast().publish();
+                assertEquals("共 2 处", f.status(), "turning off restores substring matches with case still on");
+                assertFalse(f.editor.isUndoAvailable());
+            }
+            return null;
+        });
     }
 
     @Test void navigationWrapsBothWaysWithoutEditingTheScript() throws Exception {

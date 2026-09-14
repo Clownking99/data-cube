@@ -22,6 +22,7 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.IndexRange;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.FlowPane;
@@ -48,6 +49,7 @@ final class SqlFindBar implements AutoCloseable {
     private final VBox root = new VBox(4);
     private final TextField query = new TextField();
     private final CheckBox matchCase = new CheckBox("区分大小写");
+    private final CheckBox wholeWord = new CheckBox("整词匹配");
     private final Button previous = new Button("上一个");
     private final Button next = new Button("下一个");
     private final Button dismiss = new Button("关闭查找");
@@ -101,6 +103,11 @@ final class SqlFindBar implements AutoCloseable {
         query.setAccessibleText("查找当前 SQL 文本");
         query.setPrefWidth(180);
         matchCase.setId("sql-find-match-case");
+        wholeWord.setId("sql-find-whole-word");
+        String wordHelp = "查找与替换共用：不匹配字母、数字、下划线、$、# 等标识符字符中的片段。"
+                + "仍查找注释和字符串，不是 SQL 语义重命名。";
+        wholeWord.setTooltip(new Tooltip(wordHelp));
+        wholeWord.setAccessibleHelp(wordHelp);
         previous.setId("sql-find-previous");
         next.setId("sql-find-next");
         dismiss.setId("sql-find-close");
@@ -143,14 +150,15 @@ final class SqlFindBar implements AutoCloseable {
         });
         replaceCurrent.setOnAction(event -> replace(false));
         replaceAll.setOnAction(event -> replace(true));
-        controls.getChildren().addAll(query, matchCase, previous, next, toggleReplace, dismiss);
+        controls.getChildren().addAll(query, matchCase, wholeWord, previous, next, toggleReplace, dismiss);
         root.getChildren().addAll(controls, status, replacePane);
-        for (Region control : new Region[] {query, matchCase, previous, next, toggleReplace, dismiss,
+        for (Region control : new Region[] {query, matchCase, wholeWord, previous, next, toggleReplace, dismiss,
                 replacement, replaceCurrent, replaceAll}) {
             control.setMinWidth(Region.USE_PREF_SIZE);
         }
         query.textProperty().addListener((obs, before, after) -> invalidate());
         matchCase.selectedProperty().addListener((obs, before, after) -> invalidate());
+        wholeWord.selectedProperty().addListener((obs, before, after) -> invalidate());
         editor.textProperty().addListener(textListener);
         editor.selectionProperty().addListener(selectionListener);
         editor.sceneProperty().addListener(sceneListener);
@@ -237,8 +245,9 @@ final class SqlFindBar implements AutoCloseable {
         String text = editor.getText();
         String needle = query.getText();
         boolean sensitive = matchCase.isSelected();
+        boolean words = wholeWord.isSelected();
         try {
-            active = submitter.submit(() -> SqlTextSearch.find(text, needle, sensitive), found -> {
+            active = submitter.submit(() -> SqlTextSearch.find(text, needle, sensitive, words), found -> {
                 if (!current(expected)) return;
                 result = found;
                 resultText = text;
