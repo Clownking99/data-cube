@@ -65,7 +65,12 @@
 
 按测试技能逐项复查状态和边界断言，重点审查节点身份、单步撤销、迟到回调代际、关闭/场景分离清理及只恢复一次。
 真实 Stage 跨 pulse 测试弥补了单 FX 回合 layout 检查的缺口；桌面技能帮助发现并复验分隔条回退，未弱化测试期待或删除失败场景。
-本地 main 集成待完成；本轮不推送、不打 tag。
+实现提交 `f6e6fc6`（`feat: add SQL editor and result panel layouts`）已快进合并到本地 main。
+合并时 main 与功能分支 Git tree 均为 `1149a3db8400fe544b663df9b1a897be19e022c4`；功能 worktree 干净。
+main 合并后运行 `:buildSrc:test test`（与上方相同的五组定向过滤）及 `jpackageImage -PappVersion=0.0.0`，52 秒 exit 0。
+XML 92 项全部通过，无失败/错误/跳过；buildSrc 8 项原已通过、本次 up-to-date；jlink/jpackageImage 实际执行。
+main 镜像 modules SHA-256 与上方最终验收镜像完全一致，入口仍为 DataCubeFx，本地预览镜像已更新。
+根目录仅保留既有未跟踪 .testagent/，未读取、修改或暂存；本轮不推送、不打 tag。
 
 ## 边界
 
