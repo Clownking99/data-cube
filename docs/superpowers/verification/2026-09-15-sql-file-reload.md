@@ -46,3 +46,19 @@
 - 本轮桌面仅使用鼠标确认/取消，未验证原生 Enter/Esc 派发；默认按钮属性已由自动测试验证。脏文本取消、读取失败及并发状态保护由自动测试覆盖，不等同于这些路径均已手工复现。
 
 生产镜像入口仍为 `com.datacube/com.datacube.DataCubeFx`，无测试 patch/profile 参数。运行时包含 `SqlFileReloadDialog`，不包含 `DesktopFixture` 或 `DraftConnectionProbe`。生产 modules SHA-256：`B8FE6D79FCE3B460F325A099AC4971E00A7405C8D7CD427ADB00AB4778A74923`。
+
+## 本地集成
+
+实现 `52059ba` 已从 `codex/sql-file-reload` 快进合并至本地 main。合并前核对主分支跟踪文件和暂存区无变化，只保留用户 `.testagent/`；未推送、未打 tag。
+
+合并后执行文件重载集成、文件控制器、编辑器易用性及上一轮执行详情回归，并重新生成 `jpackageImage -PappVersion=0.0.0`：49 秒 exit 0，104 项全部通过，无失败/错误/跳过。
+
+```text
+test --tests com.datacube.fx.SqlFileReloadIntegrationTest
+     --tests com.datacube.fx.SqlScriptFileControllerTest
+     --tests com.datacube.fx.SqlEditorUsabilityTest
+     --tests com.datacube.fx.SqlScriptDetails*Test
+     jpackageImage -PappVersion=0.0.0 --no-daemon --console=plain
+```
+
+主分支预览为 `build/jpackage/DataCube/DataCube.exe`（本地版本 0.0.0，非新发布号）。modules SHA-256 与上述已验收 worktree 完全相同，入口及不含测试夹具的检查再次通过。全量测试报告保留在独立 worktree，主分支报告为本次 104 项定向验证。
