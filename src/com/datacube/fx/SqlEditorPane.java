@@ -169,6 +169,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private ResultRowLocateDialog resultRowLocator;
     private ResultRowDialog resultRowDialog;
     private SqlResultRowDisplay resultRowDisplay;
+    private SqlScriptDetails scriptDetails;
     private final ResultFilterState resultFilterState = new ResultFilterState();
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
     private ClipboardWriter clipboardWriter = SqlEditorPane::writeSystemClipboard;
@@ -325,6 +326,7 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(() -> session.activeConnectionProperty().removeListener(activeConnectionListener));
             construction.own(() -> { if (findBar != null) findBar.detachUi(); });
             construction.own(() -> { if (panelLayout != null) panelLayout.close(); });
+            construction.own(() -> { if (scriptDetails != null) scriptDetails.close(); });
             construction.own(() -> { if (editorScopeBar != null) editorScopeBar.close(); });
             construction.own(() -> { if (goToLineBar != null) goToLineBar.close(); });
             construction.own(() -> { if (lineCommentAction != null) lineCommentAction.close(); });
@@ -593,6 +595,7 @@ public final class SqlEditorPane implements AutoCloseable {
         if (!uiFinalized.compareAndSet(false, true)) return;
         BestEffortCloseSequence.run(
                 () -> { if (panelLayout != null) panelLayout.close(); },
+                () -> { if (scriptDetails != null) scriptDetails.close(); },
                 () -> { if (findBar != null) findBar.detachUi(); },
                 () -> { if (editorScopeBar != null) editorScopeBar.close(); },
                 () -> { if (goToLineBar != null) goToLineBar.close(); },
@@ -1427,7 +1430,8 @@ public final class SqlEditorPane implements AutoCloseable {
                 this::onClearResultFilters,
                 this::copyResultSelection, this::showResultCell), resultColumnMenu.getNode(), resultRowDisplay.getNode());
         renderResultFilterToolbar();
-        VBox box = new VBox(resultToolbar.getNode(), resultPane);
+        scriptDetails = new SqlScriptDetails(resultTable, this::resultCellViewingAllowed);
+        VBox box = new VBox(resultToolbar.getNode(), scriptDetails.getNode(), resultPane);
         VBox.setVgrow(resultPane, Priority.ALWAYS);
         return box;
     }
@@ -2306,15 +2310,15 @@ public final class SqlEditorPane implements AutoCloseable {
             addColumn("类型", 1);
             addColumn("耗时", 2);
             addColumn("结果", 3);
-            ObservableList<ObservableList<Object>> data = FXCollections.observableArrayList();
-            for (ScriptOutcome o : outcomes) {
-                QueryResult r = o.result();
-                data.add(FXCollections.observableArrayList(
-                        String.valueOf(o.index()), r.kind.name(), r.elapsedMillis + "ms", summarize(r)));
-            }
-            resultTable.setItems(data);
-            statusLabel.setText("共 " + outcomes.size() + " 条语句 - " + totalElapsed + "ms");
-            statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
+            resultTable.getColumns().get(0).setPrefWidth(50);
+            resultTable.getColumns().get(1).setPrefWidth(90);
+            resultTable.getColumns().get(2).setPrefWidth(90);
+            resultTable.getColumns().get(3).setPrefWidth(440);
+            var report = com.datacube.sqleditor.SqlScriptExecutionReport.capture(outcomes, totalElapsed);
+            scriptDetails.display(report);
+            statusLabel.setText(report.summary());
+            statusLabel.setStyle("-fx-text-fill: " + (report.hasFailures() ? "-status-error" : "-status-ok")
+                    + "; -fx-font-size: 12px;");
         } else {
             QueryResult r = outcomes.get(0).result();
             switch (r.kind) {
@@ -2326,18 +2330,6 @@ public final class SqlEditorPane implements AutoCloseable {
                 case ERROR -> showFailure(r);
             }
         }
-    }
-
-    private static String summarize(QueryResult r) {
-        return switch (r.kind) {
-            case QUERY -> r.rows.size() + " rows";
-            case UPDATE -> r.updateCount + " affected";
-            case ERROR -> switch (r.failureKind) {
-                case CANCELLED -> "已取消";
-                case TIMEOUT -> "执行超时";
-                case SQL_ERROR -> "ERR: " + truncate(r.errorMessage, 80);
-            };
-        };
     }
 
     private void addColumn(String title, int idx) {
@@ -2366,6 +2358,7 @@ public final class SqlEditorPane implements AutoCloseable {
             statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
             return false;
         }
+        if (scriptDetails != null) scriptDetails.clear();
         lastQuerySql = candidateSql;
         renderResultFilterSnapshot();
         return true;
@@ -2388,6 +2381,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void renderResultFilterSnapshot(ResultFilterState.Snapshot snapshot) {
+        if (scriptDetails != null) scriptDetails.clear();
         resultStatusRevision++;
         resultRowIndexes.clear();
         QueryResult active = snapshot.activeResult();
@@ -2454,6 +2448,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void clearResultFilterState() {
+        if (scriptDetails != null) scriptDetails.clear();
         resultStatusRevision++;
         resultRowIndexes.clear();
         resultFilterState.clearAll();
@@ -2665,6 +2660,10 @@ public final class SqlEditorPane implements AutoCloseable {
         formatAction.setBusy(busy);
         clearBtn.setDisable(busy);
         if (resultToolbar != null) resultToolbar.getNode().setDisable(busy);
+        if (scriptDetails != null) {
+            scriptDetails.getNode().setDisable(busy);
+            scriptDetails.refresh();
+        }
     }
 
     // ---------- 自动补全：候选词 + 元数据预热 ----------
