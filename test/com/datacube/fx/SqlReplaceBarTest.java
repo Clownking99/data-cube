@@ -147,7 +147,7 @@ class SqlReplaceBarTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"edit", "query", "case", "words", "replacement", "selection", "hide", "collapse", "close", "freeze", "disabled", "thaw", "focus", "scene"})
+    @ValueSource(strings = {"edit", "query", "case", "words", "replacement", "selection", "hide", "hideWithoutFocus", "collapse", "close", "freeze", "disabled", "thaw", "focus", "scene"})
     void staleCandidatesNeverOverwriteNewEditorState(String change) throws Exception {
         FxUiTestSupport.call(() -> {
             try (var f = new Fixture("a a")) {
@@ -164,6 +164,7 @@ class SqlReplaceBarTest {
                     case "replacement" -> f.replacement().setText("new value");
                     case "selection" -> f.editor.selectRange(0, 1);
                     case "hide" -> f.bar.hide();
+                    case "hideWithoutFocus" -> f.bar.hide(false);
                     case "collapse" -> ((Button) f.bar.getNode().lookup("#sql-find-replace-toggle")).fire();
                     case "close" -> f.bar.close();
                     case "freeze" -> f.editable = false;

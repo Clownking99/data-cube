@@ -209,6 +209,10 @@ final class SqlFindBar implements AutoCloseable {
     }
 
     void hide() {
+        hide(true);
+    }
+
+    void hide(boolean focusEditor) {
         cancelReplacement();
         revision++;
         debounce.stop();
@@ -217,7 +221,7 @@ final class SqlFindBar implements AutoCloseable {
         resultText = null;
         root.setVisible(false);
         root.setManaged(false);
-        if (!closed.get()) editor.requestFocus();
+        if (focusEditor && !closed.get()) editor.requestFocus();
     }
 
     private void invalidate() {

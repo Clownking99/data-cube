@@ -49,7 +49,6 @@ import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
-import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.*;
@@ -158,6 +157,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private final VBox root = new VBox(8);
     private CodeArea editorArea;
     private SqlFindBar findBar;
+    private SqlPanelLayout panelLayout;
     private SqlEditorScopeBar editorScopeBar;
     private SqlGoToLineBar goToLineBar;
     private SqlAutoComplete autoComplete;
@@ -324,6 +324,7 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(() -> settings.commentModeProperty().removeListener(commentModeListener));
             construction.own(() -> session.activeConnectionProperty().removeListener(activeConnectionListener));
             construction.own(() -> { if (findBar != null) findBar.detachUi(); });
+            construction.own(() -> { if (panelLayout != null) panelLayout.close(); });
             construction.own(() -> { if (editorScopeBar != null) editorScopeBar.close(); });
             construction.own(() -> { if (goToLineBar != null) goToLineBar.close(); });
             construction.own(() -> { if (lineCommentAction != null) lineCommentAction.close(); });
@@ -591,6 +592,7 @@ public final class SqlEditorPane implements AutoCloseable {
     void finalizeCloseOnFx() {
         if (!uiFinalized.compareAndSet(false, true)) return;
         BestEffortCloseSequence.run(
+                () -> { if (panelLayout != null) panelLayout.close(); },
                 () -> { if (findBar != null) findBar.detachUi(); },
                 () -> { if (editorScopeBar != null) editorScopeBar.close(); },
                 () -> { if (goToLineBar != null) goToLineBar.close(); },
@@ -942,13 +944,13 @@ public final class SqlEditorPane implements AutoCloseable {
     private void build() {
         root.setPadding(new Insets(10));
         root.setStyle("-fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; -fx-font-size: 13px;");
-        // 垂直可拖拽分隔：上为 SQL 编辑区，下为结果展示区，分隔条可手动上下拖拽。
-        SplitPane split = new SplitPane();
-        split.setOrientation(Orientation.VERTICAL);
-        split.getItems().addAll(editor(), resultContainer());
-        split.setDividerPositions(0.38);
-        root.getChildren().addAll(toolbar(), split, statusBar());
-        VBox.setVgrow(split, Priority.ALWAYS);
+        panelLayout = new SqlPanelLayout(editor(), resultContainer(),
+                () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get()
+                        && !tasks.isClosed() && !uiFinalized.get() && !root.isDisabled()
+                        && (fileController == null || !fileController.isBusy()),
+                () -> { autoComplete.hide(); goToLineBar.hide(false); findBar.hide(false); });
+        root.getChildren().addAll(toolbar(), panelLayout.node(), statusBar());
+        VBox.setVgrow(panelLayout.node(), Priority.ALWAYS);
     }
 
     private Node toolbar() {
@@ -1016,6 +1018,7 @@ public final class SqlEditorPane implements AutoCloseable {
         Button find = new Button("查找");
         find.setId("sql-find");
         find.setOnAction(event -> {
+            if (!panelLayout.revealEditor()) return;
             goToLineBar.hide(false);
             autoComplete.hide();
             findBar.show();
@@ -1025,6 +1028,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 sqlActionGroup(saveSqlFileBtn, saveAsSqlFileBtn),
                 sqlActionGroup(executeBtn, explainBtn, analyzeCheck),
                 sqlActionGroup(find, formatBtn, clearBtn),
+                sqlActionGroup(panelLayout.menu()),
                 sqlActionGroup(indentActions.indentButton(), indentActions.outdentButton(), lineCommentAction.button(), duplicateLinesAction.button()),
                 sqlActionGroup(exportResultBtn, copyInsertBtn));
 
@@ -1341,16 +1345,19 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> { autoComplete.hide(); findBar.hide(); });
         root.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (!draftEditingBlocked() && shortcuts.get(ShortcutAction.SQL_FIND).match(event)) {
+                if (!panelLayout.revealEditor()) return;
                 goToLineBar.hide(false);
                 autoComplete.hide();
                 findBar.show();
                 event.consume();
             } else if (!draftEditingBlocked() && shortcuts.get(ShortcutAction.SQL_REPLACE).match(event)) {
+                if (!panelLayout.revealEditor()) return;
                 goToLineBar.hide(false);
                 autoComplete.hide();
                 findBar.showReplace();
                 event.consume();
             } else if (shortcuts.get(ShortcutAction.SQL_GO_TO_LINE).match(event)) {
+                if (!panelLayout.revealEditor()) return;
                 goToLineBar.show();
                 event.consume();
             }
