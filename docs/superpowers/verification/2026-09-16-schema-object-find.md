@@ -58,4 +58,10 @@ computer-use 操作最终生产镜像的独立副本 `build/schema-find-desktop-
 
 生产入口仍为 `com.datacube/com.datacube.DataCubeFx`，没有 fixture patch/profile 参数；runtime 含新对话框和服务，不含 DesktopFixture 或 DraftConnectionProbe。modules SHA-256：`BCC5FFB186543825A4D603E8208F691F87C9ACFB2DD5534DB911709A66E5176F`。开发版本 0.0.0，不代表正式发布、安装升级、真实数据库、用户效率实验或远端 CI 验收。
 
-本地 main 集成结果将在合并及复核后补充。
+## 本地 main 集成
+
+实现提交 `f2f7df6` 已快进本地 main；合并前核对 main 仍为 `afae456` 且跟踪文件/暂存区干净，保留用户 `.testagent/`，未读取、修改或暂存。未推送、未打 tag。
+
+合并后在根目录运行上方定向命令，追加 `jpackageImage -PappVersion=0.0.0`：43 秒 exit 0，73 项全部通过、0 失败/错误/跳过。全量 2,710 项报告保留在独立 worktree，main 的报告是这次定向复核，不混为全量。
+
+main 开发镜像：`build/jpackage/DataCube/DataCube.exe`。生产入口与无测试夹具检查再次通过；modules SHA-256：`B5DB2F23EFFF51390ACAF4095F5CA17882860A753276EC68EE7C0287A1CF2FD4`。两个 runtime 的 com.datacube 模块均提取 811 项，唯一字节差异为 theme-base.css 的 main CRLF/worktree LF；换行规范化后相同，不声称镜像逐字节一致。
