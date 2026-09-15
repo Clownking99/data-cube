@@ -34,6 +34,11 @@ public interface MetadataReader {
 
     List<ViewInfo> views(String schema) throws SQLException;
 
+    /** Bounded names/types only; implementations must not fetch view definitions or row data. */
+    default List<TableInfo> tableAndViewNames(String schema, int maxRows) throws SQLException {
+        throw new java.sql.SQLFeatureNotSupportedException("Bounded object names are not supported");
+    }
+
     List<ColumnInfo> columns(TableRef t) throws SQLException;
 
     List<IndexInfo> indexes(TableRef t) throws SQLException;

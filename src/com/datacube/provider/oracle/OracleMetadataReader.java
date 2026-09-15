@@ -89,6 +89,29 @@ public final class OracleMetadataReader implements MetadataReader {
     }
 
     @Override
+    public List<TableInfo> tableAndViewNames(String schema, int maxRows) throws SQLException {
+        if (schema == null || schema.isEmpty() || maxRows < 1) throw new IllegalArgumentException("Schema and row limit required");
+        List<TableInfo> out = new ArrayList<>();
+        String sql = "SELECT OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS "
+                + "WHERE OWNER = ? AND OBJECT_TYPE IN ('TABLE','VIEW') ORDER BY OBJECT_NAME, OBJECT_TYPE";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, schema);
+            ps.setMaxRows(maxRows);
+            ps.setQueryTimeout(15);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (out.size() < maxRows && rs.next()) {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+                    String type = rs.getString(2);
+                    if (!"TABLE".equals(type) && !"VIEW".equals(type)) throw new SQLException("Unexpected object type");
+                    out.add(new TableInfo(schema, rs.getString(1),
+                            "VIEW".equals(type) ? TableInfo.Kind.VIEW : TableInfo.Kind.TABLE, null));
+                }
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    @Override
     public List<ColumnInfo> columns(TableRef t) throws SQLException {
         Set<String> pkCols = primaryKeyColumns(t);
         Map<String, String> comments = columnComments(t);

@@ -6,6 +6,7 @@ import com.datacube.fx.task.FxTaskRunner;
 import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.ObjectTreeService;
+import com.datacube.service.SchemaObjectCatalog;
 import com.datacube.redis.RedisSession;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.DbType;
@@ -102,6 +103,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     private final TreeView<NodeData> tree = new TreeView<>();
     private ConnectionTreeFindBar findBar;
     private final ConnectionTreeClipboard objectClipboard;
+    private volatile SchemaObjectSearchDialog objectSearch;
 
     // 快速检索：直接键入字母即在可见行内增量定位（不含 WHERE 那种搜索框）。
     private final Label searchHint = new Label();
@@ -140,6 +142,8 @@ public final class ConnectionTreePane implements AutoCloseable {
     @Override
     public void close() {
         tasks.close();
+        var search = objectSearch;
+        if (search != null) search.close();
         if (findBar != null) findBar.close();
     }
 
@@ -544,6 +548,53 @@ public final class ConnectionTreePane implements AutoCloseable {
         return tableActionItem(target, "复制限定名称", "tree-copy-qualified-name", objectClipboard::copy);
     }
 
+    @FunctionalInterface interface SchemaObjectChooser {
+        java.util.Optional<TableRef> choose(ConnConfig connection, String schema, java.util.function.BooleanSupplier allowed);
+    }
+
+    MenuItem schemaObjectFindItem(TreeItem<NodeData> target, SchemaObjectChooser chooser) {
+        NodeData expected = target == null ? null : target.getValue();
+        ConnConfig connection = target == null ? null : connOf(target);
+        java.util.function.BooleanSupplier allowed = () -> {
+            if (tasks.isClosed() || expected == null || expected.kind != Kind.SCHEMA || target.getValue() != expected
+                    || expected.schema == null || expected.schema.isEmpty() || expected.schema.length() > 1024
+                    || connection == null || (connection.type() != DbType.POSTGRESQL && connection.type() != DbType.ORACLE)
+                    || !java.util.Objects.equals(connection.id(), expected.connId) || !connection.equals(connOf(target))) return false;
+            TreeItem<NodeData> ancestor = target;
+            while (ancestor.getParent() != null) ancestor = ancestor.getParent();
+            return ancestor == tree.getRoot();
+        };
+        MenuItem item = new MenuItem("查找表/视图…"); item.setId("tree-find-schema-objects");
+        item.setOnAction(event -> {
+            if (!allowed.getAsBoolean()) return;
+            chooser.choose(connection, expected.schema, allowed).ifPresent(ref -> {
+                if (allowed.getAsBoolean() && java.util.Objects.equals(expected.schema, ref.schema())
+                        && ref.name() != null && !ref.name().isEmpty()) actions.openSelectSql(connection, ref);
+            });
+        });
+        return item;
+    }
+
+    private java.util.Optional<TableRef> chooseSchemaObject(ConnConfig connection, String schema,
+                                                           java.util.function.BooleanSupplier allowed) {
+        if (objectSearch != null) return java.util.Optional.empty();
+        var picker = SchemaObjectSearchDialog.create(connection.name(), schema,
+                root.getScene() == null ? null : root.getScene().getWindow(),
+                () -> new SchemaObjectCatalog(connMgr).load(connection, schema), runner, allowed);
+        objectSearch = picker;
+        TreeItem<NodeData> sourceRoot = tree.getRoot();
+        javafx.event.EventHandler<TreeItem.TreeModificationEvent<NodeData>> changed = event -> picker.sourceChanged();
+        javafx.beans.value.ChangeListener<TreeItem<NodeData>> replaced = (obs, old, value) -> picker.sourceChanged();
+        sourceRoot.addEventHandler(TreeItem.treeNotificationEvent(), changed);
+        tree.rootProperty().addListener(replaced);
+        try { return picker.showAndWait(); }
+        finally {
+            picker.close(); objectSearch = null;
+            sourceRoot.removeEventHandler(TreeItem.treeNotificationEvent(), changed);
+            tree.rootProperty().removeListener(replaced);
+        }
+    }
+
     /** Capture the exact node and connection, not a recyclable cell or the current selection. */
     private MenuItem tableActionItem(TreeItem<NodeData> target, String label, String id,
                                     BiConsumer<ConnConfig, TableRef> action) {
@@ -623,6 +674,7 @@ public final class ConnectionTreePane implements AutoCloseable {
                     MenuItem schemaDiff = new MenuItem("Schema 对比...");
                     schemaDiff.setOnAction(e -> actions.openSchemaDiff(connOf(getTreeItem()), d.schema));
                     menu.getItems().addAll(sql, schemaDiff);
+                    menu.getItems().add(schemaObjectFindItem(getTreeItem(), ConnectionTreePane.this::chooseSchemaObject));
                 }
                 case TABLES -> {
                     MenuItem create = new MenuItem("新建表");
