@@ -18,6 +18,8 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.VBox;
 import org.fxmisc.richtext.CodeArea;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -141,9 +143,10 @@ class SqlFindBarTest {
         });
     }
 
-    @Test void navigationWrapsBothWaysWithoutEditingTheScript() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {true, false})
+    void navigationWrapsBothWaysWithoutEditingTheScript(boolean replacementEnabled) throws Exception {
         FxUiTestSupport.call(() -> {
-            try (var f = new Fixture("select a; SELECT b; select c;")) {
+            try (var f = new Fixture("select a; SELECT b; select c;", replacementEnabled)) {
                 f.editor.selectRange(0, 6);
                 f.bar.show();
                 assertEquals("select", f.query().getText());
@@ -172,9 +175,10 @@ class SqlFindBarTest {
         });
     }
 
-    @Test void changingCaseAndClearingOrOversizingQueryInvalidateActions() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {true, false})
+    void changingCaseAndClearingOrOversizingQueryInvalidateActions(boolean replacementEnabled) throws Exception {
         FxUiTestSupport.call(() -> {
-            try (var f = new Fixture("select SELECT")) {
+            try (var f = new Fixture("select SELECT", replacementEnabled)) {
                 f.bar.show();
                 f.startScan("select");
                 f.jobs.getLast().publish();
@@ -199,9 +203,10 @@ class SqlFindBarTest {
         });
     }
 
-    @Test void editingCancelsOldScanAndLateSuccessCannotSelectStaleOffsets() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {true, false})
+    void editingCancelsOldScanAndLateSuccessCannotSelectStaleOffsets(boolean replacementEnabled) throws Exception {
         FxUiTestSupport.call(() -> {
-            try (var f = new Fixture("select abc")) {
+            try (var f = new Fixture("select abc", replacementEnabled)) {
                 f.bar.show();
                 f.startScan("abc");
                 Job old = f.jobs.getLast();
@@ -222,9 +227,10 @@ class SqlFindBarTest {
         });
     }
 
-    @Test void hideAndCloseSuppressLateCallbacksAndDoNotStartHiddenWork() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {true, false})
+    void hideAndCloseSuppressLateCallbacksAndDoNotStartHiddenWork(boolean replacementEnabled) throws Exception {
         FxUiTestSupport.call(() -> {
-            try (var f = new Fixture("abc")) {
+            try (var f = new Fixture("abc", replacementEnabled)) {
                 f.bar.show();
                 f.startScan("abc");
                 Job pending = f.jobs.getLast();
@@ -252,9 +258,10 @@ class SqlFindBarTest {
         });
     }
 
-    @Test void truncationAndFailureFeedbackAreExplicitAndNeverExposeBackendDetails() throws Exception {
+    @ParameterizedTest @ValueSource(booleans = {true, false})
+    void truncationAndFailureFeedbackAreExplicitAndNeverExposeBackendDetails(boolean replacementEnabled) throws Exception {
         FxUiTestSupport.call(() -> {
-            try (var f = new Fixture("x ".repeat(10001))) {
+            try (var f = new Fixture("x ".repeat(10001), replacementEnabled)) {
                 f.bar.show();
                 f.startScan("x");
                 f.jobs.getLast().publish();
@@ -263,6 +270,30 @@ class SqlFindBarTest {
                 f.jobs.getLast().failure.accept(new IllegalStateException("SECRET SQL"));
                 assertEquals("查找失败，请重新输入后重试", f.status());
                 assertTrue(f.button("next").isDisabled());
+            }
+            return null;
+        });
+    }
+
+    @Test void readOnlyModeCannotExposeReplacementEvenWhenEditorBecomesEditable() throws Exception {
+        FxUiTestSupport.call(() -> {
+            try (var f = new Fixture("id ID user_id", false)) {
+                f.bar.showReplace();
+                assertFalse(f.bar.getNode().isVisible(), "replacement cannot even open read-only find");
+                f.bar.show();
+                assertEquals("查找当前 DDL…", f.query().getPromptText());
+                assertNull(f.bar.getNode().lookup("#sql-find-replace-toggle"));
+                assertNull(f.bar.getNode().lookup("#sql-replace-pane"));
+                assertTrue(f.editor.isEditable(), "presentation mode must guard independently of editor state");
+                f.startScan("id"); f.jobs.getLast().publish();
+                assertEquals("共 3 处", f.status());
+                ((CheckBox) f.bar.getNode().lookup("#sql-find-whole-word")).setSelected(true);
+                f.startScan("id"); f.jobs.getLast().publish();
+                assertEquals("共 2 处", f.status());
+                f.bar.showReplace();
+                assertNull(f.bar.getNode().lookup("#sql-replace-text"));
+                assertEquals("id ID user_id", f.editor.getText());
+                assertFalse(f.editor.isUndoAvailable());
             }
             return null;
         });
@@ -289,6 +320,9 @@ class SqlFindBarTest {
         final CodeArea editor = new CodeArea();
         final SqlFindBar bar;
         Fixture(String text) {
+            this(text, true);
+        }
+        Fixture(String text, boolean replacementEnabled) {
             editor.replaceText(text);
             editor.getUndoManager().forgetHistory();
             bar = new SqlFindBar(editor, (work, success, failure) -> {
@@ -296,7 +330,8 @@ class SqlFindBarTest {
                 jobs.add(job);
                 submitted.countDown();
                 return job.future;
-            }, (work, success, failure) -> { throw new AssertionError("find must not submit replacements"); }, () -> true);
+            }, (work, success, failure) -> { throw new AssertionError("find must not submit replacements"); },
+                    () -> true, replacementEnabled);
             VBox host = new VBox(bar.getNode(), editor);
             new Scene(host, 480, 400);
             host.applyCss();

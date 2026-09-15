@@ -46,6 +46,7 @@ final class SqlFindBar implements AutoCloseable {
     private final SearchSubmitter submitter;
     private final ReplaceSubmitter replaceSubmitter;
     private final BooleanSupplier editingAllowed;
+    private final boolean replacementEnabled;
     private final VBox root = new VBox(4);
     private final TextField query = new TextField();
     private final CheckBox matchCase = new CheckBox("区分大小写");
@@ -85,12 +86,22 @@ final class SqlFindBar implements AutoCloseable {
         this(editor, tasks::submit, tasks::submit, editingAllowed);
     }
 
+    static SqlFindBar readOnlyDdl(CodeArea editor, FxTaskScope tasks) {
+        return new SqlFindBar(editor, tasks::submit, tasks::submit, () -> false, false);
+    }
+
     SqlFindBar(CodeArea editor, SearchSubmitter submitter, ReplaceSubmitter replaceSubmitter,
                BooleanSupplier editingAllowed) {
+        this(editor, submitter, replaceSubmitter, editingAllowed, true);
+    }
+
+    SqlFindBar(CodeArea editor, SearchSubmitter submitter, ReplaceSubmitter replaceSubmitter,
+               BooleanSupplier editingAllowed, boolean replacementEnabled) {
         this.editor = Objects.requireNonNull(editor);
         this.submitter = Objects.requireNonNull(submitter);
         this.replaceSubmitter = Objects.requireNonNull(replaceSubmitter);
         this.editingAllowed = Objects.requireNonNull(editingAllowed);
+        this.replacementEnabled = replacementEnabled;
         root.setId("sql-find-bar");
         root.setAlignment(Pos.CENTER_LEFT);
         root.setPadding(new Insets(4));
@@ -99,12 +110,13 @@ final class SqlFindBar implements AutoCloseable {
         controls.setAlignment(Pos.CENTER_LEFT);
         controls.setMinHeight(Region.USE_PREF_SIZE);
         query.setId("sql-find-query");
-        query.setPromptText("查找当前 SQL…");
-        query.setAccessibleText("查找当前 SQL 文本");
+        query.setPromptText(replacementEnabled ? "查找当前 SQL…" : "查找当前 DDL…");
+        query.setAccessibleText(replacementEnabled ? "查找当前 SQL 文本" : "查找当前只读 DDL 文本");
         query.setPrefWidth(180);
         matchCase.setId("sql-find-match-case");
         wholeWord.setId("sql-find-whole-word");
-        String wordHelp = "查找与替换共用：不匹配字母、数字、下划线、$、# 等标识符字符中的片段。"
+        String wordHelp = (replacementEnabled ? "查找与替换共用：" : "只查找当前显示文本：")
+                + "不匹配字母、数字、下划线、$、# 等标识符字符中的片段。"
                 + "仍查找注释和字符串，不是 SQL 语义重命名。";
         wholeWord.setTooltip(new Tooltip(wordHelp));
         wholeWord.setAccessibleHelp(wordHelp);
@@ -150,8 +162,11 @@ final class SqlFindBar implements AutoCloseable {
         });
         replaceCurrent.setOnAction(event -> replace(false));
         replaceAll.setOnAction(event -> replace(true));
-        controls.getChildren().addAll(query, matchCase, wholeWord, previous, next, toggleReplace, dismiss);
-        root.getChildren().addAll(controls, status, replacePane);
+        controls.getChildren().addAll(query, matchCase, wholeWord, previous, next);
+        if (replacementEnabled) controls.getChildren().add(toggleReplace);
+        controls.getChildren().add(dismiss);
+        root.getChildren().addAll(controls, status);
+        if (replacementEnabled) root.getChildren().add(replacePane);
         for (Region control : new Region[] {query, matchCase, wholeWord, previous, next, toggleReplace, dismiss,
                 replacement, replaceCurrent, replaceAll}) {
             control.setMinWidth(Region.USE_PREF_SIZE);
@@ -200,7 +215,7 @@ final class SqlFindBar implements AutoCloseable {
     }
 
     void showReplace() {
-        if (closed.get()) return;
+        if (closed.get() || !replacementEnabled) return;
         show();
         replacePane.setVisible(true);
         replacePane.setManaged(true);
@@ -305,7 +320,8 @@ final class SqlFindBar implements AutoCloseable {
     private void cancelActive() { Future<?> task = active; if (task != null) task.cancel(true); }
 
     private boolean canEdit() {
-        return !closed.get() && editingAllowed.getAsBoolean() && editor.isEditable() && !editor.isDisabled();
+        return replacementEnabled && !closed.get() && editingAllowed.getAsBoolean()
+                && editor.isEditable() && !editor.isDisabled();
     }
 
     void editingStateChanged() {

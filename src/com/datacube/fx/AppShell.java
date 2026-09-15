@@ -766,7 +766,7 @@ public final class AppShell {
             String name = node.name();
             openBackgroundCleanupTab("DDL: " + name, () -> {
                 DdlViewPane pane = new DdlViewPane("DDL: " + name, ddlFetch(connId, node), tasks);
-                return new BackgroundTab(pane.getNode(), pane::close, () -> {});
+                return new BackgroundTab(pane.getNode(), pane::close, pane::finalizeCloseOnFx);
             });
         }
 
