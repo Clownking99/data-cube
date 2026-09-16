@@ -32,8 +32,17 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
         Future<?> submit(Callable<List<TableInfo>> work, Consumer<List<TableInfo>> success, Consumer<Throwable> failure);
     }
     private record Entry(TableInfo value, String foldedName) { }
+    private enum KindFilter {
+        ALL("全部", null), TABLE("仅表", TableInfo.Kind.TABLE), VIEW("仅视图", TableInfo.Kind.VIEW);
+        private final String label;
+        private final TableInfo.Kind kind;
+        KindFilter(String label, TableInfo.Kind kind) { this.label = label; this.kind = kind; }
+        boolean accepts(TableInfo value) { return kind == null || value.kind() == kind; }
+        @Override public String toString() { return label; }
+    }
     private final Dialog<TableRef> dialog = new Dialog<>();
     private final TextField query = new TextField();
+    private final ChoiceBox<KindFilter> kindFilter = new ChoiceBox<>();
     private final ListView<TableInfo> list = new ListView<>();
     private final TextArea preview = new TextArea();
     private final Label status = new Label();
@@ -86,11 +95,21 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
             queryRejected = true;
             status.setText("筛选词最多 256 个字符，超长输入未应用"); return null;
         }));
+        kindFilter.setId("schema-object-kind"); kindFilter.getItems().setAll(KindFilter.values());
+        kindFilter.setValue(KindFilter.ALL); kindFilter.setMinWidth(Region.USE_PREF_SIZE);
+        kindFilter.setAccessibleText("对象类型筛选，仅筛选已读取的名称");
+        Label kindLabel = new Label("类型："); kindLabel.setLabelFor(kindFilter);
+        kindLabel.setMinWidth(Region.USE_PREF_SIZE);
         Button clear = new Button("清除筛选"); clear.setId("schema-object-clear");
-        clear.setMinWidth(Region.USE_PREF_SIZE); clear.disableProperty().bind(query.textProperty().isEmpty());
-        clear.setOnAction(event -> { query.clear(); query.requestFocus(); });
+        clear.setMinWidth(Region.USE_PREF_SIZE);
+        clear.disableProperty().bind(query.textProperty().isEmpty().and(kindFilter.valueProperty().isEqualTo(KindFilter.ALL)));
+        clear.setOnAction(event -> {
+            queryRejected = false; query.clear(); kindFilter.setValue(KindFilter.ALL); filter(); query.requestFocus();
+        });
         HBox search = new HBox(8, query, clear); HBox.setHgrow(query, Priority.ALWAYS);
-        status.setId("schema-object-status"); status.setWrapText(true); status.setMinHeight(Region.USE_PREF_SIZE);
+        status.setId("schema-object-status"); status.setWrapText(true); status.setMinWidth(0); status.setMinHeight(Region.USE_PREF_SIZE);
+        HBox filters = new HBox(8, kindLabel, kindFilter, status); filters.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        HBox.setHgrow(status, Priority.ALWAYS); filters.setMinHeight(Region.USE_PREF_SIZE);
         placeholder.setWrapText(true);
         list.setId("schema-object-list"); list.setMinWidth(0); list.setPrefHeight(200); list.setPlaceholder(placeholder);
         list.setAccessibleText("表和视图候选，选择后按 Enter 生成未执行的 SELECT");
@@ -117,7 +136,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
         FlowPane tools = new FlowPane(8, 6, retry, copy); tools.setMinWidth(0);
         Label hint = new Label("读取仅限此 Schema 的名称和类型，筛选不再请求数据库。\n复制写入系统剪贴板，不自动粘贴；粘贴前请核对目标连接。\n确认生成 SELECT 脚本，不自动执行。↓ 选择 · Enter 确认 · Ctrl+F 筛选 · Esc 取消");
         hint.setWrapText(true); hint.setMinHeight(Region.USE_PREF_SIZE);
-        VBox content = new VBox(8, target, search, status, list, preview, tools, copyStatus, hint);
+        VBox content = new VBox(8, target, search, filters, list, preview, tools, copyStatus, hint);
         content.setPadding(new Insets(12)); content.setPrefSize(640, 500); content.setMinWidth(0);
         VBox.setVgrow(list, Priority.ALWAYS); dialog.getDialogPane().setContent(content);
         ButtonType selectType = new ButtonType("生成 SELECT（不执行）", ButtonBar.ButtonData.OK_DONE);
@@ -135,6 +154,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
             updateConfirm();
         });
         query.textProperty().addListener(ignored -> filter());
+        kindFilter.valueProperty().addListener(ignored -> filter());
         query.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (modified(event)) return;
             if (event.getCode() == KeyCode.DOWN) {
@@ -149,7 +169,10 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
             if (!modified(event) && event.getCode() == KeyCode.ENTER) { confirm.fire(); event.consume(); }
         });
         dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, event -> {
-            if (!modified(event) && event.getCode() == KeyCode.ESCAPE) { cancel.fire(); event.consume(); }
+            if (!modified(event) && event.getCode() == KeyCode.ESCAPE) {
+                if (kindFilter.isShowing()) kindFilter.hide(); else cancel.fire();
+                event.consume();
+            }
             else if (event.getCode() == KeyCode.F && event.isControlDown() && !event.isShiftDown()
                     && !event.isAltDown() && !event.isMetaDown()) {
                 query.requestFocus(); query.selectAll(); event.consume();
@@ -235,8 +258,9 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
         if (!loaded || !usable()) return;
         TableInfo selected = list.getSelectionModel().getSelectedItem();
         String term = query.getText().strip().toLowerCase(Locale.ROOT);
+        KindFilter type = kindFilter.getValue();
         List<TableInfo> shown = new ArrayList<>(); int count = 0;
-        for (Entry entry : all) if (entry.foldedName().contains(term)) {
+        for (Entry entry : all) if (type != null && type.accepts(entry.value()) && entry.foldedName().contains(term)) {
             count++; if (shown.size() < 200) shown.add(entry.value());
         }
         list.getSelectionModel().clearSelection(); list.getItems().setAll(shown);
@@ -252,7 +276,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     void sourceChanged() {
         if (usable()) return;
         close(); loaded = false; all = List.of(); list.getItems().clear(); preview.clear(); clearCopyStatus();
-        query.setDisable(true); retry.setDisable(true); updateConfirm();
+        query.setDisable(true); kindFilter.hide(); kindFilter.setDisable(true); retry.setDisable(true); updateConfirm();
         status.setText("连接或 Schema 已变化，请关闭后重新打开查找。");
     }
 
