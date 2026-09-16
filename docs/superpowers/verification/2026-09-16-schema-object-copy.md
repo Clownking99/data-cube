@@ -50,4 +50,11 @@ test --tests com.datacube.fx.SchemaObjectCopyTest
 - Ctrl+F 返回筛选框，输入 `REPORT` 后显示 1/3，旧复制提示及旧选择清除，复制/SELECT 禁用；↓ 选择视图后复制，精确 `"Exact Schema"."order_report"`、计数 4，仍保留筛选和窗口。
 - Esc 正常退出；随后精确夹具 exe 路径的进程数为 0。隔离 profile 顶层只有 `settings.properties` 与 `.openjfx/`。
 
-本地 main 集成结果待补充。上述证据不代表真实数据库、系统剪贴板服务、完整 AppShell 联调、用户效率实验、远端 CI 或发布验收。
+## 本地 main 集成
+
+- 功能提交 `c191926`（9 个文件），差异检查通过；核对 main 仍为 `5b180f8` 且已跟踪文件干净后，以 `--ff-only` 合并。用户 `.testagent/` 保留原状，不入提交。
+- main 上执行上述 6 类定向测试并构建 `jpackageImage -PappVersion=0.0.0`，1 分 35 秒 exit 0；XML 汇总 91 项全部通过、0 failures/errors/skipped。
+- main 镜像仍使用 DataCubeFx 正式入口及原 JVM 参数，无 profile/patch 注入，不包含桌面夹具或 `DraftConnectionProbe`。分别从 main/已验收 worktree 的运行时提取 `com.datacube` 模块，812 个文件逐一比较 SHA-256，无缺失、增加或内容差异；main 的整个 `runtime/lib/modules` SHA-256 也与上文最终 worktree 镜像一致。
+- 本轮仅本地提交与集成，未推送、打 tag 或发布。开发镜像版本 `0.0.0` 不作为发布版本号。
+
+上述证据不代表真实数据库、系统剪贴板服务、完整 AppShell 联调、用户效率实验、远端 CI 或发布验收。
