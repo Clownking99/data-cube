@@ -40,4 +40,11 @@
 - 仅表下显式复制使内存计数增至 2，保持类型与对象；明暗窄窗的复制反馈出现后目标两行、对象三行和全部底部按钮可见。最后 Esc 正常退出，窗口列表为空，精确预览 exe 路径的进程数为 0；隔离 profile 顶层仅 `.openjfx/` 与 `settings.properties`。
 - 单元测试另证明加载中的条件、重读/失败/迟到回调、空 Schema、同名异类型、199/200/201 边界及最终 TableRef；桌面仅验证上述三对象夹具交互，不把该层验证扩大到全量真实元数据或实际 AppShell 打开 SQL。
 
-主分支集成待补充。未宣称真实数据库兼容性、系统剪贴板服务、完整 AppShell 联调、用户效率实验、远端 CI 或发布完成。
+## 本地 main 集成
+
+- 功能提交 `2dfab3c`，6 个文件；差异检查通过。合并前再次核对 main 为 `105a45f`、已跟踪文件干净，以 `git merge --ff-only codex/schema-object-kind` 快进；用户 `.testagent/` 保留，不入库。
+- main 执行 `test`，指定 `SchemaObjectKindFilterTest`、`SchemaObjectCopyTest`、`SchemaObjectSearchDialogTest`、`SchemaObjectSearchLifecycleTest`、`ConnectionTreeClipboardTest`、`SqlObjectNamesTest`、`SchemaObjectFindEntryTest`，并构建 `jpackageImage -PappVersion=0.0.0`；1 分 32 秒 exit 0。XML 汇总 113 项全部通过、0 failures/errors/skipped。
+- main 镜像保持 DataCubeFx 正式入口、原 JVM 参数及无夹具注入；从 main/已验收 worktree 的运行时分别提取 `com.datacube`，813 个文件逐一比较 SHA-256，无缺失、增加或内容差异。整个 `runtime/lib/modules` SHA-256 同为上文 `E5DA569C…EE7272E`。
+- 仅本地提交与合并，未推送、打 tag 或发布；版本 `0.0.0` 仅作开发镜像验证。
+
+未宣称真实数据库兼容性、系统剪贴板服务、完整 AppShell 联调、用户效率实验、远端 CI 或发布完成。
