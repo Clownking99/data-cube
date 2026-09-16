@@ -13,12 +13,14 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
@@ -37,6 +39,9 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     private final Label status = new Label();
     private final Label placeholder = new Label();
     private final Button retry = new Button("重新读取");
+    private final Button copy = new Button("复制限定名称");
+    private final Label copyStatus = new Label();
+    private Function<TableRef, ConnectionTreeClipboard.CopyResult> copyAction;
     private final Button confirm;
     private final String schema;
     private final Callable<List<TableInfo>> loader;
@@ -70,6 +75,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
         TextArea target = new TextArea("连接：" + connectionName + "\nSchema：" + schema);
         target.setId("schema-object-target"); target.setWrapText(true); target.setEditable(false);
         target.setMinWidth(0); target.setPrefRowCount(2); target.setAccessibleText("固定的连接和 Schema，只读");
+        target.setMinHeight(Region.USE_PREF_SIZE);
         query.setId("schema-object-query"); query.setMinWidth(0);
         query.setPromptText("按对象名称筛选（最多 256 字符）"); query.setAccessibleText("当前 Schema 表和视图名称筛选");
         query.setTextFormatter(new TextFormatter<String>(change -> {
@@ -101,11 +107,17 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
         });
         preview.setId("schema-object-preview"); preview.setEditable(false); preview.setWrapText(true);
         preview.setPrefRowCount(3); preview.setMinWidth(0); preview.setPromptText("选择候选后核对完整 Schema、名称和类型");
+        preview.setMinHeight(Region.USE_PREF_SIZE);
         preview.setAccessibleText("所选对象完整身份，只读");
         retry.setId("schema-object-reload"); retry.setOnAction(event -> reload());
-        Label hint = new Label("读取仅限此 Schema 的名称和类型，筛选不再请求数据库。\n确认生成 SELECT 脚本，不自动执行。↓ 选择 · Enter 确认 · Ctrl+F 筛选 · Esc 取消");
+        copy.setId("schema-object-copy"); copy.setDefaultButton(false); copy.setOnAction(event -> copySelected());
+        copy.setTooltip(new Tooltip("复制到系统剪贴板；其他应用或系统剪贴板同步功能可能读取名称。"));
+        copyStatus.setId("schema-object-copy-status"); copyStatus.setWrapText(true); copyStatus.setMinWidth(0);
+        copyStatus.setMinHeight(Region.USE_PREF_SIZE); clearCopyStatus();
+        FlowPane tools = new FlowPane(8, 6, retry, copy); tools.setMinWidth(0);
+        Label hint = new Label("读取仅限此 Schema 的名称和类型，筛选不再请求数据库。\n复制写入系统剪贴板，不自动粘贴；粘贴前请核对目标连接。\n确认生成 SELECT 脚本，不自动执行。↓ 选择 · Enter 确认 · Ctrl+F 筛选 · Esc 取消");
         hint.setWrapText(true); hint.setMinHeight(Region.USE_PREF_SIZE);
-        VBox content = new VBox(8, target, search, status, list, preview, retry, hint);
+        VBox content = new VBox(8, target, search, status, list, preview, tools, copyStatus, hint);
         content.setPadding(new Insets(12)); content.setPrefSize(640, 500); content.setMinWidth(0);
         VBox.setVgrow(list, Priority.ALWAYS); dialog.getDialogPane().setContent(content);
         ButtonType selectType = new ButtonType("生成 SELECT（不执行）", ButtonBar.ButtonData.OK_DONE);
@@ -118,6 +130,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
         dialog.setResultConverter(button -> button == selectType && candidateAllowed()
                 ? list.getSelectionModel().getSelectedItem().ref() : null);
         list.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> {
+            clearCopyStatus();
             preview.setText(selected == null ? "" : "Schema：" + selected.schema() + "\n名称：" + selected.name() + "\n类型：" + kind(selected));
             updateConfirm();
         });
@@ -154,12 +167,35 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     private boolean candidateAllowed() {
         return usable() && loaded && list.getItems().contains(list.getSelectionModel().getSelectedItem());
     }
-    private void updateConfirm() { confirm.setDisable(!candidateAllowed()); }
+    private void updateConfirm() {
+        boolean selectable = candidateAllowed();
+        confirm.setDisable(!selectable); copy.setDisable(!selectable || copyAction == null);
+    }
+
+    void installCopyAction(Function<TableRef, ConnectionTreeClipboard.CopyResult> action) {
+        copyAction = java.util.Objects.requireNonNull(action); clearCopyStatus(); updateConfirm();
+    }
+
+    private void copySelected() {
+        if (!candidateAllowed() || copyAction == null) { clearCopyStatus(); return; }
+        ConnectionTreeClipboard.CopyResult result;
+        try { result = copyAction.apply(list.getSelectionModel().getSelectedItem().ref()); }
+        catch (RuntimeException unavailable) { result = null; }
+        if (!candidateAllowed()) return;
+        boolean success = result != null && result.success();
+        copyStatus.setText(result == null ? "复制失败：无法写入系统剪贴板，请重试。" : result.message());
+        copyStatus.setStyle("-fx-text-fill: " + (success ? "-brand-fg-muted;" : "-status-error;"));
+        copyStatus.setVisible(true); copyStatus.setManaged(true);
+    }
+
+    private void clearCopyStatus() {
+        copyStatus.setText(""); copyStatus.setVisible(false); copyStatus.setManaged(false);
+    }
 
     void reload() {
         if (!usable()) { sourceChanged(); return; }
         long expected = ++revision;
-        cancelActive(); all = List.of(); loaded = false; list.getItems().clear(); preview.clear();
+        cancelActive(); all = List.of(); loaded = false; list.getItems().clear(); preview.clear(); clearCopyStatus();
         retry.setDisable(true); updateConfirm();
         status.setText("正在读取当前 Schema 的表/视图名称…"); placeholder.setText("读取中，可取消");
         try {
@@ -195,6 +231,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     }
 
     private void filter() {
+        clearCopyStatus();
         if (!loaded || !usable()) return;
         TableInfo selected = list.getSelectionModel().getSelectedItem();
         String term = query.getText().strip().toLowerCase(Locale.ROOT);
@@ -214,7 +251,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     /** FX-only source invalidation; stale names cannot be confirmed or retried. */
     void sourceChanged() {
         if (usable()) return;
-        close(); loaded = false; all = List.of(); list.getItems().clear(); preview.clear();
+        close(); loaded = false; all = List.of(); list.getItems().clear(); preview.clear(); clearCopyStatus();
         query.setDisable(true); retry.setDisable(true); updateConfirm();
         status.setText("连接或 Schema 已变化，请关闭后重新打开查找。");
     }

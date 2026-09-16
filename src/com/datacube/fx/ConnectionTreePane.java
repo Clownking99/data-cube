@@ -581,6 +581,7 @@ public final class ConnectionTreePane implements AutoCloseable {
         var picker = SchemaObjectSearchDialog.create(connection.name(), schema,
                 root.getScene() == null ? null : root.getScene().getWindow(),
                 () -> new SchemaObjectCatalog(connMgr).load(connection, schema), runner, allowed);
+        picker.installCopyAction(ref -> objectClipboard.copyResult(connection, ref));
         objectSearch = picker;
         TreeItem<NodeData> sourceRoot = tree.getRoot();
         javafx.event.EventHandler<TreeItem.TreeModificationEvent<NodeData>> changed = event -> picker.sourceChanged();

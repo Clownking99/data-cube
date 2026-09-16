@@ -13,6 +13,7 @@ import java.util.function.Predicate;
 
 /** Explicit clipboard writes only; no clipboard read, editor, provider or task creation. */
 final class ConnectionTreeClipboard {
+    record CopyResult(String message, boolean success) { }
     private final ConnectionManager connections;
     private final Predicate<String> writer;
     private final Label status = new Label();
@@ -37,22 +38,26 @@ final class ConnectionTreeClipboard {
     }
 
     void copy(ConnConfig connection, TableRef table) {
+        CopyResult result = copyResult(connection, table);
+        showStatus(result.message(), result.success());
+    }
+
+    /** The caller owns feedback placement; writing does not change the tree's label. */
+    CopyResult copyResult(ConnConfig connection, TableRef table) {
         if (connection == null || connection.id() == null || connection.id().isBlank()
                 || !connection.equals(connections.config(connection.id()))) {
-            showStatus("无法复制：所选连接已变更或不可用，请刷新后重试。", false);
-            return;
+            return new CopyResult("无法复制：所选连接已变更或不可用，请刷新后重试。", false);
         }
         final String text;
         try {
             text = SqlObjectNames.qualifiedName(connection.type(), table);
         } catch (IllegalArgumentException invalid) {
-            showStatus("无法复制：" + invalid.getMessage(), false);
-            return;
+            return new CopyResult("无法复制：" + invalid.getMessage(), false);
         }
         boolean written;
         try { written = writer.test(text); }
         catch (RuntimeException unavailable) { written = false; }
-        showStatus(written ? "已复制限定名称；粘贴前请确认目标连接。"
+        return new CopyResult(written ? "已复制限定名称；粘贴前请确认目标连接。"
                 : "复制失败：无法写入系统剪贴板，请重试。", written);
     }
 
