@@ -48,3 +48,11 @@
 合成桌面夹具只实例化真实管理 Pane / 协调器及内存后端，恢复回调仅记录内存，不代表完整 AppShell 创建标签验证。隔离 `user.home` 仅用于主题设置与 JavaFX 运行文件。桌面不确认删除/清空，不改变草稿保护开关；删除范围由内存自动测试验证。
 
 本增量不涉及全文 SQL 搜索、真实数据库兼容性、用户效率实验、远端 CI 或正式发布。
+
+## 本地 main 集成
+
+- 功能提交 `7df3879`，8 个文件；暂存差异检查通过。合并前确认 main 仍为 `04a9600` 且已跟踪文件干净，使用 `git merge --ff-only codex/sql-draft-filter` 快进。用户 `.testagent/` 保留且未入库。
+- main 执行 `test`，指定 `SqlDraftFilterTest`、`SqlDraftManagerTest`、`SqlDraftUiTest`、`SqlDraftRecoveryTabsTest`、`SqlDraftFailureFeedbackTest`、`SqlWorkspaceManagerTest`，并构建 `jpackageImage -PappVersion=0.0.0`；1 分 59 秒 exit 0。XML 共 117 项全部通过、0 failures/errors/skipped。
+- main / 最终 worktree 镜像分别提取 `com.datacube`，均为 814 个文件，无新增或缺失。813 个逐字节 SHA-256 一致；唯一差异为 `theme-base.css` 的 Git 工作区 LF / CRLF 换行，统一换行后文本完全一致，包括新提示色选择器。未宣称整个 modules 文件逐字节相同。
+- main 镜像保持 DataCubeFx 入口与原 JVM 参数，没有测试夹具、内存探针、profile 或 patch 注入。`runtime/lib/modules` SHA-256：`A32404E896211D75B69FD80D893271BED66E45C8FA8AFC291AA941C849AB9630`。
+- 仅本地提交与合并，未推送、打 tag 或发布；`0.0.0` 仅作开发镜像验证。
