@@ -49,3 +49,10 @@ Gradle 均使用 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`、`--no-daemon --
 - 未补丁的生产 runtime 提取 `com.datacube` 后含 820 项资源、805 个 class，包含 6 个行移动 class，无 Fixture 类；补丁夹具不进入分发包。
 
 本轮只改变文本编辑；未执行 SQL、访问真实数据库、改写用户文件或使用系统剪贴板。未宣称真实用户效率、完整业务连接兼容性或本轮远端发布完成。
+
+## main 集成
+
+- 实现提交 `0b0568e`（14 文件），本地 main 从 `4f82a22` 快进至该提交；未推送或创建 tag。
+- 合并后执行八类定向回归：`SqlMoveLinesTest`、`SqlMoveLinesActionsTest`、`SqlEditorMoveLinesIntegrationTest`、`SqlAutoCompleteFocusTest`、`SqlEditorUsabilityTest`、`SqlEditorDuplicateIntegrationTest`、`SqlEditorDraftIntegrationTest`、`SqlScriptDocumentTest`；加 `jpackageImage -PappVersion=0.0.0`，1 分 1 秒 exit 0。150 项通过，0 失败/错误/跳过。
+- main 与最终验收 worktree 的 820 项应用资源逐项 SHA-256 相同（805 个 class、无 Fixture）。整个 `runtime/lib/modules` SHA-256 均为 `3FF6EB4CE9FDEDF15DC67AEE70FE8311A6435DD9B6798E2D6B0EAD816CE8BF5E`；main 启动配置仍是生产 `DataCubeFx`，无隔离 profile 或补丁参数。
+- 最终验收实例正常退出，精确路径对应剩余进程为 0；可丢弃 profile 仅产生 `settings.properties` 与 `.openjfx` 缓存。`.testagent/` 保持原有未跟踪状态，不读取、不修改、不暂存。
