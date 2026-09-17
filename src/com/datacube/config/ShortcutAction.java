@@ -30,6 +30,10 @@ public enum ShortcutAction {
             new KeyCodeCombination(KeyCode.OPEN_BRACKET, KeyCombination.CONTROL_DOWN)),
     SQL_DUPLICATE_LINES("sql.duplicateLines", "SQL 编辑器", "向下重复当前行或选中行",
             new KeyCodeCombination(KeyCode.D, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN)),
+    SQL_MOVE_LINES_UP("sql.moveLinesUp", "SQL 编辑器", "上移当前行或选中行",
+            new KeyCodeCombination(KeyCode.UP, KeyCombination.ALT_DOWN)),
+    SQL_MOVE_LINES_DOWN("sql.moveLinesDown", "SQL 编辑器", "下移当前行或选中行",
+            new KeyCodeCombination(KeyCode.DOWN, KeyCombination.ALT_DOWN)),
 
     SQL_EXECUTE("sql.execute", "SQL 编辑器", "执行 SQL",
             new KeyCodeCombination(KeyCode.F5)),

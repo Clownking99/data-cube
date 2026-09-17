@@ -74,6 +74,12 @@ final class SqlAutoComplete {
         });
 
         area.textProperty().addListener((obs, o, n) -> {
+            // Undo/redo replays existing text, not new input; invalidate already queued candidates too.
+            if (area.getUndoManager().isPerformingAction()) {
+                automaticGeneration++;
+                hide();
+                return;
+            }
             // Programmatic unfocused loads are not input, and queued completion may outlive focus.
             if (mutating || !area.isFocused()) return;
             long requestGeneration = automaticGeneration;

@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -190,6 +191,60 @@ class SqlAutoCompleteFocusTest {
             assertEquals(1, fixture.requests.get()); fixture.focus(fixture.area);
             FxUiTestSupport.call(() -> { fixture.area.replaceText("sel"); return null; }); fixture.drain();
             FxUiTestSupport.call(() -> { assertEquals(2, fixture.requests.get()); assertTrue(fixture.popup().isShowing()); return null; });
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans = {false, true})
+    void movingLinesAndUndoRedoDoNotRequestAutomaticCompletion(boolean qualified) throws Exception {
+        try (Fixture fixture = new Fixture(directory.resolve("move-replay-" + qualified + ".properties"))) {
+            String word = qualified ? "t.co" : "sel";
+            String before = "-- keep\n" + word, after = word + "\n-- keep";
+            var members = new AtomicInteger();
+            fixture.focus(fixture.area);
+            FxUiTestSupport.call(() -> {
+                fixture.completion.setMemberProvider(qualifier -> { members.incrementAndGet(); return List.of("column_name"); });
+                fixture.completion.withoutSuggestions(() -> fixture.area.replaceText(before));
+                fixture.area.getUndoManager().forgetHistory(); fixture.area.moveTo(before.length());
+                try (var action = new SqlMoveLinesActions(fixture.area, new ShortcutSettings(directory.resolve("move-keys")),
+                        () -> true, fixture.completion::hide, fixture.completion::withoutSuggestions, ignored -> {})) {
+                    action.upButton().fire(); assertEquals(after, fixture.area.getText());
+                }
+                return null;
+            });
+            fixture.drain();
+            FxUiTestSupport.call(() -> {
+                assertEquals(0, fixture.requests.get()); assertEquals(0, members.get()); assertFalse(fixture.popup().isShowing());
+                fixture.area.undo(); assertEquals(before, fixture.area.getText());
+                fixture.area.moveTo(before.length()); return null;
+            });
+            fixture.drain();
+            FxUiTestSupport.call(() -> {
+                assertEquals(0, fixture.requests.get(), "Undo is not new typing");
+                assertEquals(0, members.get(), "Undo must not request metadata"); assertFalse(fixture.popup().isShowing());
+                fixture.area.redo(); assertEquals(after, fixture.area.getText()); fixture.area.moveTo(word.length()); return null;
+            });
+            fixture.drain();
+            FxUiTestSupport.call(() -> {
+                assertEquals(0, fixture.requests.get()); assertEquals(0, members.get()); assertFalse(fixture.popup().isShowing());
+                Event.fireEvent(fixture.area, new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.SPACE, false, true, false, false));
+                assertEquals(1, qualified ? members.get() : fixture.requests.get(), "Explicit completion still works after redo");
+                assertTrue(fixture.popup().isShowing()); return null;
+            });
+        }
+    }
+
+    @Test void undoCancelsAnOlderQueuedCompletion() throws Exception {
+        try (Fixture fixture = new Fixture(directory.resolve("undo-queued.properties"))) {
+            fixture.focus(fixture.area);
+            FxUiTestSupport.call(() -> {
+                fixture.completion.withoutSuggestions(() -> fixture.area.replaceText("se"));
+                fixture.area.getUndoManager().forgetHistory(); fixture.area.appendText("l"); fixture.area.undo();
+                assertEquals("se", fixture.area.getText()); return null;
+            });
+            fixture.drain();
+            FxUiTestSupport.call(() -> {
+                assertEquals(0, fixture.requests.get()); assertFalse(fixture.popup().isShowing()); return null;
+            });
         }
     }
 

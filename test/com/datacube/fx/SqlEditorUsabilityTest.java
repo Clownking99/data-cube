@@ -323,11 +323,13 @@ class SqlEditorUsabilityTest {
                 for (String selector : List.of(".button", ".menu-button", ".check-box")) {
                     actions.addAll(toolbar.lookupAll(selector));
                 }
-                assertEquals(16, actions.size(), "all file, execution, editing, layout and result actions remain present");
+                assertEquals(18, actions.size(), "all file, execution, editing, layout and result actions remain present");
                 assertTrue(actions.contains(root.lookup("#sql-file-reload")), "reload remains an explicit file action");
                 assertTrue(actions.contains(root.lookup("#sql-layout")), "layout remains reachable in every mode");
                 assertTrue(actions.contains(root.lookup("#sql-line-comment")), "line comment is an explicit editing action");
                 assertTrue(actions.contains(root.lookup("#sql-duplicate-lines")), "duplicate lines is an explicit editing action");
+                assertTrue(actions.contains(root.lookup("#sql-move-lines-up")), "move up is an explicit editing action");
+                assertTrue(actions.contains(root.lookup("#sql-move-lines-down")), "move down is an explicit editing action");
                 Bounds area = toolbar.localToScene(toolbar.getLayoutBounds());
                 for (var node : actions) {
                     Labeled action = (Labeled) node;
