@@ -50,4 +50,12 @@ Enter 详情、全部异常、等值行、八种忙碌/关闭边界及保留上�
 
 ## 本地集成
 
-实现及桌面验证完成，待提交并本地快进 main 后补记主分支定向测试及镜像一致性；本轮不推送、不打 tag。
+- 实现提交 `7269e70` 已从 `codex/sql-overview-filter` 本地快进 main；合并前核对 main 仍为 `8861fea` 且跟踪文件/暂存区干净，未读取或改动既有未跟踪 `.testagent/`。
+- main 上运行以下命令，1 分 1 秒 exit 0：9 类 189 项全部通过、无失败/错误/跳过，开发镜像重建成功（同样设置 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`）。
+
+```powershell
+.\gradlew.bat test --tests com.datacube.fx.SqlOverviewFailureFilterTest --tests com.datacube.fx.SqlOverviewResultNavigationTest --tests com.datacube.fx.SqlScriptDetailsIntegrationTest --tests com.datacube.fx.SqlBatchResultsIntegrationTest --tests com.datacube.fx.SqlBatchDetailsIntegrationTest --tests com.datacube.fx.SqlBatchFailureNavigationTest --tests com.datacube.fx.SqlScriptDetailFindTest --tests com.datacube.fx.SqlBatchResultsTest --tests com.datacube.sqleditor.SqlScriptExecutionReportTest jpackageImage '-PappVersion=0.0.0' --no-daemon --console=plain
+```
+
+- main 镜像提取到 `build/overview-filter-main-module`，与 worktree 最终桌面验收所用生产模块逐路径、逐文件 SHA-256 比较：双方 824 文件（main 809 class）、0 差异、0 Fixture 类；生产启动配置哈希亦完全相同。
+- `git diff --check` 通过。本轮不推送、不打 tag，不变更版本号；镜像 `0.0.0` 仅用于本地开发验收。
