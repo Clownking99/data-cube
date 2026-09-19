@@ -103,7 +103,8 @@ public final class PgSqlRunner implements SqlRunner {
             QueryResult r = execute(conn, sql, schema, options);
             outcomes.add(new ScriptOutcome(i + 1, sql, r));
             if (r.failureKind == QueryResult.FailureKind.CANCELLED) break;
-            if (r.kind == QueryResult.Kind.ERROR && !continueAll) {
+            if (r.kind == QueryResult.Kind.ERROR && !continueAll && i + 1 < stmts.size()
+                    && !options.control().cancellationRequested()) {
                 ScriptErrorPolicy.Decision d = policy == null
                         ? ScriptErrorPolicy.Decision.ABORT
                         : policy.onError(i + 1, sql, r.errorMessage);

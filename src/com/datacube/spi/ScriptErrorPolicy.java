@@ -12,7 +12,8 @@ public interface ScriptErrorPolicy {
     enum Decision { CONTINUE, CONTINUE_ALL, ABORT }
 
     /**
-     * 某条语句失败时回调，返回处置决策。
+     * 某条语句失败且仍有后续可执行语句时回调，返回处置决策。
+     * 单条或最后一条失败只返回错误结果；取消不询问是否继续。
      *
      * @param index   失败语句的序号（从 1 起）
      * @param sql     失败的 SQL 文本

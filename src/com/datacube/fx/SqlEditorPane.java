@@ -100,15 +100,8 @@ public final class SqlEditorPane implements AutoCloseable {
 
 
     /** 常见 SQL 关键字（大写形式，补全时展示）。 */
-    private static final List<String> SQL_KEYWORDS = Arrays.asList(
-            "SELECT", "FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING", "LIMIT", "OFFSET",
-            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP",
-            "TABLE", "VIEW", "INDEX", "SEQUENCE", "JOIN", "INNER", "LEFT", "RIGHT", "FULL",
-            "OUTER", "CROSS", "ON", "AS", "AND", "OR", "NOT", "NULL", "IS", "IN", "EXISTS",
-            "BETWEEN", "LIKE", "ILIKE", "DISTINCT", "UNION", "ALL", "CASE", "WHEN", "THEN",
-            "ELSE", "END", "ASC", "DESC", "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE",
-            "CAST", "WITH", "RETURNING", "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "DEFAULT",
-            "CONSTRAINT", "UNIQUE", "CHECK", "TRUE", "FALSE", "BEGIN", "COMMIT", "ROLLBACK");
+    private static final List<String> SQL_KEYWORDS = java.util.stream.Stream.concat(
+            SqlHighlighter.keywords().stream(), java.util.stream.Stream.of("GROUP BY", "ORDER BY")).distinct().toList();
      
      /** 关键字集合（大写），用于别名解析时排除关键字被误判为别名。 */
      private static final Set<String> KEYWORDS_UPPER = new java.util.HashSet<>(SQL_KEYWORDS);
@@ -171,6 +164,8 @@ public final class SqlEditorPane implements AutoCloseable {
     private ResultRowDialog resultRowDialog;
     private SqlResultRowDisplay resultRowDisplay;
     private SqlScriptDetails scriptDetails;
+    private SqlBatchResults batchResults;
+    private boolean showingBatchResult;
     private final ResultFilterState resultFilterState = new ResultFilterState();
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
     private ClipboardWriter clipboardWriter = SqlEditorPane::writeSystemClipboard;
@@ -330,6 +325,7 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(() -> { if (findBar != null) findBar.detachUi(); });
             construction.own(() -> { if (panelLayout != null) panelLayout.close(); });
             construction.own(() -> { if (scriptDetails != null) scriptDetails.close(); });
+            construction.own(() -> { if (batchResults != null) batchResults.close(); });
             construction.own(() -> { if (editorScopeBar != null) editorScopeBar.close(); });
             construction.own(() -> { if (goToLineBar != null) goToLineBar.close(); });
             construction.own(() -> { if (lineCommentAction != null) lineCommentAction.close(); });
@@ -627,6 +623,7 @@ public final class SqlEditorPane implements AutoCloseable {
         BestEffortCloseSequence.run(
                 () -> { if (panelLayout != null) panelLayout.close(); },
                 () -> { if (scriptDetails != null) scriptDetails.close(); },
+                () -> { if (batchResults != null) batchResults.close(); },
                 () -> { if (findBar != null) findBar.detachUi(); },
                 () -> { if (editorScopeBar != null) editorScopeBar.close(); },
                 () -> { if (goToLineBar != null) goToLineBar.close(); },
@@ -1472,7 +1469,8 @@ public final class SqlEditorPane implements AutoCloseable {
                 this::copyResultSelection, this::showResultCell), resultColumnMenu.getNode(), resultRowDisplay.getNode());
         renderResultFilterToolbar();
         scriptDetails = new SqlScriptDetails(resultTable, this::resultCellViewingAllowed);
-        VBox box = new VBox(resultToolbar.getNode(), scriptDetails.getNode(), resultPane);
+        batchResults = new SqlBatchResults(this::resultCellViewingAllowed, this::showBatchSelection);
+        VBox box = new VBox(batchResults.getNode(), resultToolbar.getNode(), scriptDetails.getNode(), resultPane);
         VBox.setVgrow(resultPane, Priority.ALWAYS);
         return box;
     }
@@ -2324,6 +2322,13 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void showScriptResults(
             List<ScriptOutcome> outcomes, long totalElapsed, String effectiveSchema) {
+        if (!showingBatchResult) {
+            if (outcomes != null && outcomes.size() > 1) {
+                batchResults.display(outcomes, totalElapsed, effectiveSchema);
+                return;
+            }
+            batchResults.clear();
+        }
         if (outcomes != null && outcomes.size() == 1) {
             ScriptOutcome outcome = outcomes.getFirst();
             QueryResult result = outcome.result();
@@ -2346,31 +2351,39 @@ public final class SqlEditorPane implements AutoCloseable {
             statusLabel.setText("无结果");
             return;
         }
-        if (outcomes.size() > 1) {
-            addColumn("#", 0);
-            addColumn("类型", 1);
-            addColumn("耗时", 2);
-            addColumn("结果", 3);
-            resultTable.getColumns().get(0).setPrefWidth(50);
-            resultTable.getColumns().get(1).setPrefWidth(90);
-            resultTable.getColumns().get(2).setPrefWidth(90);
-            resultTable.getColumns().get(3).setPrefWidth(440);
-            var report = com.datacube.sqleditor.SqlScriptExecutionReport.capture(outcomes, totalElapsed);
-            scriptDetails.display(report);
-            statusLabel.setText(report.summary());
-            statusLabel.setStyle("-fx-text-fill: " + (report.hasFailures() ? "-status-error" : "-status-ok")
-                    + "; -fx-font-size: 12px;");
-        } else {
-            QueryResult r = outcomes.get(0).result();
-            switch (r.kind) {
-                case QUERY -> throw new IllegalStateException("single query handled before reset");
-                case UPDATE -> {
-                    statusLabel.setText("OK - " + r.updateCount + " rows affected - " + r.elapsedMillis + "ms");
-                    statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
-                }
-                case ERROR -> showFailure(r);
+        QueryResult r = outcomes.getFirst().result();
+        switch (r.kind) {
+            case QUERY -> throw new IllegalStateException("single query handled before reset");
+            case UPDATE -> {
+                String description = r.updateCount < 0 ? "影响行数未提供" : "影响 " + r.updateCount + " 行";
+                addColumn("执行结果", 0);
+                resultTable.setItems(FXCollections.observableArrayList(List.of(FXCollections.observableArrayList(description))));
+                statusLabel.setText("OK - " + description + " - " + r.elapsedMillis + "ms");
+                statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
             }
+            case ERROR -> showFailure(r);
         }
+    }
+
+    private void showBatchSelection(SqlBatchResults.Choice selection) {
+        showingBatchResult = true;
+        try {
+            var report = batchResults.report();
+            if (selection.outcome() == null) {
+                clearResultFilterState(); useTable(); exportResultBtn.setDisable(true); copyInsertBtn.setDisable(true);
+                resultTable.getColumns().clear(); resultTable.getItems().clear();
+                addColumn("#", 0); addColumn("类型", 1); addColumn("耗时", 2); addColumn("结果", 3);
+                resultTable.getColumns().get(0).setPrefWidth(50); resultTable.getColumns().get(1).setPrefWidth(90);
+                resultTable.getColumns().get(2).setPrefWidth(90); resultTable.getColumns().get(3).setPrefWidth(440);
+                scriptDetails.display(report); resultPane.setText("结果 · 执行概览");
+            } else {
+                var outcome = selection.outcome();
+                showScriptResults(List.of(outcome), outcome.result().elapsedMillis, batchResults.schema());
+                resultPane.setText("结果 · 语句 #" + outcome.index());
+            }
+            statusLabel.setText(report.summary());
+            statusLabel.setStyle("-fx-text-fill: " + (report.hasFailures() ? "-status-error" : "-status-ok") + "; -fx-font-size: 12px;");
+        } finally { showingBatchResult = false; }
     }
 
     private void addColumn(String title, int idx) {
@@ -2401,6 +2414,7 @@ public final class SqlEditorPane implements AutoCloseable {
         }
         if (scriptDetails != null) scriptDetails.clear();
         lastQuerySql = candidateSql;
+        if (!showingBatchResult && batchResults != null) batchResults.clear();
         renderResultFilterSnapshot();
         return true;
     }
@@ -2489,6 +2503,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void clearResultFilterState() {
+        if (!showingBatchResult && batchResults != null) batchResults.clear();
         if (scriptDetails != null) scriptDetails.clear();
         resultStatusRevision++;
         resultRowIndexes.clear();
@@ -2706,6 +2721,7 @@ public final class SqlEditorPane implements AutoCloseable {
             scriptDetails.getNode().setDisable(busy);
             scriptDetails.refresh();
         }
+        if (batchResults != null) batchResults.getNode().setDisable(busy);
     }
 
     // ---------- 自动补全：候选词 + 元数据预热 ----------

@@ -212,7 +212,10 @@ class SqlScriptDetailsIntegrationTest {
         Button button() { return (Button) root.lookup("#sql-script-details"); }
         @SuppressWarnings("unchecked") TableView<ObservableList<Object>> table() { return (TableView<ObservableList<Object>>) field(pane, "resultTable"); }
         void select(int row) { var column = table().getColumns().getFirst(); table().getSelectionModel().clearAndSelect(row, column); table().getFocusModel().focus(row, column); }
-        void batch() throws Exception { show(List.of(new ScriptOutcome(1, "select 1", QueryResult.query(List.of("n"), List.of(List.of(1)), 2)), new ScriptOutcome(2, "broken '<script>literal</script>'", QueryResult.error(error, 3)))); }
+        void batch() throws Exception {
+            show(List.of(new ScriptOutcome(1, "select 1", QueryResult.query(List.of("n"), List.of(List.of(1)), 2)), new ScriptOutcome(2, "broken '<script>literal</script>'", QueryResult.error(error, 3))));
+            ((ComboBox<?>) root.lookup("#sql-batch-choice")).getSelectionModel().select(0);
+        }
         void show(List<ScriptOutcome> outcomes) throws Exception {
             var method = SqlEditorPane.class.getDeclaredMethod("showScriptResults", List.class, long.class);
             method.setAccessible(true); method.invoke(pane, outcomes, 5L);

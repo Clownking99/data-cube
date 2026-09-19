@@ -19,7 +19,7 @@ final class SqlHighlighter {
 
     private SqlHighlighter() {}
 
-    /** 与 SqlEditorPane 展示一致的常见关键字（含空格的短语拆为独立词参与匹配）。 */
+    /** 高亮与编辑器补全共享的常见 SQL / PL/SQL 词表，不作为 SQL 语法校验器。 */
     private static final String[] KEYWORDS = {
             "SELECT", "FROM", "WHERE", "GROUP", "ORDER", "BY", "HAVING", "LIMIT", "OFFSET",
             "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP",
@@ -32,13 +32,21 @@ final class SqlHighlighter {
             // PL/SQL / 存储对象常见关键字
             "REPLACE", "PROCEDURE", "FUNCTION", "PACKAGE", "BODY", "TRIGGER", "TYPE",
             "DECLARE", "LOOP", "WHILE", "FOR", "IF", "ELSIF", "EXCEPTION", "RETURN",
-            "CURSOR", "OUT", "INOUT", "OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE",
+            "CURSOR", "OUT", "INOUT", "EDITIONABLE", "NONEDITIONABLE",
             "BEFORE", "AFTER", "EACH", "ROW", "OF", "REF", "PIPELINED", "PRAGMA",
             "RAISE", "OPEN", "FETCH", "CLOSE", "EXIT", "CONTINUE", "GOTO", "NEW", "OLD",
-            "VARCHAR2", "NUMBER", "INTEGER", "DATE", "TIMESTAMP", "BOOLEAN", "CLOB", "BLOB"
+            "VARCHAR2", "NUMBER", "INTEGER", "DATE", "TIMESTAMP", "BOOLEAN", "CLOB", "BLOB",
+            // DDL、权限与合并操作中常用的子句
+            "CASCADE", "CONSTRAINTS", "PURGE", "TRUNCATE", "COMMENT", "GRANT", "REVOKE",
+            "SYNONYM", "MATERIALIZED", "TABLESPACE", "ENABLE", "DISABLE", "VALIDATE", "NOVALIDATE",
+            "DEFERRABLE", "INITIALLY", "DEFERRED", "IMMEDIATE", "SAVEPOINT", "MERGE", "USING", "MATCHED",
+            "ADD", "MODIFY", "RENAME", "TO", "COLUMN", "RESTRICT", "CACHE", "NOCACHE", "CYCLE", "NOCYCLE"
     };
 
-    private static final String KEYWORD_PATTERN = "\\b(?:" + String.join("|", KEYWORDS) + ")\\b";
+    static java.util.List<String> keywords() { return java.util.List.of(KEYWORDS); }
+
+    private static final String KEYWORD_PATTERN = "(?<![\\p{L}\\p{N}\\p{M}_$#])(?:"
+            + String.join("|", KEYWORDS) + ")(?![\\p{L}\\p{N}\\p{M}_$#])";
     // 单行注释 --... 与块注释 /* ... */
     private static final String COMMENT_PATTERN = "--[^\\n]*|/\\*(?:.|\\R)*?\\*/";
     // 单引号字符串（含 '' 转义），双引号标识符也着色为字符串风格

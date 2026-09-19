@@ -185,6 +185,36 @@ class SqlEditorResultFilterContractTest {
         }
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"button", "shortcut"})
+    void selectedMultipleStatementsReachTheResultSwitcherWithoutExecutingExcludedSql(String action) throws Exception {
+        QueryResult first = QueryResult.query(List.of("first"), List.of(List.of("first-value")), 1);
+        QueryResult second = QueryResult.query(List.of("second"), List.of(List.of("second-value")), 2);
+        PreparedRunner prepared = new PreparedRunner(first); prepared.blockScript = true;
+        prepared.scriptOutcomes = List.of(new ScriptOutcome(1, "select 'first'", first), new ScriptOutcome(2, "select 'second'", second));
+        String script = "select 'excluded';\nselect 'first';\nselect 'second';";
+        try (PaneFixture fixture = databaseFixture(prepared)) {
+            FxUiTestSupport.call(() -> {
+                var editor = (org.fxmisc.richtext.CodeArea) field(fixture.pane, "editorArea"); editor.replaceText(script);
+                editor.selectRange(script.length(), script.indexOf("select 'first'"));
+                if (action.equals("button")) ((Button) fixture.pane.getNode().lookup("#sql-execute")).fire();
+                else editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.F5, false, false, false, false));
+                return null;
+            });
+            assertTrue(prepared.scriptEntered.await(5, TimeUnit.SECONDS));
+            assertEquals("select 'first';\nselect 'second';", prepared.lastScriptSql);
+            prepared.scriptRelease.countDown(); operations(fixture.pane).idle().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            FxUiTestSupport.call(() -> {
+                var choices = (javafx.scene.control.ComboBox<?>) fixture.pane.getNode().lookup("#sql-batch-choice");
+                assertEquals(1, choices.getSelectionModel().getSelectedIndex()); assertEquals(List.of("first-value"), resultTable(fixture.pane).getItems().getFirst());
+                choices.getSelectionModel().select(2); assertEquals(List.of("second-value"), resultTable(fixture.pane).getItems().getFirst());
+                assertEquals("select 'second'", fixture.pane.captureResultExportSnapshot().originalSql());
+                assertEquals(script, ((org.fxmisc.richtext.CodeArea) field(fixture.pane, "editorArea")).getText()); return null;
+            });
+            assertEquals(1, prepared.scriptCalls.get()); assertEquals(0, prepared.preparedCalls.get());
+        } finally { prepared.scriptRelease.countDown(); }
+    }
+
     @Test
     void columnMenuGuardsLastColumnAndRestoresAllWithoutChangingRows() throws Exception {
         try (PaneFixture fixture = new PaneFixture(null, null)) {
@@ -1919,6 +1949,8 @@ class SqlEditorResultFilterContractTest {
         volatile String lastSchema;
         volatile String lastScriptSchema;
         volatile String lastScriptSql;
+        volatile List<ScriptOutcome> scriptOutcomes;
+        final AtomicInteger scriptCalls = new AtomicInteger();
         volatile String lastExplainSql;
         volatile boolean captureExplain;
         final CountDownLatch explainEntered = new CountDownLatch(1);
@@ -1993,6 +2025,7 @@ class SqlEditorResultFilterContractTest {
                 String schema, SqlExecutionOptions options, ScriptErrorPolicy policy) {
             lastScriptSchema = schema;
             lastScriptSql = script;
+            scriptCalls.incrementAndGet();
             if (blockScript) {
                 scriptEntered.countDown();
                 try {
@@ -2006,7 +2039,7 @@ class SqlEditorResultFilterContractTest {
                             QueryResult.cancelled("interrupted", 0)));
                 }
             }
-            return List.of(new ScriptOutcome(1, script, result));
+            return scriptOutcomes == null ? List.of(new ScriptOutcome(1, script, result)) : scriptOutcomes;
         }
 
         @Override
