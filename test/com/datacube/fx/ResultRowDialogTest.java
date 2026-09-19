@@ -117,6 +117,28 @@ class ResultRowDialogTest {
                     var label = label(dialog, id); assertTrue(label.getHeight() + 1 >= label.prefHeight(label.getWidth()), id);
                 }
                 assertTrue(text(dialog).getHeight() >= 90);
+                var bodyQuery = ResultRowTextFindTest.query(dialog); bodyQuery.requestFocus();
+                bodyQuery.pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("focused"), true);
+                root.applyCss(); root.layout();
+                var bodyPrompt = bodyQuery.lookupAll(".text").stream().filter(javafx.scene.text.Text.class::isInstance)
+                        .map(javafx.scene.text.Text.class::cast).filter(t -> bodyQuery.getPromptText().equals(t.getText())).findFirst().orElseThrow();
+                assertTrue(bodyPrompt.isVisible());
+                assertEquals(javafx.scene.paint.Color.web(theme.equals("dark") ? "#A8A8B8" : "#555555"), bodyPrompt.getFill());
+                bodyQuery.setText("x"); ResultRowTextFindTest.button(dialog, "next").fire(); root.applyCss(); root.layout();
+                assertSame(bodyQuery, root.getScene().getFocusOwner()); assertEquals("x", text(dialog).getSelectedText());
+                assertTrue(text(dialog).lookupAll("Path").stream().filter(javafx.scene.shape.Path.class::isInstance)
+                        .map(javafx.scene.shape.Path.class::cast).anyMatch(p -> p.isVisible() && !p.getElements().isEmpty()
+                                && javafx.scene.paint.Color.web("#6C5CE7").equals(p.getFill())), "unfocused body match must stay visible");
+                for (String search : List.of("x", "x".repeat(1025), "")) {
+                    bodyQuery.setText(search); root.applyCss(); root.layout();
+                    for (String id : List.of("find-query", "find-previous", "find-next", "find-case", "find-status", "wrap", "text", "close")) {
+                        Region node = (Region) root.lookup("#result-row-" + id); var bounds = node.localToScene(node.getLayoutBounds());
+                        assertTrue(bounds.getMinX() >= -1 && bounds.getMaxX() <= root.getWidth() + 1, id);
+                        assertTrue(bounds.getMinY() >= -1 && bounds.getMaxY() <= root.getHeight() + 1, id);
+                        if (node instanceof Label) assertTrue(node.getHeight() + 1 >= node.prefHeight(node.getWidth()), id);
+                    }
+                    assertTrue(text(dialog).getHeight() >= 90);
+                }
                 var close = (Button) root.lookup("#result-row-close");
                 assertEquals("关闭", ((javafx.scene.text.Text) close.lookup(".text")).getText());
                 close.fire(); assertFalse(dialog.isShowing());

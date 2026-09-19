@@ -61,8 +61,9 @@ final class ResultRowDialog extends Dialog<Void> {
         value.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 13px;");
         CheckBox wrap = new CheckBox("正文自动换行"); wrap.setId("result-row-wrap"); wrap.setSelected(true);
         wrap.selectedProperty().addListener((o, before, after) -> value.setWrapText(after));
+        var find = new ResultCellFindBar(value, "result-row-find", "查找当前字段正文…", "查找当前字段已显示正文（Ctrl+Alt+F）");
         Label boundary = label("result-row-boundary", "只读：打开时的可见列快照，不查询或修改数据。隐藏列不包含在内。\n"
-                + "仅匹配窗口已列出的字段名，不搜索值、未列出的字段或被截断的名称尾部。\n"
+                + "字段筛选仅匹配窗口已列出的字段名；正文查找仅当前字段（Ctrl+Alt+F），不含截断尾部。\n"
                 + "每字段正文最多 4,096 UTF-16 单元；更长内容请关闭后使用“查看单元格”。Esc 关闭。");
         TextField query = new TextField(); query.setId("result-row-query");
         query.setPromptText("按字段名筛选（不搜索值）"); query.setAccessibleText("按快照字段名筛选");
@@ -102,15 +103,19 @@ final class ResultRowDialog extends Dialog<Void> {
             filterStatus.setText(tooLong ? "查找词过长：最多 256 个 UTF-16 单元，请缩短后重试。"
                     : "匹配 " + matches.size() + " / " + snapshot.fields().size() + " 个快照字段");
         });
-        VBox content = new VBox(8, identity, new HBox(8, query, clear), filterStatus, fields, metadata, summary, boundary, wrap, value);
+        VBox content = new VBox(8, identity, new HBox(8, query, clear), filterStatus, fields, metadata, summary, boundary, find, wrap, value);
         content.setId("result-row-content"); content.setPrefWidth(680); content.setMinWidth(320);
         VBox.setVgrow(value, Priority.ALWAYS); getDialogPane().setContent(content);
         var closeType = new ButtonType("关闭", ButtonBar.ButtonData.CANCEL_CLOSE); getDialogPane().getButtonTypes().add(closeType);
         Button close = (Button) getDialogPane().lookupButton(closeType); close.setId("result-row-close");
-        content.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+        getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (event.getCode() == KeyCode.ESCAPE) { event.consume(); close.fire(); }
-            else if (event.getCode() == KeyCode.F && event.isShortcutDown() && !event.isAltDown() && !event.isShiftDown()) {
-                event.consume(); query.requestFocus(); query.selectAll();
+            else if (event.getCode() == KeyCode.F && event.isShortcutDown() && !event.isShiftDown()) {
+                event.consume();
+                if (event.isAltDown()) find.focusQuery(); else { query.requestFocus(); query.selectAll(); }
+            } else if (!event.isControlDown() && !event.isAltDown() && !event.isMetaDown()
+                    && (event.getCode() == KeyCode.F3 || event.getCode() == KeyCode.ENTER && find.queryFocused())) {
+                event.consume(); find.navigate(!event.isShiftDown());
             } else if (event.getTarget() == query && !event.isControlDown() && !event.isAltDown()
                     && !event.isMetaDown() && !event.isShiftDown()
                     && (event.getCode() == KeyCode.ENTER || event.getCode() == KeyCode.DOWN)) {
@@ -124,6 +129,8 @@ final class ResultRowDialog extends Dialog<Void> {
         fields.getSelectionModel().select(snapshot.fields().stream().filter(field -> field.column() == focusedColumn)
                 .findFirst().orElse(snapshot.fields().getFirst()));
         setOnShown(event -> { fields.scrollTo(fields.getSelectionModel().getSelectedIndex()); fields.requestFocus(); });
+        // The owning pane also uses onHidden; do not let it replace listener cleanup.
+        showingProperty().addListener((o, before, showing) -> { if (!showing) find.close(); });
     }
 
     private static void renderField(ResultCellPreview field, Label detail, Label summary, TextArea value) {

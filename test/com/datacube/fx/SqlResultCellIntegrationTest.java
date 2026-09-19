@@ -186,6 +186,45 @@ class SqlResultCellIntegrationTest {
         }
     }
 
+    @Test void rowBodySearchUsesFrozenProjectionWithoutChangingResultSqlOrFile() throws Exception {
+        try (var f = new Fixture()) {
+            FxUiTestSupport.call(() -> {
+                f.show(sample());
+                ((ResultFilterState) field(f.pane, "resultFilterState")).setSearchText("keep");
+                invoke(f.pane, "renderResultFilterSnapshot");
+                var seq = f.table.getColumns().get(0); var id = f.table.getColumns().get(1);
+                var hidden = f.table.getColumns().get(2); var value = f.table.getColumns().get(3);
+                hidden.setVisible(false); f.table.getColumns().setAll(List.of(seq, value, hidden, id));
+                id.setSortType(TableColumn.SortType.DESCENDING); f.table.getSortOrder().setAll(List.of(id)); f.table.sort();
+                f.select(1, 2); f.editor.selectRange(9, 2);
+                var rows = List.copyOf(f.table.getItems()); var selection = List.copyOf(f.table.getSelectionModel().getSelectedCells());
+                f.pane.setClipboardWriterForTesting(text -> { throw new AssertionError("Body search must not copy"); });
+                f.rowMenu().fire(); var dialog = f.rowDialog();
+                ResultRowTextFindTest.query(dialog).setText("one"); ResultRowTextFindTest.button(dialog, "next").fire();
+                assertEquals("one", ResultRowDialogTest.text(dialog).getSelectedText());
+                assertTrue(ResultRowTextFindTest.status(dialog).startsWith("第 1 / 1 处"));
+                assertEquals(List.of(3, 1), ResultRowDialogTest.fields(dialog).getItems().stream().map(cell -> cell.column()).toList());
+                ResultRowTextFindTest.query(dialog).setText("keep"); assertTrue(ResultRowTextFindTest.button(dialog, "next").isDisabled());
+                assertEquals(selection, f.table.getSelectionModel().getSelectedCells());
+                assertSame(rows.getFirst(), f.table.getItems().getFirst()); assertSame(rows.getLast(), f.table.getItems().getLast());
+                assertEquals(List.of(seq, value, hidden, id), f.table.getColumns()); assertFalse(hidden.isVisible());
+                assertEquals(List.of(id), f.table.getSortOrder()); assertSame(value, f.table.getFocusModel().getFocusedCell().getTableColumn());
+                assertEquals(1, f.table.getFocusModel().getFocusedCell().getRow());
+                assertEquals(9, f.editor.getAnchor()); assertEquals(2, f.editor.getCaretPosition());
+                assertFalse(f.document().dirty()); assertFalse(f.editor.isUndoAvailable());
+                f.show(QueryResult.query(List.of("new"), List.of(List.of("new-only")), 0));
+                ResultRowTextFindTest.query(dialog).setText("one"); ResultRowTextFindTest.button(dialog, "next").fire();
+                assertEquals("one-B", ResultRowDialogTest.text(dialog).getText());
+                assertEquals("one", ResultRowDialogTest.text(dialog).getSelectedText());
+                f.pane.finalizeCloseOnFx(); assertFalse(dialog.isShowing()); assertNull(f.rowDialog());
+                ResultRowTextFindTest.button(dialog, "next").getOnAction().handle(new javafx.event.ActionEvent());
+                assertEquals("one", ResultRowDialogTest.text(dialog).getSelectedText());
+                return null;
+            });
+            assertEquals("select 'offline';", Files.readString(f.file)); f.assertOffline();
+        }
+    }
+
     @Test void invalidNonFocusedVisibleFieldRejectsWholeRowInsteadOfShowingPartialData() throws Exception {
         try (var f = new Fixture()) {
             FxUiTestSupport.call(() -> {

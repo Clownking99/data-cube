@@ -15,7 +15,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
-/** Local literal navigation over the bounded, inert text shown by ResultCellDialog. */
+/** Local literal navigation over bounded, inert text in read-only result detail dialogs. */
 final class ResultCellFindBar extends VBox {
     private final TextArea value;
     private final TextField query = new TextField();
@@ -29,23 +29,28 @@ final class ResultCellFindBar extends VBox {
     private boolean closed;
 
     ResultCellFindBar(TextArea value) {
+        this(value, "result-cell-find", "查找已显示内容（Ctrl+F）", "查找单元格已显示内容");
+    }
+
+    ResultCellFindBar(TextArea value, String idPrefix, String prompt, String accessibleText) {
         this.value = value;
+        setId(idPrefix);
         setSpacing(4);
-        query.setId("result-cell-find-query");
-        query.setPromptText("查找已显示内容（Ctrl+F）");
-        query.setAccessibleText("查找单元格已显示内容");
+        query.setId(idPrefix + "-query");
+        query.setPromptText(prompt);
+        query.setAccessibleText(accessibleText);
         query.setMinWidth(60);
         query.setTooltip(new Tooltip("字面查找，保留空格；Enter / Shift+Enter 或 F3 / Shift+F3 定位，首尾循环。"));
-        previous.setId("result-cell-find-previous");
-        next.setId("result-cell-find-next");
+        previous.setId(idPrefix + "-previous");
+        next.setId(idPrefix + "-next");
         previous.setMinWidth(Region.USE_PREF_SIZE);
         next.setMinWidth(Region.USE_PREF_SIZE);
         previous.setOnAction(event -> navigate(false));
         next.setOnAction(event -> navigate(true));
         var input = new HBox(6, query, previous, next);
         HBox.setHgrow(query, Priority.ALWAYS);
-        matchCase.setId("result-cell-find-case");
-        status.setId("result-cell-find-status");
+        matchCase.setId(idPrefix + "-case");
+        status.setId(idPrefix + "-status");
         status.setWrapText(true);
         status.setMinHeight(Region.USE_PREF_SIZE);
         var options = new FlowPane(12, 4, matchCase, status);
