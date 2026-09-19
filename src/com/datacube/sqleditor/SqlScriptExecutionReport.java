@@ -74,7 +74,7 @@ public record SqlScriptExecutionReport(List<Entry> entries, int returned, int no
     }
 
     public String displayNotice() {
-        return "选择一条摘要，点击执行详情或按 Enter（只读）"
+        return "选择一条摘要，查看结果或执行详情；Enter 打开详情（只读）"
                 + (returned > entries.size() ? "；仅显示前 " + entries.size() + " 条" : "");
     }
 

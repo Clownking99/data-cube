@@ -61,6 +61,7 @@ class TableSelectSqlTabsTest {
                 return null;
             });
             f.metadataBarrier();
+            f.awaitDraftReady();
             var handle = FxUiTestSupport.call(() -> (SqlDraftCoordinator.Handle)
                     field(field(f.created.getFirst(), "draftBinding"), "handle"));
             FxUiTestSupport.call(handle::flush).get(5, TimeUnit.SECONDS);
@@ -152,6 +153,18 @@ class TableSelectSqlTabsTest {
         void assertOffline() {
             assertEquals(0, probe.providers.get()); assertEquals(0, probe.sessions.get());
             assertEquals(0, probe.metadata.get()); assertEquals(0, probe.network.get());
+        }
+        void awaitDraftReady() throws Exception {
+            // Metadata and draft initialization use different queues; a metadata barrier is insufficient.
+            var ready = new CountDownLatch(1);
+            AutoCloseable observer = FxUiTestSupport.call(() -> {
+                Runnable check = () -> { if (!drafts.runtime().managementPending()) ready.countDown(); };
+                var subscription = drafts.observe(check); check.run(); return subscription;
+            });
+            try {
+                assertTrue(ready.await(5, TimeUnit.SECONDS), "draft initialization did not finish");
+                FxUiTestSupport.call(() -> { assertEquals(SqlDraftCoordinator.Mode.ENABLED, drafts.runtime().mode()); return null; });
+            } finally { FxUiTestSupport.call(() -> { observer.close(); return null; }); }
         }
         @Override public void close() throws Exception {
             try {

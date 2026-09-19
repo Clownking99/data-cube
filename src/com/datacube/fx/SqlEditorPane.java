@@ -1468,8 +1468,8 @@ public final class SqlEditorPane implements AutoCloseable {
                 this::onClearResultFilters,
                 this::copyResultSelection, this::showResultCell), resultColumnMenu.getNode(), resultRowDisplay.getNode());
         renderResultFilterToolbar();
-        scriptDetails = new SqlScriptDetails(resultTable, this::resultCellViewingAllowed);
         batchResults = new SqlBatchResults(this::resultCellViewingAllowed, this::showBatchSelection);
+        scriptDetails = new SqlScriptDetails(resultTable, this::resultCellViewingAllowed, batchResults::selectResult);
         VBox box = new VBox(batchResults.getNode(), resultToolbar.getNode(), scriptDetails.getNode(), resultPane);
         VBox.setVgrow(resultPane, Priority.ALWAYS);
         return box;

@@ -75,6 +75,19 @@ final class SqlBatchResults implements AutoCloseable {
     SqlScriptExecutionReport report() { return report; }
     String schema() { return schema; }
 
+    /** Overview rows hold the very same bounded entries, even after table sorting. */
+    void selectResult(SqlScriptExecutionReport.Entry entry) {
+        if (entry == null || closed || !bar.isVisible() || bar.isDisabled() || !allowed.getAsBoolean()
+                || selected == null || selected.outcome() != null || choices.getValue() != selected
+                || choices.getItems().stream().noneMatch(item -> item == selected)) return;
+        for (int i = 0; i < choices.getItems().size(); i++) {
+            if (choices.getItems().get(i).detail() == entry) {
+                // Selecting by object would choose the first equal record, not necessarily this entry.
+                choices.getSelectionModel().select(i); return;
+            }
+        }
+    }
+
     void display(List<ScriptOutcome> outcomes, long elapsed, String effectiveSchema) {
         clear(); if (closed) return;
         report = SqlScriptExecutionReport.capture(outcomes, elapsed); schema = effectiveSchema;
