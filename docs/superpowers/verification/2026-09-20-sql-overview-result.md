@@ -44,4 +44,7 @@
 
 ## 本地集成
 
-等待提交与本地 main 集成验证；本轮不推送、不打 tag。
+- 实现提交 `e15c432` 从 `2658a5d` 快进本地 main，合并前核对分支、完整基线 hash 与 tracked 工作区；未覆盖用户改动。
+- main 九类定向回归：`SqlOverviewResultNavigationTest`、`SqlScriptDetailsIntegrationTest`、`SqlBatchResultsIntegrationTest`、`SqlBatchResultsTest`、`SqlBatchDetailsIntegrationTest`、`SqlBatchFailureNavigationTest`、`SqlScriptDetailFindTest`、`TableSelectSqlTabsTest`、`SqlScriptExecutionReportTest`。XML 165 项全部通过，0 failures/errors/skipped；与 `jpackageImage '-PappVersion=0.0.0'` 同次执行，1 分 33 秒 exit 0。
+- main 与 worktree 应用模块逐文件 SHA-256 比较：824/824 完全相同（809 class），零差异、零 Fixture；正式 `DataCube.cfg` 哈希均与上文相同，正常入口，无测试 patch/profile 参数。
+- `git diff --check` 通过。本段记录另作 docs 提交，不修改生产代码；本轮不推送、不打 tag。
