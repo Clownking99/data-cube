@@ -55,7 +55,10 @@ public final class SqlScriptDetailsDesktopFixture extends Application {
         Button restore = new Button("恢复批量结果（验收）"); restore.setOnAction(event -> {
             try { show.invoke(pane, outcomes, 1093L); } catch (ReflectiveOperationException failure) { throw new AssertionError(failure); }
         });
-        VBox root = new VBox(8, new FlowPane(8, 4, toggle, width, replace, restore),
+        Button normal = new Button("仅正常批次（验收）"); normal.setOnAction(event -> {
+            try { show.invoke(pane, outcomes.subList(0, 2), 30L); } catch (ReflectiveOperationException failure) { throw new AssertionError(failure); }
+        });
+        VBox root = new VBox(8, new FlowPane(8, 4, toggle, width, replace, restore, normal),
                 new Label("合成执行结果验收：无数据库连接、不执行 SQL、不写源文件。"), pane.getNode());
         VBox.setVgrow(pane.getNode(), Priority.ALWAYS); Scene scene = new Scene(root, 980, 850);
         theme.register(scene); theme.installWindowHook(); stage.setTitle("DataCube - 脚本执行详情合成验收");
