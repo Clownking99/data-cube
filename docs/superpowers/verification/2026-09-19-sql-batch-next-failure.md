@@ -35,4 +35,11 @@
 
 `jimage extract` 验证正式开发镜像应用模块 823 文件、808 class，零 Fixture 类。正式 `DataCube.cfg` 为 `DataCubeFx` 入口，无 patch/profile 参数，SHA-256 为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`；测试副本不交付。
 
-本地 main 集成结果将在实际完成后追加；不将合成验证等同于 live 数据库、真实用户耗时研究或远端发布。本轮不推送、不打 tag。
+## 本地 main 集成
+
+- 实现提交 `d1f05bd`，从 `b5510eb` 快进 main；合并前后 tracked 工作区干净，没有覆盖用户改动。
+- main 七类定向回归：`SqlBatchFailureNavigationTest`、`SqlBatchDetailsIntegrationTest`、`SqlBatchResultsTest`、`SqlBatchResultsIntegrationTest`、`SqlScriptDetailsIntegrationTest`、`SqlEditorResultFilterContractTest`、`SqlScriptExecutionReportTest`；145 项全通过、0 failures/errors/skipped。与 `jpackageImage -PappVersion=0.0.0` 同次运行，56 秒 exit 0。
+- main 新生产镜像与 worktree 已验收生产镜像逐文件 SHA-256 核对：应用模块 823/823 一致（808 class），零差异、零 Fixture 类。两份 `DataCube.cfg` 哈希均与上文一致，保持正常入口，无 patch/profile 参数。
+- `git diff --check` 通过；本段验收记录另作 docs 提交，不改生产代码。
+
+不将合成验证等同于 live 数据库、真实用户耗时研究或远端发布。本轮不推送、不打 tag。
