@@ -24,6 +24,7 @@ final class SqlBatchResults implements AutoCloseable {
     private final ComboBox<Choice> choices = new ComboBox<>();
     private final Label summary = new Label();
     private final Button details = new Button("执行详情");
+    private final Button nextFailure = new Button("下一异常");
     private final VBox bar;
     private final BooleanSupplier allowed;
     private final Consumer<Choice> render;
@@ -42,13 +43,20 @@ final class SqlBatchResults implements AutoCloseable {
         details.setId("sql-batch-details"); details.setMinWidth(Region.USE_PREF_SIZE);
         details.setTooltip(new Tooltip("查看当前语句已返回的 SQL 和执行信息（只读，不重新执行）。执行概览请选择表格中的记录。"));
         details.setOnAction(event -> showDetails());
+        nextFailure.setId("sql-batch-next-failure"); nextFailure.setMinWidth(Region.USE_PREF_SIZE);
+        nextFailure.setTooltip(new Tooltip("按执行顺序定位下一条失败、超时或取消的已保留结果，末尾回到开头。\n"
+                + "没有其他异常时不可用；只切换结果，不重新执行 SQL。"));
+        nextFailure.setOnAction(event -> {
+            Choice target = nextFailureChoice();
+            if (target != null) choices.getSelectionModel().select(target);
+        });
         var label = new Label("本次结果"); label.setMinWidth(Region.USE_PREF_SIZE);
-        var row = new HBox(8, label, choices, details); HBox.setHgrow(choices, Priority.ALWAYS);
+        var row = new HBox(8, label, choices, nextFailure, details); HBox.setHgrow(choices, Priority.ALWAYS);
         summary.setId("sql-batch-summary"); summary.setWrapText(true); summary.setMinHeight(Region.USE_PREF_SIZE);
         bar = new VBox(4, row, summary); bar.setId("sql-batch-results");
         bar.disabledProperty().addListener((obs, before, disabled) -> {
             if (disabled) closeDetails();
-            refreshDetails();
+            refreshActions();
         });
         choices.setOnAction(event -> {
             if (updating) return;
@@ -58,7 +66,7 @@ final class SqlBatchResults implements AutoCloseable {
                 selectWithoutRendering(selected); return;
             }
             if (candidate == selected) return;
-            closeDetails(); selected = candidate; render.accept(candidate); refreshDetails();
+            closeDetails(); selected = candidate; render.accept(candidate); refreshActions();
         });
         clear();
     }
@@ -86,7 +94,7 @@ final class SqlBatchResults implements AutoCloseable {
         summary.setStyle("-fx-text-fill: " + (report.hasFailures() ? "-status-error" : "-status-ok") + ";");
         bar.setVisible(true); bar.setManaged(true); selected = initial; selectWithoutRendering(initial);
         // Initial rendering is the execution completion callback, not a new user operation.
-        render.accept(initial); refreshDetails();
+        render.accept(initial); refreshActions();
     }
 
     private boolean canShowDetails() {
@@ -95,7 +103,25 @@ final class SqlBatchResults implements AutoCloseable {
                 && choices.getItems().stream().anyMatch(item -> item == selected);
     }
 
-    private void refreshDetails() { details.setDisable(!canShowDetails()); }
+    private Choice nextFailureChoice() {
+        if (closed || !bar.isVisible() || bar.isDisabled() || !allowed.getAsBoolean()
+                || selected == null || choices.getValue() != selected) return null;
+        var items = choices.getItems();
+        int start = -1;
+        for (int i = 0; i < items.size(); i++) if (items.get(i) == selected) { start = i; break; }
+        if (start < 0) return null;
+        // Exclude the current choice: a sole current failure must not reset its view/dialog.
+        for (int step = 1; step < items.size(); step++) {
+            Choice candidate = items.get((start + step) % items.size());
+            if (candidate.detail() != null && candidate.detail().kind() == QueryResult.Kind.ERROR) return candidate;
+        }
+        return null;
+    }
+
+    private void refreshActions() {
+        details.setDisable(!canShowDetails());
+        nextFailure.setDisable(nextFailureChoice() == null);
+    }
 
     private void showDetails() {
         if (!canShowDetails() || dialog != null) return;
@@ -123,7 +149,7 @@ final class SqlBatchResults implements AutoCloseable {
         updating = true;
         try { selected = null; choices.setValue(null); choices.getItems().clear(); }
         finally { updating = false; }
-        report = null; schema = null; summary.setText(""); bar.setVisible(false); bar.setManaged(false); refreshDetails();
+        report = null; schema = null; summary.setText(""); bar.setVisible(false); bar.setManaged(false); refreshActions();
     }
 
     @Override public void close() { if (closed) return; closed = true; clear(); bar.setDisable(true); }

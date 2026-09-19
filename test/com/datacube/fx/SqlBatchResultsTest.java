@@ -26,6 +26,14 @@ class SqlBatchResultsTest {
                 assertEquals(1, batch.report().failed()); assertEquals(count, batch.report().returned());
                 assertEquals("schema", batch.schema());
                 assertEquals(count > 1000, ((Label) batch.getNode().lookup("#sql-batch-summary")).getText().contains("仅保留前 1000"));
+                var next = (javafx.scene.control.Button) batch.getNode().lookup("#sql-batch-next-failure");
+                assertNotNull(next); assertEquals(count > 1000, next.isDisabled());
+                if (count <= 1000) {
+                    next.fire(); assertEquals(count, chosen.get().outcome().index()); assertTrue(next.isDisabled());
+                } else {
+                    var before = chosen.get(); next.getOnAction().handle(new javafx.event.ActionEvent());
+                    assertSame(before, chosen.get(), "an omitted failure cannot be navigated to");
+                }
                 outcomes.clear(); choice.getSelectionModel().selectLast();
                 assertEquals(Math.min(count, 1000), chosen.get().outcome().index());
                 assertSame(batch.report().entries().getLast(), chosen.get().detail(), "details reuse the bounded report entry, not raw SQL/error");
