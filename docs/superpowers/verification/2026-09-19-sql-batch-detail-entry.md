@@ -35,4 +35,9 @@
 
 ## 本地 main 集成
 
-提交、快进与合并后测试结果待追加。本地合成验收不代表 live 数据库、真实用户耗时实验或远端 CI/发布；本轮不推送、不打 tag。
+- 实现提交 `d748a78`，从 `5b21ec3` 快进 main，合并前后 tracked 工作区干净，没有覆盖用户改动。
+- main 六类定向回归：`SqlBatchDetailsIntegrationTest`、`SqlBatchResultsTest`、`SqlBatchResultsIntegrationTest`、`SqlScriptDetailsIntegrationTest`、`SqlEditorResultFilterContractTest`、`SqlScriptExecutionReportTest`；120 项全通过、0 failures/errors/skipped。与 `jpackageImage -PappVersion=0.0.0` 同次运行，55 秒 exit 0。
+- main 新生产镜像与 worktree 已验收生产镜像逐文件 SHA-256 核对：应用模块 823/823 一致（808 class），零差异、零 Fixture 类。两份 `DataCube.cfg` 哈希均为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`，正常 `DataCubeFx` 入口，无 patch/profile 参数。
+- `git diff --check` 通过；本段验收记录另作 docs 提交，不改生产代码。
+
+本地合成验收不代表 live 数据库、真实用户耗时实验或远端 CI/发布；本轮不推送、不打 tag。
