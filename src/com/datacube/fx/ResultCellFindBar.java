@@ -17,7 +17,7 @@ import javafx.scene.layout.VBox;
 
 /** Local literal navigation over bounded, inert text in read-only result detail dialogs. */
 final class ResultCellFindBar extends VBox {
-    private final TextArea value;
+    private TextArea value;
     private final TextField query = new TextField();
     private final CheckBox matchCase = new CheckBox("区分大小写");
     private final Button previous = new Button("上一个");
@@ -70,6 +70,18 @@ final class ResultCellFindBar extends VBox {
     }
 
     boolean queryFocused() { return query.getScene() != null && query.getScene().getFocusOwner() == query; }
+
+    /** Change only the displayed search scope; retain query/options and both text selections. */
+    void target(TextArea target) {
+        if (closed || value == target) return;
+        java.util.Objects.requireNonNull(target);
+        value.textProperty().removeListener(searchListener);
+        value.selectionProperty().removeListener(selectionListener);
+        value = target;
+        value.textProperty().addListener(searchListener);
+        value.selectionProperty().addListener(selectionListener);
+        refresh();
+    }
 
     void navigate(boolean forward) {
         if (closed || result.matches().isEmpty()) return;

@@ -56,6 +56,8 @@ class SqlBatchDetailsIntegrationTest {
                     assertNull(dialog.getDialogPane().lookup("#sql-script-detail-error"));
                     assertTrue(identity.contains(selection == 1 ? "已加载 2 行" : "影响 4 行"));
                 }
+                SqlScriptDetailFindTest.query(dialog).setText("sample"); SqlScriptDetailFindTest.next(dialog).fire();
+                assertEquals("sample", sql.getSelectedText()); assertEquals(expected.sql(), sql.getText());
                 button(f).getOnAction().handle(new javafx.event.ActionEvent()); assertSame(dialog, dialog(f));
                 dialog.getDialogPane().fireEvent(key(KeyCode.ESCAPE, false)); assertFalse(dialog.isShowing()); assertNull(dialog(f));
                 assertSame(rows, f.table().getItems()); assertEquals(columns, f.table().getColumns());
@@ -77,6 +79,8 @@ class SqlBatchDetailsIntegrationTest {
         try (var f = fixture()) {
             FxUiTestSupport.call(() -> {
                 f.window(); f.show(outcomes()); button(f).fire(); var opened = dialog(f); assertNotNull(opened);
+                SqlScriptDetailFindTest.query(opened).setText("sample"); SqlScriptDetailFindTest.next(opened).fire();
+                var selectedSql = SqlScriptDetailFindTest.sql(opened).getSelection();
                 switch (change) {
                     case "selection" -> choice(f).getSelectionModel().select(3);
                     case "overview" -> choice(f).getSelectionModel().select(0);
@@ -90,6 +94,9 @@ class SqlBatchDetailsIntegrationTest {
                     case "close" -> f.pane.finalizeCloseOnFx();
                 }
                 assertFalse(opened.isShowing()); assertNull(dialog(f));
+                SqlScriptDetailFindTest.next(opened).getOnAction().handle(new javafx.event.ActionEvent());
+                assertTrue(SqlScriptDetailFindTest.next(opened).isDisabled());
+                assertEquals(selectedSql, SqlScriptDetailFindTest.sql(opened).getSelection());
                 if (change.equals("overview")) { assertTrue(button(f).isDisabled()); assertTrue(f.details().getNode().isVisible()); }
                 if (change.equals("selection") || change.equals("batch")) {
                     button(f).fire(); assertNotSame(opened, dialog(f)); assertTrue(dialog(f).isShowing());

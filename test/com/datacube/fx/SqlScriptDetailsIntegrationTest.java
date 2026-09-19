@@ -63,6 +63,10 @@ class SqlScriptDetailsIntegrationTest {
                 assertEquals(f.error, error.getText()); assertFalse(sql.isEditable()); assertFalse(error.isEditable());
                 assertTrue(((Label) dialog.getDialogPane().lookup("#sql-script-detail-identity")).getText().startsWith("语句 #2 · 失败"));
                 assertTrue(((Label) dialog.getDialogPane().lookup("#sql-script-detail-boundary")).getText().contains("不代表已回滚"));
+                SqlScriptDetailFindTest.scope(dialog).getSelectionModel().select(1);
+                SqlScriptDetailFindTest.query(dialog).setText("SQLState"); SqlScriptDetailFindTest.next(dialog).fire();
+                assertEquals("SQLState", error.getSelectedText()); assertEquals(f.error, error.getText());
+                assertEquals(2, f.table().getItems().getFirst().getFirst());
                 f.details().showSelected(); assertSame(dialog, f.dialog(), "duplicate opening must reuse the existing dialog");
                 dialog.getDialogPane().fireEvent(key(KeyCode.ESCAPE, false));
                 assertFalse(dialog.isShowing()); assertNull(f.dialog());
