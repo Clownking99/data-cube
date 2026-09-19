@@ -41,4 +41,11 @@
 
 最终开发镜像应用模块经 `jimage extract` 验证为 824 文件、809 class，零 Fixture 类。正式 `DataCube.cfg` 保持 `DataCubeFx` 入口，无 patch/profile 参数；SHA-256 为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`。验收副本不交付。
 
-本地 main 集成结果待实际完成后追加；不把合成验收扩大为 live 数据库、真实用户效率或远端发布。本轮不推送、不打 tag。
+## 本地 main 集成
+
+- 实现提交 `7e7e88d` 从 `7d5b1df` 快进到 main；合并前后 tracked 工作区干净，没有覆盖用户改动。
+- main 八类定向回归：`SqlScriptDetailFindTest`、`SqlScriptDetailsDialogTest`、`SqlBatchDetailsIntegrationTest`、`SqlScriptDetailsIntegrationTest`、`ResultCellFindTest`、`ResultRowTextFindTest`、`SqlBatchFailureNavigationTest`、`SqlEditorResultFilterContractTest`。XML 172 项全部通过，0 failures/errors/skipped；与 `jpackageImage -PappVersion=0.0.0` 同次运行，1 分 8 秒 exit 0。
+- main 与 worktree 最终开发镜像应用模块均为 824 文件、809 class，零 Fixture 类。逐文件 SHA-256 比较有 823 个完全相同（包含全部 class）；唯一差异是 `theme-base.css` 换行：worktree 94 CRLF + 2 LF，main 96 CRLF，规范化 CRLF 后正文逐字符完全相同。main 的两主题 CSS 求值回归亦通过，不把此结果写成 824 文件字节一致。
+- 两份 `DataCube.cfg` 哈希与上文一致，正常入口且无 fixture/profile 参数。`git diff --check` 通过；本段记录另作 docs 提交，不修改生产代码。
+
+不把合成验收扩大为 live 数据库、真实用户效率或远端发布。本轮不推送、不打 tag。
