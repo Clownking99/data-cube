@@ -47,4 +47,10 @@ Gradle 使用 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`，附 `--no-daemon -
 
 ## 本地集成
 
-本地 main 集成及合并后定向验证结果待追加。未运行真实 Oracle/PostgreSQL，不把 JDBC 替身测试当作 live 数据库或远端 CI/发布验收；本轮不推送、不打 tag。
+- 实现提交 `47480b5`，从 `07be400` 快进本地 main；合并前后均检查 tracked 工作区，未覆盖用户改动。
+- main 首轮八类定向测试 133 项全通过，同时 `jpackageImage -PappVersion=0.0.0` 成功，55 秒 exit 0。原命令中的 `JdbcEditorSessionTest` 包名写成 provider.jdbc，没有匹配该类；未把这次结果计作会话验证。
+- 改为真实包名 `com.datacube.service.JdbcEditorSessionTest` 后完整重跑九类：16 秒 exit 0；XML 共 178 项，全部通过、0 failures/errors/skipped，其中会话类 45 项。
+- main 新镜像与 worktree 最终生产镜像的应用模块逐文件 SHA-256 比较：823/823 一致（808 个 class），零差异、零 Fixture 类；两份 `DataCube.cfg` 的 SHA-256 均为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`，正常应用入口，无 patch/profile 参数。
+- `git diff --check` 通过。实现已在本地 main；本段验证记录另作 docs 提交，不改生产代码。
+
+未运行真实 Oracle/PostgreSQL，不把 JDBC 替身测试当作 live 数据库或远端 CI/发布验收；本轮不推送、不打 tag。
