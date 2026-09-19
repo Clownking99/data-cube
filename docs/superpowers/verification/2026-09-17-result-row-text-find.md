@@ -43,4 +43,11 @@
 - Esc 正常关闭；精确路径对应剩余进程 0。profile 仅产生 `settings.properties` 与 `.openjfx` 缓存。
 - 未补丁生产镜像应用模块包含 820 项资源、805 个 class、0 Fixture 类；启动入口仍为 `com.datacube.DataCubeFx`，无隔离 profile 或补丁参数。
 
-本轮不执行 SQL、不访问真实数据库、不改写用户文件；没有真实用户效率数据，未推送、打 tag 或验证远端发布。本地 main 集成结果在合并后追加。
+本轮不执行 SQL、不访问真实数据库、不改写用户文件；没有真实用户效率数据，未推送、打 tag 或验证远端发布。
+
+## main 集成（2026-09-19）
+
+- 实现提交 `4aec2a6`（11 文件），本地 main 从 `10167a6` 快进合并；未推送或创建 tag。
+- 合并后七类定向回归：`ResultRowTextFindTest`、`ResultRowDialogTest`、`ResultCellFindTest`、`ResultCellDialogTest`、`SqlResultCellIntegrationTest`、`SqlTextSearchTest`、`ResultRowPreviewTest`，加 `jpackageImage -PappVersion=0.0.0`；1 分 7 秒 exit 0，136 项通过、0 失败/错误/跳过。
+- 提取 main 与最终验收 worktree 的应用模块：均为 820 项资源、805 个 class、0 Fixture 类。819 项逐项 SHA-256 相同，唯一差异为 `theme-base.css` 的 Windows Git 换行转换，CRLF 归一化后文本完全一致；不声称整个 runtime 字节相同。main 启动配置仍为生产 `DataCubeFx`，无补丁或隔离 profile 参数。
+- main 已跟踪工作区干净；原有未跟踪 `.testagent/` 保持不变，不读取、不修改、不暂存。
