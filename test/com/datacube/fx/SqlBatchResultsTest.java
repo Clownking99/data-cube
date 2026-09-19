@@ -28,6 +28,7 @@ class SqlBatchResultsTest {
                 assertEquals(count > 1000, ((Label) batch.getNode().lookup("#sql-batch-summary")).getText().contains("仅保留前 1000"));
                 outcomes.clear(); choice.getSelectionModel().selectLast();
                 assertEquals(Math.min(count, 1000), chosen.get().outcome().index());
+                assertSame(batch.report().entries().getLast(), chosen.get().detail(), "details reuse the bounded report entry, not raw SQL/error");
                 batch.close(); assertTrue(choice.getItems().isEmpty()); assertNull(batch.report()); assertNull(batch.schema());
                 batch.display(List.of(new ScriptOutcome(1, "new", QueryResult.update(1, 0))), 1, "new"); assertTrue(choice.getItems().isEmpty());
             }

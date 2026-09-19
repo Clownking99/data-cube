@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Tooltip;
@@ -17,11 +18,12 @@ import javafx.scene.layout.VBox;
 
 /** Owns this batch's already loaded results, never a session or a re-execution action. */
 final class SqlBatchResults implements AutoCloseable {
-    record Choice(ScriptOutcome outcome, String label) {
+    record Choice(ScriptOutcome outcome, SqlScriptExecutionReport.Entry detail, String label) {
         @Override public String toString() { return label; }
     }
     private final ComboBox<Choice> choices = new ComboBox<>();
     private final Label summary = new Label();
+    private final Button details = new Button("执行详情");
     private final VBox bar;
     private final BooleanSupplier allowed;
     private final Consumer<Choice> render;
@@ -30,16 +32,24 @@ final class SqlBatchResults implements AutoCloseable {
     private String schema;
     private boolean updating;
     private boolean closed;
+    private SqlScriptDetailsDialog dialog;
 
     SqlBatchResults(BooleanSupplier allowed, Consumer<Choice> render) {
         this.allowed = allowed; this.render = render;
         choices.setId("sql-batch-choice"); choices.setAccessibleText("本次执行结果");
         choices.setMaxWidth(Double.MAX_VALUE); choices.setMinWidth(100); choices.setVisibleRowCount(12);
         choices.setTooltip(new Tooltip("切换本次已返回的结果，不重新执行 SQL。切换后重置当前结果的本地筛选和列布局。"));
+        details.setId("sql-batch-details"); details.setMinWidth(Region.USE_PREF_SIZE);
+        details.setTooltip(new Tooltip("查看当前语句已返回的 SQL 和执行信息（只读，不重新执行）。执行概览请选择表格中的记录。"));
+        details.setOnAction(event -> showDetails());
         var label = new Label("本次结果"); label.setMinWidth(Region.USE_PREF_SIZE);
-        var row = new HBox(8, label, choices); HBox.setHgrow(choices, Priority.ALWAYS);
+        var row = new HBox(8, label, choices, details); HBox.setHgrow(choices, Priority.ALWAYS);
         summary.setId("sql-batch-summary"); summary.setWrapText(true); summary.setMinHeight(Region.USE_PREF_SIZE);
         bar = new VBox(4, row, summary); bar.setId("sql-batch-results");
+        bar.disabledProperty().addListener((obs, before, disabled) -> {
+            if (disabled) closeDetails();
+            refreshDetails();
+        });
         choices.setOnAction(event -> {
             if (updating) return;
             Choice candidate = choices.getValue();
@@ -48,7 +58,7 @@ final class SqlBatchResults implements AutoCloseable {
                 selectWithoutRendering(selected); return;
             }
             if (candidate == selected) return;
-            selected = candidate; render.accept(candidate);
+            closeDetails(); selected = candidate; render.accept(candidate); refreshDetails();
         });
         clear();
     }
@@ -60,12 +70,12 @@ final class SqlBatchResults implements AutoCloseable {
     void display(List<ScriptOutcome> outcomes, long elapsed, String effectiveSchema) {
         clear(); if (closed) return;
         report = SqlScriptExecutionReport.capture(outcomes, elapsed); schema = effectiveSchema;
-        var items = new ArrayList<Choice>(); items.add(new Choice(null, "执行概览"));
+        var items = new ArrayList<Choice>(); items.add(new Choice(null, null, "执行概览"));
         Choice initial = items.getFirst();
         for (int i = 0; i < report.entries().size(); i++) {
             var entry = report.entries().get(i); var outcome = outcomes.get(i);
             String kind = switch (entry.kind()) { case QUERY -> "查询 · " + entry.resultDescription(); case UPDATE -> "更新 · " + entry.resultDescription(); case ERROR -> entry.status(); };
-            var choice = new Choice(outcome, "语句 #" + entry.index() + " · " + kind + " · " + entry.elapsedMillis() + "ms");
+            var choice = new Choice(outcome, entry, "语句 #" + entry.index() + " · " + kind + " · " + entry.elapsedMillis() + "ms");
             items.add(choice);
             if (initial.outcome() == null && entry.kind() == QueryResult.Kind.QUERY) initial = choice;
         }
@@ -76,7 +86,31 @@ final class SqlBatchResults implements AutoCloseable {
         summary.setStyle("-fx-text-fill: " + (report.hasFailures() ? "-status-error" : "-status-ok") + ";");
         bar.setVisible(true); bar.setManaged(true); selected = initial; selectWithoutRendering(initial);
         // Initial rendering is the execution completion callback, not a new user operation.
-        render.accept(initial);
+        render.accept(initial); refreshDetails();
+    }
+
+    private boolean canShowDetails() {
+        return !closed && bar.isVisible() && !bar.isDisabled() && allowed.getAsBoolean()
+                && selected != null && selected.detail() != null && choices.getValue() == selected
+                && choices.getItems().stream().anyMatch(item -> item == selected);
+    }
+
+    private void refreshDetails() { details.setDisable(!canShowDetails()); }
+
+    private void showDetails() {
+        if (!canShowDetails() || dialog != null) return;
+        Choice expected = selected;
+        var candidate = new SqlScriptDetailsDialog(bar.getScene() == null ? null : bar.getScene().getWindow(), expected.detail());
+        if (!canShowDetails() || selected != expected) return;
+        dialog = candidate;
+        candidate.setOnHidden(event -> { if (dialog == candidate) dialog = null; });
+        try { candidate.show(); }
+        catch (RuntimeException failure) { dialog = null; throw failure; }
+    }
+
+    private void closeDetails() {
+        if (dialog == null) return;
+        var previous = dialog; dialog = null; previous.close();
     }
 
     private void selectWithoutRendering(Choice value) {
@@ -85,10 +119,11 @@ final class SqlBatchResults implements AutoCloseable {
     }
 
     void clear() {
+        closeDetails();
         updating = true;
         try { selected = null; choices.setValue(null); choices.getItems().clear(); }
         finally { updating = false; }
-        report = null; schema = null; summary.setText(""); bar.setVisible(false); bar.setManaged(false);
+        report = null; schema = null; summary.setText(""); bar.setVisible(false); bar.setManaged(false); refreshDetails();
     }
 
     @Override public void close() { if (closed) return; closed = true; clear(); bar.setDisable(true); }

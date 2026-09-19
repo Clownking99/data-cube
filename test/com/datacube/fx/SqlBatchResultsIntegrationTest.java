@@ -143,10 +143,11 @@ class SqlBatchResultsIntegrationTest {
                         ThemeManager.class.getResource("theme-" + theme + ".css").toExternalForm());
                 f.batch(); f.root.resize(width, 850); f.root.applyCss(); f.root.layout();
                 var bar = (javafx.scene.layout.Region) f.root.lookup("#sql-batch-results");
-                for (String id : List.of("sql-batch-choice", "sql-batch-summary")) {
+                for (String id : List.of("sql-batch-choice", "sql-batch-summary", "sql-batch-details")) {
                     var node = (javafx.scene.layout.Region) f.root.lookup("#" + id); var bounds = node.localToScene(node.getLayoutBounds());
                     assertTrue(bounds.getMinX() >= 0 && bounds.getMaxX() <= width + 1, id);
                     assertTrue(node.getHeight() + 1 >= node.prefHeight(node.getWidth()), id);
+                    if (id.equals("sql-batch-details")) assertTrue(node.getWidth() + 1 >= node.prefWidth(-1), id);
                 }
                 assertTrue(bar.isVisible()); assertTrue(f.table().getHeight() >= 100); return null;
             });
