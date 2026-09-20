@@ -44,3 +44,7 @@ PowerShell 设置 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false` 后运行：
 
 - main 的生产 `com.datacube` 模块提取至 `build/overview-duration-main-module`，与 worktree 全量测试版本按相对路径及 SHA-256 比较：双方 825 文件、810 class，0 差异、0 Fixture 类；唯一新增生产类为概览内部耗时值。
 - 生产启动配置保持原入口，无 fixture patch 或一次性 profile，双方 SHA-256 均为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`。`git diff --check` 通过。此记录不补记任何未做的桌面验收。
+
+## 后续原生补验
+
+桌面恢复后，鼠标耗时表头升降序以及异常/关键词过滤保持降序已实测，见 [批量结果桌面收尾](2026-09-20-sql-batch-desktop-acceptance.md)。

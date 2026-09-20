@@ -54,3 +54,7 @@ PowerShell 设置 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false` 后运行：
 - main 镜像提取至 `build/overview-preview-main-module`，与 worktree 已通过全量测试的生产模块按相对路径和 SHA-256 比对：双方 824 文件，809 class、0 Fixture、0 差异；生产启动配置哈希也完全相同。不是桌面验收证据。
 - `git diff --check` 通过，不修改 `.testagent/`，不推送、不打 tag；`0.0.0` 仅为本地开发镜像版本。
 - 待桌面恢复：补验 SQL 摘要列的鼠标排序、原生 Enter 对应原始多行 SQL、长摘要省略提示、明暗窄窗及横向滚动。已有自动布局/事件测试不能代替这些实测，不宣称 live 数据库、完整 AppShell、真实用户效率或发布已验证。
+
+## 后续原生补验
+
+桌面恢复后的摘要表头排序、截短摘要 Enter 查看原始多行 SQL、明暗窄窗和水平滚动，见 [批量结果桌面收尾](2026-09-20-sql-batch-desktop-acceptance.md)，以其中实际操作范围为准。

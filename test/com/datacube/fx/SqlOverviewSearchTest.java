@@ -268,6 +268,42 @@ class SqlOverviewSearchTest {
         }
     }
 
+    @ParameterizedTest @ValueSource(strings = {"dark", "light"})
+    void overviewPromptUsesReadableThemeColorBeforeAndAfterFocusAndThemeSwitch(String firstTheme) throws Exception {
+        try (var f = fixture()) {
+            FxUiTestSupport.call(() -> {
+                f.window(); mixed(f);
+                var scene = f.root.getScene();
+                for (String theme : List.of(firstTheme, firstTheme.equals("dark") ? "light" : "dark")) {
+                    scene.getStylesheets().setAll(ThemeManager.class.getResource("theme-base.css").toExternalForm(),
+                            ThemeManager.class.getResource("theme-" + theme + ".css").toExternalForm());
+                    var expected = javafx.scene.paint.Color.web(theme.equals("dark") ? "#A8A8B8" : "#555555");
+                    for (boolean focused : List.of(false, true)) {
+                        if (focused) query(f).requestFocus(); else f.table().requestFocus();
+                        f.root.applyCss(); f.root.layout();
+                        assertEquals(focused, scene.getFocusOwner() == query(f));
+                        assertEquals("筛选 SQL 摘要", query(f).getPromptText());
+                        assertEquals(expected, promptFill(query(f)), theme + " focused=" + focused);
+                    }
+                    query(f).setText("orders"); assertEquals("1,2,4", indices(f));
+                    clear(f).fire(); f.root.applyCss();
+                    assertSame(query(f), scene.getFocusOwner());
+                    assertEquals(expected, promptFill(query(f)), "clear keeps focused prompt readable");
+                    assertEquals("1,2,3,4,5", indices(f));
+                }
+                return null;
+            });
+            f.assertOffline();
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static Object promptFill(TextField field) {
+        javafx.css.CssMetaData data = field.getCssMetaData().stream()
+                .filter(item -> item.getProperty().equals("-fx-prompt-text-fill")).findFirst().orElseThrow();
+        return data.getStyleableProperty(field).getValue();
+    }
+
     private static TextField query(SqlScriptDetailsIntegrationTest.Fixture f) {
         var value = (TextField) f.root.lookup("#sql-script-sql-filter"); assertNotNull(value, "overview needs a SQL preview filter"); return value;
     }
