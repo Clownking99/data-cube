@@ -41,7 +41,19 @@
 - 2 分 37 秒 exit 0：主测试 3,112 项，其中 3,109 通过、3 项既有 live 跳过、0 failures/errors；buildSrc 8 项全部通过。两个改动类 67 项纳入全量，相比原 28 项净增 39 项。
 - 开发镜像构建成功；保留既有 unchecked 编译、`JAVA_TOOL_OPTIONS` 及 JEP 493 辅助提示，没有新增构建失败。
 - 生产模块提取至 `build/previous-failure-module`，含 825 文件、810 class、0 Fixture 类。启动配置保持生产入口 `com.datacube/com.datacube.DataCubeFx`，无 fixture patch 或临时 profile；SHA-256 为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`。
-- 自审已逐项核对上表断言、边界与改动范围，未再改生产代码；`git diff --check` 通过。本地 main 集成证据待实际完成后补记。
+- 自审已逐项核对上表断言、边界与改动范围，未再改生产代码；`git diff --check` 通过。
+
+## 本地集成
+
+- 实现提交 `f3af71c`，功能分支跟踪文件干净。确认 root main 仍为基线 `f124008` 且跟踪文件、暂存区干净后，`git merge --ff-only codex/sql-batch-previous-failure` 本地快进成功；既有未跟踪 `.testagent/` 未读取、暂存或修改。
+- main 设置相同 `JAVA_TOOL_OPTIONS` 后运行以下命令，51 秒 exit 0：12 类 259 项全部通过，0 failures/errors/skips，开发镜像重建成功。
+
+```powershell
+.\gradlew.bat test --tests com.datacube.fx.SqlOverviewDurationSortTest --tests com.datacube.fx.SqlOverviewPreviewTest --tests com.datacube.sqleditor.SqlScriptPreviewTest --tests com.datacube.fx.SqlOverviewFailureFilterTest --tests com.datacube.fx.SqlOverviewResultNavigationTest --tests com.datacube.fx.SqlScriptDetailsIntegrationTest --tests com.datacube.fx.SqlBatchResultsIntegrationTest --tests com.datacube.fx.SqlBatchDetailsIntegrationTest --tests com.datacube.fx.SqlBatchFailureNavigationTest --tests com.datacube.fx.SqlScriptDetailFindTest --tests com.datacube.fx.SqlBatchResultsTest --tests com.datacube.sqleditor.SqlScriptExecutionReportTest jpackageImage '-PappVersion=0.0.0' --no-daemon --console=plain
+```
+
+- main 生产模块提取至 `build/previous-failure-main-module`，与 worktree 全量验证版本按相对路径及 SHA-256 比较：各 825 文件、810 class，0 差异、0 Fixture 类；启动配置散列也一致。没有把测试夹具写入生产镜像。
+- 此集成只证明自动验证与本地构建一致，不补记未执行的原生桌面或远端发布验收。
 
 ## 明确保留的待验项
 
