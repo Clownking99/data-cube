@@ -42,7 +42,8 @@ public final class SqlScriptDetailsDesktopFixture extends Application {
                 new ScriptOutcome(1, "select id from sample;", QueryResult.query(List.of("id"), List.of(List.of(1)), 12)),
                 new ScriptOutcome(2, "update sample set status = 'READY';", QueryResult.update(18, 3)),
                 new ScriptOutcome(3, "select status from sample;", QueryResult.query(List.of("status", "message"), List.of(List.of("READY", "second query result"), List.of("WAITING", "another row")), 8)),
-                new ScriptOutcome(4, "select missing_column from sample;\n-- <script>literal text</script>", QueryResult.error("Synthetic diagnostic: missing_column does not exist.\n" + "Detailed context for investigating the returned failure. ".repeat(5) + "\nSQLState=42703", 5)),
+                new ScriptOutcome(4, "select missing_column,\r\n\tanother_column from sample;\n-- <script>literal text</script> "
+                        + "synthetic context ".repeat(8) + "\n-- original SQL tail", QueryResult.error("Synthetic diagnostic: missing_column does not exist.\n" + "Detailed context for investigating the returned failure. ".repeat(5) + "\nSQLState=42703", 5)),
                 new ScriptOutcome(5, "select slow_result from sample;", QueryResult.timeout("Synthetic timeout; transaction outcome is not inferred.", 1000)),
                 new ScriptOutcome(6, "select cancelled_result from sample;", QueryResult.cancelled("Synthetic cancellation; no rollback is assumed.", 50)));
         show.invoke(pane, outcomes, 1093L);

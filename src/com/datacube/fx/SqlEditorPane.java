@@ -2372,9 +2372,10 @@ public final class SqlEditorPane implements AutoCloseable {
             if (selection.outcome() == null) {
                 clearResultFilterState(); useTable(); exportResultBtn.setDisable(true); copyInsertBtn.setDisable(true);
                 resultTable.getColumns().clear(); resultTable.getItems().clear();
-                addColumn("#", 0); addColumn("类型", 1); addColumn("耗时", 2); addColumn("结果", 3);
+                addColumn("#", 0); addColumn("类型", 1); addColumn("耗时", 2); addColumn("SQL 摘要", 4); addColumn("结果", 3);
                 resultTable.getColumns().get(0).setPrefWidth(50); resultTable.getColumns().get(1).setPrefWidth(90);
-                resultTable.getColumns().get(2).setPrefWidth(90); resultTable.getColumns().get(3).setPrefWidth(440);
+                resultTable.getColumns().get(2).setPrefWidth(90); resultTable.getColumns().get(3).setPrefWidth(300);
+                resultTable.getColumns().get(4).setPrefWidth(320);
                 scriptDetails.display(report); resultPane.setText("结果 · 执行概览");
             } else {
                 var outcome = selection.outcome();

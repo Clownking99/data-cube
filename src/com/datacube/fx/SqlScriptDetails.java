@@ -83,7 +83,7 @@ final class SqlScriptDetails implements AutoCloseable {
         ObservableList<ObservableList<Object>> rows = FXCollections.observableArrayList();
         for (Entry entry : report.entries()) {
             ObservableList<Object> row = FXCollections.observableArrayList(entry.index(), entry.status(),
-                    entry.elapsedMillis() + "ms", entry.summary());
+                    entry.elapsedMillis() + "ms", entry.summary(), entry.sqlPreview());
             entries.put(row, entry); rows.add(row);
         }
         sourceRows = List.copyOf(rows);

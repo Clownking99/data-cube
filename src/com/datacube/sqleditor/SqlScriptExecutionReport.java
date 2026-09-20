@@ -11,6 +11,7 @@ public record SqlScriptExecutionReport(List<Entry> entries, int returned, int no
     public static final int MAX_ENTRIES = 1000;
     public static final int MAX_FIELD_UNITS = 16_384;
     public static final int MAX_TEXT_UNITS = 1_048_576;
+    public static final int MAX_SQL_PREVIEW_UNITS = 120;
 
     public SqlScriptExecutionReport { entries = List.copyOf(entries); }
 
@@ -41,6 +42,14 @@ public record SqlScriptExecutionReport(List<Entry> entries, int returned, int no
             int end = safeEnd(description, 80);
             return description.substring(0, end).replace('\n', ' ').replace('\r', ' ')
                     + (end < description.length() || error.truncated() ? "…" : "");
+        }
+
+        /** Display only: flatten lines without parsing comments, literals or executable SQL. */
+        public String sqlPreview() {
+            String flattened = sql.value().replaceAll("\\R|\\t", " ").strip();
+            if (flattened.isEmpty()) return sql.truncated() ? "SQL 因显示上限省略" : "未提供 SQL";
+            int end = safeEnd(flattened, MAX_SQL_PREVIEW_UNITS);
+            return flattened.substring(0, end) + (end < flattened.length() || sql.truncated() ? "…" : "");
         }
     }
 
@@ -74,7 +83,7 @@ public record SqlScriptExecutionReport(List<Entry> entries, int returned, int no
     }
 
     public String displayNotice() {
-        return "选择一条摘要，查看结果或执行详情；Enter 打开详情（只读）"
+        return "SQL 摘要仅供浏览；选择一条后查看结果，或 Enter 打开详情（只读）"
                 + (returned > entries.size() ? "；仅显示前 " + entries.size() + " 条" : "");
     }
 
