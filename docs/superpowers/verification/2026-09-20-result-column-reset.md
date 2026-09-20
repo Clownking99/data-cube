@@ -53,4 +53,7 @@
 
 ## 本地集成
 
-待本地快进 main 后追加实际提交与复验结果；不触碰用户自有 `.testagent/`。
+- 实现提交 `921411d`；确认 root 为 main `2ada458` 且跟踪文件/暂存区干净后，`git merge --ff-only codex/result-column-reset` 成功。用户自有 `.testagent/` 未读取、修改或暂存。
+- main 同样设置 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`，执行以上四类定向测试并追加 `jpackageImage '-PappVersion=0.0.0'`；1 分钟 exit 0，100 项全通过、无失败/错误/跳过，开发镜像重建完成。
+- 使用 `jimage extract --include 'glob:/com.datacube/**'` 分别提取两个开发镜像的生产模块。按相对路径与 SHA-256 比较，各 827 文件/812 class，0 差异、0 Fixture 类；main 与已验收镜像的生产模块逐文件一致。
+- 两份生产启动配置仍为 `com.datacube/com.datacube.DataCubeFx`，SHA-256 均为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`，没有 fixture patch 或一次性 profile。随后仅补交本验收文档，不再改生产代码。
