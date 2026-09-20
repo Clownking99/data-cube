@@ -19,6 +19,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.SplitMenuButton;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.FlowPane;
@@ -65,7 +66,7 @@ public final class SqlResultToolbar {
     private final Button applyDatabase = new Button("数据库筛选");
     private final MenuButton copy = new MenuButton("复制");
     private final Button clear = new Button("清除筛选");
-    private final Button viewCell = new Button("查看单元格");
+    private final SplitMenuButton viewCell = new SplitMenuButton();
     private final Label summary = new Label();
     private final PauseTransition searchDebounce =
             new PauseTransition(Duration.millis(SEARCH_DEBOUNCE_MILLIS));
@@ -90,9 +91,15 @@ public final class SqlResultToolbar {
         return root;
     }
 
+    void configureViewMenu(List<MenuItem> items, Runnable beforeShowing) {
+        viewCell.getItems().setAll(items);
+        viewCell.setOnShowing(event -> beforeShowing.run());
+    }
+
     /** Maps one immutable state snapshot to controls without causing an action callback. */
     public void render(ResultFilterState.Snapshot snapshot) {
         Objects.requireNonNull(snapshot, "snapshot");
+        viewCell.hide();
         searchDebounce.stop();
         rendering = true;
         try {
@@ -107,7 +114,8 @@ public final class SqlResultToolbar {
         search.setDisable(!hasQuery);
         addCondition.setDisable(!hasQuery);
         copy.setDisable(!hasQuery);
-        viewCell.setDisable(!hasQuery || snapshot.visibleRowIndexes().isEmpty());
+        // The drop-down can clear sorting even when filtering leaves zero rows.
+        viewCell.setDisable(!hasQuery);
         rebuildConditionChips(snapshot, hasQuery);
 
         String applyDisabledReason = applyDisabledReason(snapshot, hasQuery);
@@ -165,8 +173,14 @@ public final class SqlResultToolbar {
         clear.setOnAction(ignored -> actions.clearFilters().run());
 
         viewCell.setId("sql-result-view-cell");
-        viewCell.setTooltip(new Tooltip("先选择数据单元格；只读查看焦点格的已加载内容，不重新查询"));
+        viewCell.setText("查看单元格");
+        viewCell.setAccessibleText("查看单元格及更多结果操作");
+        viewCell.setAccessibleHelp("主按钮查看单元格；聚焦后按向下键打开查看整行、定位行和恢复原始行序菜单");
+        viewCell.setTooltip(new Tooltip("查看选中单元格；下拉可查看整行、定位行或恢复原始行序，仅操作已加载结果"));
         viewCell.setOnAction(ignored -> actions.viewCell().run());
+        root.disabledProperty().addListener((ignored, oldValue, disabled) -> {
+            if (disabled) viewCell.hide();
+        });
 
         conditions.setAlignment(Pos.CENTER_LEFT);
         conditions.setMinWidth(0);

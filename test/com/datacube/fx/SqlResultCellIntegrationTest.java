@@ -575,7 +575,7 @@ class SqlResultCellIntegrationTest {
             var column = table.getColumns().stream().filter(c -> Integer.valueOf(sourceColumn).equals(c.getUserData())).findFirst().orElseThrow();
             table.getSelectionModel().clearAndSelect(row, column); table.getFocusModel().focus(row, column);
         }
-        Button button() { return (Button) pane.getNode().lookup("#sql-result-view-cell"); }
+        javafx.scene.control.SplitMenuButton button() { return (javafx.scene.control.SplitMenuButton) pane.getNode().lookup("#sql-result-view-cell"); }
         MenuItem menu() { return table.getContextMenu().getItems().stream().filter(i -> "sql-result-view-cell-menu".equals(i.getId())).findFirst().orElseThrow(); }
         ResultCellDialog dialog() { return (ResultCellDialog) field(pane, "resultCellDialog"); }
         MenuItem rowMenu() { return table.getContextMenu().getItems().stream().filter(i -> "sql-result-view-row-menu".equals(i.getId())).findFirst().orElseThrow(); }

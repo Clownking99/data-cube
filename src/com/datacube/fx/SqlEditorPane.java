@@ -1480,7 +1480,10 @@ public final class SqlEditorPane implements AutoCloseable {
                 this::onRemoveResultFilterCondition,
                 this::onApplyDatabaseFilter,
                 this::onClearResultFilters,
-                this::copyResultSelection, this::showResultCell), resultColumnMenu.getNode(), resultRowDisplay.getNode());
+                this::copyResultSelection, () -> {
+                    if (resultViewMenuAllowed(resultStatusRevision)) showResultCell();
+                }), resultColumnMenu.getNode(), resultRowDisplay.getNode());
+        configureResultViewMenu();
         renderResultFilterToolbar();
         batchResults = new SqlBatchResults(this::resultCellViewingAllowed, this::showBatchSelection);
         scriptDetails = new SqlScriptDetails(resultTable, this::resultCellViewingAllowed, batchResults::selectResult);
@@ -2103,6 +2106,42 @@ public final class SqlEditorPane implements AutoCloseable {
             case TIMEOUT -> "数据库筛选超时";
             case SQL_ERROR -> "数据库筛选执行失败";
         };
+    }
+
+    private boolean resultViewMenuAllowed(long expectedRevision) {
+        return resultCellViewingAllowed() && !resultToolbar.getNode().isDisabled()
+                && expectedRevision == resultStatusRevision && displayedResult != null
+                && displayedResult.kind == QueryResult.Kind.QUERY
+                && resultFilterState.snapshot().activeResult() == displayedResult;
+    }
+
+    private void configureResultViewMenu() {
+        MenuItem cell = new MenuItem("查看当前单元格");
+        cell.setId("sql-result-view-cell-action");
+        MenuItem row = new MenuItem("查看当前行（可见列）");
+        row.setId("sql-result-view-row-action");
+        MenuItem locate = new MenuItem("定位到行…");
+        locate.setId("sql-result-locate-row-action");
+        MenuItem reset = new MenuItem("恢复原始行序");
+        reset.setId("sql-result-reset-order-action");
+        resultToolbar.configureViewMenu(List.of(cell, row, locate, reset), () -> {
+            // Keep only a revision in delayed actions, never a replaced result or its rows.
+            long revision = resultStatusRevision;
+            boolean allowed = resultViewMenuAllowed(revision);
+            boolean selected = allowed && selectedResultCellPosition() != null;
+            cell.setDisable(!selected);
+            row.setDisable(!selected);
+            locate.setDisable(!allowed || resultTable.getItems().isEmpty()
+                    || resultTable.getVisibleLeafColumns().stream().noneMatch(c -> c.getUserData() instanceof Integer));
+            reset.setDisable(!canResetResultOrder(revision));
+            cell.setOnAction(event -> { if (resultViewMenuAllowed(revision)) showResultCell(); });
+            row.setOnAction(event -> { if (resultViewMenuAllowed(revision)) showResultRow(); });
+            locate.setOnAction(event -> { if (resultViewMenuAllowed(revision)) showResultRowLocator(); });
+            reset.setOnAction(event -> {
+                resetResultOrder(revision);
+                reset.setDisable(!canResetResultOrder(revision));
+            });
+        });
     }
 
     private void showResultRowLocator() {
