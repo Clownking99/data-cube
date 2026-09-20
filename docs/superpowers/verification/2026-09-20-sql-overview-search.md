@@ -43,7 +43,20 @@
 
 - 2 分 40 秒 exit 0：主测试 3,152 项，其中 3,149 通过、3 项既有 live 跳过、0 failures/errors。新增 40 项全部纳入。buildSrc 8 项本轮已通过，本次无源码变化为 UP-TO-DATE，报告无失败/错误/跳过。
 - 开发镜像成功；保留既有 unchecked 编译、`JAVA_TOOL_OPTIONS` 与 JEP 493 辅助提示，最终构建成功。自审已逐项检查上表断言与生产差异，之后未再改生产代码。
-- 本地 main 集成及生产模块一致性在实际完成后补记。先前失败全量没有被计为成功证据。
+- 先前失败全量没有被计为成功证据。最终版本已按以下步骤本地集成。
+
+## 本地 main 复验
+
+- 实现提交 `b81c41d`，功能分支跟踪文件干净。确认 root main 仍为 `0a419a0`，跟踪文件及暂存区干净后，`git merge --ff-only codex/sql-overview-search` 本地快进成功；既有未跟踪 `.testagent/` 未读取、修改或暂存。
+- main 设置同样的 `JAVA_TOOL_OPTIONS` 后运行以下命令，50 秒 exit 0：13 类 299 项全部通过，0 failures/errors/skips，开发镜像重建成功。
+
+```powershell
+.\gradlew.bat test --tests com.datacube.fx.SqlOverviewSearchTest --tests com.datacube.fx.SqlOverviewDurationSortTest --tests com.datacube.fx.SqlOverviewPreviewTest --tests com.datacube.sqleditor.SqlScriptPreviewTest --tests com.datacube.fx.SqlOverviewFailureFilterTest --tests com.datacube.fx.SqlOverviewResultNavigationTest --tests com.datacube.fx.SqlScriptDetailsIntegrationTest --tests com.datacube.fx.SqlBatchResultsIntegrationTest --tests com.datacube.fx.SqlBatchDetailsIntegrationTest --tests com.datacube.fx.SqlBatchFailureNavigationTest --tests com.datacube.fx.SqlScriptDetailFindTest --tests com.datacube.fx.SqlBatchResultsTest --tests com.datacube.sqleditor.SqlScriptExecutionReportTest jpackageImage '-PappVersion=0.0.0' --no-daemon --console=plain
+```
+
+- 生产模块分别提取至 main 的 `build/overview-search-main-module` 与 worktree 的 `build/overview-search-module`；按相对路径及 SHA-256 比较，各 825 文件、810 class，0 差异、0 Fixture 类。
+- 双方启动配置仍为生产入口 `com.datacube/com.datacube.DataCubeFx`，无 fixture patch 或一次性 profile；SHA-256 均为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`。`git diff --check` 通过。
+- 这里只完成自动验证与本地集成，不补记任何未执行的原生桌面或发布验收。
 
 ## 原生桌面待验
 
