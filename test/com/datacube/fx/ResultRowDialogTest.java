@@ -108,7 +108,7 @@ class ResultRowDialogTest {
                 assertTrue(label(dialog, "summary").getText().contains("正文已截断"));
                 assertTrue(label(dialog, "detail").getText().contains("列名或类型名过长"));
                 assertFalse(fields(dialog).getColumns().getFirst().getCellData(0).toString().contains("\n"));
-                for (String id : List.of("identity", "query", "clear", "filter-status", "fields", "metadata", "summary", "boundary", "wrap", "text", "close")) {
+                for (String id : List.of("identity", "query", "clear", "hide-null", "filter-status", "fields", "metadata", "summary", "boundary", "wrap", "text", "close")) {
                     Region node = (Region) root.lookup("#result-row-" + id); var bounds = node.localToScene(node.getLayoutBounds());
                     assertTrue(bounds.getMinX() >= -1 && bounds.getMaxX() <= root.getWidth() + 1, id);
                     assertTrue(bounds.getMinY() >= -1 && bounds.getMaxY() <= root.getHeight() + 1, id);

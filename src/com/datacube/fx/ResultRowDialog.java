@@ -68,9 +68,13 @@ final class ResultRowDialog extends Dialog<Void> {
         TextField query = new TextField(); query.setId("result-row-query");
         query.setPromptText("按字段名筛选（不搜索值）"); query.setAccessibleText("按快照字段名筛选");
         query.setMinWidth(80); HBox.setHgrow(query, Priority.ALWAYS);
-        Button clear = new Button("清空"); clear.setId("result-row-clear"); clear.setMinWidth(Region.USE_PREF_SIZE);
-        clear.disableProperty().bind(query.textProperty().isEmpty());
-        clear.setOnAction(event -> { query.clear(); query.requestFocus(); });
+        CheckBox hideNull = new CheckBox("隐藏 NULL 字段"); hideNull.setId("result-row-hide-null");
+        hideNull.setMinWidth(Region.USE_PREF_SIZE);
+        hideNull.setTooltip(new javafx.scene.control.Tooltip("仅隐藏快照中的数据库 NULL；空字符串、空白和文字 NULL 保留。不改变原结果或导出范围。"));
+        Button clear = new Button("清除筛选"); clear.setId("result-row-clear"); clear.setMinWidth(Region.USE_PREF_SIZE);
+        clear.setTooltip(new javafx.scene.control.Tooltip("清除字段名与隐藏 NULL 条件；保留正文查找词。"));
+        clear.disableProperty().bind(query.textProperty().isEmpty().and(hideNull.selectedProperty().not()));
+        clear.setOnAction(event -> { query.clear(); hideNull.setSelected(false); query.requestFocus(); });
         Label filterStatus = label("result-row-filter-status", "匹配 " + snapshot.fields().size() + " / " + snapshot.fields().size() + " 个快照字段");
         query.setTooltip(new javafx.scene.control.Tooltip("忽略大小写的字面匹配；最多 256 UTF-16 单元。Ctrl+F 聚焦，Enter / ↓ 进入字段列表。"));
         // Replacing table items can emit transient selections; never render a different duplicate.
@@ -78,11 +82,12 @@ final class ResultRowDialog extends Dialog<Void> {
         fields.getSelectionModel().selectedItemProperty().addListener((o, before, field) -> {
             if (!filtering[0]) renderField(field, detail, summary, value);
         });
-        query.textProperty().addListener((o, before, after) -> {
-            String raw = Objects.requireNonNullElse(after, "");
+        Runnable filterFields = () -> {
+            String raw = Objects.requireNonNullElse(query.getText(), "");
             boolean tooLong = raw.length() > MAX_QUERY_LENGTH;
             String needle = tooLong ? "" : raw.strip().toLowerCase(Locale.ROOT);
             var matches = tooLong ? List.<ResultCellPreview>of() : snapshot.fields().stream()
+                    .filter(field -> !hideNull.isSelected() || !field.nullValue())
                     .filter(field -> singleLine(field.label()).toLowerCase(Locale.ROOT).contains(needle)).toList();
             var selected = fields.getSelectionModel().getSelectedItem();
             boolean keep = selected != null && matches.stream().anyMatch(field -> field == selected);
@@ -99,11 +104,15 @@ final class ResultRowDialog extends Dialog<Void> {
                 if (tooLong) detail.setText("请缩短查找词后选择字段。");
                 else if (matches.isEmpty()) detail.setText("没有匹配的字段。");
             }
-            empty.setText(tooLong ? "查找词过长，请缩短后重试" : "没有匹配的字段");
+            empty.setText(tooLong ? "查找词过长，请缩短后重试"
+                    : hideNull.isSelected() ? "没有匹配的字段（已隐藏 NULL）" : "没有匹配的字段");
             filterStatus.setText(tooLong ? "查找词过长：最多 256 个 UTF-16 单元，请缩短后重试。"
                     : "匹配 " + matches.size() + " / " + snapshot.fields().size() + " 个快照字段");
-        });
-        VBox content = new VBox(8, identity, new HBox(8, query, clear), filterStatus, fields, metadata, summary, boundary, find, wrap, value);
+        };
+        query.textProperty().addListener((o, before, after) -> filterFields.run());
+        hideNull.selectedProperty().addListener((o, before, after) -> filterFields.run());
+        var filters = new javafx.scene.layout.FlowPane(12, 4, hideNull, filterStatus);
+        VBox content = new VBox(8, identity, new HBox(8, query, clear), filters, fields, metadata, summary, boundary, find, wrap, value);
         content.setId("result-row-content"); content.setPrefWidth(680); content.setMinWidth(320);
         VBox.setVgrow(value, Priority.ALWAYS); getDialogPane().setContent(content);
         var closeType = new ButtonType("关闭", ButtonBar.ButtonData.CANCEL_CLOSE); getDialogPane().getButtonTypes().add(closeType);
