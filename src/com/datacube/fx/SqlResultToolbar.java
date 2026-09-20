@@ -10,11 +10,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntConsumer;
 import javafx.animation.PauseTransition;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
@@ -22,6 +24,8 @@ import javafx.scene.control.MenuItem;
 import javafx.scene.control.SplitMenuButton;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
@@ -96,6 +100,34 @@ public final class SqlResultToolbar {
         viewCell.setOnShowing(event -> beforeShowing.run());
     }
 
+    /** Called before SQL-text find handling, only while this editor displays a query. */
+    boolean handleSearchKey(KeyEvent event, boolean findShortcut, Node table, BooleanSupplier allowed) {
+        if (!(event.getTarget() instanceof Node target)) return false;
+        boolean find = findShortcut && (within(target, table) || within(target, root));
+        boolean back = event.getCode() == KeyCode.ESCAPE && !event.isControlDown() && !event.isAltDown()
+                && !event.isShiftDown() && !event.isMetaDown() && within(target, search);
+        if (!find && !back) return false;
+        // A blocked result shortcut must not fall through and unexpectedly reveal the SQL editor.
+        if (allowed.getAsBoolean() && !search.isDisabled() && root.isVisible() && root.getScene() != null) {
+            if (find) {
+                search.requestFocus();
+                search.selectAll();
+            } else {
+                commitSearchInput();
+                if (allowed.getAsBoolean()) table.requestFocus();
+            }
+        }
+        event.consume();
+        return true;
+    }
+
+    private static boolean within(Node target, Node ancestor) {
+        for (Node node = target; node != null; node = node.getParent()) {
+            if (node == ancestor) return true;
+        }
+        return false;
+    }
+
     /** Maps one immutable state snapshot to controls without causing an action callback. */
     public void render(ResultFilterState.Snapshot snapshot) {
         Objects.requireNonNull(snapshot, "snapshot");
@@ -137,6 +169,9 @@ public final class SqlResultToolbar {
         search.setId("sql-result-search");
         search.setPromptText("搜索当前结果…");
         search.setAccessibleText("搜索当前结果");
+        String searchHelp = "仅搜索当前已加载的结果行，不重新查询。结果区内使用查找快捷键聚焦（默认 Ctrl+F，跟随设置）；Esc 返回结果表并保留筛选。";
+        search.setTooltip(new Tooltip(searchHelp));
+        search.setAccessibleHelp(searchHelp);
         search.setPrefWidth(220);
         search.setMinWidth(Region.USE_PREF_SIZE);
         search.textProperty().addListener((ignored, oldValue, newValue) -> {

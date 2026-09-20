@@ -1385,6 +1385,10 @@ public final class SqlEditorPane implements AutoCloseable {
                         && !tasks.isClosed() && (fileController == null || !fileController.isBusy()),
                 () -> { autoComplete.hide(); findBar.hide(); });
         root.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (resultToolbar != null && displayedResult != null && displayedResult.kind == QueryResult.Kind.QUERY
+                    && resultPane.getContent() == resultTable
+                    && resultToolbar.handleSearchKey(event, shortcuts.get(ShortcutAction.SQL_FIND).match(event),
+                            resultTable, () -> resultViewMenuAllowed(resultStatusRevision))) return;
             if (!draftEditingBlocked() && shortcuts.get(ShortcutAction.SQL_FIND).match(event)) {
                 if (!panelLayout.revealEditor()) return;
                 goToLineBar.hide(false);
