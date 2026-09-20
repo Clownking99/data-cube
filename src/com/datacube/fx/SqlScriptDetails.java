@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import javafx.beans.InvalidationListener;
 import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -44,15 +45,17 @@ final class SqlScriptDetails implements AutoCloseable {
     private final CheckBox onlyFailures = new CheckBox("仅看异常");
     private final TextField query = new TextField();
     private final Button clearQuery = new Button("清除关键词");
+    private final Button resetOrder = new Button("恢复执行顺序");
     private final HBox search = new HBox(4, query, clearQuery);
     private final Label count = new Label();
     private final Label notice = new Label();
-    private final FlowPane bar = new FlowPane(8, 4, result, button, onlyFailures, search, count, notice);
+    private final FlowPane bar = new FlowPane(8, 4, result, button, resetOrder, onlyFailures, search, count, notice);
     private List<ObservableList<Object>> sourceRows = List.of();
     private boolean filteringFailures;
     private boolean updatingQuery;
     private boolean queryRejected;
     private final ChangeListener<ObservableList<Object>> selection = (obs, before, after) -> refresh();
+    private final InvalidationListener sorting = ignored -> refresh();
     private final EventHandler<KeyEvent> keys = event -> {
         if (event.getCode() == KeyCode.ENTER && !event.isShiftDown() && !event.isControlDown()
                 && !event.isAltDown() && !event.isMetaDown() && selectedEntry() != null && canOpen()) {
@@ -72,6 +75,12 @@ final class SqlScriptDetails implements AutoCloseable {
             if (!canOpen()) return;
             Entry entry = selectedEntry();
             if (entry != null) selectResult.accept(entry);
+        });
+        resetOrder.setId("sql-script-reset-order"); resetOrder.setMinWidth(Region.USE_PREF_SIZE);
+        resetOrder.setTooltip(new Tooltip("清除表头排序，恢复本批次已保留记录的执行顺序；保留关键词、异常条件和所选语句，不重新执行 SQL。"));
+        resetOrder.setOnAction(event -> {
+            if (!canOpen() || !needsOrderReset()) return;
+            closeDetails(); applyFilter(false);
         });
         onlyFailures.setId("sql-script-only-failures"); onlyFailures.setMinWidth(Region.USE_PREF_SIZE);
         onlyFailures.setTooltip(new Tooltip("只显示本次概览已保留的失败、超时和取消；不执行 SQL。离开概览后重置。"));
@@ -113,6 +122,7 @@ final class SqlScriptDetails implements AutoCloseable {
         notice.maxWidthProperty().bind(javafx.beans.binding.Bindings.min(460, bar.widthProperty()));
         button.setOnAction(event -> showSelected());
         table.getSelectionModel().selectedItemProperty().addListener(selection);
+        table.getSortOrder().addListener(sorting);
         table.addEventHandler(KeyEvent.KEY_PRESSED, keys);
         clear();
     }
@@ -133,8 +143,13 @@ final class SqlScriptDetails implements AutoCloseable {
     }
 
     private void applyFilter() {
+        applyFilter(true);
+    }
+
+    private void applyFilter(boolean keepSorting) {
         var selectedRow = table.getSelectionModel().getSelectedItem();
         var sortOrder = List.copyOf(table.getSortOrder());
+        if (!keepSorting) sortOrder = List.of();
         String term = normalizedQuery();
         var visible = sourceRows.stream().filter(row -> (!filteringFailures
                 || entries.get(row).kind() == QueryResult.Kind.ERROR)
@@ -177,12 +192,25 @@ final class SqlScriptDetails implements AutoCloseable {
         return !closed && bar.isVisible() && !bar.isDisabled() && !table.isDisabled() && allowed.getAsBoolean();
     }
 
+    private boolean needsOrderReset() {
+        if (!table.getSortOrder().isEmpty()) return true;
+        // Removing the last TableView sort arrow does not undo an in-place sort.
+        int next = 0;
+        for (var row : table.getItems()) {
+            while (next < sourceRows.size() && sourceRows.get(next) != row) next++;
+            if (next == sourceRows.size()) return true;
+            next++;
+        }
+        return false;
+    }
+
     void refresh() {
         boolean disabled = selectedEntry() == null || !canOpen();
         button.setDisable(disabled); result.setDisable(disabled);
         onlyFailures.setDisable(!canOpen());
         query.setDisable(!canOpen());
         clearQuery.setDisable(!canOpen() || (!queryRejected && (query.getText() == null || query.getText().isEmpty())));
+        resetOrder.setDisable(!canOpen() || !needsOrderReset());
     }
 
     void showSelected() {
@@ -213,6 +241,7 @@ final class SqlScriptDetails implements AutoCloseable {
         if (closed) return;
         closed = true; clear();
         table.getSelectionModel().selectedItemProperty().removeListener(selection);
+        table.getSortOrder().removeListener(sorting);
         table.removeEventHandler(KeyEvent.KEY_PRESSED, keys);
     }
 }
