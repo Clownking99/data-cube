@@ -54,4 +54,19 @@ fixture 验证源 SQL 文件保持原内容，provider/session/metadata/network 
 
 ## 集成
 
-本轮实现保留在独立分支，等待桌面补验后合回本地 main；当前未合并、未推送、未打 tag。用户原有 `.testagent/` 保持原样。`git diff --check` 通过。
+首轮实现提交 `f1a8882`，当时保留在独立分支等待桌面补验，没有合并、推送或打 tag。
+
+2026-09-20 续轮用户要求继续推进。重新选择既有隔离窗口，截图仍黑屏；按 computer-use 安全要求停止输入，不尝试其他方式操作锁定桌面，再次请求用户解锁。原生表头/恢复/键盘/主题验收仍未完成。
+
+为推进已通过全量验证的实现，本轮将本地集成与原生/发布验收分开记录。确认 main 为 `8e0fc8a`、无跟踪或暂存修改后，快进到 `f1a8882`；保留 `.testagent/` 未跟踪目录，没有读取或修改它。合并后的 main 重新运行五类定向测试和开发打包：
+
+```powershell
+$env:JAVA_TOOL_OPTIONS = '-Djava.awt.headless=false'
+.\gradlew.bat test --tests com.datacube.fx.SqlOverviewResetOrderTest --tests com.datacube.fx.SqlOverviewDurationSortTest --tests com.datacube.fx.SqlOverviewSearchTest --tests com.datacube.fx.SqlOverviewFailureFilterTest --tests com.datacube.fx.SqlScriptDetailsIntegrationTest jpackageImage '-PappVersion=0.0.0' --no-daemon --console=plain
+```
+
+59 秒、exit 0 / BUILD SUCCESSFUL，XML 确认 129 项全部通过，无失败/错误/跳过。复核 worktree 的上一轮全量 XML 仍为 3,214 通过、3 live 跳过；没有把这次定向重跑称为新的全量测试。
+
+从两处镜像提取 `com.datacube`，按相对路径逐文件比较 SHA-256：均为 827 个文件、812 个 class，0 差异、0 Fixture。main 生产启动配置仍使用原入口，SHA-256 为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`。证明本地集成没有混入测试入口或改变已验证生产模块，不代表原生交互验证已完成。
+
+后续仅补记录的文档提交随分支快进 main；生产代码未再变化。`git diff --check` 通过。仍未推送、未打 tag、未正式发布；桌面解锁后继续补验。
