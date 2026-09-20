@@ -19,7 +19,7 @@
 - 实现后：两类新增 23 项，加概览筛选/查看结果、脚本详情和报告相关回归，共 118 项全部通过，19 秒 exit 0。
 - 自审：原结果摘要仍保留在行值索引 3，新 SQL 摘要使用索引 4；视觉列次序为编号/类型/耗时/SQL 摘要/结果。未改任何查询执行、快照保留上限或详情文本来源。检查测试的具体输出、身份断言、无副作用和截断边界，不按测试数量代替行为证据。
 
-## 最终验证
+## 自动验证
 
 PowerShell 设置 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false` 后运行：
 
@@ -31,11 +31,26 @@ PowerShell 设置 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false` 后运行：
 - 生产镜像保持 `com.datacube/com.datacube.DataCubeFx` 入口；测试夹具 jar 只 patch 到 `build/overview-preview-desktop-image` 独立副本，并指定一次性 `script-details-desktop-profile`。
 - 保留既有 unchecked 编译、`JAVA_TOOL_OPTIONS` 和 JEP 493 相关打包辅助提示，最终构建成功。`git diff --check` 通过。
 
-## 隔离桌面与集成状态
+## 隔离桌面与首次本地检查点
 
 首次启动隔离镜像遇到 `GetCursorPos failed: 拒绝访问。 (0x80070005)`，已停止 UI 输入并请用户解锁。后续“继续推进产品”时重新检查，隔离窗口不存在，启动仍返回相同错误；没有重复输入或尝试绕过桌面限制。
 
 - 再次核对现有全量 XML：3,065 total / 3,062 passed / 3 skipped / 0 failures/errors；本次没有将旧结果冒充重新运行。
 - 重新审查生产差异和两类回归，未修改已经测试的源代码。生产 `com.datacube` 提取目录包含 824 文件、809 class、0 Fixture 类；生产配置 SHA-256 为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`。本轮隔离程序进程数为 0。
 - 将实现、测试和验收边界保存为本地分支检查点，不把桌面验收标记完成；待桌面恢复后验证摘要列排序、原始多行详情、明暗窄窗横向滚动，再快进本地 main 并复验。
-- main 保持 `d3707dc`，不推送、不打 tag，不修改 `.testagent/`。
+- 此检查点时 main 保持 `d3707dc`，不推送、不打 tag，不修改 `.testagent/`。
+
+## 本地集成（桌面验收仍待完成）
+
+用户再次要求继续推进后，隔离窗口仍不存在，启动再次返回同一桌面访问错误。停止 UI 重试，不绕过桌面限制。考虑本增量只涉及有界只读展示、自动回归及打包已通过，调整执行顺序：先完成本地集成和主分支复验，保留桌面待验收项，不把它当作已验收或已发布。
+
+- 核对 main 仍为 `d3707dc`、跟踪文件及暂存区干净、功能分支干净，随后 `git merge --ff-only codex/sql-overview-preview` 快进至实现提交 `53ff5d6`。
+- 主分支运行以下命令（`JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`），1 分 11 秒 exit 0：11 类 212 项全部通过，无失败、错误或跳过；开发镜像重建成功。
+
+```powershell
+.\gradlew.bat test --tests com.datacube.fx.SqlOverviewPreviewTest --tests com.datacube.sqleditor.SqlScriptPreviewTest --tests com.datacube.fx.SqlOverviewFailureFilterTest --tests com.datacube.fx.SqlOverviewResultNavigationTest --tests com.datacube.fx.SqlScriptDetailsIntegrationTest --tests com.datacube.fx.SqlBatchResultsIntegrationTest --tests com.datacube.fx.SqlBatchDetailsIntegrationTest --tests com.datacube.fx.SqlBatchFailureNavigationTest --tests com.datacube.fx.SqlScriptDetailFindTest --tests com.datacube.fx.SqlBatchResultsTest --tests com.datacube.sqleditor.SqlScriptExecutionReportTest jpackageImage '-PappVersion=0.0.0' --no-daemon --console=plain
+```
+
+- main 镜像提取至 `build/overview-preview-main-module`，与 worktree 已通过全量测试的生产模块按相对路径和 SHA-256 比对：双方 824 文件，809 class、0 Fixture、0 差异；生产启动配置哈希也完全相同。不是桌面验收证据。
+- `git diff --check` 通过，不修改 `.testagent/`，不推送、不打 tag；`0.0.0` 仅为本地开发镜像版本。
+- 待桌面恢复：补验 SQL 摘要列的鼠标排序、原生 Enter 对应原始多行 SQL、长摘要省略提示、明暗窄窗及横向滚动。已有自动布局/事件测试不能代替这些实测，不宣称 live 数据库、完整 AppShell、真实用户效率或发布已验证。
