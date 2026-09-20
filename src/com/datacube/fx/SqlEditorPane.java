@@ -1446,7 +1446,21 @@ public final class SqlEditorPane implements AutoCloseable {
         MenuItem locateRowItem = new MenuItem("定位到行…");
         locateRowItem.setId("sql-result-locate-row-menu");
         locateRowItem.setOnAction(event -> showResultRowLocator());
-        resultTable.setContextMenu(new ContextMenu(viewCellItem, viewRowItem, locateRowItem, copyItem, insertItem));
+        MenuItem resetOrderItem = new MenuItem("恢复原始行序");
+        resetOrderItem.setId("sql-result-reset-order-menu");
+        resetOrderItem.setDisable(true);
+        ContextMenu resultMenu = new ContextMenu(viewCellItem, viewRowItem, locateRowItem,
+                resetOrderItem, new SeparatorMenuItem(), copyItem, insertItem);
+        resultMenu.setOnShowing(event -> {
+            // Capture a revision, not the result itself: a closed menu must not retain a replaced result.
+            long expectedRevision = resultStatusRevision;
+            resetOrderItem.setDisable(!canResetResultOrder(expectedRevision));
+            resetOrderItem.setOnAction(action -> {
+                resetResultOrder(expectedRevision);
+                resetOrderItem.setDisable(!canResetResultOrder(expectedRevision));
+            });
+        });
+        resultTable.setContextMenu(resultMenu);
         // 执行计划文本区（等宽、只读、不换行）；与结果表格共用同一 TitledPane，按需切换。
         planArea = new TextArea();
         planArea.setEditable(false);
@@ -2129,6 +2143,52 @@ public final class SqlEditorPane implements AutoCloseable {
                 && !root.isDisabled() && !resultTable.isDisabled() && !running
                 && sessionOperations.snapshot().accepting() && !sessionOperations.snapshot().pending()
                 && resultPane.getContent() == resultTable;
+    }
+
+    private boolean canResetResultOrder(long expectedRevision) {
+        if (!resultCellViewingAllowed() || resultToolbar.getNode().isDisabled() || resultStatusRevision != expectedRevision
+                || displayedResult == null || displayedResult.kind != QueryResult.Kind.QUERY
+                || resultFilterState.snapshot().activeResult() != displayedResult) return false;
+        boolean changed = !resultTable.getSortOrder().isEmpty();
+        int previous = -1;
+        for (var row : resultTable.getItems()) {
+            Integer source = resultRowIndexes.get(row);
+            if (source == null || source < 0 || source >= displayedResult.rows.size()) return false;
+            if (source < previous) changed = true;
+            previous = source;
+        }
+        return changed;
+    }
+
+    private record ResultOrderCell(ObservableList<Object> row, TableColumn<ObservableList<Object>, ?> column) { }
+
+    private ResultOrderCell captureResultOrderCell(TablePosition<?, ?> position) {
+        int index = position.getRow();
+        var column = resultTable.getVisibleLeafColumns().stream()
+                .filter(candidate -> candidate == position.getTableColumn()).findFirst().orElse(null);
+        return index < 0 || index >= resultTable.getItems().size() || column == null
+                ? null : new ResultOrderCell(resultTable.getItems().get(index), column);
+    }
+
+    private void resetResultOrder(long expectedRevision) {
+        if (!canResetResultOrder(expectedRevision)) return;
+        var rows = resultTable.getItems();
+        var selected = new ArrayList<ResultOrderCell>();
+        for (var position : resultTable.getSelectionModel().getSelectedCells()) {
+            var cell = captureResultOrderCell(position);
+            if (cell != null) selected.add(cell);
+        }
+        var focused = captureResultOrderCell(resultTable.getFocusModel().getFocusedCell());
+        resultTable.getSortOrder().clear();
+        if (resultStatusRevision != expectedRevision || resultTable.getItems() != rows) return;
+        // Clearing the last sort arrow leaves TableView rows in place. Restore only the current subset.
+        FXCollections.sort(rows, Comparator.comparingInt(resultRowIndexes::get));
+        Map<ObservableList<Object>, Integer> positions = new IdentityHashMap<>();
+        for (int i = 0; i < rows.size(); i++) positions.put(rows.get(i), i);
+        resultTable.getSelectionModel().clearSelection();
+        for (var cell : selected) resultTable.getSelectionModel().select(positions.get(cell.row()), cell.column());
+        if (focused == null) resultTable.getFocusModel().focus(-1);
+        else resultTable.getFocusModel().focus(positions.get(focused.row()), focused.column());
     }
 
     private void showResultRow() {
