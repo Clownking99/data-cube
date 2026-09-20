@@ -60,4 +60,8 @@ $env:JAVA_TOOL_OPTIONS = '-Djava.awt.headless=false'
 
 ## 本地集成
 
-实现与验收在独立 worktree 完成，待按基线守卫快进 main 并复验。不推送、不打 tag。
+实现与验收提交 `ec8ced0`。确认 main 仍为 `9fa6ae1`，没有跟踪/暂存修改后快进合并；用户已有 `.testagent/` 未跟踪目录原样保留，没有读取、修改或暂存。
+
+main 设置相同 `JAVA_TOOL_OPTIONS`，执行以上五类定向测试并追加 `jpackageImage '-PappVersion=0.0.0'`：1 分 7 秒、exit 0 / BUILD SUCCESSFUL；XML 汇总 148 项全部通过，0 失败/错误/跳过。全量 3,237 通过及 3 live 跳过来自此前 worktree clean run，不将 main 定向重跑称为新的全量测试。
+
+使用 `jimage extract --include 'glob:/com.datacube/**'` 提取两处镜像的应用模块，按相对路径逐文件比较 SHA-256：各 828 个文件、813 个 class，0 差异、0 Fixture。main 生产配置哈希仍为上文 `AD4F0A4A...`，未混入测试入口或临时 profile。随后仅补本记录，生产代码不变；`git diff --check` 通过。未推送、未打 tag、未正式发布。
