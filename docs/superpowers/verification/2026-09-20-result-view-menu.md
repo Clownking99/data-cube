@@ -70,3 +70,11 @@ $env:JAVA_TOOL_OPTIONS = '-Djava.awt.headless=false'
 补验中的输入通道限制单列：初次 resize 后一次 `unknown screenshotId screenshot-0`，刷新截图后重试成功；单元格模态窗口通过宿主发送 Esc 未关闭，改用观察到的“关闭”按钮；行定位的可访问元素值设置报告 cached element 不可用，未改动输入，刷新后取消。未绕过工具输入路径，也未将这些尝试记为成功或推断为产品缺陷。工具栏菜单的 Esc、方向键和 Enter 则已直接观察通过。
 
 正常退出后合成 SQL SHA-256 仍为 `3E0C0DFB...`，无真实数据或剪贴板读写。Shift+F10 本身的旧限制保持不变，本轮验收的是工具栏替代路径；不代表 live 数据库、真实用户效率或正式发布验收。
+
+## main 本地集成复验
+
+补验文档提交 `4440868`；核对 main 仍为 `e3b6c03`、无跟踪文件或暂存修改后，`git merge --ff-only codex/sql-result-context-keyboard` 成功。原有 `.testagent/` 未跟踪目录保持原样。
+
+在 main 上设置相同 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`，执行上文五类定向测试并追加 `jpackageImage '-PappVersion=0.0.0'`。59 秒、exit 0 / BUILD SUCCESSFUL；XML 汇总 107 项全部通过，0 失败/错误/跳过，开发镜像构建成功。本轮未重跑全量，前文 3,257 通过 / 3 live 跳过来自此前 worktree clean run。
+
+使用 `jimage extract --include 'glob:/com.datacube/**'` 提取 main 与已验收 worktree 的应用模块，按相对路径逐文件比对 SHA-256：各 828 文件、813 class，0 差异、0 Fixture。main 生产配置哈希仍为 `AD4F0A4A...`，未引入测试入口或独立 profile。随后只补路线图与本记录，生产代码不变；`git diff --check` 通过。未推送、未打 tag、未正式发布。
