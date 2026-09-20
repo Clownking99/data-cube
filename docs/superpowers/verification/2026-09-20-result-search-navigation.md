@@ -39,8 +39,26 @@ $env:JAVA_TOOL_OPTIONS = '-Djava.awt.headless=false'
 - 生产配置 SHA-256：`AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`。
 - worktree 生产模块 SHA-256：`E0B0D8D0C8EB0611D4FDE0D7232F6FCA2533FD3AAAEDFB50C45A3AAC48D91A6A`。
 
-## 原生验收待补
+## 原生验收
 
 使用 computer-use 技能准备新的隔离副本 `build/result-search-navigation-desktop-20260920/DataCube`；仅该副本配置注入既有合成 fixture.jar，并指定独立 `script-details-desktop-profile`。生产配置未改。启动时桌面接口返回 `GetCursorPos failed: 拒绝访问 (0x80070005)`，刷新窗口列表未发现本轮窗口，独立路径进程检查也未发现运行实例；随后停止原生操作并请求解锁。
 
-因此本轮尚未观察原生 Ctrl+F → 输入 → Esc 的实际焦点、零匹配返回、仅结果模式与明暗窄窗，不能用 FX 自动事件及 CSS 断言代替这些结果。没有访问真实连接或执行 SQL。桌面恢复后从该隔离副本继续补验，不必重做已经成功的自动测试。
+用户随后确认桌面已解锁，本轮在同一隔离副本重新启动成功，完成以下补验：
+
+- 切换合成语句 #3 的两行结果，点击 message 单元格后原生 Ctrl+F 聚焦结果搜索；单元格内容没有带入，SQL 查找栏没有打开。
+- 输入 `second` 显示 1/2 行；Esc 后搜索词保留、焦点边框返回表格，无新增选中高亮。再次 Ctrl+F 全选 `second`。
+- 替换为 `absent` 显示 0/2 行；Esc 后仍能 Ctrl+F 返回搜索并全选词。Backspace 清空、Esc 后恢复两行。
+- 切换“仅看结果”，从表格 Ctrl+F 聚焦搜索，SQL 编辑区保持隐藏。
+- 暗色宽窗及窄窗、亮色窄窗下提示可读，搜索框和换行工具栏可见；亮色聚焦提示仍可读。
+- 顶部显式“查找”按钮从仅结果模式打开 SQL 查找；Esc 关闭后点击 SQL 编辑区再 Ctrl+F，仍打开 SQL 查找，不串到结果搜索。
+- Alt+F4 正常退出；后续窗口列表及独立路径进程检查均无本轮实例。合成 SQL 文件前后 SHA-256 一致：`3E0C0DFB331C462DC9B0325DA390A8B8381B5C7722F8260C455F3210DA07BDF4`。
+
+缩窗后一次截图缓存失效（unknown screenshotId），重新获取截图并重试一次后成功。辅助功能 focused_element 曾显示旧 Schema 输入框，与可见结果搜索焦点不一致；以当前截图和随后的实际搜索输入为依据，不沿用过期元素。没有访问真实连接、SQL 文件、历史、凭据或剪贴板，也未执行 SQL。原生验证不扩展为用户效率研究；即时防抖提交、改绑与关闭屏障的精细边界仍由上述自动回归证明。
+
+## main 集成复验
+
+实现 `06f0a14` 从 `026c6e4` 快进合入本地 main。合并后执行同样五类定向测试并附加 `jpackageImage -PappVersion=0.0.0`，1 分 17 秒、exit 0 / BUILD SUCCESSFUL，XML 核实 100 项全部通过，无跳过。
+
+生产模块提取到独立 `build/result-search-navigation-module-check-20260920` 比较：两边均 828 文件、813 class，813 class 全部逐字节相同，无 Fixture 类；唯一文件差异为 `theme-base.css` 的 CRLF/LF，规范化换行后内容完全一致，其余 827 文件逐字节一致。main 模块 SHA-256 为 `60D718D81933C04B0DE085A562CF69009C15A2FE98BC048A6A2ACE26F4C8B067`，生产配置哈希仍与上述相同。未把整模块哈希不同误称为整包逐字节一致。
+
+本轮本地代码、自动回归、开发镜像与隔离原生验收完成；未推送、未打 tag、未发布。用户已有 `.testagent/` 未触碰。
