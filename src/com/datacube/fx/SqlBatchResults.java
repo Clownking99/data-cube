@@ -18,12 +18,22 @@ import javafx.scene.layout.VBox;
 
 /** Owns this batch's already loaded results, never a session or a re-execution action. */
 final class SqlBatchResults implements AutoCloseable {
-    record Choice(ScriptOutcome outcome, SqlScriptExecutionReport.Entry detail, String label) {
+    /** A retained occurrence has identity even when all of its displayed values are equal. */
+    static final class Choice {
+        private final ScriptOutcome outcome;
+        private final SqlScriptExecutionReport.Entry detail;
+        private final String label;
+        Choice(ScriptOutcome outcome, SqlScriptExecutionReport.Entry detail, String label) {
+            this.outcome = outcome; this.detail = detail; this.label = label;
+        }
+        ScriptOutcome outcome() { return outcome; }
+        SqlScriptExecutionReport.Entry detail() { return detail; }
         @Override public String toString() { return label; }
     }
     private final ComboBox<Choice> choices = new ComboBox<>();
     private final Label summary = new Label();
     private final Button details = new Button("执行详情");
+    private final Button previousFailure = new Button("上一异常");
     private final Button nextFailure = new Button("下一异常");
     private final VBox bar;
     private final BooleanSupplier allowed;
@@ -43,15 +53,10 @@ final class SqlBatchResults implements AutoCloseable {
         details.setId("sql-batch-details"); details.setMinWidth(Region.USE_PREF_SIZE);
         details.setTooltip(new Tooltip("查看当前语句已返回的 SQL 和执行信息（只读，不重新执行）。执行概览请选择表格中的记录。"));
         details.setOnAction(event -> showDetails());
-        nextFailure.setId("sql-batch-next-failure"); nextFailure.setMinWidth(Region.USE_PREF_SIZE);
-        nextFailure.setTooltip(new Tooltip("按执行顺序定位下一条失败、超时或取消的已保留结果，末尾回到开头。\n"
-                + "没有其他异常时不可用；只切换结果，不重新执行 SQL。"));
-        nextFailure.setOnAction(event -> {
-            Choice target = nextFailureChoice();
-            if (target != null) choices.getSelectionModel().select(target);
-        });
+        configureFailureNavigation(previousFailure, "sql-batch-previous-failure", -1);
+        configureFailureNavigation(nextFailure, "sql-batch-next-failure", 1);
         var label = new Label("本次结果"); label.setMinWidth(Region.USE_PREF_SIZE);
-        var row = new HBox(8, label, choices, nextFailure, details); HBox.setHgrow(choices, Priority.ALWAYS);
+        var row = new HBox(8, label, choices, previousFailure, nextFailure, details); HBox.setHgrow(choices, Priority.ALWAYS);
         summary.setId("sql-batch-summary"); summary.setWrapText(true); summary.setMinHeight(Region.USE_PREF_SIZE);
         bar = new VBox(4, row, summary); bar.setId("sql-batch-results");
         bar.disabledProperty().addListener((obs, before, disabled) -> {
@@ -82,7 +87,7 @@ final class SqlBatchResults implements AutoCloseable {
                 || choices.getItems().stream().noneMatch(item -> item == selected)) return;
         for (int i = 0; i < choices.getItems().size(); i++) {
             if (choices.getItems().get(i).detail() == entry) {
-                // Selecting by object would choose the first equal record, not necessarily this entry.
+                // Use the retained occurrence's position, not its displayed statement number.
                 choices.getSelectionModel().select(i); return;
             }
         }
@@ -116,24 +121,39 @@ final class SqlBatchResults implements AutoCloseable {
                 && choices.getItems().stream().anyMatch(item -> item == selected);
     }
 
-    private Choice nextFailureChoice() {
+    private void configureFailureNavigation(Button button, String id, int direction) {
+        button.setId(id); button.setMinWidth(Region.USE_PREF_SIZE);
+        button.setTooltip(new Tooltip((direction < 0
+                ? "按执行顺序定位上一条失败、超时或取消的已保留结果，开头回到末尾。\n"
+                : "按执行顺序定位下一条失败、超时或取消的已保留结果，末尾回到开头。\n")
+                + "没有其他异常时不可用；只切换结果，不重新执行 SQL。"));
+        button.setOnAction(event -> {
+            int target = failureIndex(direction);
+            // Repeated statements may still be distinct results; preserve their positions.
+            if (target >= 0) choices.getSelectionModel().select(target);
+        });
+    }
+
+    private int failureIndex(int direction) {
         if (closed || !bar.isVisible() || bar.isDisabled() || !allowed.getAsBoolean()
-                || selected == null || choices.getValue() != selected) return null;
+                || selected == null || choices.getValue() != selected) return -1;
         var items = choices.getItems();
         int start = -1;
         for (int i = 0; i < items.size(); i++) if (items.get(i) == selected) { start = i; break; }
-        if (start < 0) return null;
+        if (start < 0) return -1;
         // Exclude the current choice: a sole current failure must not reset its view/dialog.
         for (int step = 1; step < items.size(); step++) {
-            Choice candidate = items.get((start + step) % items.size());
-            if (candidate.detail() != null && candidate.detail().kind() == QueryResult.Kind.ERROR) return candidate;
+            int target = Math.floorMod(start + direction * step, items.size());
+            Choice candidate = items.get(target);
+            if (candidate.detail() != null && candidate.detail().kind() == QueryResult.Kind.ERROR) return target;
         }
-        return null;
+        return -1;
     }
 
     private void refreshActions() {
         details.setDisable(!canShowDetails());
-        nextFailure.setDisable(nextFailureChoice() == null);
+        previousFailure.setDisable(failureIndex(-1) < 0);
+        nextFailure.setDisable(failureIndex(1) < 0);
     }
 
     private void showDetails() {
