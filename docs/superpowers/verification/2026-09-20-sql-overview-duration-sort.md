@@ -31,4 +31,16 @@ PowerShell 设置 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false` 后运行：
 - 2 分 38 秒 exit 0：主测试 3,073 项，其中 3,070 通过、3 项既有 live 跳过、0 failures/errors；buildSrc 8 项通过，无失败、错误或跳过。新增类 8 项纳入该全量结果。
 - 保留既有 unchecked 编译、`JAVA_TOOL_OPTIONS` 和 JEP 493 相关打包辅助提示，最终构建成功。自审后无生产修改，`git diff --check` 通过。
 - 本轮不重试受限的桌面通道；[上一轮 SQL 摘要待验清单](2026-09-20-sql-overview-preview.md)继续保留，恢复桌面后可一起补验耗时表头原生排序。不宣称原生交互、live 数据库或发布已验收。
-- 待提交并本地快进 main 后补记主分支复验。不推送、不打 tag；`0.0.0` 仅为本地开发镜像版本。
+- 不推送、不打 tag；`0.0.0` 仅为本地开发镜像版本。
+
+## 本地集成
+
+- 实现提交 `68f8704`，功能分支跟踪文件干净。确认 root main 仍为 `9d9d43c`、跟踪文件及暂存区干净后，`git merge --ff-only codex/sql-overview-duration-sort` 本地快进 main；未读取或修改既有未跟踪 `.testagent/`。
+- main 上运行以下命令，50 秒 exit 0：12 类 220 项全部通过，无失败/错误/跳过；开发镜像重建成功。同样使用 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`。
+
+```powershell
+.\gradlew.bat test --tests com.datacube.fx.SqlOverviewDurationSortTest --tests com.datacube.fx.SqlOverviewPreviewTest --tests com.datacube.sqleditor.SqlScriptPreviewTest --tests com.datacube.fx.SqlOverviewFailureFilterTest --tests com.datacube.fx.SqlOverviewResultNavigationTest --tests com.datacube.fx.SqlScriptDetailsIntegrationTest --tests com.datacube.fx.SqlBatchResultsIntegrationTest --tests com.datacube.fx.SqlBatchDetailsIntegrationTest --tests com.datacube.fx.SqlBatchFailureNavigationTest --tests com.datacube.fx.SqlScriptDetailFindTest --tests com.datacube.fx.SqlBatchResultsTest --tests com.datacube.sqleditor.SqlScriptExecutionReportTest jpackageImage '-PappVersion=0.0.0' --no-daemon --console=plain
+```
+
+- main 的生产 `com.datacube` 模块提取至 `build/overview-duration-main-module`，与 worktree 全量测试版本按相对路径及 SHA-256 比较：双方 825 文件、810 class，0 差异、0 Fixture 类；唯一新增生产类为概览内部耗时值。
+- 生产启动配置保持原入口，无 fixture patch 或一次性 profile，双方 SHA-256 均为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`。`git diff --check` 通过。此记录不补记任何未做的桌面验收。
