@@ -51,4 +51,14 @@ JavaFX 可访问性子节点偶有前一帧内容，本轮按每次输入后的�
 
 ## 集成
 
-本地 main 集成与合并后验证另记于本节；本轮不推送、不打 tag。
+实现提交 `888e569`，main 从 `7c7efe4` 快进合并。合并前确认 main 无跟踪/暂存改动；保留原有未跟踪 `.testagent/`，没有进入该目录。
+
+合并后的 main 重新运行同样四类定向测试并打包开发镜像：
+
+```powershell
+.\gradlew.bat test --tests com.datacube.fx.ResultRowNullFilterTest --tests com.datacube.fx.ResultRowDialogTest --tests com.datacube.fx.ResultRowTextFindTest --tests com.datacube.fx.SqlResultCellIntegrationTest jpackageImage '-PappVersion=0.0.0' --no-daemon --console=plain
+```
+
+1 分 1 秒，exit 0 / BUILD SUCCESSFUL；XML 确认 94 项全部通过，无跳过/失败/错误。将工作树与 main 镜像中的 `com.datacube` 模块分别提取，按相对路径逐文件比较 SHA-256：均 827 个文件、812 个 class，0 差异、0 Fixture。生产启动配置仍为原入口，SHA-256 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`。因此主分支生产模块与已进行原生验收的实现一致，测试入口未混入生产镜像。
+
+本记录随后以文档提交合入本地 main；生产代码未再改变。`git diff --check` 通过，不推送、不打 tag。
