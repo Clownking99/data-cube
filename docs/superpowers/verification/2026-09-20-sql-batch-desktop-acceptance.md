@@ -68,4 +68,12 @@ PowerShell 设置 `JAVA_TOOL_OPTIONS=-Djava.awt.headless=false`：
 
 ## 本地 main 集成
 
-集成结果完成后补记。
+- 实现提交 `9795594`。确认 root main 仍为 `b2e6b26`、跟踪文件与暂存区干净后，`git merge --ff-only codex/sql-overview-prompt` 快进成功。既有未跟踪 `.testagent/` 未读取、修改或暂存。
+- main 使用相同 `JAVA_TOOL_OPTIONS` 运行下列命令，54 秒 exit 0：4 类 128 项全部通过，0 failures/errors/skips；开发镜像重建成功。
+
+```powershell
+.\gradlew.bat test --tests com.datacube.fx.SqlOverviewSearchTest --tests com.datacube.fx.SqlScriptDetailFindTest --tests com.datacube.fx.SqlOverviewDurationSortTest --tests com.datacube.fx.SqlBatchFailureNavigationTest jpackageImage '-PappVersion=0.0.0' --no-daemon --console=plain
+```
+
+- main 与 worktree 生产模块分别提取到 `build/overview-prompt-main-module`、`build/overview-prompt-worktree-module`：双方 825 文件、810 class、0 Fixture。所有 class 及其他资源 SHA-256 一致，唯一字节差异是 `theme-base.css` 修改行的换行符：main 96 个 CR/96 个 LF，worktree 95 个 CR/96 个 LF；归一化 CRLF 后全文逐字符一致。不能声称整模块逐字节相同；main 的主题实际解析测试已通过。
+- 两份生产启动配置均保留 DataCubeFx 入口，未加入 fixture/profile，SHA-256 同为 `AD4F0A4A8AA7F06FEB3072B67FA10966ECFFE3D2040951D5C701A4EF41E4BFF9`。`git diff --check` 通过。无推送、tag 或发布操作。
