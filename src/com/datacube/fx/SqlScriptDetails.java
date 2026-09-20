@@ -24,6 +24,12 @@ import javafx.scene.layout.Region;
 
 /** Owns only bounded display snapshots; table row identity survives sorting. */
 final class SqlScriptDetails implements AutoCloseable {
+    /** Let TableView compare numeric evidence while keeping the existing cell text. */
+    private record ElapsedMillis(long value) implements Comparable<ElapsedMillis> {
+        @Override public int compareTo(ElapsedMillis other) { return Long.compare(value, other.value); }
+        @Override public String toString() { return value + "ms"; }
+    }
+
     private final TableView<ObservableList<Object>> table;
     private final BooleanSupplier allowed;
     private final Consumer<Entry> selectResult;
@@ -83,7 +89,7 @@ final class SqlScriptDetails implements AutoCloseable {
         ObservableList<ObservableList<Object>> rows = FXCollections.observableArrayList();
         for (Entry entry : report.entries()) {
             ObservableList<Object> row = FXCollections.observableArrayList(entry.index(), entry.status(),
-                    entry.elapsedMillis() + "ms", entry.summary(), entry.sqlPreview());
+                    new ElapsedMillis(entry.elapsedMillis()), entry.summary(), entry.sqlPreview());
             entries.put(row, entry); rows.add(row);
         }
         sourceRows = List.copyOf(rows);
