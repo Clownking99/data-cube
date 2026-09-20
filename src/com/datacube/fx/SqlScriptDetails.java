@@ -5,6 +5,7 @@ import com.datacube.sqleditor.SqlScriptExecutionReport.Entry;
 import com.datacube.spi.model.QueryResult;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -16,14 +17,18 @@ import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
+import javafx.scene.control.TextFormatter;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 
 /** Owns only bounded display snapshots; table row identity survives sorting. */
 final class SqlScriptDetails implements AutoCloseable {
+    private static final int MAX_QUERY_UNITS = 256;
     /** Let TableView compare numeric evidence while keeping the existing cell text. */
     private record ElapsedMillis(long value) implements Comparable<ElapsedMillis> {
         @Override public int compareTo(ElapsedMillis other) { return Long.compare(value, other.value); }
@@ -37,11 +42,16 @@ final class SqlScriptDetails implements AutoCloseable {
     private final Button button = new Button("执行详情");
     private final Button result = new Button("查看结果");
     private final CheckBox onlyFailures = new CheckBox("仅看异常");
+    private final TextField query = new TextField();
+    private final Button clearQuery = new Button("清除关键词");
+    private final HBox search = new HBox(4, query, clearQuery);
     private final Label count = new Label();
     private final Label notice = new Label();
-    private final FlowPane bar = new FlowPane(8, 4, result, button, onlyFailures, count, notice);
+    private final FlowPane bar = new FlowPane(8, 4, result, button, onlyFailures, search, count, notice);
     private List<ObservableList<Object>> sourceRows = List.of();
     private boolean filteringFailures;
+    private boolean updatingQuery;
+    private boolean queryRejected;
     private final ChangeListener<ObservableList<Object>> selection = (obs, before, after) -> refresh();
     private final EventHandler<KeyEvent> keys = event -> {
         if (event.getCode() == KeyCode.ENTER && !event.isShiftDown() && !event.isControlDown()
@@ -54,7 +64,7 @@ final class SqlScriptDetails implements AutoCloseable {
 
     SqlScriptDetails(TableView<ObservableList<Object>> table, BooleanSupplier allowed, Consumer<Entry> selectResult) {
         this.table = table; this.allowed = allowed; this.selectResult = selectResult;
-        bar.setId("sql-script-details-bar"); button.setId("sql-script-details");
+        bar.setId("sql-script-details-bar"); bar.setMinWidth(0); button.setId("sql-script-details");
         result.setId("sql-script-result"); result.setMinWidth(Region.USE_PREF_SIZE);
         button.setMinWidth(Region.USE_PREF_SIZE);
         result.setTooltip(new Tooltip("查看所选语句已返回的数据、影响行数或错误，不重新执行 SQL。"));
@@ -70,7 +80,33 @@ final class SqlScriptDetails implements AutoCloseable {
             if (filteringFailures == onlyFailures.isSelected()) return;
             filteringFailures = onlyFailures.isSelected(); closeDetails(); applyFilter();
         });
-        count.setId("sql-script-filter-count"); count.setWrapText(true); count.setMinHeight(Region.USE_PREF_SIZE);
+        query.setId("sql-script-sql-filter"); query.setMinWidth(140); query.setPrefWidth(190);
+        query.setPromptText("筛选 SQL 摘要"); query.setAccessibleText("筛选已显示的 SQL 摘要");
+        query.setTooltip(new Tooltip("按字面匹配已显示的 SQL 摘要，忽略大小写及首尾空白，最多 256 个字符。\n"
+                + "不搜索完整 SQL、错误信息、结果数据或省略的内容；离开概览后重置，不执行 SQL。"));
+        query.setTextFormatter(new TextFormatter<String>(change -> {
+            if (updatingQuery) return change;
+            if (!canOpen()) return null;
+            // Deletions cannot exceed the limit; a null reset need not assemble replacement text.
+            if (change.isAdded() && change.getControlNewText().length() > MAX_QUERY_UNITS) {
+                queryRejected = true; updateCount(); refresh(); return null;
+            }
+            if (change.isContentChange() && queryRejected) {
+                queryRejected = false; updateCount(); refresh();
+            }
+            return change;
+        }));
+        query.textProperty().addListener((obs, before, after) -> {
+            if (updatingQuery) return;
+            closeDetails(); applyFilter();
+        });
+        clearQuery.setId("sql-script-clear-filter"); clearQuery.setMinWidth(Region.USE_PREF_SIZE);
+        clearQuery.setTooltip(new Tooltip("清除 SQL 摘要关键词，保留“仅看异常”条件和当前排序。"));
+        clearQuery.setOnAction(event -> {
+            if (!canOpen()) return;
+            queryRejected = false; query.clear(); updateCount(); refresh(); query.requestFocus();
+        });
+        count.setId("sql-script-filter-count"); count.setWrapText(true); count.setMinWidth(0); count.setMinHeight(Region.USE_PREF_SIZE);
         count.maxWidthProperty().bind(bar.widthProperty());
         notice.setId("sql-script-details-notice"); notice.setWrapText(true);
         notice.setMinHeight(Region.USE_PREF_SIZE);
@@ -99,8 +135,10 @@ final class SqlScriptDetails implements AutoCloseable {
     private void applyFilter() {
         var selectedRow = table.getSelectionModel().getSelectedItem();
         var sortOrder = List.copyOf(table.getSortOrder());
-        var visible = sourceRows.stream().filter(row -> !filteringFailures
-                || entries.get(row).kind() == QueryResult.Kind.ERROR).toList();
+        String term = normalizedQuery();
+        var visible = sourceRows.stream().filter(row -> (!filteringFailures
+                || entries.get(row).kind() == QueryResult.Kind.ERROR)
+                && row.get(4).toString().toLowerCase(Locale.ROOT).contains(term)).toList();
         table.getSelectionModel().clearSelection();
         table.setItems(FXCollections.observableArrayList(visible));
         // TableView clears sort order when its items list is replaced.
@@ -111,9 +149,23 @@ final class SqlScriptDetails implements AutoCloseable {
                 table.getSelectionModel().clearAndSelect(i, table.getColumns().getFirst()); break;
             }
         }
-        count.setText("显示 " + visible.size() + " / " + sourceRows.size() + " 条已保留结果"
-                + (filteringFailures && visible.isEmpty() ? "；已保留结果中没有异常" : ""));
+        updateCount();
         refresh();
+    }
+
+    private String normalizedQuery() {
+        return query.getText() == null ? "" : query.getText().strip().toLowerCase(Locale.ROOT);
+    }
+
+    private void updateCount() {
+        String empty = "";
+        if (table.getItems().isEmpty()) {
+            if (!normalizedQuery().isEmpty()) empty = filteringFailures
+                    ? "；已保留的异常结果中没有匹配的 SQL 摘要" : "；已保留的 SQL 摘要中没有匹配";
+            else if (filteringFailures) empty = "；已保留结果中没有异常";
+        }
+        count.setText("显示 " + table.getItems().size() + " / " + sourceRows.size() + " 条已保留结果" + empty
+                + (queryRejected ? "；筛选词最多 256 个字符，超长输入未应用" : ""));
     }
 
     Entry selectedEntry() {
@@ -129,6 +181,8 @@ final class SqlScriptDetails implements AutoCloseable {
         boolean disabled = selectedEntry() == null || !canOpen();
         button.setDisable(disabled); result.setDisable(disabled);
         onlyFailures.setDisable(!canOpen());
+        query.setDisable(!canOpen());
+        clearQuery.setDisable(!canOpen() || (!queryRejected && (query.getText() == null || query.getText().isEmpty())));
     }
 
     void showSelected() {
@@ -148,7 +202,10 @@ final class SqlScriptDetails implements AutoCloseable {
     }
 
     void clear() {
-        closeDetails(); sourceRows = List.of(); filteringFailures = false; onlyFailures.setSelected(false); count.setText("");
+        closeDetails(); sourceRows = List.of(); filteringFailures = false; onlyFailures.setSelected(false);
+        queryRejected = false; updatingQuery = true;
+        try { query.clear(); } finally { updatingQuery = false; }
+        count.setText("");
         entries.clear(); notice.setText(""); bar.setVisible(false); bar.setManaged(false); refresh();
     }
 
