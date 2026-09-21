@@ -98,6 +98,8 @@ public final class ConnectionTreePane implements AutoCloseable {
     private final Actions actions;
     private final FxTaskRunner runner;
     private final FxTaskScope tasks;
+    /** Incremented whenever the visible tree is replaced or the pane closes. */
+    private long treeGeneration;
 
     private final VBox root = new VBox(6);
     private final TreeView<NodeData> tree = new TreeView<>();
@@ -141,6 +143,7 @@ public final class ConnectionTreePane implements AutoCloseable {
 
     @Override
     public void close() {
+        treeGeneration++;
         tasks.close();
         var search = objectSearch;
         if (search != null) search.close();
@@ -205,12 +208,13 @@ public final class ConnectionTreePane implements AutoCloseable {
 
     /** 重新加载连接列表（从存储读取并注册到 ConnectionManager）。 */
     public void reload() {
+        long generation = ++treeGeneration;
         objectClipboard.clearStatus();
         tree.getRoot().getChildren().clear();
         List<ConnConfig> configs = store.loadAll();
         for (ConnConfig cfg : configs) {
             connMgr.register(cfg);
-            tree.getRoot().getChildren().add(connectionItem(cfg));
+            tree.getRoot().getChildren().add(connectionItem(cfg, generation));
         }
     }
 
@@ -220,7 +224,7 @@ public final class ConnectionTreePane implements AutoCloseable {
             all.add(cfg);
             saveSnapshot(all);
             connMgr.register(cfg);
-            tree.getRoot().getChildren().add(connectionItem(cfg));
+            tree.getRoot().getChildren().add(connectionItem(cfg, treeGeneration));
         });
     }
 
@@ -262,7 +266,7 @@ public final class ConnectionTreePane implements AutoCloseable {
         for (int i = 0; i < rootChildren.size(); i++) {
             NodeData d = rootChildren.get(i).getValue();
             if (d != null && cfg.id().equals(d.connId)) {
-                rootChildren.set(i, connectionItem(cfg));
+                rootChildren.set(i, connectionItem(cfg, treeGeneration));
                 break;
             }
         }
@@ -270,19 +274,19 @@ public final class ConnectionTreePane implements AutoCloseable {
 
     // ---------- 树节点构建 ----------
 
-    private TreeItem<NodeData> connectionItem(ConnConfig cfg) {
+    private TreeItem<NodeData> connectionItem(ConnConfig cfg, long generation) {
         NodeData d = new NodeData(Kind.CONNECTION, cfg.name(), cfg, cfg.id(), null, null);
         if (cfg.type() == DbType.REDIS) {
-            return lazyItem(d, () -> redisDatabaseItems(cfg));
+            return lazyItem(d, generation, () -> redisDatabaseItems(cfg));
         }
-        return lazyItem(d, () -> {
+        return lazyItem(d, generation, () -> {
             List<TreeItem<NodeData>> out = new ArrayList<>();
             if (treeSvc.hasSchemaLevel(cfg.id())) {
                 for (SchemaInfo s : treeSvc.schemas(cfg.id(), cfg.database())) {
-                    out.add(schemaItem(cfg.id(), s.name()));
+                    out.add(schemaItem(cfg.id(), s.name(), generation));
                 }
             } else {
-                out.addAll(schemaChildren(cfg.id(), null));
+                out.addAll(schemaChildren(cfg.id(), null, generation));
             }
             return out;
         });
@@ -321,32 +325,32 @@ public final class ConnectionTreePane implements AutoCloseable {
         return sizes;
     }
 
-    private TreeItem<NodeData> schemaItem(String connId, String schema) {
+    private TreeItem<NodeData> schemaItem(String connId, String schema, long generation) {
         NodeData d = new NodeData(Kind.SCHEMA, schema, null, connId, schema, schema);
-        return lazyItem(d, () -> schemaChildren(connId, schema));
+        return lazyItem(d, generation, () -> schemaChildren(connId, schema, generation));
     }
 
-    private List<TreeItem<NodeData>> schemaChildren(String connId, String schema) {
+    private List<TreeItem<NodeData>> schemaChildren(String connId, String schema, long generation) {
         List<TreeItem<NodeData>> out = new ArrayList<>();
-        out.add(lazyItem(new NodeData(Kind.TABLES, "表", null, connId, schema, null),
+        out.add(lazyItem(new NodeData(Kind.TABLES, "表", null, connId, schema, null), generation,
                 () -> tableItems(connId, schema)));
-        out.add(lazyItem(new NodeData(Kind.VIEWS, "视图", null, connId, schema, null),
+        out.add(lazyItem(new NodeData(Kind.VIEWS, "视图", null, connId, schema, null), generation,
                 () -> viewItems(connId, schema)));
-        out.add(lazyItem(new NodeData(Kind.ROUTINES, "函数/过程", null, connId, schema, null),
+        out.add(lazyItem(new NodeData(Kind.ROUTINES, "函数/过程", null, connId, schema, null), generation,
                 () -> routineItems(connId, schema)));
         if (treeSvc.supportsPackages(connId)) {
-            out.add(lazyItem(new NodeData(Kind.PACKAGES, "程序包", null, connId, schema, null),
+            out.add(lazyItem(new NodeData(Kind.PACKAGES, "程序包", null, connId, schema, null), generation,
                     () -> packageItems(connId, schema)));
         }
         if (treeSvc.supportsTriggers(connId)) {
-            out.add(lazyItem(new NodeData(Kind.TRIGGERS, "触发器", null, connId, schema, null),
+            out.add(lazyItem(new NodeData(Kind.TRIGGERS, "触发器", null, connId, schema, null), generation,
                     () -> triggerItems(connId, schema)));
         }
         if (treeSvc.supportsTypes(connId)) {
-            out.add(lazyItem(new NodeData(Kind.TYPES, "类型", null, connId, schema, null),
+            out.add(lazyItem(new NodeData(Kind.TYPES, "类型", null, connId, schema, null), generation,
                     () -> typeItems(connId, schema)));
         }
-        out.add(lazyItem(new NodeData(Kind.SEQUENCES, "序列", null, connId, schema, null),
+        out.add(lazyItem(new NodeData(Kind.SEQUENCES, "序列", null, connId, schema, null), generation,
                 () -> sequenceItems(connId, schema)));
         return out;
     }
@@ -407,26 +411,82 @@ public final class ConnectionTreePane implements AutoCloseable {
         return out;
     }
 
-    /** 构造懒加载节点：首次展开时在受管虚拟线程中加载子节点。 */
-    private TreeItem<NodeData> lazyItem(NodeData data, Callable<List<TreeItem<NodeData>>> loader) {
+    /** Retryable state for a lazy node: a failed attempt may run after collapse/re-expand. */
+    static final class LazyLoadState {
+        private boolean started;
+        private boolean retryable;
+        private boolean expanded;
+
+        boolean onExpanded(boolean expanded) {
+            if (!expanded) {
+                this.expanded = false;
+                return false;
+            }
+            if (this.expanded || (started && !retryable)) return false;
+            this.expanded = true;
+            started = true;
+            retryable = false;
+            return true;
+        }
+
+        void completed() {
+            retryable = false;
+        }
+
+        void failed() {
+            retryable = true;
+        }
+    }
+
+    static List<TreeItem<NodeData>> displayChildren(NodeData parent, List<TreeItem<NodeData>> children) {
+        if (children == null || children.isEmpty()) {
+            return List.of(new TreeItem<>(statusData(parent, "没有可用对象")));
+        }
+        return List.copyOf(children);
+    }
+
+    static boolean loadCallbackAllowed(long itemGeneration, long currentGeneration, boolean attached) {
+        return itemGeneration == currentGeneration && attached;
+    }
+
+    /** 构造懒加载节点：首次展开或失败后重新展开时在受管虚拟线程中加载子节点。 */
+    private TreeItem<NodeData> lazyItem(NodeData data, long generation,
+                                        Callable<List<TreeItem<NodeData>>> loader) {
         TreeItem<NodeData> item = new TreeItem<>(data);
         TreeItem<NodeData> placeholder = new TreeItem<>(statusData(data, "加载中..."));
         item.getChildren().add(placeholder);
-        final boolean[] loaded = {false};
+        LazyLoadState state = new LazyLoadState();
         item.expandedProperty().addListener((obs, was, is) -> {
-            if (is && !loaded[0]) {
-                loaded[0] = true;
-                loadInto(item, loader);
+            if (state.onExpanded(is)) {
+                item.getChildren().setAll(List.of(new TreeItem<>(statusData(data, "加载中..."))));
+                loadInto(item, generation, loader, state);
             }
         });
         return item;
     }
 
-    private void loadInto(TreeItem<NodeData> item, Callable<List<TreeItem<NodeData>>> loader) {
+    private void loadInto(TreeItem<NodeData> item, long generation,
+                          Callable<List<TreeItem<NodeData>>> loader, LazyLoadState state) {
         tasks.submit(loader,
-                children -> item.getChildren().setAll(children),
-                failure -> item.getChildren().setAll(List.of(new TreeItem<>(
-                        statusData(item.getValue(), "错误: " + message(failure))))));
+                children -> {
+                    if (!isCurrent(item, generation)) return;
+                    state.completed();
+                    item.getChildren().setAll(displayChildren(item.getValue(), children));
+                },
+                failure -> {
+                    if (!isCurrent(item, generation)) return;
+                    state.failed();
+                    item.getChildren().setAll(List.of(new TreeItem<>(
+                            statusData(item.getValue(), "加载失败：" + message(failure) + "（收起后可重试）"))));
+                });
+    }
+
+    private boolean isCurrent(TreeItem<NodeData> item, long generation) {
+        if (item == null) return false;
+        TreeItem<NodeData> top = item;
+        while (top.getParent() != null) top = top.getParent();
+        return loadCallbackAllowed(generation, treeGeneration,
+                top.getParent() == null && tree.getRoot().getChildren().contains(top));
     }
 
     static NodeData statusData(NodeData parent, String label) {
