@@ -46,12 +46,19 @@ public final class SqlFormatter {
             "ALL", "ANY", "SOME", "CASE", "WHEN", "THEN", "ELSE", "END", "ASC", "DESC",
             "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE", "CAST", "WITH", "RETURNING",
             "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "DEFAULT", "CONSTRAINT", "UNIQUE",
-            "CHECK", "TRUE", "FALSE", "USING", "OVER", "PARTITION");
+            "CHECK", "TRUE", "FALSE", "USING", "OVER", "PARTITION", "RECURSIVE", "FETCH",
+            "FIRST", "NEXT", "ONLY", "NULLS", "LAST", "FILTER", "MATERIALIZED", "LATERAL",
+            "CONNECT", "START", "PRIOR", "NOCYCLE", "SEARCH", "CYCLE");
 
     /** 触发另起一行（顶层子句）的关键字。 */
     private static final Set<String> LINE_STARTERS = Set.of(
             "WHERE", "HAVING", "LIMIT", "OFFSET",
-            "UNION", "INTERSECT", "EXCEPT", "MINUS", "VALUES", "RETURNING");
+            "UNION", "INTERSECT", "EXCEPT", "MINUS", "VALUES", "RETURNING", "FETCH");
+
+    /** 声明对象后紧随的列/参数列表，使用关键字与列表之间的可读空格。 */
+    private static final Set<String> DECLARATION_PREFIXES = Set.of(
+            "TABLE", "VIEW", "INDEX", "SEQUENCE", "TYPE", "FUNCTION", "PROCEDURE",
+            "TRIGGER", "PACKAGE", "ON", "JOIN");
 
     /** JOIN 短语的引导词（其后的 OUTER / JOIN 续接同一行）。 */
     private static final Set<String> JOIN_LEAD = Set.of("INNER", "LEFT", "RIGHT", "FULL", "CROSS");
@@ -267,6 +274,15 @@ public final class SqlFormatter {
                 String u = tok.toUpperCase(Locale.ROOT);
                 boolean kw = KEYWORDS.contains(u);
                 String out = kw ? u : tok;
+
+                // 行注释必须结束当前物理行；否则后续 SQL 会被 -- 吞掉，实际语义就会改变。
+                if (tok.startsWith("--")) {
+                    emit(tok, !atLineStart && prev != null);
+                    sb.append('\n');
+                    atLineStart = true;
+                    prev = tok;
+                    continue;
+                }
 
                 if (kw && handleCase(u)) continue;
                 if (kw && windowDepth > 0 && handleWindowClause(u)) continue;
@@ -502,7 +518,7 @@ public final class SqlFormatter {
 
         private void endStatement() {
             emit(";", false);
-            sb.append('\n');       // 与后续语句间空一行
+            sb.append("\n\n");    // 与后续语句间空一行
             atLineStart = true;
             clause = "";
             joinLineOpen = false;
@@ -513,7 +529,7 @@ public final class SqlFormatter {
 
         /** 主子句起新行：前导关键字右对齐到河道列（含当前缩进），形成 PL/SQL 风格的竖直对齐。 */
         private void startClause(String lead) {
-            if (sb.length() > 0) sb.append('\n');
+            if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
             int pad = Math.max(0, (indent + RIVER) - lead.length());
             for (int i = 0; i < pad; i++) sb.append(' ');
             sb.append(lead);
@@ -521,7 +537,7 @@ public final class SqlFormatter {
         }
 
         private void startSetOperator(String lead) {
-            if (sb.length() > 0) sb.append('\n');
+            if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
             sb.append(lead);
             atLineStart = false;
         }
@@ -553,10 +569,11 @@ public final class SqlFormatter {
             String upper = prev.toUpperCase(Locale.ROOT);
             if (Set.of("SELECT", "FROM", "WHERE", "JOIN", "ON", "AND", "OR", "IN",
                     "NOT", "EXISTS", "VALUES", "SET", "OVER", "AS", "WHEN", "THEN",
-                    "ELSE", "RETURNING").contains(upper)) return true;
+                    "ELSE", "RETURNING", "FILTER").contains(upper)) return true;
             if (isOperator(prev)) return true;
-            // INSERT INTO table (...) is a column list, not a function invocation.
-            return idx >= 2 && tokens.get(idx - 2).equalsIgnoreCase("INTO");
+            // INSERT INTO table (...) / CREATE TABLE t (...) are declaration lists, not calls.
+            return idx >= 2 && (tokens.get(idx - 2).equalsIgnoreCase("INTO")
+                    || DECLARATION_PREFIXES.contains(tokens.get(idx - 2).toUpperCase(Locale.ROOT)));
         }
 
         private static boolean isOperator(String token) {

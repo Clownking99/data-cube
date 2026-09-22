@@ -6,6 +6,7 @@ import java.util.Locale;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -173,5 +174,39 @@ class SqlFormatterTest {
         assertTrue(out.contains("q'[A; FROM WHERE]'"), "Oracle q 引用正文不能被拆分：\n" + out);
         assertTrue(out.contains("id = :id"), "Oracle 绑定变量不能被拆成两个 token：\n" + out);
         assertEquals(out, SqlFormatter.format(out), "Oracle q 引用格式化应幂等：\n" + out);
+    }
+
+    @Test
+    void lineCommentsKeepFollowingSqlOnANewLine() {
+        String out = SqlFormatter.format("SELECT a -- inline note\nFROM t WHERE b=1");
+
+        assertTrue(out.contains("a -- inline note\n"), "行注释应保留行尾边界：\n" + out);
+        assertFalse(out.contains("-- inline note FROM"), "后续 SQL 不能被行注释吞掉：\n" + out);
+        assertTrue(out.indexOf("-- inline note") < out.indexOf("FROM t"),
+                "FROM 应位于注释之后：\n" + out);
+        assertEquals(out, SqlFormatter.format(out), "行注释安全修复仍应幂等：\n" + out);
+    }
+
+    @Test
+    void commonPagingAndFilterKeywordsAreFormatted() {
+        String out = SqlFormatter.format(
+                "SELECT COUNT(*) FILTER(WHERE active=true) FROM t "
+                        + "ORDER BY created_at DESC NULLS LAST FETCH FIRST 10 ROWS ONLY");
+
+        assertTrue(out.contains("FILTER (WHERE active = TRUE)"),
+                "FILTER 谓词前应有可读空格：\n" + out);
+        assertTrue(out.contains("NULLS LAST"), "NULLS LAST 应识别为关键字短语：\n" + out);
+        assertTrue(out.contains("FETCH FIRST 10 ROWS ONLY"),
+                "FETCH 分页短语不能被拆散：\n" + out);
+    }
+
+    @Test
+    void ddlColumnListsKeepReadableSpacing() {
+        String out = SqlFormatter.format("CREATE TABLE t(id NUMBER, name VARCHAR2(20))");
+
+        assertTrue(out.contains("CREATE TABLE t ("),
+                "DDL 对象名后的列列表应保留空格：\n" + out);
+        assertTrue(out.contains("id NUMBER, name VARCHAR2(20)"),
+                "DDL 列定义应保持行内可读：\n" + out);
     }
 }
