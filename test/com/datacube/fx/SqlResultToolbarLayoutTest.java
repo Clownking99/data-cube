@@ -83,13 +83,15 @@ class SqlResultToolbarLayoutTest {
             ((Button) root.lookup("#sql-result-clear-filter")).fire();
             assertEquals(List.of("add", "search:current search", "apply", "copy:CURRENT_CELL",
                     "copy:SELECTION", "copy:SELECTED_ROWS", "copy:SELECTED_ROWS_WITH_HEADERS",
+                    "copy:CURRENT_FILTERED_ROWS", "copy:CURRENT_FILTERED_ROWS_WITH_HEADERS",
+                    "copy:ALL_LOADED_ROWS", "copy:ALL_LOADED_ROWS_WITH_HEADERS",
                     "remove:0", "clear"), events);
 
             MenuButton columns = (MenuButton) root.lookup("#sql-result-columns");
             assertEquals("sql-result-columns-find", columns.getItems().getFirst().getId(), "lookup precedes the potentially long toggle list");
             columns.getItems().stream().filter(item -> "sql-result-column-0".equals(item.getId())).findFirst().orElseThrow().fire();
             assertEquals("列（1/2）", columns.getText(), "column visibility still updates independently");
-            assertEquals(9, events.size(), "column changes must not query or copy data");
+            assertEquals(13, events.size(), "column changes must not query or copy data");
             return null;
         });
     }

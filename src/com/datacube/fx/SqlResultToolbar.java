@@ -36,7 +36,9 @@ public final class SqlResultToolbar {
     private static final double SEARCH_DEBOUNCE_MILLIS = 120;
 
     public enum CopyMode {
-        CURRENT_CELL, SELECTION, SELECTED_ROWS, SELECTED_ROWS_WITH_HEADERS
+        CURRENT_CELL, SELECTION, SELECTED_ROWS, SELECTED_ROWS_WITH_HEADERS,
+        CURRENT_FILTERED_ROWS, CURRENT_FILTERED_ROWS_WITH_HEADERS,
+        ALL_LOADED_ROWS, ALL_LOADED_ROWS_WITH_HEADERS
     }
 
     public record Actions(
@@ -202,6 +204,10 @@ public final class SqlResultToolbar {
         addCopyItem("选中区域", CopyMode.SELECTION);
         addCopyItem("选中行", CopyMode.SELECTED_ROWS);
         addCopyItem("选中行（含表头）", CopyMode.SELECTED_ROWS_WITH_HEADERS);
+        addCopyItem("当前筛选行", CopyMode.CURRENT_FILTERED_ROWS);
+        addCopyItem("当前筛选行（含表头）", CopyMode.CURRENT_FILTERED_ROWS_WITH_HEADERS);
+        addCopyItem("全部已加载行", CopyMode.ALL_LOADED_ROWS);
+        addCopyItem("全部已加载行（含表头）", CopyMode.ALL_LOADED_ROWS_WITH_HEADERS);
 
         clear.setId("sql-result-clear-filter");
         clear.setAccessibleText("清除结果筛选");
@@ -244,6 +250,7 @@ public final class SqlResultToolbar {
 
     private void addCopyItem(String text, CopyMode mode) {
         MenuItem item = new MenuItem(text);
+        item.setId("sql-result-copy-" + mode.name().toLowerCase(Locale.ROOT).replace('_', '-'));
         item.setOnAction(ignored -> actions.copyRequested().accept(mode));
         copy.getItems().add(item);
     }

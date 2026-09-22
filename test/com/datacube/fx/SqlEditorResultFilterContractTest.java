@@ -76,6 +76,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class SqlEditorResultFilterContractTest {
     private static final String SAFE_POSTGRES_REQUERY_SQL =
@@ -1351,6 +1352,92 @@ class SqlEditorResultFilterContractTest {
                 assertEquals("2026-08-29 11:12:13\tBob\t9",
                         clipboard.get(),
                         "copy must follow the TableView's current sorted row order");
+                return null;
+            });
+        }
+    }
+
+    @Test
+    void filteredAndLoadedRowCopyUseDistinctScopesVisibleColumnsAndPreserveSelection() throws Exception {
+        AtomicReference<String> clipboard = new AtomicReference<>();
+        try (PaneFixture fixture = new PaneFixture(null, null)) {
+            QueryResult original = result(false,
+                    row("Ada", 7, "2026-08-29 10:11:12"),
+                    row("Bob", 9, "2026-08-29 10:11:13"),
+                    row("Cara", 8, "2026-08-29 10:11:14"));
+            FxUiTestSupport.call(() -> {
+                fixture.pane.setClipboardWriterForTesting(text -> { clipboard.set(text); return true; });
+                showQuery(fixture.pane, original, SAFE_POSTGRES_REQUERY_SQL);
+                TableView<ObservableList<Object>> table = resultTable(fixture.pane);
+                TableColumn<ObservableList<Object>, ?> sequence = table.getColumns().get(0);
+                TableColumn<ObservableList<Object>, ?> name = table.getColumns().get(1);
+                TableColumn<ObservableList<Object>, ?> score = table.getColumns().get(2);
+                TableColumn<ObservableList<Object>, ?> created = table.getColumns().get(3);
+                table.getColumns().setAll(sequence, score, name, created);
+                score.setSortType(TableColumn.SortType.DESCENDING);
+                table.getSortOrder().setAll(score);
+                table.sort();
+
+                MenuButton columns = (MenuButton) fixture.pane.getNode().lookup("#sql-result-columns");
+                columns.getItems().stream()
+                        .filter(item -> "sql-result-column-2".equals(item.getId()))
+                        .findFirst().orElseThrow().fire();
+                state(fixture.pane).setSearchText("a");
+                invoke(fixture.pane, "renderResultFilterSnapshot");
+                table.applyCss(); table.layout();
+                TableColumn<ObservableList<Object>, ?> filteredScore = table.getColumns().get(1);
+                table.getSelectionModel().clearAndSelect(0, filteredScore);
+                table.getFocusModel().focus(0, filteredScore);
+                List<?> selectedBefore = List.copyOf(table.getSelectionModel().getSelectedCells());
+                MenuButton copy = (MenuButton) fixture.pane.getNode().lookup("#sql-result-copy");
+
+                copy.getItems().stream()
+                        .filter(item -> "sql-result-copy-current-filtered-rows-with-headers".equals(item.getId()))
+                        .findFirst().orElseThrow().fire();
+                assertEquals("SCORE\tNAME\n8\tCara\n7\tAda", clipboard.get());
+                assertEquals(selectedBefore, table.getSelectionModel().getSelectedCells());
+                assertEquals("已复制 2 行", labelText(fixture.pane, "statusLabel"));
+
+                copy.getItems().stream()
+                        .filter(item -> "sql-result-copy-current-filtered-rows".equals(item.getId()))
+                        .findFirst().orElseThrow().fire();
+                assertEquals("8\tCara\n7\tAda", clipboard.get());
+                assertEquals(selectedBefore, table.getSelectionModel().getSelectedCells());
+
+                copy.getItems().stream()
+                        .filter(item -> "sql-result-copy-all-loaded-rows-with-headers".equals(item.getId()))
+                        .findFirst().orElseThrow().fire();
+                assertEquals("SCORE\tNAME\n7\tAda\n9\tBob\n8\tCara", clipboard.get());
+                assertEquals(selectedBefore, table.getSelectionModel().getSelectedCells());
+                assertEquals("已复制 3 行", labelText(fixture.pane, "statusLabel"));
+
+                copy.getItems().stream()
+                        .filter(item -> "sql-result-copy-all-loaded-rows".equals(item.getId()))
+                        .findFirst().orElseThrow().fire();
+                assertEquals("7\tAda\n9\tBob\n8\tCara", clipboard.get());
+                assertEquals(selectedBefore, table.getSelectionModel().getSelectedCells());
+                return null;
+            });
+        }
+    }
+
+    @Test
+    void oversizedAllLoadedCopyIsRejectedWithoutTouchingClipboard() throws Exception {
+        AtomicReference<String> clipboard = new AtomicReference<>("keep clipboard");
+        try (PaneFixture fixture = new PaneFixture(null, null)) {
+            FxUiTestSupport.call(() -> {
+                fixture.pane.setClipboardWriterForTesting(text -> {
+                    fail("oversized copy must be rejected before clipboard writer");
+                    return false;
+                });
+                showQuery(fixture.pane, result(false,
+                        row("x".repeat(8 * 1024 * 1024 + 1), 1, "2026-08-29 10:11:12")), SAFE_POSTGRES_REQUERY_SQL);
+                MenuButton copy = (MenuButton) fixture.pane.getNode().lookup("#sql-result-copy");
+                copy.getItems().stream()
+                        .filter(item -> "sql-result-copy-all-loaded-rows".equals(item.getId()))
+                        .findFirst().orElseThrow().fire();
+                assertEquals("keep clipboard", clipboard.get());
+                assertTrue(labelText(fixture.pane, "statusLabel").contains("8 MiB"));
                 return null;
             });
         }

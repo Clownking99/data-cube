@@ -93,6 +93,7 @@ import java.util.regex.Pattern;
  * 执行委托 provider 的 {@link SqlRunner}，方言差异（schema 切换）由 provider 处理。
  */
 public final class SqlEditorPane implements AutoCloseable {
+    private static final int MAX_CLIPBOARD_TEXT_LENGTH = 8 * 1024 * 1024;
     @FunctionalInterface
     interface ClipboardWriter {
         boolean write(String text);
@@ -2345,7 +2346,28 @@ public final class SqlEditorPane implements AutoCloseable {
                 copied = selectedRows.size();
                 unit = "行";
             }
+            case CURRENT_FILTERED_ROWS, CURRENT_FILTERED_ROWS_WITH_HEADERS -> {
+                if (rows.isEmpty()) return;
+                value = TsvClipboardFormatter.rows(headers, rows, allRowIndexes(rows.size()),
+                        mode == SqlResultToolbar.CopyMode.CURRENT_FILTERED_ROWS_WITH_HEADERS);
+                copied = rows.size();
+                unit = "行";
+            }
+            case ALL_LOADED_ROWS, ALL_LOADED_ROWS_WITH_HEADERS -> {
+                List<List<String>> loadedRows = formattedLoadedRows(active, copyColumns);
+                if (loadedRows.isEmpty()) return;
+                value = TsvClipboardFormatter.rows(headers, loadedRows,
+                        allRowIndexes(loadedRows.size()),
+                        mode == SqlResultToolbar.CopyMode.ALL_LOADED_ROWS_WITH_HEADERS);
+                copied = loadedRows.size();
+                unit = active.truncated ? "行（已加载）" : "行";
+            }
             default -> throw new IllegalStateException("未知复制模式: " + mode);
+        }
+        if (value.length() > MAX_CLIPBOARD_TEXT_LENGTH) {
+            statusLabel.setText("复制失败：结果文本超过 8 MiB，请缩小范围或改用导出");
+            statusLabel.setStyle("-fx-text-fill: -status-error; -fx-font-size: 12px;");
+            return;
         }
         if (!writeClipboard(value)) {
             showClipboardWriteFailure();
@@ -2353,6 +2375,12 @@ public final class SqlEditorPane implements AutoCloseable {
         }
         statusLabel.setText("已复制 " + copied + " " + unit);
         statusLabel.setStyle("-fx-text-fill: -status-ok; -fx-font-size: 12px;");
+    }
+
+    private static Set<Integer> allRowIndexes(int size) {
+        Set<Integer> indexes = new HashSet<>();
+        for (int row = 0; row < size; row++) indexes.add(row);
+        return indexes;
     }
 
     private TsvClipboardFormatter.CellRef focusedResultCell(int columns, int rows) {
@@ -2378,6 +2406,21 @@ public final class SqlEditorPane implements AutoCloseable {
             List<String> row = new ArrayList<>(columns.size());
             for (TableColumn column : columns) {
                 row.add(ResultValueFormatter.format(column.getCellData(rowIndex)));
+            }
+            formatted.add(row);
+        }
+        return formatted;
+    }
+
+    private List<List<String>> formattedLoadedRows(
+            QueryResult result, List<TableColumn> columns) {
+        List<List<String>> formatted = new ArrayList<>(result.rows.size());
+        for (List<Object> source : result.rows) {
+            List<String> row = new ArrayList<>(columns.size());
+            for (TableColumn column : columns) {
+                if (column.getUserData() instanceof Integer index && index >= 0) {
+                    row.add(ResultValueFormatter.format(index < source.size() ? source.get(index) : null));
+                }
             }
             formatted.add(row);
         }

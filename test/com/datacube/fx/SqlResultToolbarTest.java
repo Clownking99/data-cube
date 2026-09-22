@@ -241,7 +241,8 @@ class SqlResultToolbarTest {
             assertEquals(1, clear.get());
 
             MenuButton menu = (MenuButton) root.lookup("#sql-result-copy");
-            assertEquals(List.of("当前单元格", "选中区域", "选中行", "选中行（含表头）"),
+            assertEquals(List.of("当前单元格", "选中区域", "选中行", "选中行（含表头）",
+                            "当前筛选行", "当前筛选行（含表头）", "全部已加载行", "全部已加载行（含表头）"),
                     menu.getItems().stream().map(item -> item.getText()).toList());
             for (int index = 0; index < menu.getItems().size(); index++) {
                 menu.getItems().get(index).fire();
