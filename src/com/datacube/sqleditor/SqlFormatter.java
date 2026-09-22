@@ -89,6 +89,25 @@ public final class SqlFormatter {
                 i = j;
                 continue;
             }
+            // PostgreSQL dollar-quoted strings: keep the body opaque, including semicolons
+            // and SQL-looking words. A missing terminator consumes the remainder defensively.
+            if (c == '$') {
+                int j = readDollarQuoted(sql, i);
+                if (j > i) {
+                    out.add(sql.substring(i, j));
+                    i = j;
+                    continue;
+                }
+            }
+            // Oracle q'[...]' / q'{...}' / q'(...)' / q'<...>' literals.
+            if ((c == 'q' || c == 'Q') && i + 1 < n && sql.charAt(i + 1) == '\'') {
+                int j = readOracleQuoted(sql, i);
+                if (j > i) {
+                    out.add(sql.substring(i, j));
+                    i = j;
+                    continue;
+                }
+            }
             // 单引号字符串（'' 转义）
             if (c == '\'') {
                 int j = readQuoted(sql, i, '\'');
@@ -101,6 +120,29 @@ public final class SqlFormatter {
                 int j = readQuoted(sql, i, '"');
                 out.add(sql.substring(i, j));
                 i = j;
+                continue;
+            }
+            if (c == '`') {
+                int j = readQuoted(sql, i, '`');
+                out.add(sql.substring(i, j));
+                i = j;
+                continue;
+            }
+            // Bind variables are one token so Oracle :name / :1 never becomes ": name".
+            if (c == ':' && i + 1 < n && sql.charAt(i + 1) != ':') {
+                int j = i + 1;
+                if (Character.isLetterOrDigit(sql.charAt(j)) || sql.charAt(j) == '_') {
+                    while (j < n && (Character.isLetterOrDigit(sql.charAt(j)) || sql.charAt(j) == '_')) j++;
+                    out.add(sql.substring(i, j));
+                    i = j;
+                    continue;
+                }
+            }
+            // Keep common PostgreSQL/Oracle compound operators intact.
+            String operator = readOperator(sql, i);
+            if (operator != null) {
+                out.add(operator);
+                i += operator.length();
                 continue;
             }
             // 标识符 / 关键字 / 数字（含 . 以保留 a.b 与 3.14）
@@ -133,6 +175,38 @@ public final class SqlFormatter {
         return out;
     }
 
+    private static int readDollarQuoted(String sql, int start) {
+        int n = sql.length();
+        int j = start + 1;
+        while (j < n && (Character.isLetterOrDigit(sql.charAt(j)) || sql.charAt(j) == '_')) j++;
+        if (j >= n || sql.charAt(j) != '$') return -1;
+        String delimiter = sql.substring(start, j + 1);
+        int end = sql.indexOf(delimiter, j + 1);
+        return end < 0 ? n : end + delimiter.length();
+    }
+
+    private static int readOracleQuoted(String sql, int start) {
+        int n = sql.length();
+        if (start + 2 >= n) return -1;
+        char open = sql.charAt(start + 2);
+        char close = switch (open) {
+            case '[' -> ']'; case '{' -> '}'; case '(' -> ')'; case '<' -> '>';
+            default -> open;
+        };
+        int end = sql.indexOf("'" + close + "'", start + 3);
+        return end < 0 ? n : end + 3;
+    }
+
+    private static String readOperator(String sql, int start) {
+        String[] operators = {"!~~*", "!~~", "!~*", "#>>", "#>", "->>", "->",
+                "::", ":=", "<=", ">=", "<>", "!=", "||", "&&", "@@", "@>", "<@",
+                "?&", "?|", "##", "~*", "!~", "~~"};
+        for (String operator : operators) {
+            if (sql.startsWith(operator, start)) return operator;
+        }
+        return null;
+    }
+
     /** 从 start（引号位置）读取到匹配的收尾引号，返回收尾引号之后的下标。 */
     private static int readQuoted(String s, int start, char q) {
         int n = s.length();
@@ -155,11 +229,14 @@ public final class SqlFormatter {
         private int indent = 0;        // 当前块河道的前导缩进（顶层为 0）
         private int plainParenDepth = 0; // 普通括号深度（>0 时挂起子句处理，保持行内）
         private final Deque<Boolean> parenStack = new ArrayDeque<>(); // true=子查询括号
+        private final Deque<Boolean> windowParenStack = new ArrayDeque<>();
+        private int windowDepth;
         private final Deque<Ctx> ctxStack = new ArrayDeque<>();        // 进入子查询时保存的外层上下文
         private String clause = "";    // 顶层子句（仅在未处于普通括号内时更新）
         private boolean joinLineOpen;  // 当前行是否已由 JOIN 引导词开启
         private boolean betweenPending; // 处于 BETWEEN ... AND 之间，该 AND 不换行
         private boolean deleteInlineFrom; // DELETE 之后紧随的 FROM 保持同一行
+        private int caseDepth;
         private boolean atLineStart = true;
         private String prev;
 
@@ -168,13 +245,17 @@ public final class SqlFormatter {
             final int indent;
             final String clause;
             final boolean joinLineOpen, betweenPending, deleteInlineFrom;
+            final int caseDepth;
+            final int windowDepth;
             Ctx(int indent, String clause, boolean joinLineOpen,
-                boolean betweenPending, boolean deleteInlineFrom) {
+                boolean betweenPending, boolean deleteInlineFrom, int caseDepth, int windowDepth) {
                 this.indent = indent;
                 this.clause = clause;
                 this.joinLineOpen = joinLineOpen;
                 this.betweenPending = betweenPending;
                 this.deleteInlineFrom = deleteInlineFrom;
+                this.caseDepth = caseDepth;
+                this.windowDepth = windowDepth;
             }
         }
 
@@ -187,13 +268,15 @@ public final class SqlFormatter {
                 boolean kw = KEYWORDS.contains(u);
                 String out = kw ? u : tok;
 
+                if (kw && handleCase(u)) continue;
+                if (kw && windowDepth > 0 && handleWindowClause(u)) continue;
                 // 仅在未处于普通括号内时处理子句（子查询括号内仍需排版）。
                 boolean clauseActive = plainParenDepth == 0;
 
                 if (clauseActive && kw && handleClause(u, out)) continue;
                 if (clauseActive && tok.equals(";")) { endStatement(); continue; }
                 if (clauseActive && tok.equals(",")
-                        && (clause.equals("SELECT") || clause.equals("SET"))) {
+                        && (clause.equals("SELECT") || clause.equals("SET") || clause.equals("WITH"))) {
                     emit(",", false);
                     contLine();
                     prev = ",";
@@ -213,18 +296,28 @@ public final class SqlFormatter {
             if (isSubqueryAhead(idx)) {
                 boolean space = !atLineStart && prev != null && !prev.equals("(");
                 emit("(", space);
-                ctxStack.push(new Ctx(indent, clause, joinLineOpen, betweenPending, deleteInlineFrom));
+                ctxStack.push(new Ctx(indent, clause, joinLineOpen, betweenPending, deleteInlineFrom,
+                        caseDepth, windowDepth));
                 parenStack.push(Boolean.TRUE);
+                windowParenStack.push(false);
                 indent += RIVER + 2;
                 clause = "";
                 joinLineOpen = false;
                 betweenPending = false;
                 deleteInlineFrom = false;
+                caseDepth = 0;
+                windowDepth = 0;
                 prev = "(";
             } else {
-                emit("(", false);
+                emit("(", needsSpaceBeforeOpenParen(idx));
                 parenStack.push(Boolean.FALSE);
-                plainParenDepth++;
+                boolean window = "OVER".equalsIgnoreCase(prev);
+                windowParenStack.push(window);
+                if (window) {
+                    windowDepth++;
+                    sb.append('\n');
+                    atLineStart = true;
+                } else plainParenDepth++;
                 prev = "(";
             }
         }
@@ -233,6 +326,7 @@ public final class SqlFormatter {
         private void closeParen() {
             if (parenStack.isEmpty()) { emit(")", false); prev = ")"; return; }
             boolean subquery = parenStack.pop();
+            boolean window = !windowParenStack.isEmpty() && windowParenStack.pop();
             if (subquery) {
                 Ctx c = ctxStack.pop();
                 sb.append('\n');
@@ -245,6 +339,14 @@ public final class SqlFormatter {
                 joinLineOpen = c.joinLineOpen;
                 betweenPending = c.betweenPending;
                 deleteInlineFrom = c.deleteInlineFrom;
+                caseDepth = c.caseDepth;
+                windowDepth = c.windowDepth;
+            } else if (window) {
+                if (windowDepth > 0) windowDepth--;
+                sb.append('\n');
+                appendIndent(indent + RIVER);
+                sb.append(')');
+                atLineStart = false;
             } else {
                 if (plainParenDepth > 0) plainParenDepth--;
                 emit(")", false);
@@ -352,7 +454,9 @@ public final class SqlFormatter {
                         return true;
                     }
                     if (LINE_STARTERS.contains(u)) {
-                        startClause(out);
+                        if (u.equals("UNION") || u.equals("INTERSECT")
+                                || u.equals("EXCEPT") || u.equals("MINUS")) startSetOperator(out);
+                        else startClause(out);
                         clause = u;
                         joinLineOpen = false;
                         prev = out;
@@ -360,6 +464,40 @@ public final class SqlFormatter {
                     }
                     return false;
             }
+        }
+
+        /** CASE 的 WHEN/ELSE/END 独立成行，但条件与结果仍保持同一逻辑行。 */
+        private boolean handleCase(String u) {
+            switch (u) {
+                case "CASE" -> {
+                    emit("CASE", needSpaceBefore(prev, "CASE"));
+                    caseDepth++;
+                    prev = "CASE";
+                    return true;
+                }
+                case "WHEN", "ELSE", "END" -> {
+                    if (caseDepth == 0) return false;
+                    contLine();
+                    emit(u, false);
+                    if (u.equals("END")) caseDepth--;
+                    prev = u;
+                    return true;
+                }
+                default -> { return false; }
+            }
+        }
+
+        /** 窗口定义的主要分区/排序/边界子句各占一行，避免复杂 OVER(...) 挤成一行。 */
+        private boolean handleWindowClause(String u) {
+            if (!Set.of("PARTITION", "ORDER", "ROWS", "RANGE", "GROUPS", "EXCLUDE").contains(u)) {
+                return false;
+            }
+            if (!atLineStart) sb.append('\n');
+            appendIndent(indent + RIVER + 1);
+            sb.append(u);
+            atLineStart = false;
+            prev = u;
+            return true;
         }
 
         private void endStatement() {
@@ -382,6 +520,16 @@ public final class SqlFormatter {
             atLineStart = false; // 其后内容以空格续接同一行
         }
 
+        private void startSetOperator(String lead) {
+            if (sb.length() > 0) sb.append('\n');
+            sb.append(lead);
+            atLineStart = false;
+        }
+
+        private void appendIndent(int spaces) {
+            for (int i = 0; i < spaces; i++) sb.append(' ');
+        }
+
         /** 列表续行：缩进到河道右侧一格（含当前缩进），使续行与首项左对齐。 */
         private void contLine() {
             sb.append('\n');
@@ -400,13 +548,31 @@ public final class SqlFormatter {
             }
         }
 
+        private boolean needsSpaceBeforeOpenParen(int idx) {
+            if (atLineStart || prev == null || prev.equals("(") || prev.equals(".")) return false;
+            String upper = prev.toUpperCase(Locale.ROOT);
+            if (Set.of("SELECT", "FROM", "WHERE", "JOIN", "ON", "AND", "OR", "IN",
+                    "NOT", "EXISTS", "VALUES", "SET", "OVER", "AS", "WHEN", "THEN",
+                    "ELSE", "RETURNING").contains(upper)) return true;
+            if (isOperator(prev)) return true;
+            // INSERT INTO table (...) is a column list, not a function invocation.
+            return idx >= 2 && tokens.get(idx - 2).equalsIgnoreCase("INTO");
+        }
+
+        private static boolean isOperator(String token) {
+            return Set.of("=", "<", ">", "<=", ">=", "<>", "!=", "+", "-", "*", "/",
+                    "%", "||", "->", "->>", "#>", "#>>", "@>", "<@", "&&", "@@",
+                    "?&", "?|", "~", "~*", "!~", "::", ":=").contains(token);
+        }
+
         private static boolean needSpaceBefore(String prev, String cur) {
             if (prev == null) return false;
             switch (cur) {
                 case ",": case ";": case ")": case ".": return false;
-                case "(": return false;
+                case "::": return false;
                 default:
             }
+            if (prev.equals("::") || prev.equals(".") || prev.equals("(")) return false;
             return !prev.equals("(") && !prev.equals(".");
         }
     }

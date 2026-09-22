@@ -109,4 +109,69 @@ class SqlFormatterTest {
         assertTrue(Pattern.compile("(?m)^ {2,}SELECT\\b").matcher(out).results().count() >= 2,
                 "多层嵌套应有多处缩进 SELECT：\n" + out);
     }
+
+    @Test
+    void complexDmlUsesReadableParenthesisSpacingAndClauseBoundaries() {
+        String out = SqlFormatter.format(
+                "INSERT INTO t (a,b) SELECT x,y FROM u WHERE z IN (SELECT z FROM v WHERE q=2) RETURNING id");
+
+        assertTrue(out.contains("INSERT INTO t (a, b)"), "DML 列表前应保留可读空格：\n" + out);
+        assertTrue(out.contains("WHERE z IN ("), "谓词子查询前应保留空格：\n" + out);
+        assertTrue(out.contains("RETURNING id"), "RETURNING 应保持独立子句：\n" + out);
+        assertTrue(!out.contains("WHERE("), "WHERE 与普通括号不能粘连：\n" + out);
+    }
+
+    @Test
+    void caseAndWindowExpressionsHaveVisibleStructure() {
+        String out = SqlFormatter.format(
+                "SELECT CASE WHEN a=1 THEN 'x' WHEN a=2 THEN 'y' ELSE 'z' END AS label, "
+                        + "SUM(amount) OVER (PARTITION BY customer_id ORDER BY created_at "
+                        + "ROWS BETWEEN 3 PRECEDING AND CURRENT ROW) AS total FROM sales "
+                        + "WHERE (a=1 OR b=2) AND c IN (1,2,3)");
+
+        assertTrue(out.contains("CASE\n"), "CASE 应形成可扫描的表达式块：\n" + out);
+        assertTrue(out.contains("WHEN a = 1 THEN 'x'"), "WHEN 条件应保持同一逻辑行：\n" + out);
+        assertTrue(out.contains("ELSE 'z'"), "ELSE 应可独立定位：\n" + out);
+        assertTrue(out.contains("END AS label"), "END 后的别名不能丢失：\n" + out);
+        assertTrue(out.contains("OVER ("), "窗口定义前应有空格：\n" + out);
+        assertTrue(out.contains("OVER (\n"), "复杂窗口定义应展开：\n" + out);
+        assertTrue(out.contains("PARTITION BY customer_id\n"), "窗口分区应单独成行：\n" + out);
+        assertTrue(out.contains("WHERE ("), "条件分组括号前应有空格：\n" + out);
+    }
+
+    @Test
+    void cteListAndSetOperatorsBreakAtStatementBoundaries() {
+        String out = SqlFormatter.format(
+                "WITH a AS (SELECT id FROM t), b AS (SELECT id FROM u) "
+                        + "SELECT id FROM a UNION ALL SELECT id FROM b");
+
+        assertTrue(out.contains("),\n"), "CTE 列表应在同一层换行：\n" + out);
+        assertTrue(out.contains("b AS ("), "第二个 CTE 名称不能被吞掉：\n" + out);
+        assertTrue(Pattern.compile("(?m)^UNION ALL$").matcher(out).find()
+                        || out.contains("\nUNION ALL\n"),
+                "集合运算符应成为独立边界：\n" + out);
+    }
+
+    @Test
+    void postgresDollarQuotedBodiesRemainOpaque() {
+        String sql = "SELECT $$BEGIN; SELECT 'FROM'; END;$$ AS body, payload->>'name' AS name "
+                + "FROM events WHERE id = :id AND payload::jsonb IS NOT NULL";
+        String out = SqlFormatter.format(sql);
+
+        assertTrue(out.contains("$$BEGIN; SELECT 'FROM'; END;$$"),
+                "美元引用正文不能被关键字或分号改写：\n" + out);
+        assertTrue(out.contains("payload ->> 'name'"), "JSON 运算符应保持可读间距：\n" + out);
+        assertTrue(out.contains("payload::jsonb"), "类型转换运算符不能被拆开：\n" + out);
+        assertEquals(out, SqlFormatter.format(out), "复杂 SQL 美化应保持幂等：\n" + out);
+    }
+
+    @Test
+    void oracleQQuotedLiteralRemainsOpaque() {
+        String sql = "SELECT q'[A; FROM WHERE]' AS text_value FROM dual WHERE id = :id";
+        String out = SqlFormatter.format(sql);
+
+        assertTrue(out.contains("q'[A; FROM WHERE]'"), "Oracle q 引用正文不能被拆分：\n" + out);
+        assertTrue(out.contains("id = :id"), "Oracle 绑定变量不能被拆成两个 token：\n" + out);
+        assertEquals(out, SqlFormatter.format(out), "Oracle q 引用格式化应幂等：\n" + out);
+    }
 }
