@@ -48,7 +48,9 @@ public final class SqlFormatter {
             "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "DEFAULT", "CONSTRAINT", "UNIQUE",
             "CHECK", "TRUE", "FALSE", "USING", "OVER", "PARTITION", "RECURSIVE", "FETCH",
             "FIRST", "NEXT", "ONLY", "NULLS", "LAST", "FILTER", "MATERIALIZED", "LATERAL",
-            "CONNECT", "START", "PRIOR", "NOCYCLE", "SEARCH", "CYCLE");
+            "CONNECT", "START", "PRIOR", "NOCYCLE", "SEARCH", "CYCLE", "SIBLINGS", "CASCADE",
+            "RESTRICT", "ACTION", "DEFERRABLE", "INITIALLY", "IMMEDIATE", "DEFERRED", "ENABLE",
+            "DISABLE", "VALIDATE", "NOVALIDATE", "LEVEL", "ROWNUM");
 
     /** 触发另起一行（顶层子句）的关键字。 */
     private static final Set<String> LINE_STARTERS = Set.of(
@@ -58,7 +60,7 @@ public final class SqlFormatter {
     /** 声明对象后紧随的列/参数列表，使用关键字与列表之间的可读空格。 */
     private static final Set<String> DECLARATION_PREFIXES = Set.of(
             "TABLE", "VIEW", "INDEX", "SEQUENCE", "TYPE", "FUNCTION", "PROCEDURE",
-            "TRIGGER", "PACKAGE", "ON", "JOIN");
+            "TRIGGER", "PACKAGE", "ON", "JOIN", "REFERENCES");
 
     /** JOIN 短语的引导词（其后的 OUTER / JOIN 续接同一行）。 */
     private static final Set<String> JOIN_LEAD = Set.of("INNER", "LEFT", "RIGHT", "FULL", "CROSS");
@@ -396,6 +398,12 @@ public final class SqlFormatter {
                     prev = out;
                     return true;
                 case "WITH":
+                    if ("START".equals(prev)) {
+                        emit(out, true); // START WITH 是 Oracle 层级查询短语
+                        clause = "START WITH";
+                        prev = out;
+                        return true;
+                    }
                     startClause(out);
                     clause = "WITH";
                     joinLineOpen = false;
@@ -404,6 +412,11 @@ public final class SqlFormatter {
                 case "INSERT":
                 case "UPDATE":
                 case "DELETE":
+                    if ("ON".equals(clause) && "ON".equals(prev)) {
+                        emit(out, true); // 外键 ON DELETE/UPDATE 动作与 ON 保持同一行
+                        prev = out;
+                        return true;
+                    }
                     startClause(out);
                     clause = "DML";
                     joinLineOpen = false;
@@ -428,6 +441,26 @@ public final class SqlFormatter {
                     joinLineOpen = false;
                     prev = out;
                     return true;
+                case "START":
+                    startClause(out);
+                    clause = "START";
+                    joinLineOpen = false;
+                    prev = out;
+                    return true;
+                case "CONNECT":
+                    startClause(out);
+                    clause = "CONNECT";
+                    joinLineOpen = false;
+                    prev = out;
+                    return true;
+                case "BY":
+                    if ("CONNECT".equals(clause)) {
+                        emit(out, true);
+                        clause = "CONNECT BY";
+                        prev = out;
+                        return true;
+                    }
+                    return false;
                 case "USING":
                     if (mergeMode) {
                         startClause(out);
@@ -597,7 +630,7 @@ public final class SqlFormatter {
         private boolean needsSpaceBeforeOpenParen(int idx) {
             if (atLineStart || prev == null || prev.equals("(") || prev.equals(".")) return false;
             String upper = prev.toUpperCase(Locale.ROOT);
-            if (Set.of("SELECT", "FROM", "WHERE", "JOIN", "ON", "AND", "OR", "IN", "INSERT",
+            if (Set.of("SELECT", "FROM", "WHERE", "JOIN", "ON", "AND", "OR", "IN", "INSERT", "KEY",
                     "NOT", "EXISTS", "VALUES", "SET", "OVER", "AS", "WHEN", "THEN",
                     "ELSE", "RETURNING", "FILTER").contains(upper)) return true;
             if (isOperator(prev)) return true;

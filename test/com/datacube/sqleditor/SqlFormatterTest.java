@@ -226,4 +226,34 @@ class SqlFormatterTest {
         assertTrue(out.contains("VALUES (s.id, s.value)"), "动作值列表应保留可读间距：\n" + out);
         assertEquals(out, SqlFormatter.format(out), "MERGE 美化应幂等：\n" + out);
     }
+
+    @Test
+    void oracleHierarchyClausesRemainReadable() {
+        String out = SqlFormatter.format(
+                "SELECT employee_id, manager_id, name FROM employees "
+                        + "START WITH manager_id IS NULL CONNECT BY NOCYCLE "
+                        + "PRIOR employee_id = manager_id ORDER SIBLINGS BY name");
+
+        assertTrue(out.contains("START WITH manager_id IS NULL"),
+                "START WITH 应保持为一个层级查询短语：\n" + out);
+        assertTrue(out.contains("CONNECT BY NOCYCLE PRIOR employee_id = manager_id"),
+                "CONNECT BY 条件应保持可扫描：\n" + out);
+        assertTrue(out.contains("ORDER SIBLINGS BY name"),
+                "ORDER SIBLINGS BY 应保持为一个排序短语：\n" + out);
+        assertEquals(out, SqlFormatter.format(out), "层级查询美化应幂等：\n" + out);
+    }
+
+    @Test
+    void oracleDdlActionsAreUppercasedAndSpaced() {
+        String out = SqlFormatter.format(
+                "ALTER TABLE orders ADD CONSTRAINT fk_customer FOREIGN KEY(customer_id) "
+                        + "REFERENCES customers(id) ON DELETE CASCADE");
+
+        assertTrue(out.contains("FOREIGN KEY (customer_id)"),
+                "外键列列表前应保留可读空格：\n" + out);
+        assertTrue(out.contains("REFERENCES customers (id)"),
+                "REFERENCES 对象列列表前应保留可读空格：\n" + out);
+        assertTrue(out.contains("ON DELETE CASCADE"),
+                "级联动作不能被拆成多行或丢失大小写：\n" + out);
+    }
 }
