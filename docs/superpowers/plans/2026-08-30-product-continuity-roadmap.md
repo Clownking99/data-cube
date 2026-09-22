@@ -271,6 +271,8 @@ P2.5当前进度：旧回调晚于新attempt回归`81fde83`及受控变异验证
 
 2026-09-22 继续收紧复杂 SQL 美化边界：行注释强制结束当前输出行，避免压缩排版后 `--` 吞掉下一条 SQL；补齐 `FETCH`、`NULLS`、`FILTER` 等常见结构与 DDL 列表间距。新增注释安全、分页/过滤关键字和 DDL 列表回归；仍保持纯词法排版与执行前人工检查。详见[注释安全设计](../specs/2026-09-22-sql-formatter-comment-safety.md)与[验收记录](../verification/2026-09-22-sql-formatter-comment-safety.md)。
 
+2026-09-22 针对 Oracle 复杂 DML 继续增强：识别 `MERGE INTO`、`USING`、`ON`、`WHEN MATCHED` 和 `WHEN NOT MATCHED` 动作边界，保持 upsert 的目标、源查询与动作体可扫描；新增 MERGE 回归并验证子查询上下文恢复。仍是纯词法排版，不宣称 Oracle 语法验证。详见[MERGE 美化设计](../specs/2026-09-22-sql-formatter-merge.md)与[验收记录](../verification/2026-09-22-sql-formatter-merge.md)。
+
 - [ ] 汇总 P4 观察：用户主要在找旧 SQL，还是在找表/字段；若尚无试用反馈，先获得用户选择，不伪造排序依据。
 - [x] 若优先 SQL 复用，设计并实现“打开/保存 `.sql` + 最近脚本”，覆盖未保存标记、外部修改、覆盖确认、UTF-8 编码及恢复草稿与原文件的区别；文件 I/O 不自动执行文本。验证范围见[SQL 脚本文件工作流记录](../verification/2026-09-01-sql-script-file-workflow.md)。
 - [x] 先以单连接的单个 Schema 落地表/视图快速查找；区分显式远端名称读取与本地筛选，覆盖加载、取消和权限失败，不跨所有数据库扫描。整连接多 Schema 索引仍是未实现候选。

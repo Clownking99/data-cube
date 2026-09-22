@@ -209,4 +209,21 @@ class SqlFormatterTest {
         assertTrue(out.contains("id NUMBER, name VARCHAR2(20)"),
                 "DDL 列定义应保持行内可读：\n" + out);
     }
+
+    @Test
+    void mergeActionsUseVisibleClauseBoundaries() {
+        String out = SqlFormatter.format(
+                "MERGE INTO target t USING (SELECT id,value FROM source WHERE flag=1) s "
+                        + "ON (t.id=s.id) WHEN MATCHED THEN UPDATE SET t.value=s.value "
+                        + "WHEN NOT MATCHED THEN INSERT (id,value) VALUES (s.id,s.value)");
+
+        assertTrue(out.contains("MERGE INTO target t"), "MERGE 目标应保持同一逻辑行：\n" + out);
+        assertTrue(out.contains("USING ("), "USING 源查询应成为独立子句：\n" + out);
+        assertTrue(out.contains("ON (t.id = s.id)"), "匹配条件应成为独立子句：\n" + out);
+        assertTrue(out.contains("WHEN MATCHED THEN"), "匹配动作应可快速定位：\n" + out);
+        assertTrue(out.contains("WHEN NOT MATCHED THEN"), "未匹配动作应可快速定位：\n" + out);
+        assertTrue(out.contains("INSERT (id, value)"), "动作列列表应保留可读间距：\n" + out);
+        assertTrue(out.contains("VALUES (s.id, s.value)"), "动作值列表应保留可读间距：\n" + out);
+        assertEquals(out, SqlFormatter.format(out), "MERGE 美化应幂等：\n" + out);
+    }
 }

@@ -39,7 +39,7 @@ public final class SqlFormatter {
     /** 需大写的关键字集合（大小写不敏感匹配）。 */
     private static final Set<String> KEYWORDS = Set.of(
             "SELECT", "FROM", "WHERE", "GROUP", "ORDER", "BY", "HAVING", "LIMIT", "OFFSET",
-            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP",
+            "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "MERGE", "CREATE", "ALTER", "DROP",
             "TABLE", "VIEW", "INDEX", "SEQUENCE", "JOIN", "INNER", "LEFT", "RIGHT", "FULL",
             "OUTER", "CROSS", "ON", "AS", "AND", "OR", "NOT", "NULL", "IS", "IN", "EXISTS",
             "BETWEEN", "LIKE", "ILIKE", "DISTINCT", "UNION", "INTERSECT", "EXCEPT", "MINUS",
@@ -243,6 +243,7 @@ public final class SqlFormatter {
         private boolean joinLineOpen;  // 当前行是否已由 JOIN 引导词开启
         private boolean betweenPending; // 处于 BETWEEN ... AND 之间，该 AND 不换行
         private boolean deleteInlineFrom; // DELETE 之后紧随的 FROM 保持同一行
+        private boolean mergeMode; // MERGE 的 USING / WHEN 动作需要显式分段
         private int caseDepth;
         private boolean atLineStart = true;
         private String prev;
@@ -251,16 +252,18 @@ public final class SqlFormatter {
         private static final class Ctx {
             final int indent;
             final String clause;
-            final boolean joinLineOpen, betweenPending, deleteInlineFrom;
+            final boolean joinLineOpen, betweenPending, deleteInlineFrom, mergeMode;
             final int caseDepth;
             final int windowDepth;
             Ctx(int indent, String clause, boolean joinLineOpen,
-                boolean betweenPending, boolean deleteInlineFrom, int caseDepth, int windowDepth) {
+                boolean betweenPending, boolean deleteInlineFrom, boolean mergeMode,
+                int caseDepth, int windowDepth) {
                 this.indent = indent;
                 this.clause = clause;
                 this.joinLineOpen = joinLineOpen;
                 this.betweenPending = betweenPending;
                 this.deleteInlineFrom = deleteInlineFrom;
+                this.mergeMode = mergeMode;
                 this.caseDepth = caseDepth;
                 this.windowDepth = windowDepth;
             }
@@ -313,7 +316,7 @@ public final class SqlFormatter {
                 boolean space = !atLineStart && prev != null && !prev.equals("(");
                 emit("(", space);
                 ctxStack.push(new Ctx(indent, clause, joinLineOpen, betweenPending, deleteInlineFrom,
-                        caseDepth, windowDepth));
+                        mergeMode, caseDepth, windowDepth));
                 parenStack.push(Boolean.TRUE);
                 windowParenStack.push(false);
                 indent += RIVER + 2;
@@ -321,6 +324,7 @@ public final class SqlFormatter {
                 joinLineOpen = false;
                 betweenPending = false;
                 deleteInlineFrom = false;
+                mergeMode = false;
                 caseDepth = 0;
                 windowDepth = 0;
                 prev = "(";
@@ -355,6 +359,7 @@ public final class SqlFormatter {
                 joinLineOpen = c.joinLineOpen;
                 betweenPending = c.betweenPending;
                 deleteInlineFrom = c.deleteInlineFrom;
+                mergeMode = c.mergeMode;
                 caseDepth = c.caseDepth;
                 windowDepth = c.windowDepth;
             } else if (window) {
@@ -405,6 +410,13 @@ public final class SqlFormatter {
                     deleteInlineFrom = u.equals("DELETE");
                     prev = out;
                     return true;
+                case "MERGE":
+                    startClause(out);
+                    clause = "MERGE";
+                    mergeMode = true;
+                    joinLineOpen = false;
+                    prev = out;
+                    return true;
                 case "FROM":
                     if (deleteInlineFrom) {
                         deleteInlineFrom = false;
@@ -416,6 +428,24 @@ public final class SqlFormatter {
                     joinLineOpen = false;
                     prev = out;
                     return true;
+                case "USING":
+                    if (mergeMode) {
+                        startClause(out);
+                        clause = "USING";
+                        joinLineOpen = false;
+                        prev = out;
+                        return true;
+                    }
+                    return false;
+                case "WHEN":
+                    if (mergeMode) {
+                        startClause(out);
+                        clause = "WHEN";
+                        joinLineOpen = false;
+                        prev = out;
+                        return true;
+                    }
+                    return false;
                 case "SET":
                     startClause(out);
                     clause = "SET";
@@ -567,7 +597,7 @@ public final class SqlFormatter {
         private boolean needsSpaceBeforeOpenParen(int idx) {
             if (atLineStart || prev == null || prev.equals("(") || prev.equals(".")) return false;
             String upper = prev.toUpperCase(Locale.ROOT);
-            if (Set.of("SELECT", "FROM", "WHERE", "JOIN", "ON", "AND", "OR", "IN",
+            if (Set.of("SELECT", "FROM", "WHERE", "JOIN", "ON", "AND", "OR", "IN", "INSERT",
                     "NOT", "EXISTS", "VALUES", "SET", "OVER", "AS", "WHEN", "THEN",
                     "ELSE", "RETURNING", "FILTER").contains(upper)) return true;
             if (isOperator(prev)) return true;
