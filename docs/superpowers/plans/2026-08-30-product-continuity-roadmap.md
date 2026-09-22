@@ -275,6 +275,8 @@ P2.5当前进度：旧回调晚于新attempt回归`81fde83`及受控变异验证
 
 2026-09-22 补齐 Oracle 层级查询与 DDL 动作排版：将 `START WITH`、`CONNECT BY`、`ORDER SIBLINGS BY` 保持为完整边界，识别 `CASCADE` 等约束动作，并保持 `ON DELETE/UPDATE` 同行。新增层级查询与外键 DDL 回归；仍保持纯词法排版、不连接真实 Oracle。详见[Oracle 子句设计](../specs/2026-09-22-sql-formatter-oracle-clauses.md)与[验收记录](../verification/2026-09-22-sql-formatter-oracle-clauses.md)。
 
+2026-09-22 继续改善复杂列表可读性：顶层 `GROUP BY`、`ORDER BY`、`RETURNING` 以及窗口 `PARTITION BY/ORDER BY` 在逗号处逐项换行，同时保持函数参数和 `ROLLUP(...)` 等普通括号行内。新增列表边界与幂等回归。详见[列表排版设计](../specs/2026-09-22-sql-formatter-list-layout.md)与[验收记录](../verification/2026-09-22-sql-formatter-list-layout.md)。
+
 - [ ] 汇总 P4 观察：用户主要在找旧 SQL，还是在找表/字段；若尚无试用反馈，先获得用户选择，不伪造排序依据。
 - [x] 若优先 SQL 复用，设计并实现“打开/保存 `.sql` + 最近脚本”，覆盖未保存标记、外部修改、覆盖确认、UTF-8 编码及恢复草稿与原文件的区别；文件 I/O 不自动执行文本。验证范围见[SQL 脚本文件工作流记录](../verification/2026-09-01-sql-script-file-workflow.md)。
 - [x] 先以单连接的单个 Schema 落地表/视图快速查找；区分显式远端名称读取与本地筛选，覆盖加载、取消和权限失败，不跨所有数据库扫描。整连接多 Schema 索引仍是未实现候选。

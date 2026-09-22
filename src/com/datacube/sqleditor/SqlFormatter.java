@@ -297,7 +297,9 @@ public final class SqlFormatter {
                 if (clauseActive && kw && handleClause(u, out)) continue;
                 if (clauseActive && tok.equals(";")) { endStatement(); continue; }
                 if (clauseActive && tok.equals(",")
-                        && (clause.equals("SELECT") || clause.equals("SET") || clause.equals("WITH"))) {
+                        && (clause.equals("SELECT") || clause.equals("SET") || clause.equals("WITH")
+                        || clause.equals("GROUP") || clause.equals("ORDER") || clause.equals("RETURNING")
+                        || windowDepth > 0)) {
                     emit(",", false);
                     contLine();
                     prev = ",";

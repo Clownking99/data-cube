@@ -256,4 +256,28 @@ class SqlFormatterTest {
         assertTrue(out.contains("ON DELETE CASCADE"),
                 "级联动作不能被拆成多行或丢失大小写：\n" + out);
     }
+
+    @Test
+    void topLevelAndWindowListsBreakWithoutSplittingFunctionArguments() {
+        String out = SqlFormatter.format(
+                "SELECT region, status, sum(amount) OVER (PARTITION BY region,status "
+                        + "ORDER BY created_at,id) AS total FROM sales "
+                        + "GROUP BY region,status,channel ORDER BY region ASC,status DESC");
+        String returning = SqlFormatter.format("UPDATE sales SET status='X' WHERE id=1 RETURNING id,created_at");
+
+        assertTrue(out.contains("PARTITION BY region,\n"),
+                "窗口分区列表应逐项换行：\n" + out);
+        assertTrue(out.contains("ORDER BY created_at,\n"),
+                "窗口排序列表应逐项换行：\n" + out);
+        assertTrue(out.contains("GROUP BY region,\n"),
+                "GROUP BY 列表应逐项换行：\n" + out);
+        assertTrue(out.contains("ORDER BY region ASC,\n"),
+                "ORDER BY 列表应逐项换行：\n" + out);
+        assertTrue(out.contains("SUM(amount)"),
+                "聚合函数参数不能被列表换行规则拆开：\n" + out);
+        assertTrue(returning.contains("RETURNING id,\n"),
+                "RETURNING 列表应逐项换行：\n" + returning);
+        assertEquals(out, SqlFormatter.format(out), "列表换行格式化应幂等：\n" + out);
+        assertEquals(returning, SqlFormatter.format(returning), "RETURNING 列表格式化应幂等：\n" + returning);
+    }
 }
