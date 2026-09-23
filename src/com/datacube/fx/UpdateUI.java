@@ -3,12 +3,11 @@ package com.datacube.fx;
 import com.datacube.update.ReleaseInfo;
 import com.datacube.update.UpdateService;
 
-import javafx.application.Platform;
-import javafx.event.Event;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TextArea;
@@ -21,7 +20,7 @@ import javafx.stage.Window;
  * 自动更新相关的 UI 呈现：更新提示弹窗、下载进度、结果反馈。
  *
  * <p>{@link UpdateService} 通过应用注入的 JavaFX 分发器触发回调，
- * 因此本类直接更新 UI；{@link Platform} 仅用于更新就绪后退出应用。
+ * 因此本类直接更新 UI；应用退出仍由主窗口正常关闭流程负责。
  */
 final class UpdateUI {
 
@@ -48,7 +47,7 @@ final class UpdateUI {
             alert.getDialogPane().setExpanded(true);
         }
 
-        ButtonType update = new ButtonType("立即更新");
+        ButtonType update = new ButtonType(svc.canAutomaticallyUpdate(info) ? "验证并准备更新" : "手动获取更新");
         ButtonType later = new ButtonType("稍后", ButtonType.CANCEL.getButtonData());
         alert.getButtonTypes().setAll(update, later);
 
@@ -70,11 +69,12 @@ final class UpdateUI {
         ProgressBar bar = new ProgressBar(0);
         bar.setPrefWidth(320);
         Label pct = new Label("准备下载...");
-        VBox box = new VBox(10, new Label("正在下载新版本 " + info.tag() + " ..."), bar, pct);
+        Button cancel = new Button("取消");
+        cancel.setOnAction(event -> { svc.cancelDownload(); cancel.setDisable(true); pct.setText("正在取消..."); });
+        VBox box = new VBox(10, new Label("正在验证并下载新版本 " + info.tag() + " ..."), bar, pct, cancel);
         box.setPadding(new Insets(16));
         dialog.setScene(new Scene(box));
-        // 下载中禁止手动关闭，避免中断留下半成品
-        dialog.setOnCloseRequest(Event::consume);
+        dialog.setOnCloseRequest(event -> { svc.cancelDownload(); event.consume(); });
         dialog.show();
 
         svc.downloadAndApply(info, new UpdateService.ApplyCallback() {
@@ -95,12 +95,12 @@ final class UpdateUI {
             public void onReadyToRestart() {
                 dialog.close();
                 Alert done = new Alert(Alert.AlertType.INFORMATION,
-                        "更新包已就绪，应用将关闭以完成更新。", ButtonType.OK);
+                        "更新已验证并交接，尚未确认安装或重启成功。\n请处理未提交事务后正常关闭主窗口；5 分钟内未关闭则取消替换。\n便携版会保留旧版备份；安装版由安装程序处理。", ButtonType.OK);
                 done.setTitle("更新");
                 done.setHeaderText(null);
                 if (owner != null) done.initOwner(owner);
                 done.showAndWait();
-                Platform.exit();
+                // The normal main-window close path owns transaction and resource cleanup.
             }
 
             @Override
@@ -109,6 +109,16 @@ final class UpdateUI {
                 openUrl(url);
                 info(owner, "已在浏览器打开下载页，请手动下载安装。");
             }
+
+            @Override
+            public void onManualRequired(String url, String reason) {
+                dialog.close();
+                info(owner, reason);
+                openUrl(url);
+            }
+
+            @Override
+            public void onCancelled() { dialog.close(); info(owner, "更新已取消，当前版本保持可用。"); }
 
             @Override
             public void onError(Exception e) {
@@ -141,7 +151,9 @@ final class UpdateUI {
     /** 用系统默认浏览器打开地址（Windows，避免引入 java.desktop 模块）。 */
     static void openUrl(String url) {
         try {
-            new ProcessBuilder("cmd.exe", "/c", "start", "", url).start();
+            java.net.URI uri = java.net.URI.create(url);
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getRawUserInfo() != null) return;
+            new ProcessBuilder("rundll32.exe", "url.dll,FileProtocolHandler", uri.toASCIIString()).start();
         } catch (Exception ignored) {
         }
     }

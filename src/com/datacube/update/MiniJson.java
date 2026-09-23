@@ -17,6 +17,7 @@ final class MiniJson {
 
     private final String s;
     private int i;
+    private int depth;
 
     private MiniJson(String s) {
         this.s = s;
@@ -28,20 +29,22 @@ final class MiniJson {
         p.skipWs();
         Object v = p.readValue();
         p.skipWs();
+        if (p.i != p.s.length()) throw p.err("trailing input");
         return v;
     }
 
     private Object readValue() {
         if (i >= s.length()) throw err("unexpected end");
         char c = s.charAt(i);
-        return switch (c) {
+        if (++depth > 64) throw err("nesting limit");
+        try { return switch (c) {
             case '{' -> readObject();
             case '[' -> readArray();
             case '"' -> readString();
             case 't', 'f' -> readBoolean();
             case 'n' -> readNull();
             default -> readNumber();
-        };
+        }; } finally { depth--; }
     }
 
     private Map<String, Object> readObject() {
@@ -58,6 +61,7 @@ final class MiniJson {
             skipWs();
             expect(':');
             skipWs();
+            if (map.containsKey(key)) throw err("duplicate key");
             map.put(key, readValue());
             skipWs();
             char c = next();
@@ -112,6 +116,7 @@ final class MiniJson {
                     default -> throw err("bad escape \\" + e);
                 }
             } else {
+                if (c < 32) throw err("unescaped control character");
                 sb.append(c);
             }
         }

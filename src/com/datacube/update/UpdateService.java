@@ -1,116 +1,119 @@
 package com.datacube.update;
 
 import java.nio.file.Path;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.concurrent.Executor;
-import java.util.function.Consumer;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
 
-/**
- * 自动更新编排：聚合 {@link UpdateChecker} / {@link InstallMode} / {@link UpdateApplier}，
- * 对 UI 暴露"检查"与"下载并应用"两组入口。
- *
- * <p>所有网络/IO 由注入的后台执行器运行；本类不依赖 JavaFX，回调由注入的
- * 分发器投递。应用关闭后不再启动操作或触发回调。
- */
+/** I/O and callbacks use injected executors; one cancellable update may be active. */
 public final class UpdateService implements AutoCloseable {
-
-    private final UpdateChecker checker = new UpdateChecker();
-    private final UpdateApplier applier = new UpdateApplier();
+    private final UpdateChecker checker;
+    private final UpdateApplier applier;
     private final UpdateTaskDispatcher tasks;
+    private final Supplier<InstallMode> mode;
+    private final Supplier<Optional<Path>> appDir;
+    private final Supplier<String> currentVersion;
+    private final BooleanSupplier supportedPlatform;
+    private UpdateCancellation active;
+    private boolean closed, handedOff;
 
     public UpdateService(Executor background, Consumer<Runnable> callbacks) {
-        this.tasks = new UpdateTaskDispatcher(background, callbacks);
+        this(background, callbacks, new UpdateChecker(), new UpdateApplier(), InstallMode::detect,
+                InstallMode::appDir, AppVersion::current,
+                () -> System.getProperty("os.name", "").startsWith("Windows")
+                        && Set.of("amd64", "x86_64").contains(System.getProperty("os.arch", "")));
     }
-
-    /** 手动检查结果回调（三选一触发）。 */
+    UpdateService(Executor background, Consumer<Runnable> callbacks, UpdateChecker checker, UpdateApplier applier,
+                  Supplier<InstallMode> mode, Supplier<Optional<Path>> appDir, Supplier<String> version,
+                  BooleanSupplier supportedPlatform) {
+        this.tasks = new UpdateTaskDispatcher(background, callbacks);
+        this.checker = checker; this.applier = applier; this.mode = mode; this.appDir = appDir;
+        this.currentVersion = version; this.supportedPlatform = supportedPlatform;
+    }
     public interface CheckCallback {
         void onUpdateAvailable(ReleaseInfo info);
         void onUpToDate();
         void onError(Exception e);
     }
-
-    /** 下载并应用过程回调。 */
     public interface ApplyCallback {
         void onProgress(long bytesRead, long total);
-        /** 下载完成、替换者已拉起——UI 应提示并退出应用。 */
+        /** Helper started; installation/restart is not yet confirmed. Normal window close guards still apply. */
         void onReadyToRestart();
-        /** 形态未知或对应资产缺失——UI 应打开该地址让用户手动下载。 */
         void onOpenPage(String url);
+        default void onManualRequired(String url, String reason) { onOpenPage(url); }
+        default void onCancelled() { }
         void onError(Exception e);
     }
-
-    /** 启动时后台静默检查：仅在发现新版时回调；dev 构建与任何失败均静默跳过。 */
+    public boolean canAutomaticallyUpdate(ReleaseInfo info) {
+        return supportedPlatform.getAsBoolean() && applier.configured() && info.verificationAvailable();
+    }
     public void checkInBackground(Consumer<ReleaseInfo> onNewVersion) {
-        Objects.requireNonNull(onNewVersion, "onNewVersion");
+        Objects.requireNonNull(onNewVersion);
         if (AppVersion.isDev()) return;
         tasks.execute(() -> {
-            try {
-                checker.checkForUpdate().ifPresent(info ->
-                        tasks.dispatch(() -> onNewVersion.accept(info)));
-            } catch (Exception ignored) {
-                // 启动自检失败保持静默，不打扰用户
-            }
+            try { checker.checkForUpdate().ifPresent(info -> tasks.dispatch(() -> onNewVersion.accept(info))); }
+            catch (Exception ignored) { }
         });
     }
-
-    /** 手动检查：结果始终回调（有新版 / 已最新 / 失败）。 */
     public void checkManually(CheckCallback cb) {
-        Objects.requireNonNull(cb, "cb");
         tasks.execute(() -> {
             try {
-                Optional<ReleaseInfo> up = checker.checkForUpdate();
-                if (up.isPresent()) {
-                    ReleaseInfo info = up.get();
-                    tasks.dispatch(() -> cb.onUpdateAvailable(info));
-                } else {
-                    tasks.dispatch(cb::onUpToDate);
-                }
-            } catch (Exception e) {
-                tasks.dispatch(() -> cb.onError(e));
-            }
+                var update = checker.checkForUpdate();
+                if (update.isPresent()) tasks.dispatch(() -> cb.onUpdateAvailable(update.get()));
+                else tasks.dispatch(cb::onUpToDate);
+            } catch (Exception failure) { tasks.dispatch(() -> cb.onError(failure)); }
         });
     }
-
-    /** 按运行形态下载对应资产并应用；UNKNOWN 或资产缺失时改为打开网页。 */
     public void downloadAndApply(ReleaseInfo info, ApplyCallback cb) {
-        Objects.requireNonNull(info, "info");
-        Objects.requireNonNull(cb, "cb");
-        tasks.execute(() -> {
-            try {
-                InstallMode mode = InstallMode.detect();
-                if (mode == InstallMode.INSTALLED && info.setupExeUrl() != null) {
-                    Path dest = applier.tempFile("DataCube-" + safeTag(info) + "-setup.exe");
-                    applier.download(info.setupExeUrl(), dest, (bytesRead, total) ->
-                            tasks.dispatch(() -> cb.onProgress(bytesRead, total)));
-                    applier.launchInstaller(dest);
+        Objects.requireNonNull(info); Objects.requireNonNull(cb);
+        UpdateCancellation control;
+        synchronized (this) {
+            if (closed) return;
+            if (active != null || handedOff) { tasks.dispatch(() -> cb.onError(new IllegalStateException("已有更新请求正在处理或等待退出"))); return; }
+            active = control = new UpdateCancellation(Duration.ofMinutes(10));
+        }
+        try {
+            tasks.execute(() -> {
+                try (control) {
+                    control.bindWorker();
+                    if (!canAutomaticallyUpdate(info)) {
+                        tasks.dispatch(() -> cb.onManualRequired(UpdateChecker.releasesPage(),
+                                "此构建或发布缺少受信任的更新验证信息，自动执行已关闭。请手动核对并安装官方版本。"));
+                        return;
+                    }
+                    InstallMode selected = mode.get();
+                    Optional<Path> target = appDir.get();
+                    if (selected == InstallMode.UNKNOWN || target.isEmpty()) {
+                        tasks.dispatch(() -> cb.onManualRequired(UpdateChecker.releasesPage(), "无法确认当前安装位置，请手动升级。"));
+                        return;
+                    }
+                    var prepared = applier.prepare(info, currentVersion.get(), selected, target.orElseThrow(),
+                            control, (bytes, total) -> tasks.dispatch(() -> {
+                                if (!control.cancelled()) cb.onProgress(bytes, total);
+                            }));
+                    applier.launch(prepared, control);
+                    synchronized (UpdateService.this) { handedOff = true; }
                     tasks.dispatch(cb::onReadyToRestart);
-                } else if (mode == InstallMode.PORTABLE && info.portableZipUrl() != null) {
-                    Path appDir = InstallMode.appDir()
-                            .orElseThrow(() -> new IllegalStateException("无法定位应用目录"));
-                    Path dest = applier.tempFile("DataCube-" + safeTag(info) + "-portable.zip");
-                    applier.download(info.portableZipUrl(), dest, (bytesRead, total) ->
-                            tasks.dispatch(() -> cb.onProgress(bytesRead, total)));
-                    applier.launchPortableUpdate(dest, appDir);
-                    tasks.dispatch(cb::onReadyToRestart);
-                } else {
-                    String url = info.htmlUrl() != null ? info.htmlUrl() : UpdateChecker.releasesPage();
-                    tasks.dispatch(() -> cb.onOpenPage(url));
+                } catch (CancellationException cancelled) {
+                    tasks.dispatch(cb::onCancelled);
+                } catch (Exception failure) {
+                    if (control.cancelled()) tasks.dispatch(cb::onCancelled);
+                    else tasks.dispatch(() -> cb.onError(failure));
+                } finally {
+                    synchronized (UpdateService.this) { if (active == control) active = null; }
                 }
-            } catch (Exception e) {
-                tasks.dispatch(() -> cb.onError(e));
-            }
-        });
+            });
+        } catch (RuntimeException rejected) {
+            synchronized (this) { if (active == control) active = null; }
+            control.close();
+            tasks.dispatch(() -> cb.onError(rejected));
+        }
     }
-
-    @Override
-    public void close() {
+    public synchronized boolean cancelDownload() { return active != null && active.cancel(); }
+    @Override public synchronized void close() {
+        closed = true;
         tasks.close();
-    }
-
-    private static String safeTag(ReleaseInfo info) {
-        String tag = info.tag() != null ? info.tag() : info.version();
-        if (tag == null) return "latest";
-        return tag.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (active != null) { active.cancel(); active.close(); active = null; }
     }
 }
