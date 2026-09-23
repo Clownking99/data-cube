@@ -2,6 +2,7 @@ package com.datacube.sqleditor;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Locale;
@@ -17,6 +18,88 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 幂等性与语义保全（去空白去大小写后 token 序列一致）。不依赖数据库。
  */
 class SqlFormatterTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"=>", ":="})
+    void namedArgumentsKeepArrowBindingsAndExpressionSpacing(String arrow) {
+        String sql = "select build_report(p_id" + arrow + ":id,p_limit" + arrow
+                + "(-1),p_text" + arrow + "q'[=> #- --]') as report from dual";
+        String expected = "SELECT build_report(p_id " + arrow + " :id, p_limit " + arrow
+                + " (- 1), p_text " + arrow + " q'[=> #- --]') AS report\n  FROM dual";
+        assertEquals(expected, SqlFormatter.format(sql));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"#-", "@?", "<->", "<=>", "@@@", "~~*", "!~~*", "|/", "||/",
+            "@-", "?+", "&<|", "#>>", "->>", "?&", "||"})
+    void compoundOperatorsStayWholeAndSeparateFromParentheses(String operator) {
+        String expected = "SELECT a " + operator + " (b) AS result,\n       id\n  FROM t";
+        assertEquals(expected, SqlFormatter.format("select a" + operator + "(b) as result,id from t"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "a*-1, a * - 1", "a*+1, a * + 1", "a+-1, a + - 1", "a-+1, a - + 1",
+            "a>=-1, a >= - 1", "a->>-1, a ->> - 1", "f(n=>-1), f(n => - 1)",
+            "a* @b, a * @ b", "a*@b, a *@ b", "a< >b, a < > b"
+    })
+    void operatorRunsRespectUnarySignsAndExistingWhitespace(String input, String formatted) {
+        String expected = "SELECT " + formatted + " AS value\n  FROM t";
+        assertEquals(expected, SqlFormatter.format("select " + input + " as value from t"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void operatorScanStopsAtBlockAndLineComments() {
+        String expected = "SELECT a @? /* keep #- */ '$.a' AS has_path,\n"
+                + "       a <-> -- keep =>\nb AS distance\n  FROM t";
+        assertEquals(expected, SqlFormatter.format(
+                "select a@?/* keep #- */'$.a' as has_path,a<->-- keep =>\nb as distance from t"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void jsonPathDeletionAndGeometricDistanceKeepTheirSqlStructure() {
+        String expected = "SELECT payload #- '{a,0}',\n"
+                + "       payload @? '$.a[*] ? (@ > 2)',\n"
+                + "       point(1, 2) <-> point(3, 4) AS distance\n  FROM t";
+        assertEquals(expected, SqlFormatter.format(
+                "select payload#-'{a,0}',payload@?'$.a[*] ? (@ > 2)',"
+                        + "point(1,2)<->point(3,4) as distance from t"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void prefixOperatorsAndArithmeticBeforeCommentsRemainSeparate() {
+        String expected = "SELECT |/ (9),\n       ||/ (27),\n"
+                + "       a + /* preserve @- */ - 1,\n"
+                + "       a * -- preserve @?\nb\n  FROM t";
+        assertEquals(expected, SqlFormatter.format(
+                "select |/(9),||/(27),a+/* preserve @- */-1,a*-- preserve @?\nb from t"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "'a@?b=>c#-d'", "\"field@?=>#-\"", "`field@?=>#-`",
+            "$body$a@@@b /* c */$body$", "q'[a<->b -- c]'", "E'@? =>'"
+    })
+    void quotedOperatorsStayOpaqueWhileFollowingJsonPredicateIsFormatted(String quoted) {
+        String expected = "SELECT " + quoted + " AS value,\n       :arg,\n"
+                + "       $1::jsonb\n  FROM t\n WHERE payload @? '$.a'";
+        assertEquals(expected, SqlFormatter.format(
+                "select " + quoted + " as value,:arg,$1::jsonb from t where payload@?'$.a'"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void longUnarySignRunRetainsEverySignAndRemainsIdempotent() {
+        String expected = "SELECT " + "+ ".repeat(8192) + "1";
+        assertEquals(expected, SqlFormatter.format("select " + "+".repeat(8192) + "1"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
 
     @ParameterizedTest
     @ValueSource(strings = {"case", "subquery"})

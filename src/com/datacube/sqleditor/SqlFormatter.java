@@ -180,11 +180,10 @@ public final class SqlFormatter {
                     continue;
                 }
             }
-            // Keep common PostgreSQL/Oracle compound operators intact.
-            String operator = readOperator(sql, i);
-            if (operator != null) {
-                out.add(operator);
-                i += operator.length();
+            // Preserve complete symbol runs, including extension operators and named arguments.
+            int operatorEnd = appendOperatorTokens(sql, i, out);
+            if (operatorEnd > i) {
+                i = operatorEnd;
                 continue;
             }
             // Numeric literals are opaque: exponent signs and leading dots must not
@@ -207,17 +206,6 @@ public final class SqlFormatter {
                 out.add(sql.substring(i, j));
                 i = j;
                 continue;
-            }
-            // 多字符运算符
-            if (i + 1 < n) {
-                String two = sql.substring(i, i + 2);
-                if (two.equals("::") || two.equals(":=") || two.equals("<=")
-                        || two.equals(">=") || two.equals("<>") || two.equals("!=")
-                        || two.equals("||")) {
-                    out.add(two);
-                    i += 2;
-                    continue;
-                }
             }
             // 单字符符号
             out.add(String.valueOf(c));
@@ -337,14 +325,37 @@ public final class SqlFormatter {
         return end < 0 ? -1 : end + 2;
     }
 
-    private static String readOperator(String sql, int start) {
-        String[] operators = {"!~~*", "!~~", "!~*", "#>>", "#>", "->>", "->",
-                "::", ":=", "<=", ">=", "<>", "!=", "||", "&&", "@@", "@>", "<@",
-                "?&", "?|", "##", "~*", "!~", "~~"};
-        for (String operator : operators) {
-            if (sql.startsWith(operator, start)) return operator;
+    /**
+     * Scan a complete operator run once, stopping before comment openers.
+     * PostgreSQL separates trailing +/- unless a non-SQL operator character occurs.
+     * Emit those signs here as individual tokens to avoid rescanning long runs of '+'.
+     */
+    private static int appendOperatorTokens(String sql, int start, List<String> tokens) {
+        if (sql.startsWith("::", start) || sql.startsWith(":=", start)) {
+            tokens.add(sql.substring(start, start + 2));
+            return start + 2;
         }
-        return null;
+        int end = start;
+        boolean permitsTrailingSign = false;
+        while (end < sql.length() && isOperatorCharacter(sql.charAt(end))) {
+            if (sql.startsWith("--", end) || sql.startsWith("/*", end)) break;
+            permitsTrailingSign |= "~!@#%^&|?".indexOf(sql.charAt(end)) >= 0;
+            end++;
+        }
+        if (end == start) return start;
+        int headEnd = end;
+        if (!permitsTrailingSign) {
+            while (headEnd > start + 1
+                    && (sql.charAt(headEnd - 1) == '+' || sql.charAt(headEnd - 1) == '-')) headEnd--;
+        }
+        tokens.add(sql.substring(start, headEnd));
+        for (int i = headEnd; i < end; i++) tokens.add(String.valueOf(sql.charAt(i)));
+        return end;
+    }
+
+    private static boolean isOperatorCharacter(char c) {
+        // Backticks retain the existing quoted-identifier interpretation in this dialect-neutral formatter.
+        return "+-*/<>=~!@#%^&|?".indexOf(c) >= 0;
     }
 
     /** PostgreSQL 续接字符串必须保留片段间的换行，并继承首段的 E 转义模式。 */
@@ -878,9 +889,12 @@ public final class SqlFormatter {
         }
 
         private static boolean isOperator(String token) {
-            return Set.of("=", "<", ">", "<=", ">=", "<>", "!=", "+", "-", "*", "/",
-                    "%", "||", "->", "->>", "#>", "#>>", "@>", "<@", "&&", "@@",
-                    "?&", "?|", "~", "~*", "!~", "::", ":=").contains(token);
+            if (token.equals("::") || token.equals(":=")) return true;
+            if (token.isEmpty()) return false;
+            for (int i = 0; i < token.length(); i++) {
+                if (!isOperatorCharacter(token.charAt(i))) return false;
+            }
+            return true;
         }
 
         private static boolean needSpaceBefore(String prev, String cur) {
