@@ -42,3 +42,52 @@ main 基线 `8a729746a7f93c9399963930836ac69e4721eec8`，tracked 干净。
 - 跳过：Redis live 1 项、Oracle/PG schema-diff live 2 项，均未授权且未设置必需环境；不计通过。
 - 保留提示：测试源码 SqlEditorResultFilterContractTest 的既有 unchecked 提示、jlink 的 JEP 493 提示；不宣称零警告。G1 账本中的历史偶发 schema snapshot 失败未在本轮复现，根因仍未明确。
 - 下一步：本地提交、main 合并及独立合成 profile 复验，再登记提交 SHA 和待外部验收。
+
+## 检查点 4：main 集成、复验与交付
+
+- 当前目标：完成 G2 已授权的本地实现和集成验证；M2 保持部分完成。
+- 提交：实现 `39f7432eed8b85a9fb5f9ac9622d3ae3294c54ce`；main 本地 no-ff 合并 `153b95bc8848543d63d6f9a3267eb712af46acdb`。合并前重新检查 main 为原基线、tracked 干净，无冲突；合并后 src/test/resources/build/runtime 输入与实现提交一致。
+- 验证 SHA：以下 main 实际执行均针对 `153b95b` 的运行时代码；之后提交仅更新文档，不另称执行了代码测试。
+- main 全量：`g2-main-full.log`，`test --rerun-tasks`，exit 0，2m52s，273 suites / **3,596 tests / 3,593 passed / 0 failures/errors / 3 skipped**。包含最终 82 项 updater 测试及其定时器回归。3 个 live skip 与检查点 3 相同，仍不计通过。
+- main buildSrc：`g2-main-buildsrc.log`，`-p buildSrc clean test --rerun-tasks`，exit 0，18s，**8 项全通过**，4 actionable tasks 全部执行。
+- main 镜像：`g2-main-image.log`，`jpackageImage --offline --no-daemon --console=plain`，exit 0，35s；jlink 和 jpackageImage 实际执行。产物位于 `D:\Projects\朝花夕拾\build\jpackage\DataCube`，本轮未安装或启动应用。
+- main 运行时：`g2-main-runtime-crypto.log`，对该镜像重新执行临时探针，Ed25519/SPKI/SHA-256 全通过；jimage 确认更新类、helper、公钥配置资源已打包，cfg 不含合成测试参数。
+- 证据：XML 分别归档为日志目录下 `main-full-xml`、`main-buildsrc-xml`；此前 worktree 报告为 `full-xml`、`targeted-reviewed-xml`、`buildsrc-xml`。保留所有失败日志，未以复跑覆盖首次失败事实。
+- 未完成 / 待验：见下表。没有推送、tag、PR、发布、远端 CI、实际安装或真实连接访问；没有把缺少生产公钥的构建描述为可自动安全升级。
+- 下一步：交付本地成果并停止本轮。外部事项需相应明确授权；不自动启动 M3–M8。
+
+| 待验项 | 状态及边界 |
+| --- | --- |
+| 生产公钥、密钥托管/轮换、受保护签名发布流水线 | 待明确授权；当前信任配置为空，自动执行关闭 |
+| 原生桌面更新交互、取消/关闭与窗口提示 | 未执行人工桌面验收；本轮为 Java/FX 自动化及合成 helper 测试 |
+| 已安装旧版/便携版真实升级、UAC、PowerShell 策略、安装器回退、断电恢复 | 未授权执行真实升级；脚本模拟不能替代实际安装结果 |
+| 同 SHA 远端 CI、正式发布、真实 Oracle/PG/Redis | 未执行；G1 的外部待验项继续保留，不计入 M2 本地证据 |
+
+## 复现命令
+
+在对应 worktree 或 main 根目录运行；`$scratch` 指向本账本顶部的独占临时目录。
+main 使用 `profile-main`，worktree 使用 `profile`。init script 仅影响测试子进程，
+没有修改 JAVA_TOOL_OPTIONS 或系统环境；打包命令不带测试隔离参数。
+
+```powershell
+$env:DATACUBE_G2_PROFILE = Join-Path $scratch 'profile-main'
+.\gradlew.bat test --tests 'com.datacube.update.*' --offline --no-daemon --console=plain --init-script (Join-Path $scratch 'isolated-tests.gradle')
+.\gradlew.bat test --rerun-tasks --offline --no-daemon --console=plain --init-script (Join-Path $scratch 'isolated-tests.gradle')
+.\gradlew.bat -p buildSrc clean test --rerun-tasks --offline --no-daemon --console=plain
+.\gradlew.bat jpackageImage --offline --no-daemon --console=plain
+git diff --check
+```
+
+隔离脚本内容（不包含真实环境变量值）：
+
+```groovy
+allprojects {
+    tasks.withType(Test).configureEach {
+        systemProperty 'user.home', System.getenv('DATACUBE_G2_PROFILE')
+        systemProperty 'java.awt.headless', 'false'
+        environment.keySet().findAll {
+            it.startsWith('DATACUBE_REDIS_') || it.startsWith('DATACUBE_SCHEMA_DIFF_')
+        }.each { environment.remove(it) }
+    }
+}
+```
