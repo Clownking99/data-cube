@@ -398,7 +398,7 @@ public final class SqlFormatter {
         private int indent = 0;        // 当前块河道的前导缩进（顶层为 0）
         private int plainParenDepth = 0; // 普通括号深度（>0 时挂起子句处理，保持行内）
         private enum ParenKind { PLAIN, SUBQUERY, WINDOW }
-        private record ParenFrame(ParenKind kind, Ctx outer) {}
+        private record ParenFrame(ParenKind kind, Ctx outer, int closingIndent) {}
         private final Deque<ParenFrame> parenStack = new ArrayDeque<>();
         private int windowDepth;
         private String clause = "";    // 顶层子句（仅在未处于普通括号内时更新）
@@ -406,7 +406,7 @@ public final class SqlFormatter {
         private boolean betweenPending; // 处于 BETWEEN ... AND 之间，该 AND 不换行
         private boolean deleteInlineFrom; // DELETE 之后紧随的 FROM 保持同一行
         private boolean mergeMode; // MERGE 的 USING / WHEN 动作需要显式分段
-        private int caseDepth;
+        private Deque<Integer> caseIndents = new ArrayDeque<>();
         private boolean atLineStart = true;
         private String prev;
 
@@ -415,19 +415,19 @@ public final class SqlFormatter {
             final int indent;
             final String clause;
             final boolean joinLineOpen, betweenPending, deleteInlineFrom, mergeMode;
-            final int caseDepth;
+            final Deque<Integer> caseIndents;
             final int windowDepth;
             final int plainParenDepth;
             Ctx(int indent, String clause, boolean joinLineOpen,
                 boolean betweenPending, boolean deleteInlineFrom, boolean mergeMode,
-                int caseDepth, int windowDepth, int plainParenDepth) {
+                Deque<Integer> caseIndents, int windowDepth, int plainParenDepth) {
                 this.indent = indent;
                 this.clause = clause;
                 this.joinLineOpen = joinLineOpen;
                 this.betweenPending = betweenPending;
                 this.deleteInlineFrom = deleteInlineFrom;
                 this.mergeMode = mergeMode;
-                this.caseDepth = caseDepth;
+                this.caseIndents = caseIndents;
                 this.windowDepth = windowDepth;
                 this.plainParenDepth = plainParenDepth;
             }
@@ -452,14 +452,14 @@ public final class SqlFormatter {
                 }
 
                 if (kw && handleCase(u)) continue;
-                if (kw && windowDepth > 0 && plainParenDepth == 0 && caseDepth == 0
+                if (kw && windowDepth > 0 && plainParenDepth == 0 && caseIndents.isEmpty()
                         && handleWindowClause(u)) continue;
                 // 窗口内只处理窗口子句，不能把 EXCLUDE GROUP 等当作查询级 GROUP BY。
-                boolean clauseActive = plainParenDepth == 0 && windowDepth == 0;
+                boolean clauseActive = plainParenDepth == 0 && windowDepth == 0 && caseIndents.isEmpty();
 
                 if (clauseActive && kw && handleClause(u, out)) continue;
-                if (clauseActive && tok.equals(";")) { endStatement(); continue; }
-                if (plainParenDepth == 0 && tok.equals(",")
+                if (plainParenDepth == 0 && windowDepth == 0 && tok.equals(";")) { endStatement(); continue; }
+                if (plainParenDepth == 0 && caseIndents.isEmpty() && tok.equals(",")
                         && (clause.equals("SELECT") || clause.equals("SET") || clause.equals("WITH")
                         || clause.equals("GROUP") || clause.equals("ORDER") || clause.equals("RETURNING")
                         || windowDepth > 0)) {
@@ -487,15 +487,25 @@ public final class SqlFormatter {
                         : needsSpaceBeforeOpenParen(idx);
                 emit("(", space);
                 Ctx outer = new Ctx(indent, clause, joinLineOpen, betweenPending, deleteInlineFrom,
-                        mergeMode, caseDepth, windowDepth, plainParenDepth);
-                parenStack.push(new ParenFrame(subquery ? ParenKind.SUBQUERY : ParenKind.WINDOW, outer));
-                if (subquery) indent += RIVER + 2;
+                        mergeMode, caseIndents, windowDepth, plainParenDepth);
+                int closingIndent = indent + RIVER;
+                if (subquery) {
+                    indent = caseIndents.isEmpty() ? indent + RIVER + 2
+                            : Math.max(indent + RIVER + 2, caseIndents.peek() + 8);
+                    closingIndent = indent - 2;
+                } else if (!caseIndents.isEmpty()) {
+                    indent = Math.max(indent, caseIndents.peek() + 1);
+                    closingIndent = indent + RIVER;
+                }
+                parenStack.push(new ParenFrame(subquery ? ParenKind.SUBQUERY : ParenKind.WINDOW,
+                        outer, closingIndent));
                 clause = "";
                 joinLineOpen = false;
                 betweenPending = false;
                 deleteInlineFrom = false;
                 mergeMode = false;
-                caseDepth = 0;
+                // Save the outer stack by reference and give the nested query/window its own.
+                caseIndents = new ArrayDeque<>();
                 plainParenDepth = 0;
                 windowDepth = subquery ? 0 : 1;
                 if (!subquery) {
@@ -504,7 +514,7 @@ public final class SqlFormatter {
                 }
             } else {
                 emit("(", needsSpaceBeforeOpenParen(idx));
-                parenStack.push(new ParenFrame(ParenKind.PLAIN, null));
+                parenStack.push(new ParenFrame(ParenKind.PLAIN, null, 0));
                 plainParenDepth++;
             }
             prev = "(";
@@ -517,7 +527,7 @@ public final class SqlFormatter {
             if (frame.kind() != ParenKind.PLAIN) {
                 Ctx c = frame.outer();
                 if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
-                appendIndent(c.indent + RIVER);
+                appendIndent(frame.closingIndent());
                 sb.append(')');
                 atLineStart = false;
                 indent = c.indent;
@@ -526,7 +536,7 @@ public final class SqlFormatter {
                 betweenPending = c.betweenPending;
                 deleteInlineFrom = c.deleteInlineFrom;
                 mergeMode = c.mergeMode;
-                caseDepth = c.caseDepth;
+                caseIndents = c.caseIndents;
                 windowDepth = c.windowDepth;
                 plainParenDepth = c.plainParenDepth;
             } else {
@@ -704,25 +714,48 @@ public final class SqlFormatter {
             }
         }
 
-        /** CASE 的 WHEN/ELSE/END 独立成行，但条件与结果仍保持同一逻辑行。 */
+        /** CASE 分支内缩，END 对齐所属 CASE；嵌套表达式拥有独立缩进。 */
         private boolean handleCase(String u) {
             switch (u) {
                 case "CASE" -> {
+                    if (!caseIndents.isEmpty()) {
+                        caseLine(caseIndents.peek() + 8);
+                    } else if (atLineStart && sb.length() > 0 && currentColumn() == 0) {
+                        caseLine(indent + RIVER + 1);
+                    }
                     emit("CASE", needSpaceBefore(prev, "CASE"));
-                    caseDepth++;
+                    caseIndents.push(currentColumn() - "CASE".length());
                     prev = "CASE";
                     return true;
                 }
                 case "WHEN", "ELSE", "END" -> {
-                    if (caseDepth == 0) return false;
-                    contLine();
+                    if (caseIndents.isEmpty()) return false;
+                    int base = caseIndents.peek();
+                    if (u.equals("END")) caseIndents.pop();
+                    caseLine(u.equals("END") ? base : base + 4);
                     emit(u, false);
-                    if (u.equals("END")) caseDepth--;
                     prev = u;
                     return true;
                 }
                 default -> { return false; }
             }
+        }
+
+        private int currentColumn() {
+            return sb.length() - sb.lastIndexOf("\n") - 1;
+        }
+
+        /** 不在行注释后另添空行，也不留下尚未填充的列表续行空白。 */
+        private void caseLine(int spaces) {
+            if (atLineStart) {
+                while (sb.length() > 0 && sb.charAt(sb.length() - 1) == ' ') {
+                    sb.setLength(sb.length() - 1);
+                }
+            } else {
+                sb.append('\n');
+            }
+            appendIndent(spaces);
+            atLineStart = true;
         }
 
         /** 窗口定义的主要分区/排序/边界子句各占一行，避免复杂 OVER(...) 挤成一行。 */
@@ -747,7 +780,7 @@ public final class SqlFormatter {
             betweenPending = false;
             deleteInlineFrom = false;
             mergeMode = false;
-            caseDepth = 0;
+            caseIndents.clear();
             prev = ";";
         }
 
@@ -781,6 +814,7 @@ public final class SqlFormatter {
 
         private void emit(String tok, boolean spaceBefore) {
             if (atLineStart) {
+                if (!caseIndents.isEmpty() && currentColumn() == 0) appendIndent(caseIndents.peek() + 4);
                 sb.append(tok);
                 atLineStart = false;
             } else {

@@ -17,6 +17,189 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class SqlFormatterTest {
 
+    @Test
+    void simpleCaseBranchesIndentAndEndAlignsWithCase() {
+        assertCaseLayout("select case status when 1 then 'open' when 2 then 'closed' else 'other'"
+                + " end as label,id from t", """
+                SELECT CASE status
+                           WHEN 1 THEN 'open'
+                           WHEN 2 THEN 'closed'
+                           ELSE 'other'
+                       END AS label,
+                       id
+                  FROM t""");
+    }
+
+    @Test
+    void nestedCasesHaveIndependentBranchAndEndIndentation() {
+        assertCaseLayout("select case when a=1 then case when b=2 then 'x' else 'y' end"
+                + " else 'z' end as label,id from t", """
+                SELECT CASE
+                           WHEN a = 1 THEN
+                               CASE
+                                   WHEN b = 2 THEN 'x'
+                                   ELSE 'y'
+                               END
+                           ELSE 'z'
+                       END AS label,
+                       id
+                  FROM t""");
+    }
+
+    @Test
+    void caseConditionsDoNotBecomeOuterWhereClauses() {
+        assertCaseLayout("select id from t where case when a=1 and b=2 or c between 3 and 4"
+                + " then 1 else 0 end=1 and enabled=true", """
+                SELECT id
+                  FROM t
+                 WHERE CASE
+                           WHEN a = 1 AND b = 2 OR c BETWEEN 3 AND 4 THEN 1
+                           ELSE 0
+                       END = 1
+                   AND enabled = TRUE""");
+    }
+
+    @Test
+    void casePreservesOuterBetweenPairing() {
+        assertCaseLayout("select id from t where score between case when a=1 and b=2 then 2 else 3 end"
+                + " and 10 and enabled=true", """
+                SELECT id
+                  FROM t
+                 WHERE score BETWEEN CASE
+                                         WHEN a = 1 AND b = 2 THEN 2
+                                         ELSE 3
+                                     END AND 10
+                   AND enabled = TRUE""");
+    }
+
+    @Test
+    void caseInsideFunctionRestoresArgumentsAndFollowingColumns() {
+        assertCaseLayout("select coalesce(case when a=1 then .5 else 1e-3 end,0) as amount,id from t", """
+                SELECT COALESCE(CASE
+                                    WHEN a = 1 THEN .5
+                                    ELSE 1e-3
+                                END, 0) AS amount,
+                       id
+                  FROM t""");
+    }
+
+    @Test
+    void caseSubqueryHasItsOwnCaseStackAndRestoresOuterBranches() {
+        assertCaseLayout("select case when a=1 then (select case when b=2 then 3 else 4 end from u)"
+                + " else 0 end as amount from t", """
+                SELECT CASE
+                           WHEN a = 1 THEN (
+                               SELECT CASE
+                                          WHEN b = 2 THEN 3
+                                          ELSE 4
+                                      END
+                                 FROM u
+                             )
+                           ELSE 0
+                       END AS amount
+                  FROM t""");
+    }
+
+    @Test
+    void caseInsideWindowRestoresFollowingOrderColumns() {
+        assertCaseLayout("select sum(amount) over (order by case when a=1 then 0 else 1 end,id)"
+                + " as total from t", """
+                SELECT SUM(amount) OVER (
+                       ORDER BY CASE
+                                    WHEN a = 1 THEN 0
+                                    ELSE 1
+                                END,
+                       id
+                      ) AS total
+                  FROM t""");
+    }
+
+    @Test
+    void lineCommentsBetweenCaseBranchesDoNotAddBlankLines() {
+        assertCaseLayout("select case -- choose\nwhen a=1 then 2 -- first\nelse 3 end as n from t", """
+                SELECT CASE -- choose
+                           WHEN a = 1 THEN 2 -- first
+                           ELSE 3
+                       END AS n
+                  FROM t""");
+    }
+
+    @Test
+    void windowInsideCaseIsIndentedAndRestoresOuterElse() {
+        assertCaseLayout("select case when active=true then sum(amount) over (partition by region"
+                + " order by case when priority=1 then 0 else 1 end,id) else 0 end as total from t", """
+                SELECT CASE
+                           WHEN active = TRUE THEN SUM(amount) OVER (
+                               PARTITION BY region
+                               ORDER BY CASE
+                                            WHEN priority = 1 THEN 0
+                                            ELSE 1
+                                        END,
+                               id
+                              )
+                           ELSE 0
+                       END AS total
+                  FROM t""");
+    }
+
+    @Test
+    void commentsBeforeCaseAndInsideConditionKeepContinuationIndented() {
+        assertCaseLayout("select -- header\ncase when a=1 -- predicate\nand b=2 then 3 else 4 end"
+                + " as n from t;select id from u", """
+                SELECT -- header
+                       CASE
+                           WHEN a = 1 -- predicate
+                           AND b = 2 THEN 3
+                           ELSE 4
+                       END AS n
+                  FROM t;
+
+                SELECT id
+                  FROM u""");
+    }
+
+    @Test
+    void siblingCasesWithoutElseDoNotLeakIndentation() {
+        assertCaseLayout("select case when a=1 then 2 end as x,case when b=2 then 3 end as y from t"
+                + ";select case when c=3 then 4 end as z from u", """
+                SELECT CASE
+                           WHEN a = 1 THEN 2
+                       END AS x,
+                       CASE
+                           WHEN b = 2 THEN 3
+                       END AS y
+                  FROM t;
+
+                SELECT CASE
+                           WHEN c = 3 THEN 4
+                       END AS z
+                  FROM u""");
+    }
+
+    @Test
+    void mergeActionAfterCaseIsNotTreatedAsCaseBranch() {
+        assertCaseLayout("merge into t using s on(t.id=s.id) when MATCHED then update set"
+                + " t.n=case when s.a=1 then 2 else 3 end when not MATCHED then"
+                + " insert(id,n) values(s.id,0)", """
+                MERGE INTO t
+                 USING s
+                    ON (t.id = s.id)
+                  WHEN MATCHED THEN
+                UPDATE
+                   SET t.n = CASE
+                                 WHEN s.a = 1 THEN 2
+                                 ELSE 3
+                             END
+                  WHEN NOT MATCHED THEN
+                INSERT (id, n)
+                VALUES (s.id, 0)""");
+    }
+
+    private static void assertCaseLayout(String sql, String expected) {
+        assertEquals(expected, SqlFormatter.format(sql));
+        assertEquals(expected, SqlFormatter.format(expected), "CASE 排版需保持幂等");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "1e-3", "1E+03", ".5", ".5e-2", "1.e+2", "1.25E-10",
