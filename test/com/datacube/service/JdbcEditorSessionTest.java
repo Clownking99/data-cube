@@ -216,7 +216,7 @@ class JdbcEditorSessionTest {
         assertEquals(JdbcEditorSession.ConnectionState.DISCONNECTED,
                 session.snapshot().connectionState());
         session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
-        session.executeScript("update t set x=1", null, 25, null, false);
+        session.executeScript("select 1", null, 25, null, false);
 
         JdbcHandle handle = jdbc.handles.getFirst();
         assertTrue(handle.readOnly);
@@ -252,7 +252,7 @@ class JdbcEditorSessionTest {
                 "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
                 jdbc::open, new StubRunner(QueryResult.update(1, 1)));
         session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
-        session.executeScript("update t set x=1", null, 100, null, false);
+        session.executeScript("update t set x=1 where id=1", null, 100, null, false);
 
         assertThrows(IllegalStateException.class,
                 () -> session.setTransactionMode(JdbcEditorSession.TransactionMode.AUTO_COMMIT));
@@ -276,7 +276,7 @@ class JdbcEditorSessionTest {
                 jdbc::open, runner);
         session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
 
-        session.executeScript("update t set x=1", null, 100, null, false);
+        session.executeScript("update t set x=1 where id=1", null, 100, null, false);
         session.executeScript(" COMMIT; ", null, 100, null, false);
         assertEquals(1, jdbc.commits.get());
         assertEquals(JdbcEditorSession.TransactionState.IDLE,
@@ -326,17 +326,19 @@ class JdbcEditorSessionTest {
                 jdbc::open, runner);
         session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
 
-        session.executeScript("COMMIT WORK;", null, 100, null, false);
+        assertThrows(IllegalStateException.class,
+                () -> session.executeScript("COMMIT WORK;", null, 100, null, false));
 
         assertEquals(0, jdbc.commits.get());
-        assertEquals(1, runner.scriptCalls.get());
-        assertEquals(JdbcEditorSession.TransactionState.ACTIVE,
+        assertEquals(0, runner.scriptCalls.get());
+        assertEquals(0, jdbc.opens.get());
+        assertEquals(JdbcEditorSession.TransactionState.IDLE,
                 session.snapshot().transactionState());
         session.close();
     }
 
     @Test
-    void unterminatedTransactionCommentFallsBackToRunner() throws Exception {
+    void unterminatedTransactionCommentIsRejectedBeforeRunner() throws Exception {
         JdbcStub jdbc = new JdbcStub();
         StubRunner runner = new StubRunner(QueryResult.error("syntax error", 1));
         JdbcEditorSession session = new JdbcEditorSession(
@@ -344,20 +346,19 @@ class JdbcEditorSessionTest {
                 jdbc::open, runner);
         session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
 
-        JdbcEditorSession.ExecutionBatch batch = session.executeScript(
-                "COMMIT /* unterminated", null, 100, null, false);
+        assertThrows(IllegalStateException.class, () -> session.executeScript(
+                "COMMIT /* unterminated", null, 100, null, false));
 
         assertEquals(0, jdbc.commits.get());
-        assertEquals(1, runner.scriptCalls.get());
-        assertEquals(QueryResult.FailureKind.SQL_ERROR,
-                batch.outcomes().getFirst().result().failureKind);
-        assertEquals(JdbcEditorSession.TransactionState.ERROR_PENDING,
+        assertEquals(0, runner.scriptCalls.get());
+        assertEquals(0, jdbc.opens.get());
+        assertEquals(JdbcEditorSession.TransactionState.IDLE,
                 session.snapshot().transactionState());
         session.close();
     }
 
     @Test
-    void postgresNestedTransactionCommentCompletesWhileOracleFallsBack() throws Exception {
+    void postgresNestedTransactionCommentCompletesWhileOracleRejectsBeforeDispatch() throws Exception {
         JdbcStub jdbc = new JdbcStub();
         StubRunner runner = new StubRunner(QueryResult.update(1, 1));
         JdbcEditorSession session = new JdbcEditorSession(
@@ -375,11 +376,11 @@ class JdbcEditorSessionTest {
                 session.snapshot().transactionState());
 
         session.executeScript("select 2", null, 100, null, true);
-        session.executeScript(
-                "COMMIT /* outer /* inner */ tail */;", null, 100, null, true);
+        assertThrows(IllegalStateException.class, () -> session.executeScript(
+                "COMMIT /* outer /* inner */ tail */;", null, 100, null, true));
 
         assertEquals(1, jdbc.commits.get(), "Oracle nested comment must not bypass the runner");
-        assertEquals(3, runner.scriptCalls.get());
+        assertEquals(2, runner.scriptCalls.get());
         assertEquals(JdbcEditorSession.TransactionState.ACTIVE,
                 session.snapshot().transactionState());
         session.close();
@@ -392,7 +393,7 @@ class JdbcEditorSessionTest {
                 "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
                 jdbc::open, new StubRunner(QueryResult.update(1, 1)));
         session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
-        session.executeScript("update t set x=1", null, 100, null, false);
+        session.executeScript("update t set x=1 where id=1", null, 100, null, false);
         jdbc.commitFailure = new SQLException("commit failed");
 
         SQLException failure = assertThrows(SQLException.class, session::commit);
@@ -414,7 +415,7 @@ class JdbcEditorSessionTest {
                 "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
                 jdbc::open, runner);
         session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
-        session.executeScript("update t set x=1", null, 100, null, false);
+        session.executeScript("update t set x=1 where id=1", null, 100, null, false);
         AtomicReference<Throwable> executionFailure = new AtomicReference<>();
         Thread execution = Thread.ofVirtual().start(() -> {
             try {
@@ -554,7 +555,7 @@ class JdbcEditorSessionTest {
                 "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
                 jdbc::open, new StubRunner(QueryResult.update(1, 1)));
         session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
-        session.executeScript("update t set x=1", null, 100, null, false);
+        session.executeScript("update t set x=1 where id=1", null, 100, null, false);
         jdbc.rollbackFailure = new SQLException("rollback failed");
 
         JdbcEditorSession.StrictCleanupFailure first = assertThrows(
@@ -579,7 +580,7 @@ class JdbcEditorSessionTest {
                 "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
                 jdbc::open, new StubRunner(QueryResult.update(1, 1)));
         session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
-        session.executeScript("update t set x=1", null, 100, null, false);
+        session.executeScript("update t set x=1 where id=1", null, 100, null, false);
         jdbc.rollbackFailure = new SQLException("rollback failed");
         jdbc.closeFailure = new SQLException("close left open");
         jdbc.closeFailureLeavesOpen = true;
@@ -926,7 +927,7 @@ class JdbcEditorSessionTest {
                 "conn", new ConnectionSafetyOptions(ConnectionEnvironment.TEST, false, 30),
                 jdbc::open, new StubRunner(QueryResult.update(1, 1)));
         session.setTransactionMode(JdbcEditorSession.TransactionMode.MANUAL);
-        session.executeScript("update t set x=1", null, 100, null, false);
+        session.executeScript("update t set x=1 where id=1", null, 100, null, false);
 
         session.reconnect();
 

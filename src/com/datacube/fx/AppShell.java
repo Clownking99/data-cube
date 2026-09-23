@@ -773,16 +773,11 @@ public final class AppShell {
         @Override
         public void editObject(String connId, ConnectionTreePane.NodeData node) {
             String name = node.name();
-            java.util.function.Function<String, java.util.List<ScriptOutcome>> executor = ddl -> {
-                try {
-                    return ddlSvc.executeDdl(connId, ddl);
-                } catch (Exception ex) {
-                    throw new RuntimeException(ex.getMessage(), ex);
-                }
-            };
+            var writeTarget = ddlSvc.target(connId);
             openBackgroundCleanupTab("编辑: " + name, () -> {
                 ObjectEditorPane pane = new ObjectEditorPane(
-                        "编辑: " + name, ddlFetch(connId, node), executor, tasks);
+                        "编辑: " + name, ddlFetch(connId, node),
+                        ddl -> ddlSvc.prepareExecute(writeTarget, ddl), writeTarget, tasks);
                 return new BackgroundTab(pane.getNode(), pane::close, () -> {});
             });
         }

@@ -76,8 +76,13 @@ public final class DdlService {
      * @return 每个执行单元（含失败）的结果
      */
     public List<ScriptOutcome> executeDdl(String connId, String ddl) throws SQLException {
-        Connection conn = connections.acquire(connId);
-        return connections.provider(connId).sqlRunner()
-                .executeScript(conn, ddl, null, MAX_ROWS, null);
+        return prepareExecute(target(connId), ddl).execute(null);
+    }
+
+    public WriteTarget target(String connId) { return connections.writeTarget(connId); }
+
+    public WriteOperation<List<ScriptOutcome>> prepareExecute(WriteTarget target, String ddl) {
+        return connections.prepareWrite(target, "对象 / 序列 DDL", ddl,
+                (c, p) -> p.sqlRunner().executeScript(c, ddl, null, MAX_ROWS, null));
     }
 }

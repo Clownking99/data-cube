@@ -78,6 +78,8 @@ public final class JdbcEditorSession implements AutoCloseable {
     private final ConnectionOpener opener;
     private final SqlRunner runner;
     private final Runnable beforeOperationPublish;
+    private final WriteTarget writeTarget;
+    private volatile long operationRevision;
     private final ReentrantLock singleFlight = new ReentrantLock();
     private final AtomicReference<Connection> connection = new AtomicReference<>();
     private final AtomicReference<SqlExecutionControl> activeControl = new AtomicReference<>();
@@ -108,12 +110,26 @@ public final class JdbcEditorSession implements AutoCloseable {
             ConnectionOpener opener,
             SqlRunner runner,
             Runnable beforeOperationPublish) {
+        this(connectionId, safety, opener, runner, beforeOperationPublish,
+                new WriteTarget(safety.applyTo(new com.datacube.spi.model.ConnConfig(
+                        connectionId, connectionId, com.datacube.spi.model.DbType.POSTGRESQL,
+                        "", 0, "", "", "", java.util.Map.of())), () -> {}));
+    }
+
+    JdbcEditorSession(String connectionId, ConnectionSafetyOptions safety, ConnectionOpener opener,
+                      SqlRunner runner, WriteTarget target) {
+        this(connectionId, safety, opener, runner, NO_OPERATION_PUBLISH_HOOK, target);
+    }
+
+    private JdbcEditorSession(String connectionId, ConnectionSafetyOptions safety, ConnectionOpener opener,
+                              SqlRunner runner, Runnable beforeOperationPublish, WriteTarget target) {
         this.connectionId = Objects.requireNonNull(connectionId, "connectionId");
         this.safety = Objects.requireNonNull(safety, "safety");
         this.opener = Objects.requireNonNull(opener, "opener");
         this.runner = Objects.requireNonNull(runner, "runner");
         this.beforeOperationPublish = Objects.requireNonNull(
                 beforeOperationPublish, "beforeOperationPublish");
+        this.writeTarget = Objects.requireNonNull(target);
     }
 
     public ExecutionBatch executeScript(
@@ -132,6 +148,34 @@ public final class JdbcEditorSession implements AutoCloseable {
             ScriptErrorPolicy policy,
             boolean oracleMode,
             BooleanSupplier parentCancellationRequested) {
+        try {
+            return prepareScript(script, schema, maxRows, policy, oracleMode,
+                    parentCancellationRequested).execute(null);
+        } catch (SQLException failure) {
+            return new ExecutionBatch(List.of(new ScriptOutcome(1, script,
+                    QueryResult.error(message(failure), 0))), 0);
+        }
+    }
+
+    public WriteOperation<ExecutionBatch> prepareScript(String script, String schema, int maxRows,
+                                                        ScriptErrorPolicy policy, boolean oracleMode) {
+        return prepareScript(script, schema, maxRows, policy, oracleMode, () -> false);
+    }
+
+    WriteOperation<ExecutionBatch> prepareScript(String script, String schema, int maxRows,
+                                                ScriptErrorPolicy policy, boolean oracleMode,
+                                                BooleanSupplier cancellation) {
+        Objects.requireNonNull(script, "script");
+        long revision = operationRevision;
+        return WriteOperation.sql(writeTarget, "SQL 执行", "Schema: " + schema + "\n" + script,
+                script, oracleMode, false,
+                revalidate -> executeScriptAdmitted(script, schema, maxRows, policy, oracleMode,
+                        cancellation, revalidate, revision));
+    }
+
+    private ExecutionBatch executeScriptAdmitted(String script, String schema, int maxRows,
+            ScriptErrorPolicy policy, boolean oracleMode, BooleanSupplier parentCancellationRequested,
+            Runnable revalidate, long revision) {
         Objects.requireNonNull(script, "script");
         Objects.requireNonNull(parentCancellationRequested, "parentCancellationRequested");
         singleFlight.lock();
@@ -139,16 +183,19 @@ public final class JdbcEditorSession implements AutoCloseable {
         long startedAt = System.currentTimeMillis();
         try {
             ensureOpen();
+            revalidate.run();
+            if (transactionCommand(script, oracleMode) == TransactionCommand.COMMIT) requireRevision(revision);
             control = beginOperation();
             if (parentCancellationRequested.getAsBoolean()) {
                 control.cancel();
                 throw new SQLException("SQL execution cancelled");
             }
             ensureOpen();
+            revalidate.run();
             if (transactionMode == TransactionMode.MANUAL) {
                 TransactionCommand command = transactionCommand(script, oracleMode);
                 if (command != null) {
-                    return executeTransactionCommand(command, script, startedAt, control);
+                    return executeTransactionCommand(command, script, startedAt, control, revalidate);
                 }
             }
 
@@ -156,8 +203,11 @@ public final class JdbcEditorSession implements AutoCloseable {
                     new SqlExecutionOptions(maxRows, safety.queryTimeoutSeconds(), control);
             ScriptErrorPolicy effectivePolicy =
                     transactionMode == TransactionMode.MANUAL ? null : policy;
+            Connection target = connection(control);
+            revalidate.run();
+            operationRevision++;
             List<ScriptOutcome> outcomes =
-                    runner.executeScript(connection(control), script, schema, options, effectivePolicy);
+                    runner.executeScript(target, script, schema, options, effectivePolicy);
             updateTransactionState(outcomes);
             long elapsedMillis = System.currentTimeMillis() - startedAt;
             return new ExecutionBatch(outcomes, elapsedMillis);
@@ -173,17 +223,34 @@ public final class JdbcEditorSession implements AutoCloseable {
     }
 
     public QueryResult explain(String sql, String schema, boolean analyze) {
+        try { return prepareExplain(sql, schema, analyze).execute(null); }
+        catch (SQLException failure) { return QueryResult.error(message(failure), 0); }
+    }
+
+    public WriteOperation<QueryResult> prepareExplain(String sql, String schema, boolean analyze) {
+        // Oracle's ordinary EXPLAIN writes PLAN_TABLE. ANALYZE executes the statement on PG.
+        boolean oracle = writeTarget.config().type() == com.datacube.spi.model.DbType.ORACLE;
+        return WriteOperation.sql(writeTarget, analyze ? "EXPLAIN ANALYZE" : "EXPLAIN",
+                "Schema: " + schema + "\n" + sql, sql, oracle, analyze || oracle,
+                revalidate -> explainAdmitted(sql, schema, analyze, revalidate));
+    }
+
+    private QueryResult explainAdmitted(String sql, String schema, boolean analyze, Runnable revalidate) {
         Objects.requireNonNull(sql, "sql");
         singleFlight.lock();
         SqlExecutionControl control = null;
         long startedAt = System.currentTimeMillis();
         try {
             ensureOpen();
+            revalidate.run();
             control = beginOperation();
             ensureOpen();
             SqlExecutionOptions options =
                     new SqlExecutionOptions(0, safety.queryTimeoutSeconds(), control);
-            QueryResult result = runner.explain(connection(control), sql, schema, analyze, options);
+            Connection target = connection(control);
+            revalidate.run();
+            operationRevision++;
+            QueryResult result = runner.explain(target, sql, schema, analyze, options);
             updateTransactionState(List.of(new ScriptOutcome(1, sql, result)));
             return result;
         } catch (SQLException failure) {
@@ -198,6 +265,26 @@ public final class JdbcEditorSession implements AutoCloseable {
 
     public QueryResult executePrepared(
             String sql, List<SqlParameter> parameters, String schema, int maxRows) {
+        try { return preparePrepared(sql, parameters, schema, maxRows).execute(null); }
+        catch (SQLException failure) { return QueryResult.error(message(failure), 0); }
+    }
+
+    public WriteOperation<QueryResult> preparePrepared(
+            String sql, List<SqlParameter> parameters, String schema, int maxRows) {
+        List<SqlParameter> frozen = parameters.stream().map(p ->
+                new SqlParameter(p.jdbcType(), DataEditService.freezeValue(p.value()))).toList();
+        boolean oracle = writeTarget.config().type() == com.datacube.spi.model.DbType.ORACLE;
+        if (SqlSafetyAnalyzer.analyze(sql, oracle).statements().stream().anyMatch(s ->
+                s.kind() == SqlSafetyAnalyzer.StatementKind.TRANSACTION_CONTROL)) {
+            throw new IllegalStateException("参数化执行不支持事务控制，请使用会话提交或回滚");
+        }
+        return WriteOperation.sql(writeTarget, "参数化 SQL", "Schema: " + schema + "\n" + sql,
+                sql, oracle, false,
+                revalidate -> executePreparedAdmitted(sql, frozen, schema, maxRows, revalidate));
+    }
+
+    private QueryResult executePreparedAdmitted(String sql, List<SqlParameter> parameters,
+                                                String schema, int maxRows, Runnable revalidate) {
         Objects.requireNonNull(sql, "sql");
         Objects.requireNonNull(parameters, "parameters");
         singleFlight.lock();
@@ -205,12 +292,15 @@ public final class JdbcEditorSession implements AutoCloseable {
         long startedAt = System.currentTimeMillis();
         try {
             ensureOpen();
+            revalidate.run();
             control = beginOperation();
             ensureOpen();
             SqlExecutionOptions options = new SqlExecutionOptions(
                     maxRows, safety.queryTimeoutSeconds(), control);
-            QueryResult result = runner.executePrepared(
-                    connection(control), sql, List.copyOf(parameters), schema, options);
+            Connection target = connection(control);
+            revalidate.run();
+            operationRevision++;
+            QueryResult result = runner.executePrepared(target, sql, parameters, schema, options);
             updateTransactionState(List.of(new ScriptOutcome(1, sql, result)));
             return result;
         } catch (SQLException failure) {
@@ -235,17 +325,33 @@ public final class JdbcEditorSession implements AutoCloseable {
             Connection current = connection.get();
             if (current != null) current.setAutoCommit(mode == TransactionMode.AUTO_COMMIT);
             transactionMode = mode;
+            operationRevision++;
         } finally {
             singleFlight.unlock();
         }
     }
 
     public void commit() throws SQLException {
+        prepareCommit().execute(null);
+    }
+
+    public WriteOperation<Void> prepareCommit() {
+        long revision = operationRevision;
+        return new WriteOperation<>(writeTarget, "提交事务", "当前会话事务 #" + revision,
+                revalidate -> { commitAdmitted(revalidate, revision); return null; });
+    }
+
+    private void commitAdmitted(Runnable revalidate, long revision) throws SQLException {
         singleFlight.lock();
         try {
             ensureOpen();
             requireManual();
-            transactionTarget(null).commit();
+            requireRevision(revision);
+            revalidate.run();
+            Connection target = transactionTarget(null);
+            revalidate.run();
+            operationRevision++;
+            target.commit();
             transactionState = TransactionState.IDLE;
             transactionConnection = null;
         } finally {
@@ -258,6 +364,7 @@ public final class JdbcEditorSession implements AutoCloseable {
         try {
             ensureOpen();
             requireManual();
+            operationRevision++;
             transactionTarget(null).rollback();
             transactionState = TransactionState.IDLE;
             transactionConnection = null;
@@ -284,6 +391,7 @@ public final class JdbcEditorSession implements AutoCloseable {
         singleFlight.lock();
         try {
             ensureOpen();
+            operationRevision++;
             SQLException rollbackFailure = null;
             Connection current = connection.get();
             if (current != null
@@ -375,10 +483,13 @@ public final class JdbcEditorSession implements AutoCloseable {
             TransactionCommand command,
             String script,
             long startedAt,
-            SqlExecutionControl control) {
+            SqlExecutionControl control, Runnable revalidate) {
         try {
+            operationRevision++;
             if (command == TransactionCommand.COMMIT) {
-                transactionTarget(control).commit();
+                Connection target = transactionTarget(control);
+                revalidate.run();
+                target.commit();
             } else {
                 transactionTarget(control).rollback();
             }
@@ -490,6 +601,10 @@ public final class JdbcEditorSession implements AutoCloseable {
         if (transactionMode != TransactionMode.MANUAL) {
             throw new IllegalStateException("当前会话不是手动事务模式");
         }
+    }
+
+    private void requireRevision(long expected) {
+        if (expected != operationRevision) throw new IllegalStateException("事务已变化，请重新确认提交");
     }
 
     private void ensureOpen() {

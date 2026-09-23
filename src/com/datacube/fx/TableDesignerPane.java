@@ -76,6 +76,9 @@ public final class TableDesignerPane implements AutoCloseable {
     private CodeArea previewArea;
     private Label statusLabel;
     private Button applyBtn;
+    private final com.datacube.service.WriteTarget writeTarget;
+    private Runnable stopWatchingSafety = () -> {};
+    private Label safetyLabel;
     private Button refreshBtn;
     private TabPane tabPane;
     private Tab previewTab;
@@ -92,6 +95,7 @@ public final class TableDesignerPane implements AutoCloseable {
     public TableDesignerPane(TableDesignService svc, String connId, String connName, TableRef table,
                              String schema, DbType dbType, FxTaskRunner runner) {
         this.svc = svc;
+        this.writeTarget = svc.target(connId);
         this.connId = connId;
         this.connName = connName;
         this.table = table;
@@ -103,6 +107,11 @@ public final class TableDesignerPane implements AutoCloseable {
             this.tasks = runner.scope();
             construction.own(tasks::close);
             build();
+            stopWatchingSafety = WriteSafetyDialog.watch(writeTarget, tasks, () -> {
+                WriteSafetyDialog.update(safetyLabel, writeTarget);
+                WriteSafetyDialog.update(applyBtn, writeTarget, running);
+            });
+            construction.own(stopWatchingSafety::run);
             if (!isNew) reload();
             construction.commit();
         } catch (Throwable failure) {
@@ -116,6 +125,7 @@ public final class TableDesignerPane implements AutoCloseable {
 
     @Override
     public void close() {
+        stopWatchingSafety.run();
         closed.set(true);
         tasks.close();
     }
@@ -125,7 +135,8 @@ public final class TableDesignerPane implements AutoCloseable {
     private void build() {
         root.setPadding(new Insets(10));
         root.setStyle("-fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; -fx-font-size: 13px;");
-        root.getChildren().addAll(header(), tabs(), statusBar());
+        safetyLabel = WriteSafetyDialog.label(writeTarget);
+        root.getChildren().addAll(header(), safetyLabel, tabs(), statusBar());
         VBox.setVgrow(tabPane, Priority.ALWAYS);
         if (isNew) addColumnRow();  // 新建先给一空行
     }
@@ -141,6 +152,7 @@ public final class TableDesignerPane implements AutoCloseable {
         applyBtn = new Button("应用");
         applyBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
         applyBtn.setOnAction(e -> onApply());
+        WriteSafetyDialog.update(applyBtn, writeTarget, false);
 
         refreshBtn = new Button("刷新");
         refreshBtn.setOnAction(e -> reload());
@@ -418,14 +430,16 @@ public final class TableDesignerPane implements AutoCloseable {
             showAlert("无变更，无需执行");
             return;
         }
-        if (!confirmExecute(ddl)) return;
+        var request = svc.prepareExecute(writeTarget, ddl, this::askScriptError);
+        var confirmation = WriteSafetyDialog.confirm(request, true);
+        if (confirmation == null || closed.get()) return;
 
         running = true;
         applyBtn.setDisable(true);
         setStatus("执行中...", "-brand-fg-muted");
-        tasks.submit(() -> svc.execute(connId, ddl, this::askScriptError), outcomes -> {
+        tasks.submit(() -> request.execute(confirmation), outcomes -> {
             running = false;
-            applyBtn.setDisable(false);
+            WriteSafetyDialog.update(applyBtn, writeTarget, false);
             String failed = firstError(outcomes);
             if (failed != null) {
                 setStatus("执行完成但有失败: " + failed, "-status-error");
@@ -435,30 +449,9 @@ public final class TableDesignerPane implements AutoCloseable {
             }
         }, failure -> {
             running = false;
-            applyBtn.setDisable(false);
+            WriteSafetyDialog.update(applyBtn, writeTarget, false);
             setStatus("执行失败: " + message(failure), "-status-error");
         });
-    }
-
-    /** 预览确认对话框：展示完整 DDL，用户点「执行」返回 true。 */
-    private boolean confirmExecute(String ddl) {
-        Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle("确认执行 DDL");
-        dialog.setHeaderText((isNew ? "将创建表 " : "将变更表 ") + (isNew ? trim(nameField.getText()) : table.name()));
-        ButtonType exec = new ButtonType("执行", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
-        dialog.getDialogPane().getButtonTypes().addAll(exec, cancel);
-
-        TextArea area = new TextArea(ddl);
-        area.setEditable(false);
-        area.setWrapText(false);
-        area.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 13px;");
-        area.setPrefRowCount(18);
-        area.setPrefColumnCount(72);
-        dialog.getDialogPane().setContent(area);
-        Window owner = root.getScene() == null ? null : root.getScene().getWindow();
-        if (owner != null) dialog.initOwner(owner);
-        return dialog.showAndWait().orElse(cancel) == exec;
     }
 
     /**

@@ -96,8 +96,14 @@ public final class TableDesignService {
      */
     public List<ScriptOutcome> execute(String connId, String ddl, ScriptErrorPolicy policy)
             throws SQLException {
-        Connection conn = connections.acquire(connId);
-        return connections.provider(connId).sqlRunner()
-                .executeScript(conn, ddl, null, MAX_ROWS, policy);
+        return prepareExecute(target(connId), ddl, policy).execute(null);
+    }
+
+    public WriteTarget target(String connId) { return connections.writeTarget(connId); }
+
+    public WriteOperation<List<ScriptOutcome>> prepareExecute(
+            WriteTarget target, String ddl, ScriptErrorPolicy policy) {
+        return connections.prepareWrite(target, "表结构 DDL", ddl,
+                (c, p) -> p.sqlRunner().executeScript(c, ddl, null, MAX_ROWS, policy));
     }
 }

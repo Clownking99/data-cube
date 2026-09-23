@@ -119,7 +119,20 @@ public final class SchemaDiffPane implements SchemaDiffManagedTabFactory.Managed
             construction.ownBlocking(workScope::close);
             SchemaChangePlanner planner = new SchemaChangePlanner();
             viewModel = new SchemaDiffViewModel(
-                    compareService::compare, deploymentService::deploy, planner::plan, planner,
+                    compareService::compare, new SchemaDiffViewModel.DeployGateway() {
+                        @Override public java.util.concurrent.CompletionStage<com.datacube.service.SchemaDeploymentResult> deploy(
+                                com.datacube.service.SchemaDiffRequest request,
+                                com.datacube.spi.schemadiff.SchemaSnapshot expected,
+                                List<com.datacube.spi.schemadiff.RenderedStatement> statements,
+                                com.datacube.service.SchemaDeploymentControl control) {
+                            return deploymentService.deploy(request, expected, statements, control);
+                        }
+                        @Override public com.datacube.service.SchemaDeploymentAdmission admission(
+                                com.datacube.service.SchemaDiffRequest request,
+                                List<com.datacube.spi.schemadiff.RenderedStatement> statements) {
+                            return deploymentService.admission(request, statements);
+                        }
+                    }, planner::plan, planner,
                     renderer, workScope, Platform::runLater,
                     deploymentService::closeRetainedSessionsStrict);
             construction.ownBlocking(viewModel::closeResources);

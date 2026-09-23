@@ -93,13 +93,28 @@ public final class SchemaDeploymentService {
         }
         PlanAdmission plan = validation.plan();
         SchemaDeploymentAdmission admission = validation.admission();
+        WriteTarget writeTarget;
+        String expectedConfirmation;
+        try {
+            writeTarget = connections.writeTarget(target);
+            if (!plan.statements().isEmpty()) {
+                String blocked = writeTarget.blockedReason();
+                if (!blocked.isEmpty()) throw new IllegalStateException(blocked);
+            }
+            expectedConfirmation = admission(admitted, statements).confirmationToken();
+        } catch (RuntimeException rejected) {
+            return CompletableFuture.failedFuture(rejected);
+        }
         if (admission.confirmationRequired()
                 && (control.confirmationToken() == null
                 || control.confirmationToken().isBlank()
-                || !plan.digest().equals(control.confirmationToken()))) {
+                || !expectedConfirmation.equals(control.confirmationToken()))) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(
                     admission.productionEscalated()
                             ? INVALID_PRODUCTION_CONFIRMATION : INVALID_CONFIRMATION));
+        }
+        if (!control.claimDeployment()) {
+            return CompletableFuture.failedFuture(new IllegalStateException("部署请求已使用，请重新确认"));
         }
         if (control.cancellationRequested()) {
             return CompletableFuture.completedFuture(new SchemaDeploymentResult(
@@ -137,8 +152,9 @@ public final class SchemaDeploymentService {
                             SchemaDeploymentState.BLOCKED_DRIFT, List.of(), plan.digest(),
                             plan.safetyWarnings());
                 } else {
+                    writeTarget.validate();
                     result = executePlan(
-                            target, admitted.targetSchema().original(), provider, plan, control);
+                            target, admitted.targetSchema().original(), provider, plan, control, writeTarget);
                 }
                 control.settle(
                         settlement, result, cancellationAlternative(result, plan));
@@ -224,7 +240,7 @@ public final class SchemaDeploymentService {
             String schema,
             DatabaseProvider provider,
             PlanAdmission plan,
-            SchemaDeploymentControl control) {
+            SchemaDeploymentControl control, WriteTarget writeTarget) {
         if (plan.statements().isEmpty()) {
             return new SchemaDeploymentResult(
                     control.cancellationRequested()
@@ -257,9 +273,19 @@ public final class SchemaDeploymentService {
                             index + 1, statement.changeId(), SchemaDeploymentState.CANCELLED));
                     continue;
                 }
-                JdbcEditorSession.ExecutionBatch batch = session.executeScript(
-                        statement.sql(), schema, 0, null, target.type() == DbType.ORACLE,
-                        control::cancellationRequested);
+                JdbcEditorSession.ExecutionBatch batch;
+                try {
+                    writeTarget.validate();
+                    var step = session.prepareScript(statement.sql(), schema, 0, null,
+                            target.type() == DbType.ORACLE, control::cancellationRequested);
+                    // Only the exact plan admitted above may authorize its own steps.
+                    batch = step.execute(step.confirm());
+                } catch (SQLException | IllegalStateException rejected) {
+                    overall = SchemaDeploymentState.FAILED_PARTIAL;
+                    failedChangeId = statement.changeId();
+                    steps.add(new SchemaDeploymentStepResult(index + 1, statement.changeId(), overall));
+                    continue;
+                }
                 SchemaDeploymentState stepState = executionState(batch, control, target.type());
                 steps.add(new SchemaDeploymentStepResult(index + 1, statement.changeId(), stepState));
                 if (stepState != SchemaDeploymentState.SUCCEEDED) {
@@ -373,6 +399,34 @@ public final class SchemaDeploymentService {
         Objects.requireNonNull(target, "target");
         if (target.type() == DbType.REDIS) throw new IllegalArgumentException(INVALID_TARGET);
         return validateForTarget(target, statements).admission();
+    }
+
+    /** Binds the reviewed plan to registry generation, complete target and schema. */
+    public SchemaDeploymentAdmission admission(SchemaDiffRequest request, List<RenderedStatement> statements) {
+        ConnConfig target = request.targetConfig();
+        var admission = planAdmission(target, statements);
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            DataOutputStream out = new DataOutputStream(bytes);
+            writeField(out, "datacube.schema-write-confirmation.v1");
+            writeField(out, admission.planDigest());
+            out.writeLong(connections.configVersion(target));
+            writeField(out, request.targetSchema().toString());
+            for (String field : List.of(target.id(), target.name(), target.type().name(),
+                    target.host(), Integer.toString(target.port()), target.database(),
+                    target.username(), target.encryptedPassword())) writeField(out, field);
+            for (var entry : new java.util.TreeMap<>(target.props()).entrySet()) {
+                writeField(out, entry.getKey());
+                writeField(out, entry.getValue());
+            }
+            String token = java.util.HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
+            return new SchemaDeploymentAdmission(admission.planDigest(), admission.confirmationRequired(),
+                    admission.effectiveDestructive(), admission.safetyEscalated(),
+                    admission.productionEscalated(), admission.warnings(), token);
+        } catch (IOException | NoSuchAlgorithmException failure) {
+            throw new IllegalStateException("部署确认不可用");
+        }
     }
 
     private static ValidatedPlan validateForTarget(

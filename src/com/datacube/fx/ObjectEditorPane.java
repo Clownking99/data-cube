@@ -44,7 +44,10 @@ public final class ObjectEditorPane implements AutoCloseable {
 
     private final String title;
     private final Callable<String> fetch;
-    private final Function<String, List<ScriptOutcome>> executor;
+    private final Function<String, com.datacube.service.WriteOperation<List<ScriptOutcome>>> executor;
+    private final com.datacube.service.WriteTarget writeTarget;
+    private Runnable stopWatchingSafety = () -> {};
+    private Label safetyLabel;
     private final FxTaskScope tasks;
 
     /**
@@ -54,16 +57,23 @@ public final class ObjectEditorPane implements AutoCloseable {
      * @param runner   应用级虚拟线程运行器
      */
     public ObjectEditorPane(String title, Callable<String> fetch,
-                            Function<String, List<ScriptOutcome>> executor,
+                            Function<String, com.datacube.service.WriteOperation<List<ScriptOutcome>>> executor,
+                            com.datacube.service.WriteTarget writeTarget,
                             FxTaskRunner runner) {
         this.title = title;
         this.fetch = fetch;
         this.executor = executor;
+        this.writeTarget = writeTarget;
         ConstructionOwner construction = new ConstructionOwner();
         try {
             this.tasks = runner.scope();
             construction.own(tasks::close);
             build();
+            stopWatchingSafety = WriteSafetyDialog.watch(writeTarget, tasks, () -> {
+                WriteSafetyDialog.update(safetyLabel, writeTarget);
+                WriteSafetyDialog.update(executeBtn, writeTarget, false);
+            });
+            construction.own(stopWatchingSafety::run);
             load();
             construction.commit();
         } catch (Throwable failure) {
@@ -77,6 +87,7 @@ public final class ObjectEditorPane implements AutoCloseable {
 
     @Override
     public void close() {
+        stopWatchingSafety.run();
         tasks.close();
     }
 
@@ -108,12 +119,13 @@ public final class ObjectEditorPane implements AutoCloseable {
         statusArea.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 12px;");
 
         VirtualizedScrollPane<CodeArea> scroll = new VirtualizedScrollPane<>(codeArea);
-        root.getChildren().addAll(toolbar, scroll, statusLabel, statusArea);
+        safetyLabel = WriteSafetyDialog.label(writeTarget);
+        root.getChildren().addAll(toolbar, safetyLabel, scroll, statusLabel, statusArea);
         VBox.setVgrow(scroll, Priority.ALWAYS);
     }
 
     private void setBusy(boolean busy) {
-        executeBtn.setDisable(busy);
+        WriteSafetyDialog.update(executeBtn, writeTarget, busy);
         reloadBtn.setDisable(busy);
     }
 
@@ -151,10 +163,13 @@ public final class ObjectEditorPane implements AutoCloseable {
             statusLabel.setText("无内容可执行");
             return;
         }
+        var request = executor.apply(ddl);
+        var confirmation = WriteSafetyDialog.confirm(request, true);
+        if (confirmation == null || tasks.isClosed()) return;
         setBusy(true);
         statusLabel.setText("执行中...");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
-        tasks.submit(() -> executor.apply(ddl), outcomes -> {
+        tasks.submit(() -> request.execute(confirmation), outcomes -> {
             setBusy(false);
             renderOutcomes(outcomes);
         }, failure -> {

@@ -15,6 +15,7 @@ class ObjectEditorPaneLifecycleTest {
     void isAutoCloseableAndRequiresSharedTaskRunner() throws Exception {
         assertTrue(AutoCloseable.class.isAssignableFrom(ObjectEditorPane.class));
         assertNotNull(ObjectEditorPane.class.getConstructor(
-                String.class, Callable.class, Function.class, FxTaskRunner.class));
+                String.class, Callable.class, Function.class, com.datacube.service.WriteTarget.class,
+                FxTaskRunner.class));
     }
 }

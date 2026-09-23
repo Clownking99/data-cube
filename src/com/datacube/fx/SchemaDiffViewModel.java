@@ -179,7 +179,10 @@ public final class SchemaDiffViewModel {
         if (targetSchemaToken == null) return Optional.empty();
         return Optional.of(new Confirmation(
                 selectionVersion,
-                request.targetConfig().name() + " [" + request.targetConfig().id() + "]",
+                request.targetConfig().name() + " [" + request.targetConfig().id() + "] / "
+                        + request.targetConfig().type() + " / " + request.targetConfig().host()
+                        + ":" + request.targetConfig().port() + " / " + request.targetConfig().database()
+                        + " / " + request.targetConfig().username(),
                 targetSchemaToken,
                 request.targetSchema().comparisonKey(),
                 selection.selectedChangeIds().size(),
@@ -200,7 +203,7 @@ public final class SchemaDiffViewModel {
             return false;
         }
         exportGeneration++;
-        String token = planAdmission.confirmationRequired() ? current.planDigest() : null;
+        String token = planAdmission.confirmationRequired() ? planAdmission.confirmationToken() : null;
         selection.markConfirmed(current.planDigest());
         SchemaDeploymentControl control = new SchemaDeploymentControl(token);
         generation++;
@@ -579,6 +582,9 @@ public final class SchemaDiffViewModel {
         if (selection == null || diff == null || request == null || state != State.READY) {
             return DeployBlockReason.NOT_READY;
         }
+        if (com.datacube.spi.model.ConnectionSafetyOptions.from(request.targetConfig()).readOnly()) {
+            return DeployBlockReason.READ_ONLY_TARGET;
+        }
         if (!diff.source().completeness().complete() || !diff.target().completeness().complete()) {
             return DeployBlockReason.INCOMPLETE_SNAPSHOT;
         }
@@ -653,6 +659,7 @@ public final class SchemaDiffViewModel {
     }
 
     public enum DeployBlockReason {
+        READ_ONLY_TARGET("目标连接只读，仍可对比、预览和导出"),
         NONE(""),
         NOT_READY("请先完成 Schema 对比"),
         INCOMPLETE_SNAPSHOT("快照不完整，不能部署"),

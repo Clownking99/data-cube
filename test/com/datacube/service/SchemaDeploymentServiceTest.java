@@ -64,6 +64,77 @@ class SchemaDeploymentServiceTest {
     private static final String CHANGE_E = "chg:" + "e".repeat(64);
 
     @Test
+    void readonlyDeploymentRejectsBeforeFreshReadOnBothProviders() throws Exception {
+        for (DbType type : List.of(DbType.ORACLE, DbType.POSTGRESQL)) {
+            TypedFixture f = new TypedFixture(type);
+            ConnConfig readonly = new com.datacube.spi.model.ConnectionSafetyOptions(
+                    com.datacube.spi.model.ConnectionEnvironment.PRODUCTION, true, 60).applyTo(f.request.targetConfig());
+            f.manager.register(readonly);
+            var request = new SchemaDiffRequest(f.request.sourceConfig(), f.request.sourceSchema(), readonly, f.request.targetSchema());
+            var plan = List.of(statement(CHANGE_A, "CREATE TABLE blocked(id int)", Set.of()));
+            Throwable failure = failure(f.service.deploy(request, f.expected, plan, new SchemaDeploymentControl()));
+            assertTrue(failure.getMessage().contains("只读"));
+            assertEquals(0, f.factory.opens.get());
+            assertEquals(0, f.runner.calls.get());
+        }
+    }
+
+    @Test
+    void productionTokenBindsTargetSchemaConfigurationGenerationAndPlan() throws Exception {
+        for (DbType type : List.of(DbType.ORACLE, DbType.POSTGRESQL)) {
+            TypedFixture f = new TypedFixture(type, "PRODUCTION");
+            var plan = List.of(statement(CHANGE_A, "CREATE TABLE bound(id int)", Set.of()));
+            var original = f.service.admission(f.request, plan).confirmationToken();
+            var schemaChanged = new SchemaDiffRequest(f.request.sourceConfig(), f.request.sourceSchema(),
+                    f.request.targetConfig(), name("other_schema"));
+            assertNotEquals(original, f.service.admission(schemaChanged, plan).confirmationToken());
+            assertNotEquals(original, f.service.admission(f.request,
+                    List.of(statement(CHANGE_A, "CREATE TABLE changed(id int)", Set.of()))).confirmationToken());
+            ConnConfig target = f.request.targetConfig();
+            ConnConfig other = new ConnConfig("other", target.name(), target.type(), target.host(), target.port(),
+                    target.database(), target.username(), target.encryptedPassword(), target.props());
+            f.manager.register(other);
+            var otherRequest = new SchemaDiffRequest(f.request.sourceConfig(), f.request.sourceSchema(), other, f.request.targetSchema());
+            Throwable wrongTarget = failure(f.service.deploy(otherRequest, f.expected, plan, new SchemaDeploymentControl(original)));
+            assertTrue(wrongTarget.getMessage().contains("confirmation is invalid"));
+            f.manager.unregister(target.id());
+            f.manager.register(target);
+            assertNotEquals(original, f.service.admission(f.request, plan).confirmationToken());
+            Throwable stale = failure(f.service.deploy(f.request, f.expected, plan, new SchemaDeploymentControl(original)));
+            assertTrue(stale.getMessage().contains("confirmation is invalid"));
+            assertEquals(0, f.factory.opens.get());
+            assertEquals(0, f.runner.calls.get());
+        }
+    }
+
+    @Test
+    void configurationTighteningBetweenDeploymentStepsStopsRemainingSqlAndPreservesPartialEvidence() throws Exception {
+        TypedFixture f = new TypedFixture(DbType.POSTGRESQL);
+        f.runner.afterExecution = () -> f.manager.unregister(f.request.targetConfig().id());
+        var plan = List.of(statement(CHANGE_A, "CREATE TABLE first(id int)", Set.of()),
+                statement(CHANGE_B, "CREATE TABLE second(id int)", Set.of()));
+        var result = f.service.deploy(f.request, f.expected, plan, new SchemaDeploymentControl())
+                .toCompletableFuture().get(5, TimeUnit.SECONDS);
+        assertEquals(SchemaDeploymentState.FAILED_PARTIAL, result.state());
+        assertEquals(List.of(SchemaDeploymentState.SUCCEEDED, SchemaDeploymentState.FAILED_PARTIAL),
+                result.steps().stream().map(SchemaDeploymentStepResult::state).toList());
+        assertEquals(List.of(plan.getFirst().sql()), f.runner.scripts);
+        assertEquals(2, f.factory.closeAttempts());
+    }
+
+    @Test
+    void deploymentControlCannotReplayAConfirmedPlan() throws Exception {
+        TypedFixture f = new TypedFixture(DbType.ORACLE, "PRODUCTION");
+        var plan = List.of(statement(CHANGE_A, "CREATE TABLE once_only(id int)", Set.of()));
+        var control = new SchemaDeploymentControl(f.service.admission(f.request, plan).confirmationToken());
+        assertEquals(SchemaDeploymentState.SUCCEEDED, f.service.deploy(f.request, f.expected, plan, control)
+                .toCompletableFuture().get(5, TimeUnit.SECONDS).state());
+        assertTrue(failure(f.service.deploy(f.request, f.expected, plan, control)).getMessage().contains("已使用"));
+        assertEquals(1, f.runner.calls.get());
+        assertEquals(2, f.factory.opens.get());
+    }
+
+    @Test
     void realProviderCreateOrReplaceAdmissionIsTheExactRedactedConfirmationAuthority() {
         for (DbType type : List.of(DbType.POSTGRESQL, DbType.ORACLE)) {
             QualifiedName sourceSchema = type == DbType.POSTGRESQL
@@ -270,6 +341,7 @@ class SchemaDeploymentServiceTest {
         SchemaDiffRequest request = new SchemaDiffRequest(
                 config(cipher, "source"), name("desired"),
                 config(cipher, "target"), name("actual"));
+        manager.register(request.targetConfig());
         List<RenderedStatement> plan = List.of(
                 statement(CHANGE_A, "CREATE TABLE cleanup_table(id int)", Set.of()));
 
@@ -331,8 +403,8 @@ class SchemaDeploymentServiceTest {
     void exactDestructiveTokenExecutesWhileChangedPlansRejectTheOriginalTokenBeforeOpen()
             throws Exception {
         List<RenderedStatement> plan = destructivePlan();
-        String token = SchemaDeploymentService.confirmationToken(plan);
         Fixture accepted = new Fixture();
+        String token = accepted.service.admission(accepted.request, plan).confirmationToken();
 
         SchemaDeploymentResult result = accepted.service.deploy(
                 accepted.request, accepted.expected, plan, new SchemaDeploymentControl(token))
@@ -376,14 +448,14 @@ class SchemaDeploymentServiceTest {
             assertEquals(0, rejected.runner.calls.get());
         }
 
-        String token = SchemaDeploymentService.confirmationToken(plan);
         TypedFixture accepted = new TypedFixture(DbType.POSTGRESQL, "PRODUCTION");
+        String token = accepted.service.admission(accepted.request, plan).confirmationToken();
         SchemaDeploymentResult result = accepted.service.deploy(
                 accepted.request, accepted.expected, plan, new SchemaDeploymentControl(token))
                 .toCompletableFuture().get(5, TimeUnit.SECONDS);
 
         assertEquals(SchemaDeploymentState.SUCCEEDED, result.state());
-        assertEquals(token, result.planDigest());
+        assertEquals(SchemaDeploymentService.confirmationToken(plan), result.planDigest());
         assertEquals(List.of(SchemaDeploymentService.PRODUCTION_CONFIRMATION_WARNING),
                 result.safetyWarnings());
         assertEquals(List.of(plan.getFirst().sql()), accepted.runner.scripts);
@@ -468,8 +540,8 @@ class SchemaDeploymentServiceTest {
             assertEquals("Destructive schema plan confirmation is invalid", failure.getMessage());
             assertEquals(0, missing.factory.opens.get());
 
-            String token = SchemaDeploymentService.confirmationToken(plan);
             TypedFixture accepted = new TypedFixture(type);
+            String token = accepted.service.admission(accepted.request, plan).confirmationToken();
             SchemaDeploymentResult result = accepted.service.deploy(
                     accepted.request, accepted.expected, plan, new SchemaDeploymentControl(token))
                     .toCompletableFuture().get(5, TimeUnit.SECONDS);
@@ -477,7 +549,7 @@ class SchemaDeploymentServiceTest {
             assertEquals(SchemaDeploymentState.SUCCEEDED, result.state());
             assertEquals(List.of(SchemaDeploymentService.SAFETY_ESCALATION_WARNING),
                     result.safetyWarnings());
-            assertEquals(token, result.planDigest());
+            assertEquals(SchemaDeploymentService.confirmationToken(plan), result.planDigest());
             assertEquals(List.of(rendered.sql()), accepted.runner.scripts);
             assertFalse(result.toString().contains("CREATE OR REPLACE"));
         }
@@ -570,6 +642,7 @@ class SchemaDeploymentServiceTest {
             ConnectionManager manager = new ConnectionManager(cipher, type -> provider);
             request = new SchemaDiffRequest(config(cipher, "source"), name("desired"),
                     config(cipher, "target"), name("actual"));
+            manager.register(request.targetConfig());
             service = new SchemaDeploymentService(manager);
         }
 
@@ -582,11 +655,13 @@ class SchemaDeploymentServiceTest {
             ConnectionManager manager = new ConnectionManager(cipher, type -> provider);
             request = new SchemaDiffRequest(config(cipher, "source"), name("desired"),
                     config(cipher, "target"), name("actual"));
+            manager.register(request.targetConfig());
             service = new SchemaDeploymentService(manager);
         }
     }
 
     private static final class TypedFixture {
+        private final ConnectionManager manager;
         private final RecordingFactory factory;
         private final RecordingRunner runner;
         private final SchemaSnapshot expected;
@@ -603,10 +678,11 @@ class SchemaDeploymentServiceTest {
             expected = snapshot(type);
             CredentialCipher cipher = new CredentialCipher();
             DatabaseProvider provider = provider(factory, runner, capability(expected), type);
-            ConnectionManager manager = new ConnectionManager(cipher, ignored -> provider);
+            manager = new ConnectionManager(cipher, ignored -> provider);
             request = new SchemaDiffRequest(
                     config(cipher, "source", type, environment), name("desired"),
                     config(cipher, "target", type, environment), name("actual"));
+            manager.register(request.targetConfig());
             service = new SchemaDeploymentService(manager);
         }
     }
@@ -745,6 +821,7 @@ class SchemaDeploymentServiceTest {
     }
 
     private static final class RecordingRunner implements SqlRunner {
+        private Runnable afterExecution = () -> {};
         private final AtomicInteger calls = new AtomicInteger();
         private final Map<String, QueryResult> outcomes;
         private final List<String> scripts = new ArrayList<>();
@@ -766,6 +843,7 @@ class SchemaDeploymentServiceTest {
             scripts.add(script);
             connections.add(connection);
             threads.add(Thread.currentThread());
+            afterExecution.run();
             return List.of(new ScriptOutcome(1, script,
                     outcomes.getOrDefault(script, QueryResult.update(1, 1))));
         }

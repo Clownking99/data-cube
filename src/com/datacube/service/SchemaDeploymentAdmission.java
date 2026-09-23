@@ -10,7 +10,14 @@ public record SchemaDeploymentAdmission(
         boolean effectiveDestructive,
         boolean safetyEscalated,
         boolean productionEscalated,
-        List<String> warnings) {
+        List<String> warnings,
+        String confirmationToken) {
+    public SchemaDeploymentAdmission(String planDigest, boolean confirmationRequired,
+            boolean effectiveDestructive, boolean safetyEscalated, boolean productionEscalated,
+            List<String> warnings) {
+        this(planDigest, confirmationRequired, effectiveDestructive, safetyEscalated,
+                productionEscalated, warnings, planDigest);
+    }
     public SchemaDeploymentAdmission {
         planDigest = Objects.requireNonNull(planDigest, "planDigest");
         warnings = List.copyOf(Objects.requireNonNull(warnings, "warnings"));

@@ -40,6 +40,9 @@ public final class DataGridPane implements AutoCloseable {
 
     private final DataBrowseService browse;
     private final DataEditService edit;
+    private final com.datacube.service.WriteTarget writeTarget;
+    private Runnable stopWatchingSafety = () -> {};
+    private Label safetyLabel;
     private final String connId;
     private final String connName;
     private final TableRef table;
@@ -69,17 +72,25 @@ public final class DataGridPane implements AutoCloseable {
                         TableRef table, AppSettings settings, boolean readOnly, FxTaskRunner runner) {
         this.browse = browse;
         this.edit = edit;
+        this.writeTarget = edit.target(connId);
         this.connId = connId;
         this.connName = connName;
         this.table = table;
         this.settings = settings;
-        this.readOnly = readOnly;
+        this.readOnly = readOnly || writeTarget.safety().readOnly();
         this.commentModeListener = (o, a, b) -> reapplyHeaders();
         ConstructionOwner construction = new ConstructionOwner();
         try {
             this.tasks = runner.scope();
             construction.own(tasks::close);
             build();
+            stopWatchingSafety = WriteSafetyDialog.watch(writeTarget, tasks, () -> {
+                WriteSafetyDialog.update(safetyLabel, writeTarget);
+                grid.setEditable(!this.readOnly && writeTarget.blockedReason().isEmpty());
+                setControlsDisabled(busy);
+                if (model != null) updateHint();
+            });
+            construction.own(stopWatchingSafety::run);
             settings.commentModeProperty().addListener(commentModeListener);
             construction.own(() -> settings.commentModeProperty().removeListener(commentModeListener));
             load();
@@ -102,6 +113,7 @@ public final class DataGridPane implements AutoCloseable {
     }
 
     void closeResources() {
+        stopWatchingSafety.run();
         tasks.close();
     }
 
@@ -118,7 +130,7 @@ public final class DataGridPane implements AutoCloseable {
         grid = new TableView<>();
         grid.setPlaceholder(new Label("（无数据）"));
         grid.setColumnResizePolicy(TableView.UNCONSTRAINED_RESIZE_POLICY);
-        grid.setEditable(true);
+        grid.setEditable(!readOnly);
         grid.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         grid.setRowFactory(tv -> new StyledRow());
         installRowLeaveCommit();
@@ -129,7 +141,8 @@ public final class DataGridPane implements AutoCloseable {
         hintLabel.setManaged(false);
         hintLabel.setStyle("-fx-text-fill: -warn-fg; -fx-background-color: -warn-bg; -fx-padding: 4 8; -fx-background-radius: 4;");
 
-        root.getChildren().addAll(toolbar(), hintLabel, grid, statusBar());
+        safetyLabel = WriteSafetyDialog.label(writeTarget);
+        root.getChildren().addAll(toolbar(), safetyLabel, hintLabel, grid, statusBar());
         VBox.setVgrow(grid, Priority.ALWAYS);
     }
 
@@ -318,17 +331,17 @@ public final class DataGridPane implements AutoCloseable {
     }
 
     private void updateHint() {
-        String msg = null;
-        if (!model.canLocateRow()) {
+        String msg = writeTarget.blockedReason().isEmpty() ? null : writeTarget.blockedReason();
+        if (msg == null && !model.canLocateRow()) {
             msg = model.readOnlyReason();
-        } else if (!model.hasPrimaryKey()) {
+        } else if (msg == null && !model.hasPrimaryKey()) {
             msg = "无主键：更新/删除按全列旧值匹配，提交前校验仅影响 1 行（否则回滚）";
         }
         boolean show = msg != null;
         hintLabel.setText(show ? msg : "");
         hintLabel.setVisible(show);
         hintLabel.setManaged(show);
-        boolean readOnly = !model.canLocateRow();
+        boolean readOnly = !model.canLocateRow() || !writeTarget.blockedReason().isEmpty();
         addBtn.setDisable(readOnly);
         deleteBtn.setDisable(readOnly);
     }
@@ -392,18 +405,15 @@ public final class DataGridPane implements AutoCloseable {
 
         final boolean needReload = wasNew || model.changedAnyKeyColumn(row);
         final RowKey key = wasNew ? null : model.keyOf(row);
+        var request = wasNew ? edit.prepareInsert(writeTarget, table, changed)
+                : edit.prepareUpdate(writeTarget, table, changed, key);
+        var confirmation = WriteSafetyDialog.confirm(request, false);
+        if (confirmation == null || tasks.isClosed()) return;
 
         busy = true;
         setControlsDisabled(true);
         info("提交中...");
-        tasks.submit(() -> {
-            if (wasNew) {
-                edit.insert(connId, table, changed);
-            } else {
-                edit.update(connId, table, changed, key);
-            }
-            return null;
-        }, ignored -> {
+        tasks.submit(() -> request.execute(confirmation), ignored -> {
             busy = false;
             setControlsDisabled(false);
             if (needReload) {
@@ -442,7 +452,7 @@ public final class DataGridPane implements AutoCloseable {
     // ---------- 新增 / 删除 ----------
 
     private void addRow() {
-        if (busy || model == null || !model.canLocateRow()) return;
+        if (busy || model == null || !model.canLocateRow() || !writeTarget.blockedReason().isEmpty()) return;
         EditableGridModel.Row row = model.newRow();
         grid.getItems().add(row);
         int idx = grid.getItems().size() - 1;
@@ -451,7 +461,7 @@ public final class DataGridPane implements AutoCloseable {
     }
 
     private void deleteSelectedRows() {
-        if (busy || model == null || !model.canLocateRow()) return;
+        if (busy || model == null || !model.canLocateRow() || !writeTarget.blockedReason().isEmpty()) return;
         List<EditableGridModel.Row> selected = List.copyOf(grid.getSelectionModel().getSelectedItems());
         if (selected.isEmpty()) return;
 
@@ -462,19 +472,25 @@ public final class DataGridPane implements AutoCloseable {
         confirm.setTitle("删除确认");
         if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
 
+        var requests = selected.stream().filter(row -> row.state() != EditableGridModel.RowState.NEW)
+                .map(row -> edit.prepareDelete(writeTarget, table, model.keyOf(row))).toList();
+        var confirmations = new ArrayList<com.datacube.service.WriteOperation.Confirmation>();
+        for (var request : requests) {
+            var accepted = WriteSafetyDialog.confirm(request, false);
+            if (accepted == null || tasks.isClosed()) return;
+            confirmations.add(accepted);
+        }
+
         busy = true;
         setControlsDisabled(true);
         info("删除中...");
-        final EditableGridModel currentModel = model;
         tasks.submit(() -> {
             String err = null;
             int done = 0;
-            for (EditableGridModel.Row row : selected) {
-                if (row.state() == EditableGridModel.RowState.NEW) {
-                    continue; // 未提交的新增行，仅 UI 移除
-                }
+            for (int index = 0; index < requests.size(); index++) {
                 try {
-                    edit.delete(connId, table, currentModel.keyOf(row));
+                    if (tasks.isClosed()) throw new IllegalStateException("页面已关闭，剩余删除已取消");
+                    requests.get(index).execute(confirmations.get(index));
                     done++;
                 } catch (Exception e) {
                     err = e.getMessage();
@@ -648,8 +664,8 @@ public final class DataGridPane implements AutoCloseable {
         prevBtn.setDisable(disabled);
         nextBtn.setDisable(disabled);
         filterField.setDisable(disabled);
-        addBtn.setDisable(disabled || model == null || !model.canLocateRow());
-        deleteBtn.setDisable(disabled || model == null || !model.canLocateRow());
+        WriteSafetyDialog.update(addBtn, writeTarget, disabled || model == null || !model.canLocateRow());
+        WriteSafetyDialog.update(deleteBtn, writeTarget, disabled || model == null || !model.canLocateRow());
     }
 
     private void info(String msg) {

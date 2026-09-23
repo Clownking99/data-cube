@@ -16,8 +16,6 @@ import com.datacube.fx.task.FxTaskScope;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.JdbcEditorSession;
 import com.datacube.service.ObjectTreeService;
-import com.datacube.sqleditor.SqlSafetyAnalyzer;
-import com.datacube.sqleditor.SqlSafetyPolicy;
 import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.sqleditor.SqlScriptFileStore;
 import com.datacube.sqleditor.result.FilterCondition;
@@ -33,7 +31,6 @@ import com.datacube.spi.SqlRunner;
 import com.datacube.spi.ScriptErrorPolicy;
 import com.datacube.spi.model.ColumnInfo;
 import com.datacube.spi.model.ConnConfig;
-import com.datacube.spi.model.ConnectionEnvironment;
 import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.model.QueryResult;
@@ -664,11 +661,13 @@ public final class SqlEditorPane implements AutoCloseable {
             case WAIT_FOR_NON_CANCELLABLE ->
                     throw new IllegalStateException("不可取消的会话操作尚未结束");
         };
+        ConfirmedCommit commit = decision == CloseDecision.COMMIT ? confirmCommit(editorSession) : null;
+        if (decision == CloseDecision.COMMIT && commit == null) decision = CloseDecision.CANCEL_CLOSE;
         return new ClosePlan(
                 connection == null ? null : connection.name(),
                 schemaField == null ? null : schemaField.getText().trim(),
                 editorArea == null ? null : editorArea.getText(),
-                decision);
+                decision, commit);
     }
 
     private CompletionStage<CloseGuardOutcome> startCloseAttempt() {
@@ -913,7 +912,7 @@ public final class SqlEditorPane implements AutoCloseable {
         SqlEditorCloseSequence.run(
                 () -> {
                     try {
-                        resolveCloseTransaction(currentEditorSession(), snapshot.decision());
+                        resolveCloseTransaction(currentEditorSession(), snapshot.decision(), snapshot.commit());
                     } catch (Throwable failure) {
                         throw new RetryableTransactionCloseFailure(failure);
                     }
@@ -952,9 +951,17 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private static void resolveCloseTransaction(
             JdbcEditorSession editorSession, CloseDecision decision) {
+        resolveCloseTransaction(editorSession, decision, null);
+    }
+
+    private static void resolveCloseTransaction(
+            JdbcEditorSession editorSession, CloseDecision decision, ConfirmedCommit commit) {
         if (editorSession == null) return;
         try {
-            if (decision == CloseDecision.COMMIT) editorSession.commit();
+            if (decision == CloseDecision.COMMIT) {
+                if (commit != null) commit.execute();
+                else editorSession.commit();
+            }
             else if (decision == CloseDecision.ROLLBACK) editorSession.rollback();
             else if (decision == CloseDecision.CANCEL_ROLLBACK) {
                 JdbcEditorSession.Snapshot snapshot = editorSession.snapshot();
@@ -1539,10 +1546,13 @@ public final class SqlEditorPane implements AutoCloseable {
             showAlert(missingConnectionMessage());
             return;
         }
-        if (!allowBySafetyPolicy(sql, active)) return;
         final String schema = schemaField.getText().trim();
         final String effectiveSchema = schema.isEmpty() ? null : schema;
         final boolean oracle = active.type() == DbType.ORACLE;
+        var request = ensureEditorSession().prepareScript(sql, effectiveSchema,
+                settings.getMaxResultRows(), this::askScriptError, oracle);
+        var confirmation = WriteSafetyDialog.confirm(request, false);
+        if (confirmation == null || tasks.isClosed() || admission.closing()) return;
         HistorySnapshot historySnapshot = captureHistory(sql, active, schema);
 
         running = true;
@@ -1552,13 +1562,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
         submitSessionOperation(SerialSessionOperationQueue.OperationKind.EXECUTE, () -> {
             recordHistory(historySnapshot);
-            JdbcEditorSession editorSession = ensureEditorSession();
-            return editorSession.executeScript(
-                    sql,
-                    effectiveSchema,
-                    settings.getMaxResultRows(),
-                    this::askScriptError,
-                    oracle);
+            return request.execute(confirmation);
         }, batch -> {
             running = false;
             JdbcEditorSession editorSession = jdbcSession;
@@ -1632,51 +1636,6 @@ public final class SqlEditorPane implements AutoCloseable {
         }
     }
 
-    private boolean allowBySafetyPolicy(String sql, ConnConfig active) {
-        boolean oracle = active.type() == DbType.ORACLE;
-        SqlSafetyAnalyzer.ScriptAnalysis analysis = SqlSafetyAnalyzer.analyze(sql, oracle);
-        ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(active);
-        SqlSafetyPolicy.Decision decision = SqlSafetyPolicy.decide(analysis, safety);
-        if (decision.blocked()) {
-            showAlert(decision.message());
-            return false;
-        }
-        return !decision.confirmationRequired() || confirmSafety(decision, active);
-    }
-
-    private boolean confirmSafety(SqlSafetyPolicy.Decision decision, ConnConfig active) {
-        ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(active);
-        StringBuilder details = new StringBuilder()
-                .append("环境: ").append(safety.environment().label()).append('\n')
-                .append("连接: ").append(active.name()).append('\n')
-                .append("风险语句:\n");
-        for (SqlSafetyAnalyzer.StatementAnalysis statement : decision.relevantStatements()) {
-            details.append("  #").append(statement.index())
-                    .append("  ").append(riskSummary(statement.risks()))
-                    .append("\n  ").append(truncate(statement.sql().replaceAll("\\s+", " "), 180))
-                    .append('\n');
-        }
-        ButtonType confirm = new ButtonType(
-                safety.environment() == ConnectionEnvironment.PRODUCTION
-                        ? "确认在生产环境执行" : "确认执行",
-                ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION, details.toString(), confirm, cancel);
-        alert.setTitle("SQL 安全确认");
-        alert.setHeaderText(decision.message());
-        return alert.showAndWait().orElse(cancel) == confirm;
-    }
-
-    private static String riskSummary(Set<SqlSafetyAnalyzer.Risk> risks) {
-        if (risks.isEmpty()) return "生产环境写入确认";
-        List<String> labels = new ArrayList<>();
-        if (risks.contains(SqlSafetyAnalyzer.Risk.MISSING_WHERE)) labels.add("缺少 WHERE");
-        if (risks.contains(SqlSafetyAnalyzer.Risk.DESTRUCTIVE_DDL)) labels.add("破坏性 DDL");
-        if (risks.contains(SqlSafetyAnalyzer.Risk.UNKNOWN_STATEMENT)) labels.add("未知语句");
-        if (risks.contains(SqlSafetyAnalyzer.Risk.SESSION_STATE_CONFLICT)) labels.add("会话状态冲突");
-        return String.join("、", labels);
-    }
-
     /**
      * 脚本遇错处置回调：在 worker 线程被 runner 调用，切到 FX 线程弹三按钮框
      * （继续 / 全部继续 / 取消）并以 {@link CountDownLatch} 阻塞等待用户选择。
@@ -1740,10 +1699,15 @@ public final class SqlEditorPane implements AutoCloseable {
             }
         }
         TransactionModeDecision decision = pendingDecision;
+        ConfirmedCommit commit = decision == TransactionModeDecision.COMMIT ? confirmCommit(editorSession) : null;
+        if (decision == TransactionModeDecision.COMMIT && commit == null) {
+            renderSessionSnapshot(snapshot);
+            return;
+        }
         transactionModeBox.setDisable(true);
         submitSessionOperation(SerialSessionOperationQueue.OperationKind.SET_MODE, () -> {
             JdbcEditorSession session = ensureEditorSession();
-            if (decision == TransactionModeDecision.COMMIT) session.commit();
+            if (decision == TransactionModeDecision.COMMIT) commit.execute();
             else if (decision == TransactionModeDecision.ROLLBACK) session.rollback();
             session.setTransactionMode(selected);
             return session.snapshot();
@@ -1771,12 +1735,14 @@ public final class SqlEditorPane implements AutoCloseable {
     private void submitTransactionAction(boolean commit) {
         JdbcEditorSession editorSession = currentEditorSession();
         if (editorSession == null) return;
+        ConfirmedCommit confirmed = commit ? confirmCommit(editorSession) : null;
+        if (commit && confirmed == null) return;
         setTransactionControlsDisabled(true);
         submitSessionOperation(commit
                 ? SerialSessionOperationQueue.OperationKind.COMMIT
                 : SerialSessionOperationQueue.OperationKind.ROLLBACK, () -> {
             JdbcEditorSession current = ensureEditorSession();
-            if (commit) current.commit();
+            if (commit) confirmed.execute();
             else current.rollback();
             return current.snapshot();
         }, this::renderSessionSnapshot, failure -> {
@@ -1925,8 +1891,10 @@ public final class SqlEditorPane implements AutoCloseable {
         final int total = stmts.size();
         final boolean analyze = analyzeCheck.isSelected();
         // ANALYZE is executable; ordinary EXPLAIN is still classified through the shared analyzer.
-        if (!allowBySafetyPolicy(sql, active)) return;
         final String schema = schemaField.getText().trim();
+        var request = ensureEditorSession().prepareExplain(sql, schema.isEmpty() ? null : schema, analyze);
+        var confirmation = WriteSafetyDialog.confirm(request, false);
+        if (confirmation == null || tasks.isClosed() || admission.closing()) return;
         HistorySnapshot historySnapshot = captureHistory(text, active, schema);
 
         running = true;
@@ -1936,8 +1904,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
         submitSessionOperation(SerialSessionOperationQueue.OperationKind.EXPLAIN, () -> {
             recordHistory(historySnapshot);
-            JdbcEditorSession editorSession = ensureEditorSession();
-            return editorSession.explain(sql, schema.isEmpty() ? null : schema, analyze);
+            return request.execute(confirmation);
         }, result -> {
             running = false;
             JdbcEditorSession editorSession = jdbcSession;
@@ -3100,7 +3067,23 @@ public final class SqlEditorPane implements AutoCloseable {
             String connectionName,
             String schema,
             String sql,
-            CloseDecision decision) {}
+            CloseDecision decision, ConfirmedCommit commit) {
+        private ClosePlan(String connectionName, String schema, String sql, CloseDecision decision) {
+            this(connectionName, schema, sql, decision, null);
+        }
+    }
+
+    private record ConfirmedCommit(com.datacube.service.WriteOperation<Void> request,
+                                    com.datacube.service.WriteOperation.Confirmation confirmation) {
+        void execute() throws java.sql.SQLException { request.execute(confirmation); }
+    }
+
+    private ConfirmedCommit confirmCommit(JdbcEditorSession session) {
+        if (session == null) return null;
+        var request = session.prepareCommit();
+        var confirmation = WriteSafetyDialog.confirm(request, false);
+        return confirmation == null ? null : new ConfirmedCommit(request, confirmation);
+    }
 
     private void showAlert(String msg) {
         Alert alert = new Alert(Alert.AlertType.WARNING, msg, ButtonType.OK);
