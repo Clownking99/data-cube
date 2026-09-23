@@ -285,6 +285,8 @@ P2.5当前进度：旧回调晚于新attempt回归`81fde83`及受控变异验证
 
 2026-09-23 改善 CASE 表达式层次：WHEN/ELSE 内缩、END 对齐所属 CASE，嵌套表达式独立起行；隔离分支与外层 WHERE/BETWEEN 的状态，子查询/窗口进出保存恢复 CASE 缩进。补齐函数、窗口双向嵌套、MERGE、行注释、相邻 CASE 及多语句回归。详见[CASE 层次设计](../specs/2026-09-23-sql-formatter-case-layout.md)与[验收记录](../verification/2026-09-23-sql-formatter-case-layout.md)。
 
+2026-09-23 为复杂 SQL 美化增加生成期预算：token、换行和整段缩进追加前检查 8 Mi UTF-16 上限，避免较短的深层 CASE/子查询先膨胀再被编辑器拒绝；多语句累计计入预算，超限不返回部分结果。边界覆盖补充平面字符及 strip 前尾部换行，沿用编辑器原文/选区/撤销保护。详见[输出预算设计](../specs/2026-09-23-sql-formatter-output-budget.md)与[验收记录](../verification/2026-09-23-sql-formatter-output-budget.md)。
+
 - [ ] 汇总 P4 观察：用户主要在找旧 SQL，还是在找表/字段；若尚无试用反馈，先获得用户选择，不伪造排序依据。
 - [x] 若优先 SQL 复用，设计并实现“打开/保存 `.sql` + 最近脚本”，覆盖未保存标记、外部修改、覆盖确认、UTF-8 编码及恢复草稿与原文件的区别；文件 I/O 不自动执行文本。验证范围见[SQL 脚本文件工作流记录](../verification/2026-09-01-sql-script-file-workflow.md)。
 - [x] 先以单连接的单个 Schema 落地表/视图快速查找；区分显式远端名称读取与本地筛选，覆盖加载、取消和权限失败，不跨所有数据库扫描。整连接多 Schema 索引仍是未实现候选。

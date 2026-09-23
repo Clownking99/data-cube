@@ -36,6 +36,9 @@ public final class SqlFormatter {
     /** PL/SQL Developer 风格的对齐列宽：主子句前导关键字右对齐至此列（= "SELECT" 长度）。 */
     private static final int RIVER = 6;
 
+    /** 与编辑器结果上限一致；先限制生成缓冲区，避免缩进膨胀后才检查结果。 */
+    private static final int MAX_OUTPUT_LENGTH = 8 * 1024 * 1024;
+
     /** 需大写的关键字集合（大小写不敏感匹配）。 */
     private static final Set<String> KEYWORDS = Set.of(
             "SELECT", "FROM", "WHERE", "GROUP", "ORDER", "BY", "HAVING", "LIMIT", "OFFSET",
@@ -67,7 +70,10 @@ public final class SqlFormatter {
     /** JOIN 短语的引导词（其后的 OUTER / JOIN 续接同一行）。 */
     private static final Set<String> JOIN_LEAD = Set.of("INNER", "LEFT", "RIGHT", "FULL", "CROSS");
 
-    /** 美化 SQL 脚本；引用/注释未闭合或数值 token 边界不明确时整段保留原文。 */
+    /**
+     * 美化 SQL 脚本；引用/注释未闭合或数值 token 边界不明确时整段保留原文。
+     * @throws IllegalArgumentException 生成缓冲区超过 8 Mi UTF-16 单元，不返回部分结果
+     */
     public static String format(String sql) {
         if (sql == null || sql.isBlank()) return sql;
         List<String> tokens = tokenize(sql);
@@ -392,9 +398,47 @@ public final class SqlFormatter {
 
     // ---------------------------------------------------------------- 排版
 
+    /** 所有生成路径共用预算，包括缩进和 strip 前的尾部空白，不按语句重置。 */
+    private static final class BoundedOutput {
+        private final StringBuilder text = new StringBuilder();
+
+        private void requireRoom(int additionalLength) {
+            if (additionalLength < 0 || additionalLength > MAX_OUTPUT_LENGTH - text.length()) {
+                throw new IllegalArgumentException("Formatting result limit exceeded");
+            }
+        }
+
+        void append(char value) {
+            requireRoom(1);
+            text.append(value);
+        }
+
+        void append(String value) {
+            requireRoom(value.length());
+            text.append(value);
+        }
+
+        void appendSpaces(int count) {
+            // Check the complete span before generating it; never allocate unbounded padding.
+            requireRoom(count);
+            for (int i = 0; i < count; i++) text.append(' ');
+        }
+
+        void removeTrailingSpaces() {
+            int end = text.length();
+            while (end > 0 && text.charAt(end - 1) == ' ') end--;
+            text.setLength(end);
+        }
+
+        int length() { return text.length(); }
+        char charAt(int index) { return text.charAt(index); }
+        int lastIndexOf(String value) { return text.lastIndexOf(value); }
+        @Override public String toString() { return text.toString(); }
+    }
+
     private static final class Renderer {
         private final List<String> tokens;
-        private final StringBuilder sb = new StringBuilder();
+        private final BoundedOutput sb = new BoundedOutput();
         private int indent = 0;        // 当前块河道的前导缩进（顶层为 0）
         private int plainParenDepth = 0; // 普通括号深度（>0 时挂起子句处理，保持行内）
         private enum ParenKind { PLAIN, SUBQUERY, WINDOW }
@@ -748,9 +792,7 @@ public final class SqlFormatter {
         /** 不在行注释后另添空行，也不留下尚未填充的列表续行空白。 */
         private void caseLine(int spaces) {
             if (atLineStart) {
-                while (sb.length() > 0 && sb.charAt(sb.length() - 1) == ' ') {
-                    sb.setLength(sb.length() - 1);
-                }
+                sb.removeTrailingSpaces();
             } else {
                 sb.append('\n');
             }
@@ -788,7 +830,7 @@ public final class SqlFormatter {
         private void startClause(String lead) {
             if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
             int pad = Math.max(0, (indent + RIVER) - lead.length());
-            for (int i = 0; i < pad; i++) sb.append(' ');
+            appendIndent(pad);
             sb.append(lead);
             atLineStart = false; // 其后内容以空格续接同一行
         }
@@ -801,14 +843,14 @@ public final class SqlFormatter {
         }
 
         private void appendIndent(int spaces) {
-            for (int i = 0; i < spaces; i++) sb.append(' ');
+            sb.appendSpaces(spaces);
         }
 
         /** 列表续行：缩进到河道右侧一格（含当前缩进），使续行与首项左对齐。 */
         private void contLine() {
             sb.append('\n');
             int spaces = indent + RIVER + 1;
-            for (int i = 0; i < spaces; i++) sb.append(' ');
+            appendIndent(spaces);
             atLineStart = true; // 下一 token 无前导空格
         }
 

@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -16,6 +17,66 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 幂等性与语义保全（去空白去大小写后 token 序列一致）。不依赖数据库。
  */
 class SqlFormatterTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"case", "subquery"})
+    void smallDeepInputsRejectExcessiveOutputAndNextCallStillWorks(String structure) {
+        String sql = structure.equals("case") ? nestedCaseSql(800)
+                : "select (".repeat(1100) + "select 1" + ")".repeat(1100);
+        assertTrue(sql.length() < SqlFormatScope.MAX_SCOPE_LENGTH, "Input passes the editor range limit");
+
+        var failure = assertThrows(IllegalArgumentException.class, () -> SqlFormatter.format(sql));
+
+        assertEquals("Formatting result limit exceeded", failure.getMessage());
+        assertEquals("SELECT id\n  FROM t", SqlFormatter.format("select id from t"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {-1, 0, 1})
+    void outputBudgetCountsUtf16UnitsAtTheExactBoundary(int delta) {
+        int bodyLength = SqlFormatScope.MAX_TEXT_LENGTH + delta - "SELECT ''".length();
+        // Supplementary characters occupy two UTF-16 units, not one.
+        String literal = "'" + "\uD83D\uDE00".repeat(bodyLength / 2) + "x".repeat(bodyLength % 2) + "'";
+        String sql = "select " + literal;
+        if (delta > 0) {
+            var failure = assertThrows(IllegalArgumentException.class, () -> SqlFormatter.format(sql));
+            assertEquals("Formatting result limit exceeded", failure.getMessage());
+        } else {
+            assertEquals("SELECT " + literal, SqlFormatter.format(sql));
+        }
+    }
+
+    @Test
+    void statementsShareOutputBudgetWithoutTruncatingAcceptedResults() {
+        String sql = nestedCaseSql(600);
+        String formatted = SqlFormatter.format(sql);
+        assertTrue(formatted.length() > SqlFormatScope.MAX_TEXT_LENGTH / 2);
+        assertTrue(formatted.endsWith("       END AS n\n  FROM t"));
+        assertEquals(600, Pattern.compile("\\bCASE\\b").matcher(formatted).results().count());
+        assertEquals(600, Pattern.compile("\\bEND\\b").matcher(formatted).results().count());
+        assertEquals(formatted, SqlFormatter.format(formatted));
+        String script = sql + ";" + sql;
+        assertTrue(script.length() < SqlFormatScope.MAX_SCOPE_LENGTH);
+
+        assertThrows(IllegalArgumentException.class, () -> SqlFormatter.format(script));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {-1, 0, 1})
+    void generatedLineBreakCountsBeforeTrailingWhitespaceIsStripped(int delta) {
+        String sql = "--" + "x".repeat(SqlFormatScope.MAX_TEXT_LENGTH + delta - 3);
+        // The renderer appends one newline after this comment, then strips it on success.
+        if (delta > 0) {
+            assertThrows(IllegalArgumentException.class, () -> SqlFormatter.format(sql));
+        } else {
+            assertEquals(sql, SqlFormatter.format(sql));
+        }
+    }
+
+    private static String nestedCaseSql(int depth) {
+        return "select " + "case when true then ".repeat(depth) + "1"
+                + " else 0 end".repeat(depth) + " as n from t";
+    }
 
     @Test
     void simpleCaseBranchesIndentAndEndAlignsWithCase() {
