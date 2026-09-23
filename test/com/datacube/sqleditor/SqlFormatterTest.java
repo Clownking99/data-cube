@@ -1,6 +1,8 @@
 package com.datacube.sqleditor;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Locale;
 import java.util.regex.Pattern;
@@ -14,6 +16,133 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 幂等性与语义保全（去空白去大小写后 token 序列一致）。不依赖数据库。
  */
 class SqlFormatterTest {
+
+    @Test
+    void scalarSubqueryInsideFunctionRestoresOuterLayout() {
+        String sql = "select coalesce((select max(amount) from sales where active=true),0) as total, "
+                + "id from customers order by id,name";
+        String expected = """
+                SELECT COALESCE((
+                        SELECT MAX(amount)
+                          FROM sales
+                         WHERE active = TRUE
+                      ), 0) AS total,
+                       id
+                  FROM customers
+                 ORDER BY id,
+                       name""";
+        assertEquals(expected, SqlFormatter.format(sql));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void windowInsideFunctionRestoresArgumentsAndSelectList() {
+        String sql = "select coalesce(sum(amount) over (partition by coalesce(region,'?'),team "
+                + "order by created_at,id rows between 2 preceding and current row),0) as total, "
+                + "region from sales";
+        String expected = """
+                SELECT COALESCE(SUM(amount) OVER (
+                       PARTITION BY COALESCE(region, '?'),
+                       team
+                       ORDER BY created_at,
+                       id
+                       ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+                      ), 0) AS total,
+                       region
+                  FROM sales""";
+        assertEquals(expected, SqlFormatter.format(sql));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void nestedWindowFunctionsKeepTheirOwnKeywordsInline() {
+        String sql = "select sum(amount) over (order by extract(day from created_at),id) as total from sales";
+        String expected = """
+                SELECT SUM(amount) OVER (
+                       ORDER BY extract(day FROM created_at),
+                       id
+                      ) AS total
+                  FROM sales""";
+        assertEquals(expected, SqlFormatter.format(sql));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "rows between 2 preceding and current row exclude ties",
+            "range between unbounded preceding and current row exclude current row",
+            "groups between 1 preceding and 1 following exclude no others",
+            "rows unbounded preceding exclude group"
+    })
+    void windowFrameBoundariesHaveTheirOwnLines(String frame) {
+        String expected = "SELECT SUM(amount) OVER (\n"
+                + "       ORDER BY created_at\n       "
+                + frame.toUpperCase(Locale.ROOT).replace(" EXCLUDE", "\n       EXCLUDE")
+                + "\n      ) AS total\n  FROM sales";
+        assertEquals(expected, SqlFormatter.format(
+                "select sum(amount) over (order by created_at " + frame + ") as total from sales"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void nestedSetOperatorsStayInsideTheirQueryBlock() {
+        String expected = """
+                SELECT *
+                  FROM (
+                        SELECT id
+                          FROM a
+                        UNION ALL
+                        SELECT id
+                          FROM b
+                      ) s""";
+        assertEquals(expected, SqlFormatter.format("select * from (select id from a union all select id from b) s"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void subqueryRestoresWindowListAndEnclosingFunction() {
+        String sql = "select coalesce(sum(amount) over (order by "
+                + "(select max(priority) from config),id),0) as total, region from sales";
+        String expected = """
+                SELECT COALESCE(SUM(amount) OVER (
+                       ORDER BY (
+                        SELECT MAX(priority)
+                          FROM config
+                      ),
+                       id
+                      ), 0) AS total,
+                       region
+                  FROM sales""";
+        assertEquals(expected, SqlFormatter.format(sql));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void subqueryInsideGroupedPredicateRestoresOuterBooleanClauses() {
+        String sql = "select id from t where (id in (select id from u where active=true) "
+                + "or score between 1 and 3) and enabled=true";
+        String expected = """
+                SELECT id
+                  FROM t
+                 WHERE (id IN (
+                        SELECT id
+                          FROM u
+                         WHERE active = TRUE
+                      ) OR score BETWEEN 1 AND 3)
+                   AND enabled = TRUE""";
+        assertEquals(expected, SqlFormatter.format(sql));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void mergeContextEndsAtStatementBoundary() {
+        String merge = "merge into target t using source s on (t.id=s.id) "
+                + "when matched then update set t.amount=s.amount";
+        String query = "select * from a join b using (id)";
+        assertEquals(SqlFormatter.format(merge) + ";\n\n" + SqlFormatter.format(query),
+                SqlFormatter.format(merge + ";" + query),
+                "MERGE 的 USING 排版状态不能影响下一条 JOIN USING");
+    }
 
     /** 行首含 >=2 个空格后紧跟指定关键字（表示被缩进的嵌套子句）。 */
     private static boolean hasIndentedClause(String text, String keyword) {
