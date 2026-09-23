@@ -77,6 +77,9 @@ public class DataCubeFx extends Application {
             PauseTransition hold = new PauseTransition(Duration.millis(1100));
             hold.setOnFinished(ev -> {
                 primaryStage.show();
+                com.datacube.update.UpdateStartup.acknowledge(getParameters().getRaw(),
+                        com.datacube.update.AppVersion.current(),
+                        com.datacube.update.InstallMode.appDir().orElse(null));
                 // 窗口显示后再让原生标题栏跟随明暗主题（按标题定位窗口句柄）
                 appShell.enableNativeTitleBarTheming(primaryStage.getTitle());
                 if (splashRef != null) {

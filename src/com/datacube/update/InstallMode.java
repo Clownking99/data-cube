@@ -3,6 +3,10 @@ package com.datacube.update;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.Locale;
+import java.io.IOException;
+import java.util.concurrent.*;
+import java.util.function.Function;
 
 /**
  * 运行形态判定：区分 exe 安装版 / 免安装绿色版 / 未知（开发或无法判定）。
@@ -16,7 +20,7 @@ import java.util.Optional;
  * <p>依据 jpackage 启动器自带的系统属性 {@code jpackage.app-path} 定位 app-image
  * 根目录，再查 Windows 卸载项判断当前实例是否为“已安装”产物。jpackage 生成的
  * WiX 安装包会写入 {@code InstallLocation}（=安装目录，来自 ARPINSTALLLOCATION）与
- * {@code DisplayName}（=应用名）；绿色版解压后从不写入任何卸载项，故二者任一命中即判为安装版。
+ * {@code DisplayName}（=应用名）；只有 InstallLocation 精确匹配当前目录才判为安装版。
  */
 public enum InstallMode {
 
@@ -54,77 +58,61 @@ public enum InstallMode {
         if (dir.isEmpty()) {
             return UNKNOWN; // 非 jpackage 启动（开发环境）
         }
-        String appDir = dir.get().toString();
-        String appName = appName().orElse(null);
         try {
-            return isRegisteredInstall(appDir, appName) ? INSTALLED : PORTABLE;
+            return registeredMode(dir.get().toString(), InstallMode::regQuery);
         } catch (Exception e) {
             return UNKNOWN; // 注册表查询异常，不猜
         }
     }
 
-    /** 启动器可执行文件名去扩展名（jpackage 中即应用名，与安装包 DisplayName 一致）。 */
-    private static Optional<String> appName() {
-        String appPath = System.getProperty("jpackage.app-path");
-        if (appPath == null || appPath.isBlank()) {
-            return Optional.empty();
-        }
-        try {
-            String name = Path.of(appPath).getFileName().toString();
-            int dot = name.lastIndexOf('.');
-            if (dot > 0) name = name.substring(0, dot);
-            return name.isBlank() ? Optional.empty() : Optional.of(name);
-        } catch (Exception e) {
-            return Optional.empty();
-        }
-    }
-
-    /**
-     * 扫描卸载项判断是否为已安装产物。命中任一即视为安装版：
-     * <ul>
-     *   <li>{@code InstallLocation} 与 appDir 互为父子或相等（容忍 dir-chooser 目录差异）；</li>
-     *   <li>{@code DisplayName} 等于应用名（绿色版从不写卸载项，故此信号足以判定）。</li>
-     * </ul>
-     */
-    private static boolean isRegisteredInstall(String appDir, String appName) throws Exception {
+    /** Exact location only; failed/incomplete registry queries never imply portable ownership. */
+    static InstallMode registeredMode(String appDir, Function<String, String> query) {
         String target = normalize(appDir);
-        String wantName = appName == null ? null : appName.trim();
+        boolean incomplete = false;
         for (String key : UNINSTALL_KEYS) {
-            String out = regQuery(key);
-            if (out == null) continue;
+            String out = query.apply(key);
+            if (out == null) { incomplete = true; continue; }
             for (String line : out.split("\\r?\\n")) {
                 String s = line.trim();
                 String loc = valueOf(s, "InstallLocation");
                 if (loc != null && locationMatches(normalize(loc), target)) {
-                    return true;
-                }
-                if (wantName != null) {
-                    String name = valueOf(s, "DisplayName");
-                    if (name != null && name.equalsIgnoreCase(wantName)) {
-                        return true;
-                    }
+                    return INSTALLED;
                 }
             }
         }
-        return false;
+        return incomplete ? UNKNOWN : PORTABLE;
     }
 
     /** 执行 {@code reg query <key> /s}，以控制台代码页解码输出；键不存在或失败返回 null。 */
     private static String regQuery(String key) {
+        Process process = null;
+        ExecutorService reader = Executors.newVirtualThreadPerTaskExecutor();
         try {
-            Process p = new ProcessBuilder("reg", "query", key, "/s")
+            process = new ProcessBuilder(Path.of(System.getenv().getOrDefault("SystemRoot", "C:\\Windows"),
+                    "System32", "reg.exe").toString(), "query", key, "/s")
                     .redirectErrorStream(true)
                     .start();
-            byte[] bytes;
-            try (var in = p.getInputStream()) {
-                bytes = in.readAllBytes();
-            }
-            p.waitFor();
+            final Process running = process;
+            Future<byte[]> result = reader.submit(() -> {
+                try (var input = running.getInputStream()) {
+                    byte[] bytes = input.readNBytes(2 * 1024 * 1024 + 1);
+                    if (bytes.length > 2 * 1024 * 1024) throw new IOException("REGISTRY_OUTPUT_LIMIT");
+                    return bytes;
+                }
+            });
+            byte[] bytes = result.get(5, TimeUnit.SECONDS);
+            if (!process.waitFor(1, TimeUnit.SECONDS) || process.exitValue() != 0) return null;
             // reg.exe 按控制台代码页输出；用 native.encoding（Windows 上即本地代码页）解码，
             // 避免 JDK 18+ 默认 UTF-8 把非 ASCII 路径/名称解成乱码而错过匹配。
             return new String(bytes, consoleCharset());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
         } catch (Exception e) {
             return null;
+        } finally {
+            if (process != null && process.isAlive()) process.destroyForcibly();
+            reader.shutdownNow();
         }
     }
 
@@ -142,12 +130,10 @@ public enum InstallMode {
         return value.isEmpty() ? null : value;
     }
 
-    /** 目录相等，或一方为另一方的父目录（应对 dir-chooser 追加/去除应用名子目录）。 */
+    /** Only exact normalized locations identify this installation. */
     private static boolean locationMatches(String a, String b) {
         if (a.isEmpty() || b.isEmpty()) return false;
-        return a.equals(b)
-                || a.startsWith(b + "\\")
-                || b.startsWith(a + "\\");
+        return a.equals(b);
     }
 
     private static Charset consoleCharset() {
@@ -167,6 +153,6 @@ public enum InstallMode {
         while (s.endsWith("\\") || s.endsWith("/")) {
             s = s.substring(0, s.length() - 1);
         }
-        return s.toLowerCase();
+        return s.toLowerCase(Locale.ROOT);
     }
 }
