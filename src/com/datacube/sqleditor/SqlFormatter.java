@@ -67,7 +67,7 @@ public final class SqlFormatter {
     /** JOIN 短语的引导词（其后的 OUTER / JOIN 续接同一行）。 */
     private static final Set<String> JOIN_LEAD = Set.of("INNER", "LEFT", "RIGHT", "FULL", "CROSS");
 
-    /** 美化 SQL 脚本（支持多语句）；发现未闭合的引用或块注释时整段保留原文。 */
+    /** 美化 SQL 脚本；引用/注释未闭合或数值 token 边界不明确时整段保留原文。 */
     public static String format(String sql) {
         if (sql == null || sql.isBlank()) return sql;
         List<String> tokens = tokenize(sql);
@@ -77,7 +77,7 @@ public final class SqlFormatter {
 
     // ---------------------------------------------------------------- 分词
 
-    /** 返回 null 表示引用或块注释不完整，调用方应保留整段原文。 */
+    /** 返回 null 表示词法边界不完整或不明确，调用方应保留整段原文。 */
     private static List<String> tokenize(String sql) {
         List<String> out = new ArrayList<>();
         int i = 0, n = sql.length();
@@ -181,7 +181,16 @@ public final class SqlFormatter {
                 i += operator.length();
                 continue;
             }
-            // 标识符 / 关键字 / 数字（含 . 以保留 a.b 与 3.14）
+            // Numeric literals are opaque: exponent signs and leading dots must not
+            // become standalone operators/punctuation. Never parse or round their value.
+            if (isRadixDigit(c, 10) || (c == '.' && i + 1 < n && isRadixDigit(sql.charAt(i + 1), 10))) {
+                int j = readNumber(sql, i);
+                if (j < 0) return null;
+                out.add(sql.substring(i, j));
+                i = j;
+                continue;
+            }
+            // 标识符 / 关键字（含 . 以保留 a.b；名称里的数字不启动数值分词）
             if (Character.isLetterOrDigit(c) || c == '_' || c == '$') {
                 int j = i;
                 while (j < n) {
@@ -209,6 +218,74 @@ public final class SqlFormatter {
             i++;
         }
         return out;
+    }
+
+    /** 数值原文结束位置；残缺指数/分组或紧贴未知标识符时返回 -1，避免将其悄悄改写。 */
+    private static int readNumber(String sql, int start) {
+        int n = sql.length();
+        int radix = 10;
+        if (sql.charAt(start) == '0' && start + 1 < n) {
+            radix = switch (sql.charAt(start + 1)) {
+                case 'x', 'X' -> 16;
+                case 'o', 'O' -> 8;
+                case 'b', 'B' -> 2;
+                default -> 10;
+            };
+        }
+        int j;
+        if (radix != 10) {
+            int digitsStart = start + 2;
+            // PostgreSQL permits one underscore immediately after a radix prefix.
+            if (digitsStart < n && sql.charAt(digitsStart) == '_') digitsStart++;
+            j = readDigits(sql, digitsStart, radix);
+            if (j <= digitsStart) return -1;
+        } else {
+            j = readDigits(sql, start, 10);
+            if (j < 0) return -1;
+            if (j < n && sql.charAt(j) == '.' && (j + 1 >= n || sql.charAt(j + 1) != '.')) {
+                j = readDigits(sql, j + 1, 10);
+                if (j < 0) return -1;
+            }
+            if (j < n && (sql.charAt(j) == 'e' || sql.charAt(j) == 'E')) {
+                int digitsStart = j + 1;
+                if (digitsStart < n && (sql.charAt(digitsStart) == '+' || sql.charAt(digitsStart) == '-')) {
+                    digitsStart++;
+                }
+                j = readDigits(sql, digitsStart, 10);
+                if (j <= digitsStart) return -1;
+            }
+            // Oracle binary-float / binary-double suffix; retain the original case.
+            if (j < n && "fFdD".indexOf(sql.charAt(j)) >= 0) j++;
+        }
+        if (j < n) {
+            char next = sql.charAt(j);
+            if (Character.isLetterOrDigit(next) || next == '_' || next == '$') return -1;
+        }
+        return j;
+    }
+
+    /** Iterative scan: underscores must separate digits, with no recursive regex backtracking. */
+    private static int readDigits(String sql, int start, int radix) {
+        int j = start;
+        while (j < sql.length()) {
+            char c = sql.charAt(j);
+            if (isRadixDigit(c, radix)) {
+                j++;
+            } else if (c == '_') {
+                if (j == start || j + 1 >= sql.length() || !isRadixDigit(sql.charAt(j + 1), radix)) return -1;
+                j++;
+            } else {
+                break;
+            }
+        }
+        return j;
+    }
+
+    private static boolean isRadixDigit(char c, int radix) {
+        int value = c >= '0' && c <= '9' ? c - '0'
+                : c >= 'a' && c <= 'f' ? c - 'a' + 10
+                : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+        return value >= 0 && value < radix;
     }
 
     private static int readBlockComment(String sql, int start) {

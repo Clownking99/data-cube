@@ -19,6 +19,78 @@ class SqlFormatterTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+            "1e-3", "1E+03", ".5", ".5e-2", "1.e+2", "1.25E-10",
+            "0", "42", "1.", "001.2300", "9.99e9999",
+            "25f", "0.5D", ".25F", "1e-3d",
+            "1_000.25_50e-1_0", "0xFF_FF", "0X_1e", "0o_755", "0B10_01"
+    })
+    void numericLiteralsStayWholeAndFollowingSqlIsFormatted(String number) {
+        String expected = "SELECT " + number + " AS amount,\n       id\n  FROM t"
+                + "\n WHERE value < " + number + ";\n\nSELECT 2\n  FROM t";
+        assertEquals(expected, SqlFormatter.format("select " + number
+                + " as amount,id from t where value<" + number + ";select 2 from t"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void exponentSignsDoNotConsumeAdjacentArithmeticOperators() {
+        String expected = "SELECT 1e-3 - 2e+4 + .5 * 3. AS amount\n  FROM t"
+                + "\n WHERE value BETWEEN 1E-5 AND 1E+5";
+        assertEquals(expected, SqlFormatter.format(
+                "select 1e-3-2e+4+.5*3. as amount from t where value between 1E-5 and 1E+5"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void numericTokensComposeWithFunctionsCastsAndSubqueries() {
+        String expected = "SELECT COALESCE(.5, 1e-3)::numeric AS amount,\n"
+                + "       (\n        SELECT MAX(price)\n          FROM t2"
+                + "\n         WHERE price > 2.5E+3\n      ) AS peak\n  FROM t";
+        assertEquals(expected, SqlFormatter.format("select coalesce(.5,1e-3)::numeric as amount,"
+                + "(select max(price) from t2 where price>2.5E+3) as peak from t"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void numericLookingIdentifiersParametersAndQuotedTextStayUnchanged() {
+        String expected = "SELECT t.e3,\n       t.f,\n       col1,\n       :e3,\n       $1,\n"
+                + "       '1e-3',\n       \"1.5E+3\",\n       q'[.5e-2]'"
+                + "\n  FROM schema1.table2 t\n WHERE t.d = :1";
+        assertEquals(expected, SqlFormatter.format(
+                "select t.e3,t.f,col1,:e3,$1,'1e-3',\"1.5E+3\",q'[.5e-2]'"
+                        + " from schema1.table2 t where t.d=:1"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void leadingSignsAndNumericLookingNamesRemainSeparateOperators() {
+        String expected = "SELECT - 1e-3 + .5 AS delta,\n       1 - e3,\n       1 + f,\n"
+                + "       0x1e - 3\n  FROM t";
+        assertEquals(expected, SqlFormatter.format(
+                "select -1e-3+.5 as delta,1-e3,1+f,0x1e-3 from t"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void longGroupedNumberRetainsEveryDigitWithoutNumericConversion() {
+        String number = "123_".repeat(4096) + "456.000E-9999";
+        String expected = "SELECT " + number + " AS amount\n  FROM t";
+        assertEquals(expected, SqlFormatter.format("select " + number + " as amount from t"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "1e", "1e+", ".5e-", "0x", "0b2", "1__0", "1_", "1._0",
+            "1e_2", "0x_", "1e2foo"
+    })
+    void incompleteOrAmbiguousNumericTokenLeavesWholeInputUntouched(String number) {
+        String sql = "  select id,name from t;\r\nselect " + number + "\r\n  ";
+        assertEquals(sql, SqlFormatter.format(sql));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
             "q'[It's; -- select\nfrom]'",
             "Q'{It's; /* select */ from}'",
             "q'(It's; select from)'",
