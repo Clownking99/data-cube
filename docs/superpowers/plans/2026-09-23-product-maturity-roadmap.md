@@ -1,6 +1,6 @@
 # DataCube 产品成熟度推进计划
 
-日期：2026-09-23；G1 更新：2026-09-24。状态：M0 本地工程完成；M1 已通过分支验证，待 main 合并复验；M2–M7 未开始，外部验收待授权。
+日期：2026-09-23；G1 更新：2026-09-24。状态：M0、M1 本地工程完成，已合并 main 并复验；M2–M7 未开始，外部验收待授权。
 
 基线：`main` / `792600c59e49bce3b300a71ccf412ed53d2b42e9`。
 
@@ -192,11 +192,13 @@
 
 ### 本地工程门槛
 
-- [ ] 定向回归先证明修复前的问题或新增行为，再验证实现；涉及取消/关闭/状态切换使用可控时序，不靠固定 sleep。
-- [ ] 执行 `./gradlew.bat clean :buildSrc:test test --no-daemon --console=plain`，检查 XML 中实际总数/失败/错误/跳过及原因，不只看最后 BUILD SUCCESSFUL。
-- [ ] 执行 `./gradlew.bat jpackageImage --no-daemon --console=plain`；正式运行时不得携带测试用 headless/profile 参数或合成验收入口。
-- [ ] 差异审查覆盖安全、错误恢复、性能预算、跨平台路径、资源释放和兼容性；仅在风险需要时提取大类，不进行顺手式全仓重构。
-- [ ] 本地合并 main 前核对工作区，必要时在最新基线上重验；main 合并后复验受影响路径并记录 SHA。
+以下勾选仅记录 G1 的本地证据，不表示 M2–M7 或最终 M8 完成。实际命令、首次失败、跳过与 main SHA 见 [G1 账本](../verification/2026-09-23-datacube-g1-write-safety.md)。buildSrc 使用独立 `--rerun-tasks` 后执行 `clean test`，确保不是 UP-TO-DATE 复用。
+
+- [x] 定向回归先证明修复前的问题或新增行为，再验证实现；涉及取消/关闭/状态切换使用可控时序，不靠固定 sleep。
+- [x] 执行 `./gradlew.bat clean :buildSrc:test test --no-daemon --console=plain`，检查 XML 中实际总数/失败/错误/跳过及原因，不只看最后 BUILD SUCCESSFUL。
+- [x] 执行 `./gradlew.bat jpackageImage --no-daemon --console=plain`；正式运行时不得携带测试用 headless/profile 参数或合成验收入口。
+- [x] 差异审查覆盖安全、错误恢复、性能预算、跨平台路径、资源释放和兼容性；仅在风险需要时提取大类，不进行顺手式全仓重构。
+- [x] 本地合并 main 前核对工作区，必要时在最新基线上重验；main 合并后复验受影响路径并记录 SHA。
 
 ### 桌面、真库和发布门槛
 
@@ -224,7 +226,7 @@
 | --- | --- | --- | --- |
 | 计划与交接 | 已提交 | M0 提交 7b52198 | 按各目标独立交付 |
 | M0 | 本地工程完成 | [G1 账本](../verification/2026-09-23-datacube-g1-write-safety.md)，新基线/测试/镜像与历史失败对账 | 为 M1 保留证据 |
-| M1 | 进行中 | 965c3a3；[G1 账本](../verification/2026-09-23-datacube-g1-write-safety.md)，最终分支定向/全量/buildSrc/镜像已通过 | main 合并与复验 |
+| M1 | 本地工程完成 | 实现 965c3a3；main 合并 6596c00；[G1 账本](../verification/2026-09-23-datacube-g1-write-safety.md)，定向/全量/buildSrc/镜像及 main 复验均通过 | G1 交付；原生桌面/真库等单列待验 |
 | M2–M7 | 未开始 | 仅规划 | 按依赖逐目标实施 |
 | M8 | 待外部验收 | G1 本地自动化证据独立记录，不替代原生桌面/真库/安装/CI | 获授权后单独安排 |
 

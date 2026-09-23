@@ -2,6 +2,8 @@
 
 编写日期：2026-09-23。此文档旨在让新会话不依赖旧聊天全文即可接手。
 
+**2026-09-24 更新：G1（M0 + M1）已本地工程完成。** 实现提交 `965c3a3`，main 合并代码 `6596c00` 已重新通过全量测试（3514 passed、3 live skips）、buildSrc（8/8）与 jpackageImage。详见 [G1 实施与验收账本](../superpowers/verification/2026-09-23-datacube-g1-write-safety.md) 和 [实际结果](../superpowers/verification/2026-09-24-datacube-g1-results.json)。原生桌面、真库、安装升级与远端 CI/发布仍待验。下文保留最初启动交接的历史现场和指令；新会话应先看当前路线图，避免重新实施 G1。本任务未扩展到 M2–M8，后续 G2 由维护者单独启动。
+
 ## 1. 当前用户意图
 
 维护者已认可整体产品审阅，要求制定完整计划、编写交接，并准备自行新开会话以目标模式运行。本轮只生成文档；没有开始修复、创建目标、新会话、commit、push、tag 或 Release。

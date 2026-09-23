@@ -2,6 +2,8 @@
 
 范围：关系库 ConnConfig 消费路径的写入防误操作。本地工程目标，不代表真库或发布验收。M2–M8 不在本次实施范围；Redis 与独立 Oracle→PG 迁移使用独立模型，未纳入此只读开关。
 
+最终状态（2026-09-24）：G1 / M0 + M1 **本地工程完成**。main 合并代码 `6596c0050a95a9f9e748f0ea72b1f290f13aecdd` 已完成全量、fresh buildSrc 与 jpackageImage 复验；后续仅提交本文件、路线图、交接与机器可读证据，不改变被验证的源码/测试/构建配置。
+
 ## 检查点 1：M0 基线
 
 - 目标：核实 main、隔离现场、复查既有测试异常。
@@ -79,8 +81,47 @@
 - 失败/未验：最终测试无失败；保留 unchecked 和 JEP 493 提示。旧 SchemaDiffServiceTest 偶发失败本轮未复现，根因仍未知。外部验收仍未执行。
 - 下一步：检查 main 未变、保留原始未跟踪交接/路线图副本，本地合并后在 main 再跑全量、fresh buildSrc 和镜像。复验完成前 M1 不标记本地工程完成。
 
+## 检查点 4：main 集成与复验完成
+
+- 目标：完成授权的本地提交/合并/复验与证据交付；M0 提交 `7b52198`，M1 实现 `965c3a3`，分支证据 `e0ba983`，main 合并 `6596c0050a95a9f9e748f0ea72b1f290f13aecdd`。
+- 集成：合并前 main 仍为 `792600c`，无 tracked/staged 用户改动。原两份未跟踪文档与 M0 Git blob 完全相同，分别保存到 `<scratch>/main-original-documents/`；原 SHA-256 与 blob 在 `main-original-documents-hashes.json`。随后 `git merge --no-ff codex/datacube-g1-write-safety` 无冲突完成。未读取/修改 `.testagent/`。
+- 改动：合并的是已审查的 M1 及文档；`git diff 965c3a3 HEAD -- src test build.gradle buildSrc gradle.properties` 为空，基线至合并的 `git diff --check` 通过。
+- main 复验：独立 `profile-main`，按检查点 3 的命令重新执行。`main-full.log`：2m38s，265 suites / 3517 tests / 3514 passed / 0 failures / 0 errors / 3 live skips；`main-buildSrc.log`：8s，4 tasks 全部 executed，8/8 passed / 0 skipped；各 XML 归档为 `main-full-xml/`、`main-buildSrc-xml/`。
+- main 镜像：`main-image.log`，jpackageImage exit 0，33s；产物 `D:\Projects\朝花夕拾\build\jpackage\DataCube\DataCube.exe`。检查 DataCube.cfg 不含测试 profile/headless/合成入口；没有启动真实应用 profile。镜像构建日志摘要及 EXE/config/runtime modules 的 SHA-256 一并归档。
+- 实际证据：[机器可读汇总](2026-09-24-datacube-g1-results.json) 包含验证 main SHA、实际 XML 数量/跳过原因、日志摘要和整组 XML 摘要；原始文件保留在独占临时证据目录。M0/中间失败/最终分支/main 各轮分开，不相互冒充。
+- 失败/未验：最终分支和 main 无测试失败。3 live skips 均明确未执行；unchecked/JEP 493 提示保留；旧偶发异常根因未明。下列原生桌面、真库、CI、安装与发布仍待验，不宣称发布验收完成。
+- 下一步：交付 G1 并停止扩展。M2–M7 不自动启动；用户可另立 G2。回退可在审查后 revert 实现提交 `965c3a3` 或合并提交（含文档），本轮未改变持久化数据格式、未触碰真实数据库，无用户数据迁移需要回滚。
+
 ## 待外部验收（不计为本地通过）
 
 - 原生桌面：合成 profile 的窗口、键盘、确认取消、明暗主题、缩放。
 - 授权的一次性 Oracle/PG：真实驱动只读、生产确认、事务、取消、DDL 隐式提交与 Schema Diff。
 - 安装/便携升级和失败恢复；同 SHA 远端 CI；签名/凭据及发布。均未授权执行。
+
+## 复现本地验证
+
+所有命令由仓库目录执行。`<scratch>` 是上述独占临时目录，不使用真实应用 profile。最终定向命令为：
+
+```powershell
+$env:DATACUBE_G1_PROFILE = Join-Path $scratch 'profile'
+.\gradlew.bat test --tests 'com.datacube.service.*' --tests 'com.datacube.fx.WriteSafetyIntegrationTest' --tests 'com.datacube.fx.SchemaDiff*' --tests 'com.datacube.fx.SqlEditor*' --tests 'com.datacube.fx.ObjectEditorPaneLifecycleTest' --offline --no-daemon --console=plain --init-script (Join-Path $scratch 'isolated-tests.gradle')
+.\gradlew.bat :buildSrc:test --rerun-tasks --offline --no-daemon --console=plain --init-script (Join-Path $scratch 'isolated-tests.gradle')
+.\gradlew.bat clean test --offline --no-daemon --console=plain --init-script (Join-Path $scratch 'isolated-tests.gradle')
+.\gradlew.bat jpackageImage --offline --no-daemon --console=plain
+```
+
+`isolated-tests.gradle` 仅配置测试子进程；main 复验换用独立的 `profile-main`：
+
+```groovy
+allprojects {
+    tasks.withType(Test).configureEach {
+        systemProperty 'user.home', System.getenv('DATACUBE_G1_PROFILE')
+        systemProperty 'java.awt.headless', 'false'
+        environment.keySet().findAll {
+            it.startsWith('DATACUBE_REDIS_') || it.startsWith('DATACUBE_SCHEMA_DIFF_')
+        }.each { environment.remove(it) }
+    }
+}
+```
+
+镜像命令不带 init script，测试隔离参数不进入正式运行时配置；未修改 JAVA_TOOL_OPTIONS 或系统级环境设置。上面的命令不能替代原生桌面/真库验收，也不能把 `UP-TO-DATE` 或 live skips 报为新通过。
