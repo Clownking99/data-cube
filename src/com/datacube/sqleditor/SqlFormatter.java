@@ -12,7 +12,7 @@ import java.util.Set;
  *
  * <p>设计要点：
  * <ul>
- *   <li>纯词法处理，不解析语义，因此<b>永不改变 SQL 语义</b>——只调整空白与关键字大小写；</li>
+ *   <li>基于词法调整空白与关键字大小写，不替代完整的方言语法解析；</li>
  *   <li>字符串字面量 {@code '...'}、双引号标识符 {@code "..."}、行注释 {@code --} 与
  *       块注释 {@code /*..*} 均作为整体保留，不会在其内部插入换行；</li>
  *   <li>采用 PL/SQL Developer 风格的“河道”对齐：SELECT / FROM / WHERE / GROUP BY /
@@ -67,16 +67,17 @@ public final class SqlFormatter {
     /** JOIN 短语的引导词（其后的 OUTER / JOIN 续接同一行）。 */
     private static final Set<String> JOIN_LEAD = Set.of("INNER", "LEFT", "RIGHT", "FULL", "CROSS");
 
-    /** 美化 SQL 脚本（支持多语句）；无法处理的片段仅做保守整形，不会破坏语义。 */
+    /** 美化 SQL 脚本（支持多语句）；发现未闭合的引用或块注释时整段保留原文。 */
     public static String format(String sql) {
         if (sql == null || sql.isBlank()) return sql;
         List<String> tokens = tokenize(sql);
-        if (tokens.isEmpty()) return sql;
+        if (tokens == null || tokens.isEmpty()) return sql;
         return new Renderer(tokens).render();
     }
 
     // ---------------------------------------------------------------- 分词
 
+    /** 返回 null 表示引用或块注释不完整，调用方应保留整段原文。 */
     private static List<String> tokenize(String sql) {
         List<String> out = new ArrayList<>();
         int i = 0, n = sql.length();
@@ -86,42 +87,64 @@ public final class SqlFormatter {
             // 行注释 --...
             if (c == '-' && i + 1 < n && sql.charAt(i + 1) == '-') {
                 int j = i + 2;
-                while (j < n && sql.charAt(j) != '\n') j++;
+                while (j < n && sql.charAt(j) != '\n' && sql.charAt(j) != '\r') j++;
                 out.add(sql.substring(i, j));
                 i = j;
                 continue;
             }
             // 块注释 /* ... */
             if (c == '/' && i + 1 < n && sql.charAt(i + 1) == '*') {
-                int j = i + 2;
-                while (j + 1 < n && !(sql.charAt(j) == '*' && sql.charAt(j + 1) == '/')) j++;
-                j = Math.min(n, j + 2);
+                int j = readBlockComment(sql, i);
+                if (j < 0) return null;
                 out.add(sql.substring(i, j));
                 i = j;
                 continue;
             }
             // PostgreSQL dollar-quoted strings: keep the body opaque, including semicolons
-            // and SQL-looking words. A missing terminator consumes the remainder defensively.
+            // and SQL-looking words. A missing terminator leaves the whole input untouched.
             if (c == '$') {
                 int j = readDollarQuoted(sql, i);
+                if (j < 0) return null;
                 if (j > i) {
                     out.add(sql.substring(i, j));
                     i = j;
                     continue;
                 }
             }
-            // Oracle q'[...]' / q'{...}' / q'(...)' / q'<...>' literals.
-            if ((c == 'q' || c == 'Q') && i + 1 < n && sql.charAt(i + 1) == '\'') {
-                int j = readOracleQuoted(sql, i);
-                if (j > i) {
-                    out.add(sql.substring(i, j));
-                    i = j;
-                    continue;
-                }
+            // Oracle q / nq literals: paired or repeated user-selected delimiters.
+            int qStart = i;
+            if ((c == 'n' || c == 'N') && i + 2 < n
+                    && (sql.charAt(i + 1) == 'q' || sql.charAt(i + 1) == 'Q')) qStart++;
+            char q = sql.charAt(qStart);
+            if ((q == 'q' || q == 'Q') && qStart + 1 < n && sql.charAt(qStart + 1) == '\'') {
+                int j = readOracleQuoted(sql, qStart);
+                if (j < 0) return null;
+                out.add(sql.substring(i, j));
+                i = j;
+                continue;
+            }
+            // Keep literal prefixes attached. Only explicit E strings enable backslash escapes;
+            // ordinary strings use standard doubled quotes, not session-dependent settings.
+            if ("eEnNbBxX".indexOf(c) >= 0 && i + 1 < n && sql.charAt(i + 1) == '\'') {
+                int j = readStringLiteral(sql, i + 1, c == 'e' || c == 'E');
+                if (j < 0) return null;
+                out.add(sql.substring(i, j));
+                i = j;
+                continue;
+            }
+            if ((c == 'u' || c == 'U') && i + 2 < n && sql.charAt(i + 1) == '&'
+                    && (sql.charAt(i + 2) == '\'' || sql.charAt(i + 2) == '"')) {
+                int j = sql.charAt(i + 2) == '\''
+                        ? readStringLiteral(sql, i + 2, false) : readQuoted(sql, i + 2, '"');
+                if (j < 0) return null;
+                out.add(sql.substring(i, j));
+                i = j;
+                continue;
             }
             // 单引号字符串（'' 转义）
             if (c == '\'') {
-                int j = readQuoted(sql, i, '\'');
+                int j = readStringLiteral(sql, i, false);
+                if (j < 0) return null;
                 out.add(sql.substring(i, j));
                 i = j;
                 continue;
@@ -129,12 +152,14 @@ public final class SqlFormatter {
             // 双引号标识符（"" 转义）
             if (c == '"') {
                 int j = readQuoted(sql, i, '"');
+                if (j < 0) return null;
                 out.add(sql.substring(i, j));
                 i = j;
                 continue;
             }
             if (c == '`') {
                 int j = readQuoted(sql, i, '`');
+                if (j < 0) return null;
                 out.add(sql.substring(i, j));
                 i = j;
                 continue;
@@ -186,26 +211,47 @@ public final class SqlFormatter {
         return out;
     }
 
+    private static int readBlockComment(String sql, int start) {
+        int depth = 1;
+        int j = start + 2;
+        while (j + 1 < sql.length()) {
+            if (sql.charAt(j) == '/' && sql.charAt(j + 1) == '*') {
+                depth++;
+                j += 2;
+            } else if (sql.charAt(j) == '*' && sql.charAt(j + 1) == '/') {
+                j += 2;
+                if (--depth == 0) return j;
+            } else {
+                j++;
+            }
+        }
+        return -1;
+    }
+
+    /** 0 = 非 dollar 引用，-1 = 已识别起始分隔符但未闭合，其余为结束位置。 */
     private static int readDollarQuoted(String sql, int start) {
         int n = sql.length();
         int j = start + 1;
+        if (j < n && sql.charAt(j) != '$'
+                && !Character.isLetter(sql.charAt(j)) && sql.charAt(j) != '_') return 0;
         while (j < n && (Character.isLetterOrDigit(sql.charAt(j)) || sql.charAt(j) == '_')) j++;
-        if (j >= n || sql.charAt(j) != '$') return -1;
+        if (j >= n || sql.charAt(j) != '$') return 0;
         String delimiter = sql.substring(start, j + 1);
         int end = sql.indexOf(delimiter, j + 1);
-        return end < 0 ? n : end + delimiter.length();
+        return end < 0 ? -1 : end + delimiter.length();
     }
 
     private static int readOracleQuoted(String sql, int start) {
         int n = sql.length();
         if (start + 2 >= n) return -1;
         char open = sql.charAt(start + 2);
+        if (Character.isWhitespace(open)) return -1;
         char close = switch (open) {
             case '[' -> ']'; case '{' -> '}'; case '(' -> ')'; case '<' -> '>';
             default -> open;
         };
-        int end = sql.indexOf("'" + close + "'", start + 3);
-        return end < 0 ? n : end + 3;
+        int end = sql.indexOf(close + "'", start + 3);
+        return end < 0 ? -1 : end + 2;
     }
 
     private static String readOperator(String sql, int start) {
@@ -218,18 +264,53 @@ public final class SqlFormatter {
         return null;
     }
 
-    /** 从 start（引号位置）读取到匹配的收尾引号，返回收尾引号之后的下标。 */
+    /** PostgreSQL 续接字符串必须保留片段间的换行，并继承首段的 E 转义模式。 */
+    private static int readStringLiteral(String sql, int start, boolean backslashEscapes) {
+        int end = readQuoted(sql, start, '\'', backslashEscapes);
+        while (end >= 0) {
+            int next = end;
+            boolean hasLineBreak = false;
+            while (next < sql.length()) {
+                char c = sql.charAt(next);
+                if (Character.isWhitespace(c)) {
+                    hasLineBreak |= c == '\n' || c == '\r';
+                    next++;
+                } else if (sql.startsWith("--", next)) {
+                    // PostgreSQL allows line comments between continued fragments.
+                    // Block comments do not belong to its quote-continuation rule.
+                    next += 2;
+                    while (next < sql.length() && sql.charAt(next) != '\n'
+                            && sql.charAt(next) != '\r') next++;
+                } else {
+                    break;
+                }
+            }
+            if (!hasLineBreak || next >= sql.length() || sql.charAt(next) != '\'') return end;
+            end = readQuoted(sql, next, '\'', backslashEscapes);
+        }
+        return -1;
+    }
+
+    /** 返回收尾引号之后的下标；未闭合返回 -1。 */
     private static int readQuoted(String s, int start, char q) {
+        return readQuoted(s, start, q, false);
+    }
+
+    private static int readQuoted(String s, int start, char q, boolean backslashEscapes) {
         int n = s.length();
         int j = start + 1;
         while (j < n) {
+            if (backslashEscapes && s.charAt(j) == '\\') {
+                j += 2;
+                continue;
+            }
             if (s.charAt(j) == q) {
                 if (j + 1 < n && s.charAt(j + 1) == q) { j += 2; continue; } // 转义
                 return j + 1;
             }
             j++;
         }
-        return n; // 未闭合：吞到末尾
+        return -1;
     }
 
     // ---------------------------------------------------------------- 排版

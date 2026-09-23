@@ -17,6 +17,110 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class SqlFormatterTest {
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "q'[It's; -- select\nfrom]'",
+            "Q'{It's; /* select */ from}'",
+            "q'(It's; select from)'",
+            "q'<It's; select from>'",
+            "q'!It's; select from!'",
+            "q'''quoted; from''",
+            "nq'[中文 It's; from]'",
+            "NQ'!中文 It's; from!'",
+            "q'[]'"
+    })
+    void oracleQuotedTokensDoNotSwallowFollowingSql(String literal) {
+        assertOpaqueTokenAndFollowingSql(literal);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "E'it\\'s; -- select\\nfrom'",
+            "e'backslash\\\\''quote; from'",
+            "N'中文''; from'",
+            "n'中文'",
+            "B'101010'",
+            "x'AB12'",
+            "U&'d\\0061t; from'",
+            "u&\"d\\0061t\"",
+            "E''"
+    })
+    void literalPrefixesAndEscapesStayAttached(String literal) {
+        assertOpaqueTokenAndFollowingSql(literal);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "'It''s; -- from'", "\"mixed\"\"Case\"", "\u0060from\u0060\u0060value\u0060",
+            "$body$'inner'; -- from\nwhere$body$", "$$begin; select 1; end;$$",
+            "''", "'C:\\'"
+    })
+    void existingQuotedFormsRetainExactContents(String literal) {
+        assertOpaqueTokenAndFollowingSql(literal);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "'first'\n  'second'",
+            "E'first\\n'\r\n  'it\\'s; -- content'",
+            "B'10'\r'01'",
+            "E'first' -- comment with 'quote'\n 'it\\'s; -- content'",
+            "'first'\r\n -- second line\r\n 'second'"
+    })
+    void continuedStringsRetainRequiredLineBreakAndEscapeMode(String literal) {
+        assertOpaqueTokenAndFollowingSql(literal);
+    }
+
+    private static void assertOpaqueTokenAndFollowingSql(String literal) {
+        String sql = "select " + literal + " as txt,id from t where id=:id;select 2 as n from t";
+        String expected = "SELECT " + literal + " AS txt,\n       id\n  FROM t"
+                + "\n WHERE id = :id;\n\nSELECT 2 AS n\n  FROM t";
+        assertEquals(expected, SqlFormatter.format(sql), "引用内容不变，引用之后应继续格式化");
+        assertEquals(expected, SqlFormatter.format(expected), "二次美化应保持相同输出");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\n", "\r\n", "\r"})
+    void lineCommentEndsAtEveryPhysicalLineSeparator(String separator) {
+        String expected = "SELECT id -- keep this comment\n  FROM t\n WHERE id = 1";
+        assertEquals(expected, SqlFormatter.format("select id -- keep this comment" + separator
+                + "from t where id=1"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void nestedBlockCommentsRemainOneOpaqueToken() {
+        String comment = "/* outer /* inner */ select 'keep'; -- text\n outer end */";
+        String expected = "SELECT " + comment + " id\n  FROM t";
+        assertEquals(expected, SqlFormatter.format("select " + comment + " id from t"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "'", "\"", "\u0060", "q'[unfinished", "nq'{unfinished", "E'escaped\\'",
+            "$tag$unfinished", "/* unfinished", "/* outer /* inner */",
+            "q'", "U&'unfinished", "u&\"unfinished", "$TAG$content$tag$",
+            "'first'\n'unfinished", "E'first' -- continuation\n'escaped\\'"
+    })
+    void unfinishedQuotedTextOrCommentLeavesWholeInputUntouched(String unfinished) {
+        String sql = "  select id, name from t;\r\nselect " + unfinished + "\r\n  ";
+        assertEquals(sql, SqlFormatter.format(sql), "不完整引号/注释应让整次美化保留原文，包括边界空白");
+    }
+
+    @Test
+    void dollarParametersAndIdentifierPrefixesAreNotQuotedLiterals() {
+        String expected = "SELECT $1,\n       price$usd,\n       nq_name,\n       e_value\n  FROM t";
+        assertEquals(expected, SqlFormatter.format("select $1,price$usd,nq_name,e_value from t"));
+        assertEquals(expected, SqlFormatter.format(expected));
+    }
+
+    @Test
+    void trailingLineCommentDoesNotRequireAClosingDelimiter() {
+        assertEquals("SELECT 'value' -- unfinished 'quote", SqlFormatter.format(
+                "select 'value' -- unfinished 'quote"));
+    }
+
     @Test
     void scalarSubqueryInsideFunctionRestoresOuterLayout() {
         String sql = "select coalesce((select max(amount) from sales where active=true),0) as total, "
