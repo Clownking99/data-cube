@@ -55,7 +55,7 @@ public final class SqlFormatter {
             "RESTRICT", "ACTION", "DEFERRABLE", "INITIALLY", "IMMEDIATE", "DEFERRED", "ENABLE",
             "DISABLE", "VALIDATE", "NOVALIDATE", "LEVEL", "ROWNUM",
             "ROWS", "RANGE", "GROUPS", "EXCLUDE", "UNBOUNDED", "PRECEDING", "FOLLOWING",
-            "CURRENT", "ROW", "TIES", "NO", "OTHERS");
+            "CURRENT", "ROW", "TIES", "NO", "OTHERS", "ARRAY");
 
     /** 触发另起一行（顶层子句）的关键字。 */
     private static final Set<String> LINE_STARTERS = Set.of(
@@ -451,8 +451,8 @@ public final class SqlFormatter {
         private final List<String> tokens;
         private final BoundedOutput sb = new BoundedOutput();
         private int indent = 0;        // 当前块河道的前导缩进（顶层为 0）
-        private int plainParenDepth = 0; // 普通括号深度（>0 时挂起子句处理，保持行内）
-        private enum ParenKind { PLAIN, SUBQUERY, WINDOW }
+        private int plainParenDepth = 0; // 普通圆/方括号深度（>0 时挂起子句处理，保持行内）
+        private enum ParenKind { PLAIN, BRACKET, SUBQUERY, WINDOW }
         private record ParenFrame(ParenKind kind, Ctx outer, int closingIndent) {}
         private final Deque<ParenFrame> parenStack = new ArrayDeque<>();
         private int windowDepth;
@@ -525,8 +525,10 @@ public final class SqlFormatter {
                 }
                 if (tok.equals("(")) { openParen(idx); continue; }
                 if (tok.equals(")")) { closeParen(); continue; }
+                if (tok.equals("[")) { openBracket(); continue; }
+                if (tok.equals("]")) { closeBracket(); continue; }
 
-                emit(out, needSpaceBefore(prev, tok));
+                emit(out, needsSpaceBeforeToken(tok));
                 prev = out;
             }
             return sb.toString().strip();
@@ -538,7 +540,7 @@ public final class SqlFormatter {
             boolean window = "OVER".equalsIgnoreCase(prev);
             if (subquery || window) {
                 boolean space = subquery
-                        ? !atLineStart && prev != null && !prev.equals("(")
+                        ? !atLineStart && prev != null && !prev.equals("(") && !prev.equals("[")
                         : needsSpaceBeforeOpenParen(idx);
                 emit("(", space);
                 Ctx outer = new Ctx(indent, clause, joinLineOpen, betweenPending, deleteInlineFrom,
@@ -577,7 +579,7 @@ public final class SqlFormatter {
 
         /** 闭括号：子查询括号另起一行并对齐到外层河道、恢复外层上下文；普通括号行内收尾。 */
         private void closeParen() {
-            if (parenStack.isEmpty()) { emit(")", false); prev = ")"; return; }
+            if (parenStack.isEmpty() || inDirectBracket()) { emit(")", false); prev = ")"; return; }
             ParenFrame frame = parenStack.pop();
             if (frame.kind() != ParenKind.PLAIN) {
                 Ctx c = frame.outer();
@@ -599,6 +601,40 @@ public final class SqlFormatter {
                 emit(")", false);
             }
             prev = ")";
+        }
+
+        private void openBracket() {
+            boolean space = prev != null && (prev.equals(",") || isOperator(prev) || prev.startsWith("/*"));
+            emit("[", space);
+            parenStack.push(new ParenFrame(ParenKind.BRACKET, null, 0));
+            plainParenDepth++;
+            prev = "[";
+        }
+
+        private void closeBracket() {
+            // A mismatched ']' must not consume a function/subquery/window frame.
+            if (inDirectBracket()) {
+                parenStack.pop();
+                plainParenDepth--;
+            }
+            emit("]", false);
+            prev = "]";
+        }
+
+        private boolean inDirectBracket() {
+            return !parenStack.isEmpty() && parenStack.peek().kind() == ParenKind.BRACKET;
+        }
+
+        /** 仅压紧当前下标/数组层的切片冒号，不改变函数参数和已有 :: token。 */
+        private boolean needsSpaceBeforeToken(String token) {
+            if (inDirectBracket() && prev != null && !token.startsWith("/*")) {
+                // Keep separately tokenized colons apart; ': :upper' must not become '::upper'.
+                if (prev.endsWith(":") && token.startsWith(":")) return true;
+                if (prev.equals(":") || token.equals(":")) return false;
+                if (token.startsWith(":") && !token.equals("::") && !prev.equals(",")
+                        && !isOperator(prev) && !KEYWORDS.contains(prev.toUpperCase(Locale.ROOT))) return false;
+            }
+            return needSpaceBefore(prev, token);
         }
 
         /** 向前看：跳过注释 token 后，首个 token 为 SELECT/WITH 则当前括号为子查询括号。 */
@@ -877,7 +913,8 @@ public final class SqlFormatter {
         }
 
         private boolean needsSpaceBeforeOpenParen(int idx) {
-            if (atLineStart || prev == null || prev.equals("(") || prev.equals(".")) return false;
+            if (atLineStart || prev == null || prev.equals("(") || prev.equals("[") || prev.equals(".")) return false;
+            if (inDirectBracket() && prev.equals(",")) return true;
             String upper = prev.toUpperCase(Locale.ROOT);
             if (Set.of("SELECT", "FROM", "WHERE", "JOIN", "ON", "AND", "OR", "IN", "INSERT", "KEY",
                     "NOT", "EXISTS", "VALUES", "SET", "OVER", "AS", "WHEN", "THEN",
@@ -900,11 +937,11 @@ public final class SqlFormatter {
         private static boolean needSpaceBefore(String prev, String cur) {
             if (prev == null) return false;
             switch (cur) {
-                case ",": case ";": case ")": case ".": return false;
+                case ",": case ";": case ")": case "]": case ".": return false;
                 case "::": return false;
                 default:
             }
-            if (prev.equals("::") || prev.equals(".") || prev.equals("(")) return false;
+            if (prev.equals("::") || prev.equals(".") || prev.equals("(") || prev.equals("[")) return false;
             return !prev.equals("(") && !prev.equals(".");
         }
     }

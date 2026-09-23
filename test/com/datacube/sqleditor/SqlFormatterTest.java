@@ -19,6 +19,165 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class SqlFormatterTest {
 
+    @Test
+    void arrayElementsStayInlineAndOuterSelectListResumes() {
+        String expected = "SELECT ARRAY[1, 2, COALESCE(v, 0)] AS nums,\n"
+                + "       matrix[1][2],\n       id\n  FROM t"
+                + "\n WHERE flags && ARRAY[1, 2]\n   AND active = TRUE";
+        assertArrayLayout("select array[1,2,coalesce(v,0)] as nums,matrix[1][2],id"
+                + " from t where flags&&array[1,2] and active=true", expected);
+    }
+
+    @Test
+    void nestedAndEmptyArraysKeepBracketAndTypeSuffixSpacing() {
+        assertArrayLayout("select array[[1,2],[3,4]],array[]::integer[],"
+                + "(array[1,2])[1],(array[1,2])[1:2] from t", """
+                SELECT ARRAY[[1, 2], [3, 4]],
+                       ARRAY[]::integer[],
+                       (ARRAY[1, 2])[1],
+                       (ARRAY[1, 2])[1:2]
+                  FROM t""");
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = ';', value = {
+            "a[1:3]; a[1:3]", "a[lo : hi]; a[lo:hi]", "a[:3]; a[:3]", "a[1:]; a[1:]",
+            "a[ : ]; a[:]", "a[(lo+1) : (hi-1)]; a[(lo + 1):(hi - 1)]",
+            "a[1 : :upper]; a[1: :upper]", "a[:lower : :upper]; a[:lower: :upper]",
+            "a[1 : 3::integer]; a[1:3::integer]",
+            "array[:first,:last]; ARRAY[:first, :last]",
+            "array[1+:delta,f(x=>:value)]; ARRAY[1 + :delta, f(x => :value)]",
+            "array[(1+2),(3+4)]; ARRAY[(1 + 2), (3 + 4)]",
+            "array[-1,-2]; ARRAY[- 1, - 2]"
+    })
+    void slicesKeepColonTokenBoundariesAndBindings(String input, String output) {
+        assertArrayLayout("select " + input + " as value,id from t",
+                "SELECT " + output + " AS value,\n       id\n  FROM t");
+    }
+
+    @Test
+    void subqueryInsideArrayRestoresArrayElementsAndOuterColumns() {
+        assertArrayLayout("select array[(select max(v) from u where active=true),0],id from t", """
+                SELECT ARRAY[(
+                        SELECT MAX(v)
+                          FROM u
+                         WHERE active = TRUE
+                      ), 0],
+                       id
+                  FROM t""");
+    }
+
+    @Test
+    void arrayInsideSubqueryDoesNotSuppressOuterWhereAndOrderLists() {
+        assertArrayLayout("select (select array[a,b] from u where id=:id),id from t"
+                + " where flags&&array[1,2] and enabled=true order by array[a,b],id", """
+                SELECT (
+                        SELECT ARRAY[a, b]
+                          FROM u
+                         WHERE id = :id
+                      ),
+                       id
+                  FROM t
+                 WHERE flags && ARRAY[1, 2]
+                   AND enabled = TRUE
+                 ORDER BY ARRAY[a, b],
+                       id""");
+    }
+
+    @Test
+    void windowInsideArrayRestoresArrayAndOuterWindowOrderList() {
+        assertArrayLayout("select array[sum(v) over(partition by region order by id),0],"
+                + "sum(v) over(order by array[a,b],id) from t", """
+                SELECT ARRAY[SUM(v) OVER (
+                       PARTITION BY region
+                       ORDER BY id
+                      ), 0],
+                       SUM(v) OVER (
+                       ORDER BY ARRAY[a, b],
+                       id
+                      )
+                  FROM t""");
+    }
+
+    @Test
+    void caseInsideArrayKeepsElementsAndFollowingStatementSeparate() {
+        assertArrayLayout("select array[case when a=1 then :yes else :no end,0],id from t;"
+                + "select array[3,4],id from u", """
+                SELECT ARRAY[CASE
+                                 WHEN a = 1 THEN :yes
+                                 ELSE :no
+                             END, 0],
+                       id
+                  FROM t;
+
+                SELECT ARRAY[3, 4],
+                       id
+                  FROM u""");
+    }
+
+    @Test
+    void bracketsInQuotesAndCommentsDoNotChangeArrayNesting() {
+        assertArrayLayout("select array['[a,b]',q'[x,y]',/* ] ) */(1+2)],id from t;"
+                + "select array[1,-- ] )\n2],id from u", """
+                SELECT ARRAY['[a,b]', q'[x,y]', /* ] ) */(1 + 2)],
+                       id
+                  FROM t;
+
+                SELECT ARRAY[1, -- ] )
+                2],
+                       id
+                  FROM u""");
+    }
+
+    @Test
+    void commentsAfterSliceColonKeepTextAndLineBoundaries() {
+        assertArrayLayout("select a[1:/* upper */3],a[1:-- upper\n3],id from t", """
+                SELECT a[1: /* upper */ 3],
+                       a[1: -- upper
+                3],
+                       id
+                  FROM t""");
+    }
+
+    @Test
+    void arraysInsideFunctionAndCaseRestoreTheirContainingExpressions() {
+        assertArrayLayout("select coalesce(array[1,2],array[3,4]),"
+                + "case when active=true then array[1,2] else array[3,4] end as nums,id from t", """
+                SELECT COALESCE(ARRAY[1, 2], ARRAY[3, 4]),
+                       CASE
+                           WHEN active = TRUE THEN ARRAY[1, 2]
+                           ELSE ARRAY[3, 4]
+                       END AS nums,
+                       id
+                  FROM t""");
+    }
+
+    @Test
+    void arrayFromSubqueryCanBeSubscriptedWithoutLosingOuterColumns() {
+        assertArrayLayout("select (array(select v from u where id=1))[1],id from t", """
+                SELECT (ARRAY (
+                        SELECT v
+                          FROM u
+                         WHERE id = 1
+                      ))[1],
+                       id
+                  FROM t""");
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = ';', value = {
+            "array[1),2]; ARRAY[1), 2]", "f(1],2); f(1], 2)"
+    })
+    void mismatchedClosingDelimitersDoNotPopAnotherFrameOrLoseText(String input, String expected) {
+        assertArrayLayout("select " + input + ",id from t",
+                "SELECT " + expected + ",\n       id\n  FROM t");
+    }
+
+    private static void assertArrayLayout(String sql, String expected) {
+        assertEquals(expected, SqlFormatter.format(sql));
+        assertEquals(expected, SqlFormatter.format(expected), "Array layout must remain idempotent");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"=>", ":="})
     void namedArgumentsKeepArrowBindingsAndExpressionSpacing(String arrow) {
