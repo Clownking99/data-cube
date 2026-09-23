@@ -125,6 +125,7 @@ class SchemaDeploymentDriftTest {
             ConnConfig source = config(cipher, "source");
             ConnConfig target = config(cipher, "target");
             request = new SchemaDiffRequest(source, name("desired"), target, name("actual"));
+            manager.register(request.targetConfig());
             service = new SchemaDeploymentService(manager);
         }
     }

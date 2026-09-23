@@ -16,8 +16,12 @@ class SqlEditorSessionContractTest {
         String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
 
         assertTrue(source.contains("JdbcEditorSession"));
-        assertTrue(source.contains("SqlSafetyAnalyzer.analyze"));
-        assertTrue(source.contains("SqlSafetyPolicy.decide"));
+        assertTrue(source.contains("ensureEditorSession().prepareScript"));
+        assertTrue(source.contains("WriteSafetyDialog.confirm(request"));
+        assertTrue(source.contains("request.execute(confirmation)"));
+        String policy = Files.readString(Path.of("src/com/datacube/service/WriteOperation.java"));
+        assertTrue(policy.contains("SqlSafetyAnalyzer.analyze"));
+        assertTrue(policy.contains("SqlSafetyPolicy.decide"));
         assertFalse(source.contains("connections.acquire(connId)"));
         assertTrue(source.contains("tasks.submit"));
     }
@@ -60,7 +64,8 @@ class SqlEditorSessionContractTest {
     @Test
     void cancelCloseRollsBackOnlyAManualPendingTransaction() throws Exception {
         String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
-        int resolver = source.indexOf("private static void resolveCloseTransaction");
+        int resolver = source.indexOf("private static void resolveCloseTransaction",
+                source.indexOf("private static void resolveCloseTransaction") + 1);
         int nextMethod = source.indexOf("\n    private ", resolver + 1);
         String method = source.substring(resolver, nextMethod);
 
@@ -83,7 +88,7 @@ class SqlEditorSessionContractTest {
 
         int execute = source.indexOf("private void onExecute()");
         int pin = source.indexOf("admitCurrentConnection()", execute);
-        int safety = source.indexOf("allowBySafetyPolicy", execute);
+        int safety = source.indexOf("ensureEditorSession().prepareScript", execute);
         assertTrue(pin > execute && pin < safety,
                 "execution must pin before safety analysis and background submission");
         assertTrue(source.contains("admission.beginClosing()"));

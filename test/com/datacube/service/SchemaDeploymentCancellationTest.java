@@ -478,6 +478,7 @@ class SchemaDeploymentCancellationTest {
         ConnectionManager manager = new ConnectionManager(cipher, type -> provider);
         SchemaDiffRequest request = new SchemaDiffRequest(config(cipher, "source"), name("desired"),
                 config(cipher, "target"), name("actual"));
+        manager.register(request.targetConfig());
 
         SchemaDeploymentResult result = new SchemaDeploymentService(manager).deploy(
                 request, expected, List.of(), control).toCompletableFuture().get(5, TimeUnit.SECONDS);
@@ -515,6 +516,7 @@ class SchemaDeploymentCancellationTest {
         ConnectionManager manager = new ConnectionManager(cipher, type -> provider);
         SchemaDiffRequest request = new SchemaDiffRequest(config(cipher, "source"), name("desired"),
                 config(cipher, "target"), name("actual"));
+        manager.register(request.targetConfig());
         SchemaDeploymentControl control = new SchemaDeploymentControl();
 
         var stage = new SchemaDeploymentService(manager).deploy(
@@ -565,13 +567,14 @@ class SchemaDeploymentCancellationTest {
         List<RenderedStatement> selected = List.of(new RenderedStatement(
                 CHANGE_A, "CREATE OR REPLACE VIEW safe_view AS SELECT 1 FROM DUAL",
                 false, Set.of(), null));
-        String token = SchemaDeploymentService.confirmationToken(selected);
-        SchemaDeploymentControl control = new SchemaDeploymentControl(token);
         OutcomeAfterCancelRunner runner = new OutcomeAfterCancelRunner(
-                control, QueryResult.cancelled("fixed cancellation", 1));
+                null, QueryResult.cancelled("fixed cancellation", 1));
         SchemaSnapshot expected = snapshot(DbType.ORACLE);
         Harness harness = harness(
                 new RecordingFactory(), runner, capability(expected), DbType.ORACLE);
+        String token = harness.service.admission(harness.request, selected).confirmationToken();
+        SchemaDeploymentControl control = new SchemaDeploymentControl(token);
+        runner.parent = control;
 
         SchemaDeploymentResult result = harness.service.deploy(
                 harness.request, expected, selected, control)
@@ -580,7 +583,7 @@ class SchemaDeploymentCancellationTest {
         assertEquals(SchemaDeploymentState.UNKNOWN_AFTER_CANCEL, result.state());
         assertEquals(List.of(SchemaDeploymentState.UNKNOWN_AFTER_CANCEL),
                 result.steps().stream().map(SchemaDeploymentStepResult::state).toList());
-        assertEquals(token, result.planDigest());
+        assertEquals(SchemaDeploymentService.confirmationToken(selected), result.planDigest());
         assertEquals(List.of(SchemaDeploymentService.SAFETY_ESCALATION_WARNING),
                 result.safetyWarnings());
         assertEquals(1, runner.calls.get());
@@ -633,6 +636,7 @@ class SchemaDeploymentCancellationTest {
             ConnectionManager manager = new ConnectionManager(cipher, type -> provider);
             request = new SchemaDiffRequest(config(cipher, "source"), name("desired"),
                     config(cipher, "target"), name("actual"));
+            manager.register(request.targetConfig());
             service = new SchemaDeploymentService(manager);
         }
     }
@@ -651,6 +655,7 @@ class SchemaDeploymentCancellationTest {
             ConnectionManager manager = new ConnectionManager(cipher, type -> provider);
             request = new SchemaDiffRequest(config(cipher, "source"), name("desired"),
                     config(cipher, "target"), name("actual"));
+            manager.register(request.targetConfig());
             service = new SchemaDeploymentService(manager);
         }
     }
@@ -779,6 +784,7 @@ class SchemaDeploymentCancellationTest {
         SchemaDiffRequest request = new SchemaDiffRequest(
                 config(cipher, "source", type), name("desired"),
                 config(cipher, "target", type), name("actual"));
+        manager.register(request.targetConfig());
         return new Harness(new SchemaDeploymentService(manager), request);
     }
 
@@ -983,7 +989,7 @@ class SchemaDeploymentCancellationTest {
     }
 
     private static final class OutcomeAfterCancelRunner implements SqlRunner {
-        private final SchemaDeploymentControl parent;
+        private SchemaDeploymentControl parent;
         private final QueryResult outcome;
         private final AtomicInteger calls = new AtomicInteger();
 

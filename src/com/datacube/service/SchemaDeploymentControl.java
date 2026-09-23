@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Caller-owned cancellation control shared by schema comparison and deployment. */
 public final class SchemaDeploymentControl {
     private final AtomicBoolean cancellationRequested = new AtomicBoolean();
+    private final AtomicBoolean deploymentClaimed = new AtomicBoolean();
     private final Set<CancellationTarget> targets = ConcurrentHashMap.newKeySet();
     private final Object terminalLock = new Object();
     private final String confirmationToken;
@@ -37,6 +38,8 @@ public final class SchemaDeploymentControl {
     String confirmationToken() {
         return confirmationToken;
     }
+
+    boolean claimDeployment() { return deploymentClaimed.compareAndSet(false, true); }
 
     Registration register(CancellationTarget target) {
         targets.add(target);

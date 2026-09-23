@@ -351,6 +351,7 @@ final class SchemaDiffLiveSmoke {
         ConnConfig sourceConfig = config(environment, encryptedPassword, run.prefix() + "-source");
         ConnConfig targetConfig = config(environment, encryptedPassword, run.prefix() + "-target");
         ConnectionManager connections = new ConnectionManager(cipher);
+        connections.register(targetConfig);
         SchemaDeploymentService deployment = new SchemaDeploymentService(connections);
         Set<String> createdSchemas = new HashSet<>();
         Throwable operationFailure = null;

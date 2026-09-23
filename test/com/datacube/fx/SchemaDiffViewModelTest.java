@@ -52,6 +52,23 @@ class SchemaDiffViewModelTest {
     private static final String DESTRUCTIVE_ID = "chg:" + "b".repeat(64);
 
     @Test
+    void readonlyTargetKeepsComparisonPreviewAndExportButNeverOffersDeployment() throws Exception {
+        var normal = request(DbType.POSTGRESQL, false);
+        var readonly = new com.datacube.spi.model.ConnectionSafetyOptions(
+                com.datacube.spi.model.ConnectionEnvironment.PRODUCTION, true, 60).applyTo(normal.targetConfig());
+        var request = new SchemaDiffRequest(normal.sourceConfig(), normal.sourceSchema(), readonly, normal.targetSchema());
+        var view = viewModel(completedCompare(DbType.POSTGRESQL, true), neverDeploy(), safePlan(false), false);
+        try {
+            assertTrue(view.compare(request));
+            awaitState(view, SchemaDiffViewModel.State.READY);
+            assertEquals(SchemaDiffViewModel.DeployBlockReason.READ_ONLY_TARGET, view.snapshot().deployBlockReason());
+            assertFalse(view.snapshot().deployEnabled());
+            assertTrue(view.confirmationRequest().isEmpty());
+            assertEquals("CREATE TABLE safe_table(id int)", view.exportSelectedScript());
+        } finally { view.closeResources(); }
+    }
+
+    @Test
     void transitionsLinearlyFromIdleThroughCompareAndDeploymentCompletion() throws Exception {
         CompletableFuture<SchemaDiffResult> compared = new CompletableFuture<>();
         CompletableFuture<SchemaDeploymentResult> deployed = new CompletableFuture<>();

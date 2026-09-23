@@ -35,6 +35,9 @@ public final class ConnectionManager {
     private final Function<DbType, DatabaseProvider> providerResolver;
     private final Map<String, ConnConfig> configs = new LinkedHashMap<>();
     private final Map<String, Connection> live = new HashMap<>();
+    private final Map<String, Long> configVersions = new HashMap<>();
+    private long nextConfigVersion;
+    private final Map<String, java.util.Set<Runnable>> configListeners = new HashMap<>();
 
     public ConnectionManager(CredentialCipher cipher) {
         this(cipher, ProviderRegistry::forType);
@@ -56,9 +59,11 @@ public final class ConnectionManager {
     /** 注册/更新连接配置（供 acquire 惰性建连使用）。 */
     public synchronized void register(ConnConfig cfg) {
         ConnConfig previous = configs.get(cfg.id());
+        if (!cfg.equals(previous)) configVersions.put(cfg.id(), ++nextConfigVersion);
         if (previous != null && !previous.equals(cfg)) release(cfg.id());
         configs.put(cfg.id(), cfg);
         if (cfg.type() == DbType.REDIS) redis.register(cfg);
+        if (!cfg.equals(previous)) notifyConfigChanged(cfg.id());
     }
 
     /** 移除配置并关闭其活动连接。 */
@@ -66,10 +71,75 @@ public final class ConnectionManager {
         release(connId);
         redis.unregister(connId);
         configs.remove(connId);
+        configVersions.put(connId, ++nextConfigVersion);
+        notifyConfigChanged(connId);
     }
 
     public synchronized ConnConfig config(String connId) {
         return configs.get(connId);
+    }
+
+    public synchronized WriteTarget writeTarget(String connId) {
+        return writeTarget(requireConfig(connId));
+    }
+
+    synchronized WriteTarget writeTarget(ConnConfig snapshot) {
+        if (snapshot.type() == DbType.REDIS) throw new IllegalStateException("Redis 不使用关系库写入门禁");
+        long version = configVersions.getOrDefault(snapshot.id(), -1L);
+        return new WriteTarget(snapshot, () -> {
+            synchronized (ConnectionManager.this) {
+                if (!snapshot.equals(configs.get(snapshot.id()))
+                        || version != configVersions.getOrDefault(snapshot.id(), -1L)) {
+                    throw new IllegalStateException(WriteTarget.CHANGED);
+                }
+            }
+        }, callback -> {
+            synchronized (ConnectionManager.this) {
+                configListeners.computeIfAbsent(snapshot.id(), ignored -> new java.util.HashSet<>()).add(callback);
+            }
+            return () -> {
+                synchronized (ConnectionManager.this) {
+                    var listeners = configListeners.get(snapshot.id());
+                    if (listeners != null) {
+                        listeners.remove(callback);
+                        if (listeners.isEmpty()) configListeners.remove(snapshot.id());
+                    }
+                }
+            };
+        }, this);
+    }
+
+    private void notifyConfigChanged(String id) {
+        for (Runnable callback : java.util.List.copyOf(configListeners.getOrDefault(id, java.util.Set.of()))) {
+            try { callback.run(); }
+            catch (RuntimeException ignored) { LOG.fine("连接安全状态通知失败"); }
+        }
+    }
+
+    synchronized long configVersion(ConnConfig snapshot) {
+        if (!snapshot.equals(configs.get(snapshot.id()))) throw new IllegalStateException(WriteTarget.CHANGED);
+        return configVersions.getOrDefault(snapshot.id(), -1L);
+    }
+
+    @FunctionalInterface interface DedicatedWrite<T> {
+        T run(Connection connection, DatabaseProvider provider) throws SQLException;
+    }
+
+    <T> WriteOperation<T> prepareWrite(WriteTarget target, String operation, String scope,
+                                     DedicatedWrite<T> action) {
+        if (!target.belongsTo(this)) throw new IllegalArgumentException("写入目标不属于当前连接管理器");
+        return new WriteOperation<>(target, operation, scope, revalidate -> {
+            revalidate.run();
+            DatabaseProvider provider = provider(target.config());
+            try (Connection connection = openDedicated(target.config(), provider)) {
+                revalidate.run();
+                if (!connection.getAutoCommit()) {
+                    throw new SQLException("新写入连接必须处于自动提交模式");
+                }
+                revalidate.run();
+                return action.run(connection, provider);
+            }
+        });
     }
 
     /** 该 connId 当前是否持有活动连接（供 UI 判断是否可断开）。 */
@@ -156,7 +226,7 @@ public final class ConnectionManager {
         Objects.requireNonNull(provider, "providerSnapshot");
         ConnectionSafetyOptions safety = ConnectionSafetyOptions.from(cfg);
         return new JdbcEditorSession(cfg.id(), safety,
-                () -> openDedicated(cfg, provider), provider.sqlRunner());
+                () -> openDedicated(cfg, provider), provider.sqlRunner(), writeTarget(cfg));
     }
 
     /** 释放指定连接。 */

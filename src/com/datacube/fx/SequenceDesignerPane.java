@@ -64,6 +64,9 @@ public final class SequenceDesignerPane implements AutoCloseable {
     private final CodeArea previewArea = HighlightedSqlArea.create(false);
     private final Label statusLabel = new Label("加载中...");
     private final Button applyBtn = new Button("应用");
+    private final com.datacube.service.WriteTarget writeTarget;
+    private Runnable stopWatchingSafety = () -> {};
+    private Label safetyLabel;
     private final Button refreshBtn = new Button("刷新");
     private final Button previewBtn = new Button("预览");
 
@@ -74,6 +77,7 @@ public final class SequenceDesignerPane implements AutoCloseable {
                                 String schema, String name, DbType dbType,
                                 FxTaskRunner runner) {
         this.svc = svc;
+        this.writeTarget = svc.target(connId);
         this.connId = connId;
         this.connName = connName;
         this.schema = schema;
@@ -84,6 +88,11 @@ public final class SequenceDesignerPane implements AutoCloseable {
             this.tasks = runner.scope();
             construction.own(tasks::close);
             build();
+            stopWatchingSafety = WriteSafetyDialog.watch(writeTarget, tasks, () -> {
+                WriteSafetyDialog.update(safetyLabel, writeTarget);
+                WriteSafetyDialog.update(applyBtn, writeTarget, running);
+            });
+            construction.own(stopWatchingSafety::run);
             reload();
             construction.commit();
         } catch (Throwable failure) {
@@ -97,6 +106,7 @@ public final class SequenceDesignerPane implements AutoCloseable {
 
     @Override
     public void close() {
+        stopWatchingSafety.run();
         tasks.close();
     }
 
@@ -105,7 +115,8 @@ public final class SequenceDesignerPane implements AutoCloseable {
     private void build() {
         root.setPadding(new Insets(10));
         root.setStyle("-fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; -fx-font-size: 13px;");
-        root.getChildren().addAll(toolbar(), formGrid(), previewSection(), statusLabel);
+        safetyLabel = WriteSafetyDialog.label(writeTarget);
+        root.getChildren().addAll(toolbar(), safetyLabel, formGrid(), previewSection(), statusLabel);
     }
 
     private Node toolbar() {
@@ -248,12 +259,14 @@ public final class SequenceDesignerPane implements AutoCloseable {
             showAlert("无变更，无需执行");
             return;
         }
-        if (!confirmExecute(ddl)) return;
+        var request = svc.prepareExecute(writeTarget, ddl);
+        var confirmation = WriteSafetyDialog.confirm(request, true);
+        if (confirmation == null || tasks.isClosed()) return;
 
         running = true;
         setBusy(true);
         setStatus("执行中...", "-brand-fg-muted");
-        tasks.submit(() -> svc.executeDdl(connId, ddl), outcomes -> {
+        tasks.submit(() -> request.execute(confirmation), outcomes -> {
             running = false;
             setBusy(false);
             String failed = firstError(outcomes);
@@ -270,27 +283,6 @@ public final class SequenceDesignerPane implements AutoCloseable {
         });
     }
 
-    /** 预览确认对话框：展示完整 DDL，用户点「执行」返回 true。 */
-    private boolean confirmExecute(String ddl) {
-        Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle("确认执行 DDL");
-        dialog.setHeaderText("将变更序列 " + name);
-        ButtonType exec = new ButtonType("执行", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancel = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
-        dialog.getDialogPane().getButtonTypes().addAll(exec, cancel);
-
-        TextArea area = new TextArea(ddl);
-        area.setEditable(false);
-        area.setWrapText(false);
-        area.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 13px;");
-        area.setPrefRowCount(8);
-        area.setPrefColumnCount(64);
-        dialog.getDialogPane().setContent(area);
-        Window owner = root.getScene() == null ? null : root.getScene().getWindow();
-        if (owner != null) dialog.initOwner(owner);
-        return dialog.showAndWait().orElse(cancel) == exec;
-    }
-
     private static String firstError(List<ScriptOutcome> outcomes) {
         if (outcomes == null) return null;
         for (ScriptOutcome o : outcomes) {
@@ -304,7 +296,7 @@ public final class SequenceDesignerPane implements AutoCloseable {
     // ---------- 工具 ----------
 
     private void setBusy(boolean busy) {
-        applyBtn.setDisable(busy);
+        WriteSafetyDialog.update(applyBtn, writeTarget, busy);
         refreshBtn.setDisable(busy);
         previewBtn.setDisable(busy);
     }
