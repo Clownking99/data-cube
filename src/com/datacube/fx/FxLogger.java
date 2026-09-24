@@ -21,6 +21,7 @@ public class FxLogger implements MigrationLogger {
     private final Label statusLabel;
     private final Consumer<Runnable> uiDispatcher;
     private PrintWriter logWriter;
+    private boolean closed;
 
     public FxLogger(TextArea logArea, ProgressBar progressBar, Label statusLabel) {
         this(logArea, progressBar, statusLabel, Platform::runLater);
@@ -32,19 +33,21 @@ public class FxLogger implements MigrationLogger {
         this.progressBar = progressBar;
         this.statusLabel = statusLabel;
         this.uiDispatcher = Objects.requireNonNull(uiDispatcher, "uiDispatcher");
-        openLog();
     }
 
     private void openLog() {
         try {
-            String logFileName = "migration_" + new SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date()) + ".log";
-            logWriter = new PrintWriter(new FileWriter(logFileName), true);
+            java.nio.file.Path directory=java.nio.file.Path.of(System.getProperty("user.home"),".datacube","migration-logs");
+            java.nio.file.Files.createDirectories(directory);
+            java.nio.file.Path file=directory.resolve("migration_"+java.util.UUID.randomUUID()+".log");
+            logWriter=new PrintWriter(java.nio.file.Files.newBufferedWriter(file,java.nio.charset.StandardCharsets.UTF_8,java.nio.file.StandardOpenOption.CREATE_NEW),true);
         } catch (IOException e) {
             // 文件日志创建失败不影响 GUI
         }
     }
 
-    public void closeLog() {
+    public synchronized void closeLog() {
+        closed=true;
         if (logWriter != null) {
             logWriter.close();
             logWriter = null;
@@ -80,7 +83,9 @@ public class FxLogger implements MigrationLogger {
     }
 
     @Override
-    public void logToFile(String msg) {
+    public synchronized void logToFile(String msg) {
+        if(closed)return;
+        if(logWriter==null)openLog();
         if (logWriter != null) logWriter.println("[" + ts() + "] " + msg);
     }
 

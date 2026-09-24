@@ -1,11 +1,5 @@
 package com.datacube;
 
-import com.datacube.cli.ConsoleLogger;
-import com.datacube.cli.ConsolePrompter;
-import com.datacube.core.ConnectionHelper;
-import com.datacube.migration.OracleExporter;
-import com.datacube.migration.PgImporter;
-import com.datacube.migration.PgVerifier;
 
 import java.io.File;
 import java.io.IOException;
@@ -17,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.sql.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -60,119 +53,9 @@ public class DataCube {
             return;
         }
 
-        try {
-            printBanner();
-
-            ConsoleLogger logger = new ConsoleLogger();
-            ConsolePrompter prompter = new ConsolePrompter();
-            logger.openLog();
-
-            // Oracle
-            logger.logSection("第一步：Oracle 数据库连接信息");
-            String oraUrl  = prompter.prompt("Oracle JDBC URL",  "jdbc:oracle:thin:@127.0.0.1:1521/orcl", "格式: jdbc:oracle:thin:@IP:端口/服务名");
-            String oraUser = prompter.prompt("Oracle 用户名",     "scott", "将导出该用户下的所有对象").toUpperCase();
-            String oraPass = prompter.prompt("Oracle 密码",       "", "");
-
-            // PostgreSQL
-            logger.logSection("第二步：PostgreSQL 数据库连接信息");
-            String pgUrl    = prompter.prompt("PostgreSQL JDBC URL", "jdbc:postgresql://127.0.0.1:5432/postgres", "格式: jdbc:postgresql://IP:端口/数据库名");
-            String pgUser   = prompter.prompt("PostgreSQL 用户名",   "postgres", "");
-            String pgPass   = prompter.prompt("PostgreSQL 密码",     "", "");
-            String pgSchema = prompter.prompt("PostgreSQL Schema",   oraUser.toLowerCase(), "Oracle 用户 " + oraUser + " 的对象将导入到此 schema");
-
-            // 导出配置
-            logger.logSection("第三步：导出配置");
-            int maxConcurrency = 20;
-            String concurrencyStr = prompter.prompt("并发上限", "20", "虚拟线程数，建议 10-50，网络不稳定可设低");
-            try { maxConcurrency = Integer.parseInt(concurrencyStr); } catch (Exception e) { maxConcurrency = 20; }
-            if (maxConcurrency < 1) maxConcurrency = 1;
-
-            String boolStr = prompter.prompt("是否自动转换布尔值(0/1→TRUE/FALSE)", "n", "仅当字段注释包含\"是否/true/false\"等关键词时转换 (y/n)");
-            boolean convertBool = "y".equalsIgnoreCase(boolStr) || "yes".equalsIgnoreCase(boolStr);
-            if (convertBool) logger.logInfo("布尔转换: 开启（仅注释含\"是否/true/false\"的 NUMBER(1,0) 字段）");
-            else logger.logInfo("布尔转换: 关闭（0/1 保持原值）");
-
-            logger.logInfo("Oracle 用户: " + oraUser + " → PG Schema: " + pgSchema);
-            logger.logInfo("并发上限: " + maxConcurrency);
-
-            // 加载驱动
-            ConnectionHelper.loadDrivers(logger);
-
-            // 测试连接
-            logger.logSection("测试连接");
-            Connection oraConn;
-            try {
-                oraConn = ConnectionHelper.openAndTest(oraUrl, oraUser, oraPass, "Oracle", logger);
-            } catch (SQLException e) {
-                logger.closeLog();
-                return;
-            }
-
-            try {
-                Connection pgConn = ConnectionHelper.openAndTest(pgUrl, pgUser, pgPass, "PostgreSQL", logger);
-                ConnectionHelper.ensureSchema(pgConn, pgSchema, logger);
-                pgConn.createStatement().execute("SET search_path TO " + pgSchema);
-                pgConn.close();
-            } catch (SQLException e) {
-                try { oraConn.close(); } catch (Exception ignored) {}
-                logger.closeLog();
-                return;
-            }
-
-            // 初始化模块（注入 logger）
-            OracleExporter exporter = new OracleExporter(logger);
-            exporter.setMaxConcurrency(maxConcurrency);
-            exporter.setConvertBool(convertBool);
-
-            PgImporter importer = new PgImporter(logger);
-            importer.setMaxConcurrency(maxConcurrency);
-
-            PgVerifier verifier = new PgVerifier(logger);
-
-            // 主菜单
-            while (true) {
-                System.out.println();
-                logger.logLine();
-                System.out.println("  功能菜单");
-                logger.logLine();
-                System.out.println("  1. 导出 DDL（表/序列/索引/约束/函数）");
-                System.out.println("  2. 导出数据（全量，虚拟线程并发 " + maxConcurrency + "）");
-                System.out.println("  3. 导入到 PostgreSQL（完整模式 - 先清空再导入）");
-                System.out.println("  4. 导入到 PostgreSQL（增量模式 - 仅补充缺失）");
-                System.out.println("  5. 一键全部（导出DDL + 导出数据 + 增量导入）");
-                System.out.println("  6. 验证导入结果");
-                System.out.println("  0. 退出");
-                logger.logLine();
-
-                String choice = prompter.prompt("请选择", "5", "");
-
-                switch (choice) {
-                    case "1": exporter.exportDDL(oraConn, oraUser, pgSchema); break;
-                    case "2": exporter.exportData(oraConn, oraUrl, oraUser, oraPass, pgSchema); break;
-                    case "3": importer.importToPg(pgUrl, pgUser, pgPass, oraUser, pgSchema, false); break;
-                    case "4": importer.importToPg(pgUrl, pgUser, pgPass, oraUser, pgSchema, true); break;
-                    case "5":
-                        exporter.exportDDL(oraConn, oraUser, pgSchema);
-                        exporter.exportData(oraConn, oraUrl, oraUser, oraPass, pgSchema);
-                        importer.importToPg(pgUrl, pgUser, pgPass, oraUser, pgSchema, true);
-                        verifier.verify(pgUrl, pgUser, pgPass, pgSchema);
-                        break;
-                    case "6": verifier.verify(pgUrl, pgUser, pgPass, pgSchema); break;
-                    case "0":
-                        oraConn.close();
-                        logger.logOk("再见!");
-                        logger.closeLog();
-                        return;
-                    default:
-                        logger.logWarn("无效选择，请重试");
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("  [ERR] 致命错误: " + e.getMessage());
-            e.printStackTrace();
-        }
+        printBanner();
+        com.datacube.cli.MigrationConsole.run();
     }
-
     private static void printBanner() {
         System.out.println();
         System.out.println("       ______            datacube  \u00b7  \u6570\u636e\u9b54\u65b9");

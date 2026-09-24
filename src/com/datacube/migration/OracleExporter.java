@@ -4,6 +4,7 @@ import com.datacube.cli.ConsoleLogger;
 import com.datacube.core.*;
 
 import java.io.*;
+import java.nio.file.Path;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -11,24 +12,29 @@ import java.util.concurrent.atomic.*;
 
 public class OracleExporter {
 
-    private static final String BASE_DIR = "pg_migration";
-    private static final int FETCH_SIZE = 2000;
     private static final int TABLE_TIMEOUT_SEC = 600;
     private static final int MAX_RETRY = 2;
 
     private final MigrationLogger logger;
     private int maxConcurrency = 20;
     private boolean convertBool = false;
-    private Map<String, Map<String, String>> columnCommentsCache = new HashMap<>();
     private final MigrationCancellation cancellation;
+    private final Path baseDirectory;
+    private final MigrationConnections connections;
 
     public OracleExporter(MigrationLogger logger) {
         this(logger, new MigrationCancellation());
     }
 
     public OracleExporter(MigrationLogger logger, MigrationCancellation cancellation) {
+        this(logger,cancellation,Path.of("pg_migration"),DriverManager::getConnection);
+    }
+
+    public OracleExporter(MigrationLogger logger, MigrationCancellation cancellation, Path baseDirectory, MigrationConnections connections) {
         this.logger = logger;
         this.cancellation = Objects.requireNonNull(cancellation, "cancellation");
+        this.baseDirectory=Objects.requireNonNull(baseDirectory);
+        this.connections=Objects.requireNonNull(connections);
     }
 
     public void setMaxConcurrency(int concurrency) {
@@ -49,11 +55,12 @@ public class OracleExporter {
     // ==================== DDL 导出 ====================
 
     public void exportDDL(Connection conn, String owner, String pgSchema) throws SQLException, IOException {
+        validateScope(owner,pgSchema);
         cancellation.checkCancelled();
-        logger.logSection("导出 DDL：" + owner + " → " + pgSchema);
+        logger.logSection("导出参考 DDL（不自动执行，须人工完成转换）：" + owner + " → " + pgSchema);
 
-        String outputDir = BASE_DIR + "/" + pgSchema;
-        new File(outputDir).mkdirs();
+        String outputDir = baseDirectory.resolve(pgSchema).resolve("reference-ddl").resolve(UUID.randomUUID().toString()).toString();
+        MigrationFiles.checkParents(Path.of(outputDir)); java.nio.file.Files.createDirectories(Path.of(outputDir));
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("序列",          exportSequences(conn, owner, outputDir));
@@ -77,10 +84,17 @@ public class OracleExporter {
         }
     }
 
+    private PrintWriter referenceWriter(Path file) throws IOException {
+        MigrationFiles.checkParents(file);
+        PrintWriter writer=new PrintWriter(java.nio.file.Files.newBufferedWriter(file,java.nio.charset.StandardCharsets.UTF_8,java.nio.file.StandardOpenOption.CREATE_NEW));
+        writer.println("-- 仅供人工审阅的参考 DDL；不完整且不保证语义等价，禁止直接作为自动迁移结果。");
+        return writer;
+    }
+
     // ==================== 序列 ====================
 
     private int exportSequences(Connection conn, String owner, String dir) throws SQLException, IOException {
-        PrintWriter w = new PrintWriter(new FileWriter(dir + "/01_sequences.sql"));
+        PrintWriter w = referenceWriter(Path.of(dir + "/01_sequences.sql"));
         try {
             SqlUtils.header(w, "序列");
 
@@ -115,14 +129,14 @@ public class OracleExporter {
             logger.logOk("序列: " + count + " 个");
             return count;
         } finally {
-            w.close();
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
         }
     }
 
     // ==================== 表 ====================
 
     private int exportTables(Connection conn, String owner, String dir) throws SQLException, IOException {
-        PrintWriter w = new PrintWriter(new FileWriter(dir + "/02_tables.sql"));
+        PrintWriter w = referenceWriter(Path.of(dir + "/02_tables.sql"));
         try {
             SqlUtils.header(w, "表结构");
 
@@ -130,16 +144,13 @@ public class OracleExporter {
         Map<String, Map<String, String>> colComments = getColumnComments(conn, owner);
 
         String sql = "SELECT TABLE_NAME FROM ALL_TABLES WHERE OWNER = ? " +
-                "AND TABLE_NAME NOT LIKE 'MLOG$_%' ESCAPE '\\' " +
-                "AND TABLE_NAME NOT LIKE 'RUPD$_%' ESCAPE '\\' " +
-                "AND TABLE_NAME NOT LIKE 'DR$%' ESCAPE '\\' " +
                 "ORDER BY TABLE_NAME";
 
         List<String> tables = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, owner);
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) tables.add(rs.getString("TABLE_NAME"));
+                while (rs.next()) { cancellation.checkCancelled(); if(tables.size()>=1000)throw new SQLException("Migration table limit exceeded","DC002"); String table=rs.getString("TABLE_NAME");if(!MigrationPreflight.simpleName(table))throw new IOException("Source table requires manual name mapping"); tables.add(table); }
             }
         }
 
@@ -151,7 +162,7 @@ public class OracleExporter {
             logger.logOk("表: " + total + " 个");
             return total;
         } finally {
-            w.close();
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
         }
     }
 
@@ -211,7 +222,7 @@ public class OracleExporter {
     // ==================== 索引 ====================
 
     private int exportIndexes(Connection conn, String owner, String dir) throws SQLException, IOException {
-        PrintWriter w = new PrintWriter(new FileWriter(dir + "/03_indexes.sql"));
+        PrintWriter w = referenceWriter(Path.of(dir + "/03_indexes.sql"));
         try {
             SqlUtils.header(w, "索引");
 
@@ -238,14 +249,14 @@ public class OracleExporter {
             logger.logOk("索引: " + count + " 个");
             return count;
         } finally {
-            w.close();
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
         }
     }
 
     // ==================== 约束 ====================
 
     private int exportConstraints(Connection conn, String owner, String dir) throws SQLException, IOException {
-        PrintWriter w = new PrintWriter(new FileWriter(dir + "/04_constraints.sql"));
+        PrintWriter w = referenceWriter(Path.of(dir + "/04_constraints.sql"));
         try {
             SqlUtils.header(w, "约束");
 
@@ -273,14 +284,14 @@ public class OracleExporter {
             logger.logOk("约束: " + count + " 个");
             return count;
         } finally {
-            w.close();
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
         }
     }
 
     // ==================== 函数 ====================
 
     private int exportFunctions(Connection conn, String owner, String dir) throws SQLException, IOException {
-        PrintWriter w = new PrintWriter(new FileWriter(dir + "/05_functions.sql"));
+        PrintWriter w = referenceWriter(Path.of(dir + "/05_functions.sql"));
         try {
             SqlUtils.header(w, "存储过程/函数");
 
@@ -300,14 +311,14 @@ public class OracleExporter {
             logger.logOk("存储过程/函数: " + count + " 个");
             return count;
         } finally {
-            w.close();
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
         }
     }
 
     // ==================== 包 ====================
 
     private int exportPackages(Connection conn, String owner, String dir) throws SQLException, IOException {
-        PrintWriter w = new PrintWriter(new FileWriter(dir + "/06_packages.sql"));
+        PrintWriter w = referenceWriter(Path.of(dir + "/06_packages.sql"));
         try {
             SqlUtils.header(w, "包");
 
@@ -327,14 +338,14 @@ public class OracleExporter {
             logger.logOk("包: " + count + " 个");
             return count;
         } finally {
-            w.close();
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
         }
     }
 
     // ==================== 触发器 ====================
 
     private int exportTriggers(Connection conn, String owner, String dir) throws SQLException, IOException {
-        PrintWriter w = new PrintWriter(new FileWriter(dir + "/07_triggers.sql"));
+        PrintWriter w = referenceWriter(Path.of(dir + "/07_triggers.sql"));
         try {
             SqlUtils.header(w, "触发器");
 
@@ -370,32 +381,33 @@ public class OracleExporter {
             logger.logOk("触发器: " + count + " 个");
             return count;
         } finally {
-            w.close();
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
         }
     }
 
     // ==================== 数据导出（虚拟线程） ====================
 
     public void exportData(Connection conn, String oraUrl, String oraUser, String oraPass, String pgSchema) throws SQLException, IOException {
+        exportData(conn,oraUrl,oraUser,oraPass,oraUser,pgSchema);
+    }
+
+    public void exportData(Connection conn,String oraUrl,String oraUser,String oraPass,String owner,String pgSchema) throws SQLException,IOException {
+        validateScope(owner,pgSchema);
+        if(convertBool)throw new IOException("Heuristic boolean conversion requires manual review");
         cancellation.checkCancelled();
         logger.logSection("导出数据：" + oraUser + "（虚拟线程, 并发上限 " + maxConcurrency + ", 超时 " + TABLE_TIMEOUT_SEC + "s/表）");
 
-        String dataDir = BASE_DIR + "/" + pgSchema.toLowerCase() + "/data";
-        new File(dataDir).mkdirs();
-
-        columnCommentsCache = getColumnComments(conn, oraUser);
+        String dataDir = baseDirectory.resolve(pgSchema).resolve("data").toString();
+        MigrationFiles.checkParents(Path.of(dataDir)); java.nio.file.Files.createDirectories(Path.of(dataDir));
 
         String sql = "SELECT TABLE_NAME FROM ALL_TABLES WHERE OWNER = ? " +
-                "AND TABLE_NAME NOT LIKE 'MLOG$_%' ESCAPE '\\' " +
-                "AND TABLE_NAME NOT LIKE 'RUPD$_%' ESCAPE '\\' " +
-                "AND TABLE_NAME NOT LIKE 'DR$%' ESCAPE '\\' " +
                 "ORDER BY TABLE_NAME";
 
         List<String> tables = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, oraUser);
+            ps.setString(1, owner);
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) tables.add(rs.getString("TABLE_NAME"));
+                while (rs.next()) { cancellation.checkCancelled(); if(tables.size()>=1000)throw new SQLException("Migration table limit exceeded","DC002"); String table=rs.getString("TABLE_NAME");if(!MigrationPreflight.simpleName(table))throw new IOException("Source table requires manual name mapping"); tables.add(table); }
             }
         }
 
@@ -427,12 +439,12 @@ public class OracleExporter {
                         Connection threadConn = null;
                         try {
                             threadConn = cancellation.register(
-                                    DriverManager.getConnection(oraUrl, oraUser, oraPass));
+                                    connections.open(oraUrl, oraUser, oraPass));
                             synchronized (logger) {
                                 logger.logInfo(">> 导出: " + table + (attempt > 1 ? " (重试 " + attempt + ")" : ""));
                             }
 
-                            long[] result = exportTableData(threadConn, oraUser, table, dataDir);
+                            long[] result = exportTableData(threadConn, owner, table, dataDir);
                             if (result[0] > 0) {
                                 ok.incrementAndGet();
                                 totalRows.addAndGet(result[0]);
@@ -448,8 +460,7 @@ public class OracleExporter {
                         } catch (CancellationException cancelled) {
                             break;
                         } catch (Exception e) {
-                            String msg = e.getMessage() != null ? e.getMessage() : "unknown";
-                            logger.logToFile("[ERR]   " + table + " (attempt " + attempt + "): " + msg);
+                            logger.logToFile("[ERR] 导出表任务失败 (attempt " + attempt + ")；类型/权限/读取/文件错误，未保存原始异常");
                             if (attempt < MAX_RETRY) {
                                 synchronized (logger) {
                                     logger.logWarn(table + " 失败，重试中...");
@@ -489,48 +500,20 @@ public class OracleExporter {
         stats.put("成功", ok.get());
         stats.put("空表", empty.get());
         stats.put("失败", fail.get());
-        stats.put("总行数", (int) totalRows.get());
+        stats.put("总行数", totalRows.get());
         stats.put("总大小", ConsoleLogger.formatBytes(totalBytes.get()));
         logger.logSummary("数据导出统计", stats);
+        if(fail.get()>0)throw new IOException("Some source tables were not exported; import was not started");
     }
 
     private long[] exportTableData(Connection conn, String owner, String table, String dataDir) throws SQLException, IOException {
-        List<ColumnInfo> columns = getColumns(conn, owner, table);
-        if (columns.isEmpty()) return new long[]{0, 0};
+        var exported=new MigrationTableExporter(cancellation).export(conn,owner,table,Path.of(dataDir).getParent());
+        return new long[]{exported.rows(),exported.bytes()};
+    }
 
-        String fileName = dataDir + "/" + table.toLowerCase() + ".sql";
-
-        conn.setAutoCommit(false);
-        try (Statement stmt = conn.createStatement()) {
-            stmt.setFetchSize(FETCH_SIZE);
-
-            try (ResultSet rs = stmt.executeQuery("SELECT * FROM " + owner + "." + table)) {
-                if (!rs.next()) return new long[]{0, 0};
-
-                long count = 0;
-                long bytes = 0;
-                try (BufferedWriter bw = new BufferedWriter(new FileWriter(fileName), 1024 * 1024)) {
-                    do {
-                        cancellation.checkCancelled();
-                        count++;
-                        String line = SqlUtils.insertSql(table, columns, rs, convertBool, columnCommentsCache);
-                        bw.write(line);
-                        bw.newLine();
-                        bytes += line.length() + 1;
-
-                        if (count % 5000 == 0) {
-                            bw.write("COMMIT;\n");
-                            bytes += 8;
-                        }
-                    } while (rs.next());
-
-                    bw.write("COMMIT;\n");
-                    bytes += 8;
-                }
-
-                return new long[]{count, bytes};
-            }
-        }
+    private void validateScope(String owner,String schema) throws IOException {
+        if(!MigrationPreflight.simpleName(owner) || !MigrationPreflight.simpleName(schema))throw new IOException("Migration scope requires manual name mapping");
+        MigrationFiles.checkParents(baseDirectory.toAbsolutePath().resolve(schema));
     }
 
     // ==================== 元数据查询 ====================
