@@ -8,7 +8,6 @@ import com.datacube.service.DataBrowseService;
 import com.datacube.service.DataEditService;
 import com.datacube.spi.model.EditableColumn;
 import com.datacube.spi.model.PagedResult;
-import com.datacube.spi.model.RowKey;
 import com.datacube.spi.model.TableRef;
 
 import javafx.collections.FXCollections;
@@ -24,14 +23,15 @@ import javafx.scene.layout.*;
 import javafx.util.Duration;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 表数据网格：分页 + 过滤 + 内联编辑（Navicat 风格）。
  *
- * <p>逐行离开即提交：单元格编辑（UPDATE）、新增行（INSERT）、删除行（DELETE，
- * 二次确认）。读写共用 {@code busy} 串行开关，保护共享连接。写能力经
+ * <p>修改保留在页面变更集中，只有显式保存触发逐行独立事务。
+ * 读写共用 {@code busy} 串行开关。写能力经
  * {@link DataEditService}，只读分页经 {@link DataBrowseService}。
  */
 public final class DataGridPane implements AutoCloseable {
@@ -58,13 +58,18 @@ public final class DataGridPane implements AutoCloseable {
     private Label hintLabel;
     private TextField filterField;
     private Button prevBtn, nextBtn, reloadBtn, addBtn, deleteBtn;
+    private Button saveBtn, previewBtn, discardBtn, discardAllBtn, cancelSaveBtn;
+    private Label changesLabel;
+    private GridChangeSet changes;
+    private EditCell activeEditor;
+    private String appliedFilter = "";
+    private volatile SaveAttempt saveAttempt;
+    private final AsyncTabCloseGuard cleanupGuard = AsyncTabCloseGuards.blocking(this::closeResources);
 
     private EditableGridModel model;
     private long offset = 0;
     private boolean hasMore = false;
     private volatile boolean busy = false;
-    /** 程序化替换 items 期间抑制行离开提交（避免重载引发的误提交）。 */
-    private boolean suppressCommit = false;
     /** 当前渲染的数据列（不含序号列），供注释模式切换时重刷表头。 */
     private final List<TableColumn<EditableGridModel.Row, String>> dataColumns = new ArrayList<>();
 
@@ -86,7 +91,6 @@ public final class DataGridPane implements AutoCloseable {
             build();
             stopWatchingSafety = WriteSafetyDialog.watch(writeTarget, tasks, () -> {
                 WriteSafetyDialog.update(safetyLabel, writeTarget);
-                grid.setEditable(!this.readOnly && writeTarget.blockedReason().isEmpty());
                 setControlsDisabled(busy);
                 if (model != null) updateHint();
             });
@@ -114,8 +118,23 @@ public final class DataGridPane implements AutoCloseable {
 
     void closeResources() {
         stopWatchingSafety.run();
+        SaveAttempt attempt = saveAttempt;
+        if (attempt != null) attempt.cancelled.set(true);
         tasks.close();
+        if (attempt != null) attempt.awaitClose();
     }
+
+    public CompletionStage<CloseGuardOutcome> requestClose() {
+        if (!Platform.isFxApplicationThread()) return CompletableFuture.failedFuture(new IllegalStateException("必须在界面线程请求关闭"));
+        if (busy) {
+            info("操作正在进行，请等待保存结果后关闭；取消剩余保存不会撤回已提交行。");
+            return CompletableFuture.completedFuture(CloseGuardOutcome.REJECTED);
+        }
+        flushEditor();
+        return confirmLeave("关闭页面") ? requestMandatoryClose()
+                : CompletableFuture.completedFuture(CloseGuardOutcome.REJECTED);
+    }
+    public CompletionStage<CloseGuardOutcome> requestMandatoryClose() { return cleanupGuard.requestClose(); }
 
     void finalizeCloseOnFx() {
         settings.commentModeProperty().removeListener(commentModeListener);
@@ -133,7 +152,6 @@ public final class DataGridPane implements AutoCloseable {
         grid.setEditable(!readOnly);
         grid.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         grid.setRowFactory(tv -> new StyledRow());
-        installRowLeaveCommit();
         installKeyHandlers();
 
         hintLabel = new Label();
@@ -142,7 +160,7 @@ public final class DataGridPane implements AutoCloseable {
         hintLabel.setStyle("-fx-text-fill: -warn-fg; -fx-background-color: -warn-bg; -fx-padding: 4 8; -fx-background-radius: 4;");
 
         safetyLabel = WriteSafetyDialog.label(writeTarget);
-        root.getChildren().addAll(toolbar(), safetyLabel, hintLabel, grid, statusBar());
+        root.getChildren().addAll(toolbar(), changeToolbar(), safetyLabel, hintLabel, grid, statusBar());
         VBox.setVgrow(grid, Priority.ALWAYS);
     }
 
@@ -176,7 +194,7 @@ public final class DataGridPane implements AutoCloseable {
         addBtn = new Button("＋ 新增行");
         addBtn.setOnAction(e -> addRow());
 
-        deleteBtn = new Button("🗑 删除行");
+        deleteBtn = new Button("标记删除");
         deleteBtn.setStyle("-fx-text-fill: -status-error;");
         deleteBtn.setOnAction(e -> deleteSelectedRows());
 
@@ -195,16 +213,36 @@ public final class DataGridPane implements AutoCloseable {
         return box;
     }
 
+    private Node changeToolbar() {
+        saveBtn = new Button("保存到数据库"); saveBtn.setOnAction(e -> saveChanges());
+        previewBtn = new Button("预览修改 SQL"); previewBtn.setOnAction(e -> previewChanges());
+        discardBtn = new Button("放弃选中修改"); discardBtn.setOnAction(e -> discardChanges(false));
+        discardAllBtn = new Button("放弃全部修改"); discardAllBtn.setOnAction(e -> discardChanges(true));
+        cancelSaveBtn = new Button("取消剩余保存");
+        cancelSaveBtn.setOnAction(e -> {
+            SaveAttempt attempt = saveAttempt;
+            if (attempt != null) attempt.cancelled.set(true);
+            cancelSaveBtn.setDisable(true);
+            info("已请求停止后续行；当前行可能提交，等待实际结果。");
+        });
+        changesLabel = new Label("尚无待保存修改");
+        return new FlowPane(8, 6, saveBtn, previewBtn, discardBtn, discardAllBtn, cancelSaveBtn, changesLabel);
+    }
+
     // ---------- 加载 ----------
 
     private void load() {
+        loadPage(offset, appliedFilter);
+    }
+
+    private void loadPage(long requestOffset, String requestFilter) {
         if (busy) return;
         busy = true;
         setControlsDisabled(true);
         info("加载中...");
 
-        final String filter = filterField.getText().trim();
-        final long reqOffset = offset;
+        final String filter = requestFilter;
+        final long reqOffset = requestOffset;
         final EditableGridModel existingModel = model;
         tasks.submit(() -> {
             EditableGridModel loadedModel = existingModel;
@@ -219,6 +257,7 @@ public final class DataGridPane implements AutoCloseable {
             busy = false;
             setControlsDisabled(false);
             model = loaded.model();
+            offset = reqOffset; appliedFilter = filter;
             render(loaded.result());
         }, failure -> {
             busy = false;
@@ -250,30 +289,25 @@ public final class DataGridPane implements AutoCloseable {
             grid.getColumns().add(c);
         }
 
-        ObservableList<EditableGridModel.Row> data = FXCollections.observableArrayList();
-        for (List<Object> row : result.rows()) {
-            data.add(model.toRow(row));
-        }
-        suppressCommit = true;
+        changes = new GridChangeSet(model, result.rows());
+        ObservableList<EditableGridModel.Row> data = FXCollections.observableArrayList(changes.rows());
         grid.setItems(data);
         grid.getSelectionModel().clearSelection();
-        suppressCommit = false;
 
         updateHint();
         long from = data.isEmpty() ? 0 : offset + 1;
         long to = offset + data.size();
         info("第 " + from + "–" + to + " 行" + (hasMore ? "（还有更多）" : ""));
-        prevBtn.setDisable(offset == 0);
-        nextBtn.setDisable(!hasMore);
+        updateChanges();
     }
 
     /** 行号列（序号）：显示分页全局序号（offset+行内序号+1），不可编辑、不参与排序。 */
     private TableColumn<EditableGridModel.Row, String> buildSeqColumn() {
-        TableColumn<EditableGridModel.Row, String> seq = new TableColumn<>("#");
+        TableColumn<EditableGridModel.Row, String> seq = new TableColumn<>("# / 修改状态");
         seq.setSortable(false);
         seq.setEditable(false);
         seq.setResizable(false);
-        seq.setPrefWidth(56);
+        seq.setPrefWidth(240);
         seq.setCellFactory(tc -> new TableCell<>() {
             @Override
             protected void updateItem(String item, boolean empty) {
@@ -282,7 +316,13 @@ public final class DataGridPane implements AutoCloseable {
                     setText(null);
                     setStyle("");
                 } else {
-                    setText(String.valueOf(offset + getIndex() + 1));
+                    var row = getTableRow() == null ? null : getTableRow().getItem();
+                    String state = row == null ? "" : switch (row.state()) {
+                        case CLEAN -> ""; case NEW -> " · 新增"; case MODIFIED -> " · 修改";
+                        case DELETED -> " · 待删除"; case SAVED -> " · 待刷新"; case UNKNOWN -> " · 结果不确定";
+                    };
+                    setText((offset + getIndex() + 1) + state + (row == null || row.result().isEmpty() ? "" : " · " + row.result()));
+                    setTooltip(row == null || row.result().isEmpty() ? null : new Tooltip(row.result()));
                     setStyle("-fx-alignment: CENTER_RIGHT; -fx-text-fill: -brand-fg-muted;");
                 }
             }
@@ -335,185 +375,165 @@ public final class DataGridPane implements AutoCloseable {
         if (msg == null && !model.canLocateRow()) {
             msg = model.readOnlyReason();
         } else if (msg == null && !model.hasPrimaryKey()) {
-            msg = "无主键：更新/删除按全列旧值匹配，提交前校验仅影响 1 行（否则回滚）";
+            msg = "无主键：按可比较旧值匹配，每行仅允许影响 1 行；LOB/二进制/时间戳等不参与匹配。";
         }
         boolean show = msg != null;
         hintLabel.setText(show ? msg : "");
         hintLabel.setVisible(show);
         hintLabel.setManaged(show);
-        boolean readOnly = !model.canLocateRow() || !writeTarget.blockedReason().isEmpty();
-        addBtn.setDisable(readOnly);
-        deleteBtn.setDisable(readOnly);
+        setControlsDisabled(busy);
     }
 
-    // ---------- 提交（逐行离开即提交） ----------
-
-    private void installRowLeaveCommit() {
-        grid.getSelectionModel().selectedItemProperty().addListener((obs, oldRow, newRow) -> {
-            if (suppressCommit || busy) return;
-            if (oldRow != null && oldRow != newRow && oldRow.dirty()) {
-                commitRow(oldRow, null);
-            }
-        });
-    }
+    // ---------- 页面变更与显式保存 ----------
 
     private void installKeyHandlers() {
         grid.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.ENTER && !e.isControlDown()) {
-                EditableGridModel.Row d = selectedDirtyRow();
-                if (d != null && !busy) {
-                    commitRow(d, null);
-                    e.consume();
-                }
-            } else if (e.getCode() == KeyCode.DELETE) {
-                deleteSelectedRows();
-                e.consume();
+            if (e.getCode() == KeyCode.DELETE && activeEditor == null) {
+                deleteSelectedRows(); e.consume();
             }
         });
     }
 
-    private EditableGridModel.Row selectedDirtyRow() {
-        for (EditableGridModel.Row r : grid.getItems()) {
-            if (r.dirty()) return r;
-        }
-        return null;
+    private void flushEditor() { if (activeEditor != null) activeEditor.flush(); }
+
+    private void updateChanges() {
+        if (changesLabel == null) return;
+        long count = changes == null ? 0 : changes.pendingCount();
+        changesLabel.setText("待保存 " + count + " 行 · 逐行独立提交，失败即停止");
+        setControlsDisabled(busy);
+        grid.refresh();
     }
 
-    /** 提交单行；成功后：NEW/改动定位列 → 重载，否则原地清脏。{@code after} 于成功后执行。 */
-    private void commitRow(EditableGridModel.Row row, Runnable after) {
-        if (busy) return;
-        LinkedHashMap<String, String> changed = model.changedValues(row);
-        final boolean wasNew = row.state() == EditableGridModel.RowState.NEW;
-
-        // NEW 行未填任何值：直接丢弃
-        if (wasNew && changed.isEmpty()) {
-            grid.getItems().remove(row);
-            if (after != null) after.run();
-            return;
-        }
-        // MODIFIED 但无实际改动：清脏即可
-        if (!wasNew && changed.isEmpty()) {
-            model.markClean(row);
-            grid.refresh();
-            if (after != null) after.run();
-            return;
-        }
-        if (!model.canLocateRow()) {
-            error("无法定位行：该表只读");
-            return;
-        }
-
-        final boolean needReload = wasNew || model.changedAnyKeyColumn(row);
-        final RowKey key = wasNew ? null : model.keyOf(row);
-        var request = wasNew ? edit.prepareInsert(writeTarget, table, changed)
-                : edit.prepareUpdate(writeTarget, table, changed, key);
-        var confirmation = WriteSafetyDialog.confirm(request, false);
-        if (confirmation == null || tasks.isClosed()) return;
-
-        busy = true;
-        setControlsDisabled(true);
-        info("提交中...");
-        tasks.submit(() -> request.execute(confirmation), ignored -> {
-            busy = false;
-            setControlsDisabled(false);
-            if (needReload) {
-                if (after != null) after.run();
-                else load();
-            } else {
-                model.markClean(row);
-                grid.refresh();
-                info("已提交 1 行");
-                if (after != null) after.run();
-            }
-        }, failure -> {
-            busy = false;
-            setControlsDisabled(false);
-            error("提交失败: " + message(failure));
-            // 保留脏状态，焦点停留在该行
-        });
+    private void refreshRows() {
+        var selected = List.copyOf(grid.getSelectionModel().getSelectedItems());
+        grid.getItems().setAll(changes.rows());
+        for (var row : selected) if (grid.getItems().contains(row)) grid.getSelectionModel().select(row);
+        updateChanges();
     }
-
-    // ---------- 分页（先提交当前脏行） ----------
-
-    private void gotoPage(long newOffset) {
-        Runnable act = () -> { offset = newOffset; load(); };
-        EditableGridModel.Row d = selectedDirtyRow();
-        if (d != null && !busy) commitRow(d, act);
-        else act.run();
-    }
-
-    private void reloadFromStart() {
-        Runnable act = () -> { offset = 0; load(); };
-        EditableGridModel.Row d = selectedDirtyRow();
-        if (d != null && !busy) commitRow(d, act);
-        else act.run();
-    }
-
-    // ---------- 新增 / 删除 ----------
 
     private void addRow() {
         if (busy || model == null || !model.canLocateRow() || !writeTarget.blockedReason().isEmpty()) return;
-        EditableGridModel.Row row = model.newRow();
-        grid.getItems().add(row);
-        int idx = grid.getItems().size() - 1;
-        grid.scrollTo(idx);
-        grid.getSelectionModel().clearAndSelect(idx);
+        flushEditor();
+        try {
+            var row = changes.add(); refreshRows();
+            grid.getSelectionModel().clearSelection(); grid.getSelectionModel().select(row); grid.scrollTo(row);
+        } catch (IllegalStateException failure) { error(failure.getMessage()); }
     }
 
     private void deleteSelectedRows() {
         if (busy || model == null || !model.canLocateRow() || !writeTarget.blockedReason().isEmpty()) return;
-        List<EditableGridModel.Row> selected = List.copyOf(grid.getSelectionModel().getSelectedItems());
-        if (selected.isEmpty()) return;
+        flushEditor(); changes.delete(List.copyOf(grid.getSelectionModel().getSelectedItems())); refreshRows();
+        info("仅标记删除；点击“保存到数据库”才会执行，可放弃修改。");
+    }
 
+    private void discardChanges(boolean all) {
+        if (busy || changes == null) return;
+        flushEditor();
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "确认删除选中的 " + selected.size() + " 行？此操作不可撤销。",
-                ButtonType.OK, ButtonType.CANCEL);
-        confirm.setHeaderText(null);
-        confirm.setTitle("删除确认");
-        if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+                "放弃" + (all ? "全部" : "选中") + "未保存修改？这不会撤回已提交的行；不确定结果仍需核对数据库。",
+                new ButtonType("放弃修改", ButtonBar.ButtonData.OTHER), ButtonType.CANCEL);
+        confirm.setHeaderText(null); defaultCancel(confirm);
+        if (confirm.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.CANCEL) return;
+        if (tasks.isClosed()) return;
+        if (all) changes.discardAll(); else changes.discard(List.copyOf(grid.getSelectionModel().getSelectedItems()));
+        refreshRows(); info("已放弃本地修改；没有执行数据库写入。");
+    }
 
-        var requests = selected.stream().filter(row -> row.state() != EditableGridModel.RowState.NEW)
-                .map(row -> edit.prepareDelete(writeTarget, table, model.keyOf(row))).toList();
-        var confirmations = new ArrayList<com.datacube.service.WriteOperation.Confirmation>();
-        for (var request : requests) {
-            var accepted = WriteSafetyDialog.confirm(request, false);
-            if (accepted == null || tasks.isClosed()) return;
-            confirmations.add(accepted);
+    private boolean confirmLeave(String action) {
+        if (changes == null || !changes.hasPending()) return true;
+        ButtonType discard = new ButtonType("放弃未保存修改并" + action, ButtonBar.ButtonData.OTHER);
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+                "当前有 " + changes.pendingCount() + " 行未保存修改。需要保存时请取消此操作，再点击“保存到数据库”。\n"
+                        + "放弃不会撤回已提交行；结果不确定的行请先核对数据库。", discard, ButtonType.CANCEL);
+        alert.setTitle("待保存修改"); alert.setHeaderText(null); defaultCancel(alert);
+        if (alert.showAndWait().orElse(ButtonType.CANCEL) != discard || tasks.isClosed()) return false;
+        changes.discardAll(); refreshRows(); return true;
+    }
+
+    private static void defaultCancel(Dialog<ButtonType> dialog) {
+        for (ButtonType type : dialog.getDialogPane().getButtonTypes()) {
+            Node node = dialog.getDialogPane().lookupButton(type);
+            if (node instanceof Button button) button.setDefaultButton(type == ButtonType.CANCEL);
         }
+    }
 
-        busy = true;
-        setControlsDisabled(true);
-        info("删除中...");
-        tasks.submit(() -> {
-            String err = null;
-            int done = 0;
-            for (int index = 0; index < requests.size(); index++) {
-                try {
-                    if (tasks.isClosed()) throw new IllegalStateException("页面已关闭，剩余删除已取消");
-                    requests.get(index).execute(confirmations.get(index));
-                    done++;
-                } catch (Exception e) {
-                    err = e.getMessage();
-                    break;
-                }
+    private void gotoPage(long newOffset) {
+        if (busy || tasks.isClosed()) return;
+        flushEditor();
+        if (confirmLeave("翻页")) loadPage(newOffset, appliedFilter);
+    }
+
+    private void reloadFromStart() {
+        if (busy || tasks.isClosed()) return;
+        flushEditor();
+        if (confirmLeave("重新查询")) loadPage(0, filterField.getText().trim());
+    }
+
+    private void previewChanges() {
+        if (busy || changes == null || tasks.isClosed()) return;
+        flushEditor();
+        try {
+            String preview = edit.preview(writeTarget, table, changes.snapshot());
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("预览修改 SQL（未执行）");
+            TextArea text = new TextArea(preview); text.setEditable(false);
+            text.setPrefColumnCount(92); text.setPrefRowCount(24);
+            dialog.getDialogPane().setContent(text); dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+            dialog.showAndWait();
+        } catch (IllegalArgumentException | IllegalStateException failure) { error(failure.getMessage()); }
+    }
+
+    private void saveChanges() {
+        if (busy || changes == null || tasks.isClosed()) return;
+        flushEditor();
+        if (!changes.hasPending()) return;
+        GridChangeSet owner = changes;
+        SaveAttempt attempt = new SaveAttempt();
+        busy = true; setControlsDisabled(true);
+        try {
+            var snapshot = owner.snapshot();
+            var request = edit.prepareSave(writeTarget, table, snapshot, attempt.cancelled::get);
+            var confirmation = WriteSafetyDialog.confirm(request, true);
+            if (confirmation == null || tasks.isClosed()) { busy = false; updateChanges(); return; }
+            saveAttempt = attempt;
+            setControlsDisabled(true); info("逐行保存中；取消只能停止剩余行。");
+            tasks.submit(() -> {
+                if (!attempt.claimed.compareAndSet(false, true)) return new DataEditService.SaveResult(List.of());
+                try { return request.execute(confirmation); }
+                finally { attempt.settled.complete(null); }
+            }, result -> {
+                busy = false; saveAttempt = null;
+                if (changes != owner) return;
+                owner.apply(result); updateChanges();
+                String details = result.rows().stream().map(row -> "行标识 " + row.rowId() + ": " + row.message())
+                        .collect(java.util.stream.Collectors.joining("\n"));
+                statusLabel.setTooltip(new Tooltip(details));
+                info("本次已提交 " + result.committedCount() + " / " + result.rows().size()
+                        + " 行；其余保留在页面。逐行结果见行号提示；已提交行需刷新后继续编辑。");
+            }, failure -> {
+                busy = false; saveAttempt = null; updateChanges();
+                error("保存未开始：连接安全状态已变化或请求失效。当前修改已保留。");
+            });
+        } catch (RuntimeException failure) {
+            attempt.cancelled.set(true);
+            if (attempt.claimed.compareAndSet(false, true)) attempt.settled.complete(null);
+            saveAttempt = null; busy = false; updateChanges(); error(message(failure));
+        }
+    }
+
+    /** Mandatory cleanup must not approve while an admitted row may still be running. */
+    private static final class SaveAttempt {
+        final AtomicBoolean cancelled = new AtomicBoolean(), claimed = new AtomicBoolean();
+        final CompletableFuture<Void> settled = new CompletableFuture<>();
+        void awaitClose() {
+            cancelled.set(true);
+            if (claimed.compareAndSet(false, true)) settled.complete(null);
+            try { settled.get(15, TimeUnit.SECONDS); }
+            catch (Exception failure) {
+                if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
+                throw new IllegalStateException("无法确认在途行保存已结束；不得将关闭视为回滚", failure);
             }
-            return new DeleteResult(done, err);
-        }, result -> {
-            busy = false;
-            setControlsDisabled(false);
-            if (result.error() != null) {
-                error("删除失败（已删 " + result.deleted() + " 行）: " + result.error());
-                load(); // 重载以反映真实状态
-            } else {
-                grid.getItems().removeAll(selected);
-                info("已删除 " + selected.size() + " 行");
-            }
-        }, failure -> {
-            busy = false;
-            setControlsDisabled(false);
-            error("删除失败: " + message(failure));
-            load();
-        });
+        }
     }
 
     // ---------- 单元格 ----------
@@ -522,6 +542,8 @@ public final class DataGridPane implements AutoCloseable {
     private final class EditCell extends TableCell<EditableGridModel.Row, String> {
         private final int col;
         private TextField editor;
+        private EditableGridModel.Row editingRow;
+        private boolean textChanged;
         private final ContextMenu menu;
 
         EditCell(int col) {
@@ -546,16 +568,22 @@ public final class DataGridPane implements AutoCloseable {
         }
 
         private boolean editableCell() {
-            return model != null && model.canLocateRow() && model.columnEditable(col);
+            var row = getTableRow() == null ? null : getTableRow().getItem();
+            return !busy && !readOnly && writeTarget.blockedReason().isEmpty()
+                    && row != null && row.editable() && model != null && model.canLocateRow() && model.columnEditable(col);
         }
 
         @Override
         public void startEdit() {
             if (!editableCell() || isEmpty()) return;
             super.startEdit();
+            if (!isEditing()) return;
+            editingRow = getTableRow().getItem(); activeEditor = this;
             if (editor == null) createEditor();
             EditableGridModel.Cell c = cellModel();
             editor.setText(c != null && !c.isNull() ? c.text() : "");
+            textChanged = false;
+            setControlsDisabled(busy);
             setText(null);
             setGraphic(editor);
             editor.selectAll();
@@ -564,8 +592,14 @@ public final class DataGridPane implements AutoCloseable {
 
         @Override
         public void cancelEdit() {
+            boolean hadDraft = editingRow != null;
+            stageText();
+            editingRow = null;
+            if (activeEditor == this) activeEditor = null;
             super.cancelEdit();
             renderCell();
+            if (hadDraft) updateChanges();
+            else setControlsDisabled(busy);
         }
 
         @Override
@@ -576,35 +610,48 @@ public final class DataGridPane implements AutoCloseable {
 
         private void createEditor() {
             editor = new TextField();
+            editor.textProperty().addListener((o, before, after) -> {
+                if (editingRow != null) { textChanged = true; setControlsDisabled(busy); }
+            });
             editor.setOnAction(e -> doCommit(editor.getText()));
             editor.focusedProperty().addListener((o, was, is) -> {
-                if (!is && isEditing()) doCommit(editor.getText());
+                if (!is && editingRow != null) doCommit(editor.getText());
             });
-            editor.setOnKeyReleased(e -> {
-                if (e.getCode() == KeyCode.ESCAPE) cancelEdit();
+            editor.setOnKeyPressed(e -> {
+                if (e.getCode() == KeyCode.ESCAPE) {
+                    editingRow = null; cancelEdit(); e.consume();
+                }
             });
         }
 
         private void doCommit(String text) {
-            EditableGridModel.Cell c = cellModel();
-            if (c != null) {
+            stageText();
+            editingRow = null;
+            if (activeEditor == this) activeEditor = null;
+            commitEdit(text);
+            updateChanges();
+        }
+
+        void flush() { if (editingRow != null && editor != null) doCommit(editor.getText()); }
+
+        private void stageText() {
+            String text = editor == null ? null : editor.getText();
+            EditableGridModel.Cell c = editingRow == null ? null : editingRow.cell(col);
+            if (c != null && textChanged) {
                 // 非字符类型清空视作 NULL；字符类型空串保留为空串
                 if (text != null && text.isEmpty() && !EditableGridModel.isCharType(model.jdbcType(col))) {
                     c.setNull();
                 } else {
                     c.setText(text);
                 }
-                markDirty();
+                model.reconcile(editingRow);
             }
-            commitEdit(text);
-            grid.refresh();
         }
 
         private void markDirty() {
             EditableGridModel.Row row = getTableRow() == null ? null : getTableRow().getItem();
-            if (row != null && row.state() == EditableGridModel.RowState.CLEAN) {
-                row.setState(EditableGridModel.RowState.MODIFIED);
-            }
+            if (row != null) model.reconcile(row);
+            updateChanges();
         }
 
         @Override
@@ -652,6 +699,8 @@ public final class DataGridPane implements AutoCloseable {
             switch (item.state()) {
                 case MODIFIED -> setStyle("-fx-background-color: -cell-modified-bg;");
                 case NEW -> setStyle("-fx-background-color: -cell-new-bg;");
+                case DELETED -> setStyle("-fx-opacity: 0.6;");
+                case UNKNOWN -> setStyle("-fx-background-color: -warn-bg;");
                 default -> setStyle("");
             }
         }
@@ -661,11 +710,21 @@ public final class DataGridPane implements AutoCloseable {
 
     private void setControlsDisabled(boolean disabled) {
         reloadBtn.setDisable(disabled);
-        prevBtn.setDisable(disabled);
-        nextBtn.setDisable(disabled);
+        prevBtn.setDisable(disabled || offset == 0);
+        nextBtn.setDisable(disabled || !hasMore);
         filterField.setDisable(disabled);
         WriteSafetyDialog.update(addBtn, writeTarget, disabled || model == null || !model.canLocateRow());
         WriteSafetyDialog.update(deleteBtn, writeTarget, disabled || model == null || !model.canLocateRow());
+        if (saveBtn == null) return;
+        boolean pending = changes != null && (changes.hasPending() || activeEditor != null && activeEditor.textChanged);
+        long count = changes == null ? 0 : changes.pendingCount();
+        if (activeEditor != null && activeEditor.textChanged && activeEditor.editingRow != null && !activeEditor.editingRow.dirty()) count++;
+        if (changesLabel != null) changesLabel.setText("待保存 " + count + " 行 · 逐行独立提交，失败即停止");
+        WriteSafetyDialog.update(saveBtn, writeTarget, disabled || model == null || !model.canLocateRow() || !pending || changes.hasUnknown());
+        previewBtn.setDisable(disabled || !pending || changes.hasUnknown());
+        discardBtn.setDisable(disabled || !pending); discardAllBtn.setDisable(disabled || !pending);
+        cancelSaveBtn.setDisable(saveAttempt == null || saveAttempt.cancelled.get());
+        grid.setEditable(!disabled && !readOnly && writeTarget.blockedReason().isEmpty());
     }
 
     private void info(String msg) {
@@ -687,7 +746,6 @@ public final class DataGridPane implements AutoCloseable {
     }
 
     private record LoadResult(EditableGridModel model, PagedResult result) {}
-    private record DeleteResult(int deleted, String error) {}
 
     /** 估算列宽：取表头与前若干行内容的最大字符数，换算像素并裁剪到 [60, 360]。 */
     private static double estimateColumnWidth(String header, List<List<Object>> rows, int idx) {

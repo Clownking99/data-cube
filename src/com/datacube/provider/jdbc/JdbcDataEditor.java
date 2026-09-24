@@ -1,6 +1,8 @@
 package com.datacube.provider.jdbc;
 
 import com.datacube.spi.DataEditor;
+import com.datacube.spi.RowEditSql;
+import com.datacube.spi.RowWriteException;
 import com.datacube.spi.SqlDialect;
 import com.datacube.spi.model.EditableColumn;
 import com.datacube.spi.model.RowKey;
@@ -56,7 +58,7 @@ import static java.sql.Types.VARCHAR;
  * 通用 JDBC 数据编辑器：单表行级 INSERT/UPDATE/DELETE（参数化）。
  *
  * <p>DML 为标准 SQL，唯一库差异（标识符引用）经 {@link SqlDialect#quoteIdentifier}
- * 收敛，故 Oracle 与 PostgreSQL 共用本实现。UPDATE/DELETE 走事务护栏：
+ * 收敛，故 Oracle 与 PostgreSQL 共用本实现。INSERT/UPDATE/DELETE 走事务护栏：
  * 影响行数不为 1 立即回滚（见 {@link RowGuardException}）。
  */
 public final class JdbcDataEditor implements DataEditor {
@@ -111,13 +113,12 @@ public final class JdbcDataEditor implements DataEditor {
         Map<String, Integer> types = typeMap(t);
         List<String> cols = new ArrayList<>(values.keySet());
         String sql = buildInsertSql(qualified(t), cols, dialect::quoteIdentifier);
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        return runGuarded(sql, ps -> {
             int i = 1;
             for (String c : cols) {
                 bindValue(ps, i++, values.get(c), jdbcTypeOf(types, c), c);
             }
-            return ps.executeUpdate();
-        }
+        });
     }
 
     @Override
@@ -154,39 +155,41 @@ public final class JdbcDataEditor implements DataEditor {
 
     /** 单语句事务：影响 1 行提交，否则回滚并抛 {@link RowGuardException}。 */
     private int runGuarded(String sql, Binder binder) throws SQLException {
-        boolean prevAutoCommit = conn.getAutoCommit();
+        if (!conn.getAutoCommit()) throw new SQLException("行编辑需要独立的自动提交连接");
         conn.setAutoCommit(false);
+        boolean committed = false;
+        boolean commitAttempted = false;
+        boolean resolved = false;
         try {
             int n;
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 binder.bind(ps);
                 n = ps.executeUpdate();
             }
-            if (n == 1) {
-                conn.commit();
-                return n;
-            }
-            conn.rollback();
-            throw new RowGuardException(n);
-        } catch (SQLException e) {
-            if (!(e instanceof RowGuardException)) {
-                safeRollback();
-            }
-            throw e;
-        } finally {
+            if (n != 1) throw new RowGuardException(n);
+            if (Thread.currentThread().isInterrupted()) throw new SQLException("行保存已取消");
+            commitAttempted = true;
+            conn.commit();
+            committed = resolved = true;
+            return n;
+        } catch (SQLException | RuntimeException failure) {
             try {
-                conn.setAutoCommit(prevAutoCommit);
-            } catch (SQLException ignore) {
-                // 恢复 autoCommit 失败不掩盖原始异常
+                conn.rollback();
+                resolved = !commitAttempted;
+            } catch (SQLException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
             }
-        }
-    }
-
-    private void safeRollback() {
-        try {
-            conn.rollback();
-        } catch (SQLException ignore) {
-            // 回滚失败不掩盖原始异常
+            if (!resolved) throw new RowWriteException(RowWriteException.Outcome.UNKNOWN, failure);
+            if (failure instanceof RowGuardException guard) throw guard;
+            throw new RowWriteException(RowWriteException.Outcome.ROLLED_BACK, failure);
+        } finally {
+            // setAutoCommit(true) can commit: never restore an unresolved transaction.
+            if (resolved) {
+                try { conn.setAutoCommit(true); }
+                catch (SQLException restoreFailure) {
+                    if (committed) throw new RowWriteException(RowWriteException.Outcome.COMMITTED, restoreFailure);
+                }
+            }
         }
     }
 
@@ -209,7 +212,7 @@ public final class JdbcDataEditor implements DataEditor {
         try {
             v = coerce(text, jdbcType);
         } catch (RuntimeException ex) {
-            throw new SQLException("列 [" + col + "] 的值 \"" + text + "\" 无法转换为 " + typeLabel(jdbcType), ex);
+            throw new SQLException("列 [" + col + "] 无法转换为 " + typeLabel(jdbcType));
         }
         if (v == null) {
             ps.setNull(idx, jdbcType);
@@ -263,52 +266,24 @@ public final class JdbcDataEditor implements DataEditor {
     // ---------- 纯函数（可单测，不依赖连接） ----------
 
     static String qualify(TableRef t, UnaryOperator<String> quoteId) {
-        String name = quoteId.apply(t.name());
-        return (t.schema() == null || t.schema().isEmpty()) ? name : quoteId.apply(t.schema()) + "." + name;
+        return RowEditSql.qualify(t, quoteId);
     }
 
     static String buildInsertSql(String qualified, List<String> cols, UnaryOperator<String> quoteId) {
-        StringBuilder sb = new StringBuilder("INSERT INTO ").append(qualified).append(" (");
-        for (int i = 0; i < cols.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(quoteId.apply(cols.get(i)));
-        }
-        sb.append(") VALUES (");
-        for (int i = 0; i < cols.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append('?');
-        }
-        return sb.append(')').toString();
+        return RowEditSql.insert(qualified, cols, quoteId);
     }
 
     static String buildUpdateSql(String qualified, List<String> setCols, RowKey key, UnaryOperator<String> quoteId) {
-        StringBuilder sb = new StringBuilder("UPDATE ").append(qualified).append(" SET ");
-        for (int i = 0; i < setCols.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(quoteId.apply(setCols.get(i))).append(" = ?");
-        }
-        return sb.append(whereClause(key, quoteId)).toString();
+        return RowEditSql.update(qualified, setCols, key, quoteId);
     }
 
     static String buildDeleteSql(String qualified, RowKey key, UnaryOperator<String> quoteId) {
-        return "DELETE FROM " + qualified + whereClause(key, quoteId);
+        return RowEditSql.delete(qualified, key, quoteId);
     }
 
     /** WHERE 拼装：旧值非 NULL → {@code col = ?}；NULL → {@code col IS NULL}（不占位）。 */
     static String whereClause(RowKey key, UnaryOperator<String> quoteId) {
-        List<String> cols = key.columns();
-        List<Object> vals = key.values();
-        StringBuilder sb = new StringBuilder(" WHERE ");
-        for (int i = 0; i < cols.size(); i++) {
-            if (i > 0) sb.append(" AND ");
-            sb.append(quoteId.apply(cols.get(i)));
-            if (vals.get(i) == null) {
-                sb.append(" IS NULL");
-            } else {
-                sb.append(" = ?");
-            }
-        }
-        return sb.toString();
+        return RowEditSql.where(key, quoteId);
     }
 
     /**

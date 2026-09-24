@@ -705,11 +705,12 @@ public final class AppShell {
         public void openDataGrid(String connId, TableRef table, boolean readOnly) {
             String connName = connMgr.config(connId).name();
             String prefix = readOnly ? "视图: " : "数据: ";
-            openBackgroundCleanupTab(prefix + table.name(), () -> {
+            contentTabs.openManagedTab(prefix + table.name(), binding -> {
                 DataGridPane pane = new DataGridPane(
                         browseSvc, editSvc, connId, connName, table, settings, readOnly, tasks);
-                return new BackgroundTab(
-                        pane.getNode(), pane::closeResources, pane::finalizeCloseOnFx);
+                binding.bind(pane::closeResources);
+                return new ContentTabPane.ManagedTabSpec(pane.getNode(), pane::requestClose,
+                        pane::requestMandatoryClose, pane::finalizeCloseOnFx, pane::closeResources);
             });
         }
 
