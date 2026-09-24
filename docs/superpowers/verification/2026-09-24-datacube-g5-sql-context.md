@@ -1,6 +1,6 @@
 # G5 / M5 本地验证账本
 
-当前状态：分支本地验证与审查通过，待提交/合并及 main 独立复验。维护者已明确授权 G5，沿用原安全及本地操作边界，不扩展 M6–M8。
+当前状态：**G5/M5 本地工程完成，已合并 main `0e7ca79` 并独立复验**。维护者已明确授权 G5，沿用原安全及本地操作边界，不扩展 M6–M8。此结论不包含原生桌面、真实数据库或发布验收。
 
 ## 基线与范围
 
@@ -71,6 +71,12 @@ PG 位置仅使用协议大写 `P`（原始查询字符位置），不使用内�
 | `branch-oracle-final` | 15 / 15 passed / 0 failed/errors/skipped | Oracle 零位置表达式简化后实际重新编译运行 |
 | `branch-buildSrc` | :buildSrc:test --rerun-tasks：8/8，0 failed/errors/skipped；4 tasks 实际执行 | 无跳过或 up-to-date 冒充测试 |
 | `branch-image` | jpackageImage：exit 0；39s | DataCube.cfg 无测试 profile/headless/合成入口；未安装或启动更新 |
+| `main-full` | main `28723b3` clean test：3726 tests / 3723 passed / 0 failed/errors / 3 live skipped；2m37s | 首次合并复验；不包含后来发现的未闭合引用来源修正 |
+| `m5-unclosed-source-red` | 9 / 8 passed / 1 failed / 0 skipped | 新反例证实未闭合的引用来源会丢掉末字符而误认其他表；有意 RED |
+| `m5-unclosed-source-green` | 5 suites / 36 tests / 全部通过，0 skipped | 来源名称须引用闭合，合法引用名称和编辑中的前缀保持可用；含补全生命周期/元数据/焦点/当前语句回归 |
+| `main-full-final` | main `0e7ca79` clean test：292 suites / 3727 tests / **3724 passed** / 0 failed/errors / **3 live skipped**；2m47s | 最终提交代码，使用新 `profile-main-final`，不是旧通过证据 |
+| `main-buildSrc` | :buildSrc:test --rerun-tasks：**8/8 passed**，0 skipped；8s，4 tasks 实际执行 | 本次 XML 独立归档 |
+| `main-image` | jpackageImage：exit 0；30s | cfg 无测试参数，exe/cfg/runtime modules 摘要归档；未安装或启动更新 |
 
 所有 counts 以归档 XML 实际统计为准。三个 live 跳过是 Redis standalone 与 PG/Oracle SchemaDiff 写入集成；缺少明确授权及环境，均不算通过。历史 SchemaDiff 偶发 snapshot 失败根因仍未明确，不能称已修复。保留 unchecked 编译提示及可能的 JEP 493 jlink 提示，不宣称零警告。
 
@@ -81,9 +87,19 @@ PG 位置仅使用协议大写 `P`（原始查询字符位置），不使用内�
 - 分支检查基于未提交工作内容，因此日志 head 仍为基线 `fb849b2`，不能解释为对纯基线的通过。提交后 main 复验将绑定合并 SHA。
 - 最新全量日志 SHA256 `BDA068C891EBCAA72E1714CE82947BE68CFF86CBB76A0DC5C09EEADC95616AE7`，XML 清单摘要 `DE657FFB7C75E8328C148E0FE3968771E571B4351322B711582CFB0572C58DDD`。每轮命令、结果、日志/XML hashes 和镜像文件摘要见 [机器结果](2026-09-24-datacube-g5-results.json)。
 
-## 下一检查点
+## main 集成
 
-核对 main 未变化与工作区，提交后本地合并，使用新 profile 重跑全量、buildSrc、镜像并追加 SHA、日志/镜像 hashes。
+- 实现 `76dd22104cb62e2890eeb45f79f4d6c23691d6cd`；首次 main 合并 `28723b3391a76f268744b1f743ac75b232e22117`。合并前 main 与基线一致，工作区干净（始终排除受保护目录）。
+- 最后审查反例及修正 `c62e86cb71aa30f95b94490b90cd338c30faeb4d`；main 修正合并 `0e7ca7972cfb107bfb54b2192d990c547d47031e`。代码/测试/构建与修正分支相同，无冲突。
+- 首次 main 使用事前不存在的 `profile-main`；最终 main 另用事前不存在的 `profile-main-final`。不共享真实配置，不复用分支或首次 main 的 XML 充当最终通过证据。
+- 最终 main 全量日志 SHA256 `DFC6513F8002024834601C4B5FFFC2957547C20A9F74ED44850030BD3554010D`，XML 清单摘要 `FBFB2FAD20063FE8EF4F06E6FA0BEDE9500BF3056AC6BDB95A211BB4158A4DFA`；镜像日志 `9F33DDA66EFC1F03FBA9E8234C74F72B8464F68DEB826A20EF15AB6D7570A96E`。
+- main 镜像 `D:\Projects\朝花夕拾\build\jpackage\DataCube`：exe SHA256 `6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F`；cfg `E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D`；模块镜像 `742263805848DE909BCBD97528BAD81D6A49BE51F4FAE72104E4455F5044519D`。模块化应用代码位于 runtime/lib/modules，不能只比 exe 推断应用代码一致。
+- 机器结果保留 26 轮结构化运行、最初编译失败与基线 RED、独立测试 XML 摘要、包装脚本 hashes 和两份镜像摘要。最终源码树 `b7913a5fbfb04b4f47a8842288cd0d7ede5add65`、测试树 `2a2beda99905d9cd2b8e461c221ab45514e39913` 与分支相同。
+- main 最终无失败；三项 live 跳过和历史 SchemaDiff 偶发问题仍按前文记录。后续提交仅同步文档，不把文档提交 SHA 冒称代码测试时的 SHA。
+
+## 交付与下一步
+
+G5 本地工程交付；M6–M8 未启动。实现与修正均为本地可审查提交，没有 push/tag/PR/发布。后续仅在明确授权的目标范围继续；真实数据库、签名凭据等外部操作仍须单独授权。
 
 ## 待外部验收
 

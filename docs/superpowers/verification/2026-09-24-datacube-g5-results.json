@@ -1,10 +1,51 @@
 {
   "stage": "G5/M5",
-  "status": "branch verified; pending local merge and main verification",
+  "status": "local engineering complete; merged and verified on main; external acceptance pending",
   "baseline": "fb849b29d4a2da6ad2cefb34767216e8ea905087",
   "branch": "codex/datacube-g5-sql-context",
+  "implementation": "76dd22104cb62e2890eeb45f79f4d6c23691d6cd",
+  "finalFix": "c62e86cb71aa30f95b94490b90cd338c30faeb4d",
+  "initialMerge": "28723b3391a76f268744b1f743ac75b232e22117",
+  "verifiedMerge": "0e7ca7972cfb107bfb54b2192d990c547d47031e",
   "scratch": "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g5-25a8dbddae8b467291bae91664ae808d",
-  "branchEvidence": "Uncommitted implementation at baseline HEAD; final Oracle zero-position simplification verified separately after full suite.",
+  "evidenceNotes": [
+    "Branch runs before implementation/fix commits used uncommitted changes; HEAD identifies their base, not the tested source alone.",
+    "Final main clean test/buildSrc/image verify the committed merge. Later documentation-only commit is not the tested SHA.",
+    "Invalid copied XML from compile failure was excluded from published counts; original archive retains the correction."
+  ],
+  "codeTrees": {
+    "head": "0e7ca7972cfb107bfb54b2192d990c547d47031e",
+    "sourceTree": "b7913a5fbfb04b4f47a8842288cd0d7ede5add65",
+    "testTree": "2a2beda99905d9cd2b8e461c221ab45514e39913",
+    "buildSrcTree": "32f02b3c736b6c2814d4f61a74ef58499484367f",
+    "resourcesTree": "bb341fbdce7eb1d750d7b90d94966233d2824803",
+    "branchSourceTree": "b7913a5fbfb04b4f47a8842288cd0d7ede5add65",
+    "branchTestTree": "2a2beda99905d9cd2b8e461c221ab45514e39913"
+  },
+  "baselineProbe": {
+    "baseline": "fb849b29d4a2da6ad2cefb34767216e8ea905087",
+    "compileExit": 0,
+    "probeExit": 1,
+    "expectedFailure": true,
+    "logSha256": "65EA4B237437AF66D4F69EF4FF4AD0B3D86429B5D31B3618C570FE96164D2D3D"
+  },
+  "earlyCompileFailure": {
+    "name": "m5a-targeted-1",
+    "actualTestTaskRan": false,
+    "failure": "compileJava: duplicate executeCurrentBtn",
+    "log": "m5a-targeted-1.log",
+    "logSha256": "574C610E3295A0ADD65FEEE78FA746145E814237C3DB5900E5B854B9C0D1C841"
+  },
+  "harness": [
+    {
+      "file": "run-check.ps1",
+      "sha256": "8579E3F9967138ED80C4F6AA5249EC8A04CDFB7FC8BA5E3B27987A8BF2DA96AD"
+    },
+    {
+      "file": "isolated-tests.gradle",
+      "sha256": "251B79DEB82BE8C86298B2B3E1539AEDE4613990613636E8060C3007B12D41AB"
+    }
+  ],
   "runs": [
     {
       "name": "branch-buildSrc",
@@ -695,6 +736,70 @@
       "xmlManifestSha256": "C7614163D03BD33ACA6DD633425AF3DA89FF1ED2B0E9518914A56B70D1E66D7F"
     },
     {
+      "name": "m5-unclosed-source-green",
+      "head": "76dd22104cb62e2890eeb45f79f4d6c23691d6cd",
+      "arguments": [
+        "test",
+        "--tests",
+        "*SqlCompletion*Test",
+        "--tests",
+        "*SqlAutoCompleteFocusTest",
+        "--tests",
+        "*SqlCurrentStatementTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g5-25a8dbddae8b467291bae91664ae808d\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T21:11:10.922053+08:00",
+      "exitCode": 0,
+      "log": "m5-unclosed-source-green.log",
+      "logSha256": "4D04E0CCCB0AB8B137562378DBF7523CB8A992B18A9697EB7FF375B29F2956D1",
+      "actualTestTaskRan": true,
+      "suites": 5,
+      "tests": 36,
+      "passed": 36,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "m5-unclosed-source-green-xml",
+      "xmlManifestSha256": "BBE27B48035960F3C5A31698F8F4AD0EBAC89BD29C4EE416DAE26048FE3AC2F4"
+    },
+    {
+      "name": "m5-unclosed-source-red",
+      "head": "76dd22104cb62e2890eeb45f79f4d6c23691d6cd",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.sqleditor.SqlCompletionContextTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g5-25a8dbddae8b467291bae91664ae808d\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T21:10:24.9788299+08:00",
+      "exitCode": 1,
+      "log": "m5-unclosed-source-red.log",
+      "logSha256": "8E82AEAB3148F1706D98B9E815B9CEF645C824281662D1D0561BA28B779BCA23",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 9,
+      "passed": 8,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.sqleditor.SqlCompletionContextTest.unfinishedQuotedSourceCannotBeTruncatedIntoAnotherTable()"
+      ],
+      "xmlDirectory": "m5-unclosed-source-red-xml",
+      "xmlManifestSha256": "889FAC774BCF4E2B98B305C339C0B73F7D5323063C34471D55D85161FA571BBD"
+    },
+    {
       "name": "m5a-targeted-2",
       "head": "fb849b29d4a2da6ad2cefb34767216e8ea905087",
       "arguments": [
@@ -769,6 +874,131 @@
       ],
       "xmlDirectory": "m5b-targeted-1-xml",
       "xmlManifestSha256": "6879A44473A3C051DD4E20D932D398AB7C6E490ED1FD2F71C8BB828BAB9FEA25"
+    },
+    {
+      "name": "main-buildSrc",
+      "head": "0e7ca7972cfb107bfb54b2192d990c547d47031e",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g5-25a8dbddae8b467291bae91664ae808d\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T21:15:31.7140266+08:00",
+      "exitCode": 0,
+      "log": "main-buildSrc.log",
+      "logSha256": "69A28754A437E4B48A48F3AC09B6B4091A32D58084DB461E73CAE58FD21B9171",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "main-buildSrc-xml",
+      "xmlManifestSha256": "F38B1FD670D5E126B925FB71B79B4BC6BB699924F51EB55E6B8F55B35B84FC3E"
+    },
+    {
+      "name": "main-full-final",
+      "head": "0e7ca7972cfb107bfb54b2192d990c547d47031e",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g5-25a8dbddae8b467291bae91664ae808d\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T21:15:10.6697304+08:00",
+      "exitCode": 0,
+      "log": "main-full-final.log",
+      "logSha256": "DFC6513F8002024834601C4B5FFFC2957547C20A9F74ED44850030BD3554010D",
+      "actualTestTaskRan": true,
+      "suites": 292,
+      "tests": 3727,
+      "passed": 3724,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "main-full-final-xml",
+      "xmlManifestSha256": "FBFB2FAD20063FE8EF4F06E6FA0BEDE9500BF3056AC6BDB95A211BB4158A4DFA"
+    },
+    {
+      "name": "main-full",
+      "head": "28723b3391a76f268744b1f743ac75b232e22117",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g5-25a8dbddae8b467291bae91664ae808d\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T21:11:30.6315312+08:00",
+      "exitCode": 0,
+      "log": "main-full.log",
+      "logSha256": "C84B6B44ACCE4004B3C743D2F6071B24D55B6549132A698450DEB7FAC976AE62",
+      "actualTestTaskRan": true,
+      "suites": 292,
+      "tests": 3726,
+      "passed": 3723,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "main-full-xml",
+      "xmlManifestSha256": "DC8FDC7D29AB2C6095CB3761A628BBDCCE2E69595835FD97E6C01D0AE45D4D52"
+    },
+    {
+      "name": "main-image",
+      "head": "0e7ca7972cfb107bfb54b2192d990c547d47031e",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-24T21:16:12.6760624+08:00",
+      "exitCode": 0,
+      "log": "main-image.log",
+      "logSha256": "9F33DDA66EFC1F03FBA9E8234C74F72B8464F68DEB826A20EF15AB6D7570A96E",
+      "actualTestTaskRan": false
     }
   ],
   "images": [
@@ -792,6 +1022,29 @@
           "path": "C:\\Users\\hetia\\.codex\\worktrees\\datacube-g5-sql-context\\朝花夕拾\\build\\jpackage\\DataCube\\runtime\\lib\\modules",
           "bytes": 102071380,
           "sha256": "0F883313A0D37576CE0F7FA6969511DCC3030170D4AC96124D8442A06A8760E8"
+        }
+      ]
+    },
+    {
+      "repository": "D:\\Projects\\朝花夕拾",
+      "checkedAt": "2026-09-24T21:16:54.9777912+08:00",
+      "head": "0e7ca7972cfb107bfb54b2192d990c547d47031e",
+      "testFlagsAbsent": true,
+      "files": [
+        {
+          "path": "D:\\Projects\\朝花夕拾\\build\\jpackage\\DataCube\\DataCube.exe",
+          "bytes": 595968,
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+        },
+        {
+          "path": "D:\\Projects\\朝花夕拾\\build\\jpackage\\DataCube\\app\\DataCube.cfg",
+          "bytes": 369,
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+        },
+        {
+          "path": "D:\\Projects\\朝花夕拾\\build\\jpackage\\DataCube\\runtime\\lib\\modules",
+          "bytes": 102071603,
+          "sha256": "742263805848DE909BCBD97528BAD81D6A49BE51F4FAE72104E4455F5044519D"
         }
       ]
     }

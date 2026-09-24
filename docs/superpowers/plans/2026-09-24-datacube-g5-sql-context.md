@@ -2,6 +2,8 @@
 
 范围：维护者明确授权 M5a、M5b、M5c 及计时；沿用本地、安全和独立 worktree 边界，不进入 M6。基线 main `fb849b29d4a2da6ad2cefb34767216e8ea905087`，分支 `codex/datacube-g5-sql-context`。
 
+最终状态：2026-09-24，G5/M5 本地工程完成，合并 `0e7ca79` 已全量/buildSrc/镜像复验。以下检查点保留当时进展；最终证据见 [G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)。外部验收待授权，M6–M8 不自动启动。
+
 ## CP0：基线与设计（进行中）
 
 - 已核对 main 与 worktree，受保护目录排除在状态与搜索之外；旧 G4 证据不作为本次通过证据。
@@ -66,3 +68,11 @@
 - 同期补全边界审查的纯合成反例证实未闭合引用标识符可被截去末字符而误认其他表；`m5-unclosed-source-red` 8 passed / 1 failed。
 - 分支修正只接受闭合引用来源；保留编辑中的补全前缀和合法引用标识符。相关补全/当前语句/焦点 36 项全部通过；修正提交 `c62e86cb71aa30f95b94490b90cd338c30faeb4d`。
 - 下一步：本地合并修正，以另一新 profile 重跑 main 全量，然后 buildSrc 和镜像；首次 main 全量不替代这次修正的验证。外部待验不变。
+
+## CP5：本地交付完成
+
+- 当前目标：G5/M5 完成本地工程闭环；修正合并 `0e7ca7972cfb107bfb54b2192d990c547d47031e`，代码和测试与分支一致。
+- 改动：代码冻结，只同步实际证据、路线图和交接。提交与测试 SHA 分开记录，归档 26 轮结构化运行及早期编译/RED 证据。
+- 验证：最终 main 新 profile 全量 292 suites / 3727 tests，3724 passed、0 failures/errors、3 live skipped；buildSrc 强制重跑 8/8；jpackageImage 30s exit 0，cfg 无测试参数，exe/cfg/modules hashes 已归档。
+- 失败/未验：main 最终无失败；3 live skips 不算通过。原生桌面、真实 Oracle/PG、签名/安装升级、远端 CI/发布未验，历史 SchemaDiff 偶发问题未宣称修复。
+- 下一步：提交文档收尾并交付 G5，不自动进入 M6–M8，不推送、打 tag 或发布。
