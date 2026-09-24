@@ -1,0 +1,219 @@
+{
+  "scope": "G3 M3 local engineering only",
+  "status": "Branch verified, implementation committed; main integration pending",
+  "baseline": "9b334a18b0d5561ba86e13b1128dae419c0ead24",
+  "integratedBaseline": "d2808f59a65a6937c0d95cd3402d065e920a4d70",
+  "implementation": "92a03a15fdeaca7b34c81110b63f56f0dfa1580c",
+  "verifiedMain": null,
+  "generatedAt": "2026-09-24T16:55:57.8619343+08:00",
+  "evidenceRoot": "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g3-6f6c379b1d4e4e04a46560e9c8a20e03",
+  "sourceTrace": "Branch checks ran with uncommitted implementation on integratedBaseline; final-code-manifest.json was checked unchanged before committing implementation. Each run.head is the checkout HEAD, not a claim that the worktree was clean.",
+  "implementationTrees": {
+    "src": "39464f2eb69b4075416976994e2f2a9e5ce849c2",
+    "test": "5c0a8852213f7a4148c62f71b6b84da3191f3cdf",
+    "buildGradle": "ddd8719512869034c947f0e87978d379402367d4",
+    "buildSrc": "32f02b3c736b6c2814d4f61a74ef58499484367f"
+  },
+  "codeManifest": "final-code-manifest.json",
+  "codeManifestSha256": "30BBCAF3402DD241BCA0A0262F8487374833F0D66CF3FE5CD1BD4BE14A6CAD89",
+  "isolation": "Mock JDBC and temporary user.home only. Gradle offline. Test JVM headless=false; live Redis/Schema Diff environment removed. Image has no test profile flags.",
+  "xmlManifestFormat": "Sort XML by filename; filename + space + uppercase SHA256 joined with LF; UTF-8 without trailing LF; SHA256",
+  "runs": [
+    {
+      "name": "g3-targeted-final",
+      "head": "d2808f59a65a6937c0d95cd3402d065e920a4d70",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.DataGrid*",
+        "--tests",
+        "com.datacube.fx.GridChangeSetTest",
+        "--tests",
+        "com.datacube.service.GridSaveServiceTest",
+        "--tests",
+        "com.datacube.provider.jdbc.Jdbc*Test",
+        "--tests",
+        "com.datacube.service.RelationalWriteSafetyTest",
+        "--tests",
+        "com.datacube.fx.WriteSafetyIntegrationTest",
+        "--tests",
+        "com.datacube.fx.ContentTabPane*",
+        "--tests",
+        "com.datacube.fx.ManagedPaneCloseContractTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g3-6f6c379b1d4e4e04a46560e9c8a20e03\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T16:50:02.9159163+08:00",
+      "exitCode": 0,
+      "log": "g3-targeted-final.log",
+      "logSha256": "DA2B4AC1852DA9AA9B609E3AF13FDF6EDE0E6F0452B1B9760536F87EF015292B",
+      "suites": 14,
+      "tests": 107,
+      "passed": 107,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "g3-targeted-final-xml",
+      "xmlManifestSha256": "9453D795D8E6A9BA84B9C63A085DBEC4AD753B86D4FB2C17A88FFC007DE2F3EA"
+    },
+    {
+      "name": "g3-buildSrc-final",
+      "head": "d2808f59a65a6937c0d95cd3402d065e920a4d70",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g3-6f6c379b1d4e4e04a46560e9c8a20e03\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T16:45:40.2278964+08:00",
+      "exitCode": 0,
+      "log": "g3-buildSrc-final.log",
+      "logSha256": "69A28754A437E4B48A48F3AC09B6B4091A32D58084DB461E73CAE58FD21B9171",
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "g3-buildSrc-final-xml",
+      "xmlManifestSha256": "4400282D21A2599D5F94883D2A5088F5C108031D38CE164299AF1E6383F2024F"
+    },
+    {
+      "name": "g3-full-reviewed",
+      "head": "d2808f59a65a6937c0d95cd3402d065e920a4d70",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g3-6f6c379b1d4e4e04a46560e9c8a20e03\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T16:53:07.0131265+08:00",
+      "exitCode": 0,
+      "log": "g3-full-reviewed.log",
+      "logSha256": "C840C72561CC1E55DF1C761788920E8D37DB4D98BD2079633F5A9B861811A387",
+      "suites": 278,
+      "tests": 3637,
+      "passed": 3634,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "g3-full-reviewed-xml",
+      "xmlManifestSha256": "39A1F9EB090E53D4AC1BE1E66119E5FE5ACCD87901372A2EB9BFBAC0B85E56B3"
+    },
+    {
+      "name": "g3-image-final",
+      "head": "d2808f59a65a6937c0d95cd3402d065e920a4d70",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-24T16:54:33.4397358+08:00",
+      "exitCode": 0,
+      "log": "g3-image-final.log",
+      "logSha256": "BE1FE2DD00FCA3CB39F68AE7DD311FE6FB6AE74F0FCA58ECFCCC7696E8F8D3F7"
+    }
+  ],
+  "intermediateEvidence": [
+    {
+      "log": "g3-baseline.log",
+      "suites": 4,
+      "tests": 37,
+      "passed": 37,
+      "failures": 0,
+      "skipped": 0,
+      "xmlDirectory": "baseline-xml",
+      "logSha256": "195F7F800B9304FB03F54F812A60B37CB9597C0446B99CDADEDE338EF3C88C81"
+    },
+    {
+      "log": "g3-row-leave-red.log",
+      "tests": 1,
+      "failures": 1,
+      "reason": "Original row-leave path starts a database task",
+      "logSha256": "2FE98928093B6E12B8BBA95034F6C402BA2FFBEFF4783B2C522CD39EA4728C08"
+    },
+    {
+      "log": "g3-fx-first.log",
+      "tests": 7,
+      "failures": 5,
+      "xmlDirectory": "g3-fx-first-xml",
+      "reason": "Two editing defects plus unchanged-value test data and insufficient dialog answers; no skips added",
+      "logSha256": "AA1D0B211BED607C4EE48D73EEBC17F61E7CF7FF87BF16125D75DAD33B75DC77"
+    },
+    {
+      "log": "g3-fx-second.log",
+      "tests": 27,
+      "passed": 27,
+      "failures": 0,
+      "skipped": 0,
+      "xmlDirectory": "g3-fx-second-xml",
+      "logSha256": "BF36D44D088DF362B2B982E8390B47E505EB464ABB56A33F929FD6CEA068FC95"
+    },
+    {
+      "log": "g3-full-final.log",
+      "tests": 3636,
+      "passed": 3633,
+      "skipped": 3,
+      "failures": 0,
+      "reason": "Intermediate despite filename; later shortcut revision and refresh regression not compiled in this run",
+      "logSha256": "98E5BC64CDACF89D28624578E58CD1DD2435339533F1A181994161DB7BFD54AD"
+    }
+  ],
+  "branchImageArtifacts": [
+    {
+      "path": "build\\jpackage\\DataCube\\DataCube.exe",
+      "bytes": 595968,
+      "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+    },
+    {
+      "path": "build\\jpackage\\DataCube\\app\\DataCube.cfg",
+      "bytes": 369,
+      "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+    },
+    {
+      "path": "build\\jpackage\\DataCube\\runtime\\lib\\modules",
+      "bytes": 101894912,
+      "sha256": "36920E49B48F6EC4E2BE5D33646980C6A4596B3C833217E315D4A2218AF08560"
+    }
+  ],
+  "notVerified": [
+    "Native desktop visual/keyboard/theme/scaling acceptance",
+    "Real Oracle/PostgreSQL/Redis integration",
+    "Installation, update and recovery",
+    "Signing, remote CI and release"
+  ],
+  "knownWarnings": [
+    "Existing unchecked test compilation note",
+    "JEP 493 jlink module notice"
+  ],
+  "historicalUnresolved": "Previously recorded SchemaDiffServiceTest intermittent failure did not recur; root cause remains unknown"
+}
