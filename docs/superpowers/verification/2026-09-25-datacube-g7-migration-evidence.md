@@ -72,3 +72,18 @@ G7MigrationDesktopFixture 使用真实迁移面板、合成 backend、专用空 
 - branch-buildSrc：强制 `:buildSrc:test --rerun-tasks`，8/8 passed、0 skipped，7s；日志 SHA256 `4D9F1E86B34203F09C5B919B7043A984A390540711FADFE0820A785DB76B57B6`。
 - branch-image：jpackageImage 成功，33s；日志 SHA256 `2FE9525F7800359BCA56F42BFD2FF2DA71AC4C4A230136C1818974F48FC1A147`。cfg 无测试 profile/headless 参数；runtime jar 无 G7 合成夹具和测试类。exe/cfg/modules 摘要见 JSON；保留 JEP 493 提示。
 - 审查：768 项源码清单与测试时完全匹配；新复制的证据脚本首次 staged diff 检查发现 EOF 空行，已修正，不涉及产品代码。完整 staged diff 再检查通过后才提交。没有新增驱动、依赖或 SQL 格式化扩展。
+
+### 镜像探针阻断及修复
+
+第一次主体提交 `cc726a2ece5a80fd34873352352d5eac64ffed5f` 合并为 `ce797c1077d9c2f6556c2a46be662d6b02c8a142`，main-full 3806 passed / 3 live skipped（3m13s）。**这些不是最终交付验证**：补做镜像驱动发现探针，DriverManager.getDriver 返回 `No suitable driver`，ServiceLoader 枚举为空。打包的 mergedModule 没有 JDBC provides，旧入口通过 Class.forName 加载驱动，共享入口重构遗漏了这一行为。
+
+修复仍在独立 G7 分支：MigrationConnections.driverFor 显式初始化受支持驱动，所有生产默认 factory 接入；未知协议在 connect 前拒绝，mock 注入路径保持不变。没有改全局模块图、新增依赖或访问任何数据库。
+
+- m7-driver-bootstrap：64/64 passed、0 skipped，包含两驱动发现及未知协议拒绝；classpath 通过不代替镜像探针。
+- branch-image-driver-fix：jpackageImage 成功，32s；日志 SHA256 `00944735E7E423B9A190A2EDE1CD3CAACA3F44BDC7E4C9A459B96D33710F0CE9`。
+- branch-runtime-fixed：在镜像自带 java.exe 中调用实际生产 driverFor，返回 oracle.jdbc.OracleDriver 与 org.postgresql.Driver，connectCalls=0；没有读取真实配置或提供凭据。探针只额外导出 migration 包供反射调用，不修改应用 cfg。
+- 源码：[MigrationRuntimeDriverProbe.java](evidence/g7/MigrationRuntimeDriverProbe.java)。先用 JDK 25 编译到临时目录，再执行镜像 runtime/bin/java.exe `--add-modules com.datacube --add-exports com.datacube/com.datacube.migration=ALL-UNNAMED -cp <临时类目录> MigrationRuntimeDriverProbe`；这不启动应用，也不尝试连接地址。
+
+正在基于修复重新全量验证；旧 768 项清单和首次 main-full 保留为过程证据，最终源清单和 main 将另行记录。模块化驱动加载通过仍不能代替真实 JDBC 连接/事务/权限验证。
+
+修复版分支全量 branch-full-driver-fix：**307 suites / 3811 tests / 3808 passed / 0 failures/errors / 3 live skipped**，3m13s；日志 SHA256 `1D2F07D0E149EE7FEA9AEF60904C2EC99081770F339E3B52AA7B12BBF0C7EDA1`，XML manifest `1EA72AC0D648EB0531917799A2E01FFAB05C6E444A02375C766D87BF53475A16`。修复版 769 项 source manifest SHA256 `66D234149C068AA95879D0AC8D802A37872E3A93828F36A86D1CFAEE6166A4D1`，已逐项核对未变。镜像探针日志 SHA256 `1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82`。至此具备提交驱动补丁并再次合并 main 的证据；仍须 main 独立最终复验。

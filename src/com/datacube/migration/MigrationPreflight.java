@@ -8,7 +8,7 @@ import static com.datacube.migration.MigrationPlan.*;
 /** Read-only preflight. The importer must revalidate database and file identities before writing. */
 public final class MigrationPreflight {
     private final MigrationConnections connections;
-    public MigrationPreflight() { this(DriverManager::getConnection); }
+    public MigrationPreflight() { this(MigrationConnections::connect); }
     public MigrationPreflight(MigrationConnections connections) { this.connections=Objects.requireNonNull(connections); }
 
     public MigrationPlan inspect(MigrationRequest request, MigrationCancellation cancellation) throws SQLException {

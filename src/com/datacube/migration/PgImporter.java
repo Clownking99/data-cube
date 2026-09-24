@@ -19,7 +19,7 @@ public class PgImporter {
 
     public PgImporter(MigrationLogger logger) { this(logger,new MigrationCancellation()); }
     public PgImporter(MigrationLogger logger,MigrationCancellation cancellation) {
-        this(logger,cancellation,DriverManager::getConnection,run -> MigrationReport.of(run).checkpoint(MigrationReport.defaultDirectory()));
+        this(logger,cancellation,MigrationConnections::connect,run -> MigrationReport.of(run).checkpoint(MigrationReport.defaultDirectory()));
     }
     public PgImporter(MigrationLogger logger,MigrationCancellation cancellation,MigrationConnections connections,Checkpoint checkpoint) {
         this.logger=Objects.requireNonNull(logger); this.cancellation=Objects.requireNonNull(cancellation);
