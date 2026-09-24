@@ -2,7 +2,9 @@
 
 编写日期：2026-09-23。此文档旨在让新会话不依赖旧聊天全文即可接手。
 
-**2026-09-24 最新状态：维护者单独授权的 G6/M6 已本地工程完成。** 选定 Schema 的字段/注释检索、离线 SQL 收藏与入口整理实现 `d4b02de`，main 合并 `c182128` 已在全新合成 profile 重新通过全量（3753 passed、3 live skips）、强制 buildSrc（8/8）与 jpackageImage。实际 SHA、失败历史、产物摘要及 14 张合成桌面截图见 [G6 账本](../superpowers/verification/2026-09-24-datacube-g6-discovery-library.md) 和 [实际结果](../superpowers/verification/2026-09-24-datacube-g6-results.json)。原生模态输入与完整 AppShell 流程、OS 缩放/多屏、真库、签名/安装升级和发布仍待验，不能称为发布验收。下文首个目标启动内容为历史记录；勿重复实施 G1–G6。M7–M8 未自动启动。
+**2026-09-25 最新状态：G7/M7 已本地工程完成。** 迁移只读预检查、明确确认、整表事务、逐表状态/安全重试/脱敏报告与有限文件对账已提交并合并 main。主体 cc726a2、驱动修复 8b85bd6、载荷修复 ab6b61c，最终 main 代码 552b709；新 profile 全量 3809 passed、3 live skipped，强制 buildSrc 8/8、jpackageImage 和零连接镜像驱动发现通过。首次镜像驱动失败、大文本载荷回归失败及修复经过见 [G7 账本](../superpowers/verification/2026-09-25-datacube-g7-migration-evidence.md) 和 [实际结果](../superpowers/verification/2026-09-25-datacube-g7-results.json)。原生桌面本轮未取得可定位窗口，真库/签名/安装升级/CI/发布仍未验；不称发布验收。下文 G1–G6 为历史，勿重复实施；G8 须明确授权，不自动启动。
+
+**G6 历史交付：维护者单独授权的 G6/M6 已本地工程完成。** 选定 Schema 的字段/注释检索、离线 SQL 收藏与入口整理实现 `d4b02de`，main 合并 `c182128` 已在全新合成 profile 重新通过全量（3753 passed、3 live skips）、强制 buildSrc（8/8）与 jpackageImage。实际 SHA、失败历史、产物摘要及 14 张合成桌面截图见 [G6 账本](../superpowers/verification/2026-09-24-datacube-g6-discovery-library.md) 和 [实际结果](../superpowers/verification/2026-09-24-datacube-g6-results.json)。原生模态输入与完整 AppShell 流程、OS 缩放/多屏、真库、签名/安装升级和发布仍待验，不能称为发布验收。下文首个目标启动内容为历史记录；勿重复实施 G1–G6。当时未自动启动 M7–M8；后续 G7 见上方最新状态。
 
 **G5 历史交付：** 当前语句执行、可靠来源错误定位、作用域补全与计时口径实现 `76dd221`，补全引用来源边界修正 `c62e86c`，main 最终代码合并 `0e7ca79` 的全量为 3724 passed、3 live skips，buildSrc 8/8 与 jpackageImage 通过。实际证据及降级保留在 [G5 账本](../superpowers/verification/2026-09-24-datacube-g5-sql-context.md)，不作为 G6 新验证使用。
 

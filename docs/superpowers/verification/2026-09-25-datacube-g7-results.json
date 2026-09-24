@@ -724,6 +724,34 @@
       "xmlManifestSha256": "5FC8B99BC123097F4B11C5A7FB8716F91D62993A432FB4556421AFCF648418FF"
     },
     {
+      "name": "main-buildSrc-delivery",
+      "head": "552b709154278a4b17c40dba50960e80bf33a16a",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g7-75f4f39caf5d46e4b1c30922a0804c7b\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T01:36:30.9709566+08:00",
+      "exitCode": 0,
+      "log": "main-buildSrc-delivery.log",
+      "logSha256": "4D9F1E86B34203F09C5B919B7043A984A390540711FADFE0820A785DB76B57B6",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "main-buildSrc-delivery-xml",
+      "xmlManifestSha256": "36DE475612CDF399AD4B67C596A9304946BAE570909E720D4F3CED136FC62564"
+    },
+    {
       "name": "main-buildSrc-final",
       "head": "8b4abfce7aa8364f84d338d37e59af88e4b11a9f",
       "arguments": [
@@ -750,6 +778,47 @@
       "failedTests": [],
       "xmlDirectory": "main-buildSrc-final-xml",
       "xmlManifestSha256": "C4D65F071E23860AC7E1D61DEBF5C1CF91C26816E3EB42ABC042B236A49AD821"
+    },
+    {
+      "name": "main-full-delivery",
+      "head": "552b709154278a4b17c40dba50960e80bf33a16a",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g7-75f4f39caf5d46e4b1c30922a0804c7b\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T01:36:06.359944+08:00",
+      "exitCode": 0,
+      "log": "main-full-delivery.log",
+      "logSha256": "675DBD329D295908A154E51B5A1E2843FDADB1057C39256E18FA95EBFFC271E0",
+      "actualTestTaskRan": true,
+      "suites": 307,
+      "tests": 3812,
+      "passed": 3809,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "main-full-delivery-xml",
+      "xmlManifestSha256": "F718EC24D146D8939ED5CC972A9D10F1B6762D2CC93B33FFDD8487D7D15717A8"
     },
     {
       "name": "main-full-driver-fix",
@@ -834,6 +903,21 @@
       "xmlManifestSha256": "900B13C6E67AB68C2BFEF1F4079AF8E6253D727DB94A978B75F9916F760A8E93"
     },
     {
+      "name": "main-image-delivery",
+      "head": "552b709154278a4b17c40dba50960e80bf33a16a",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-25T01:37:01.0147793+08:00",
+      "exitCode": 0,
+      "log": "main-image-delivery.log",
+      "logSha256": "77D59C2BE872E39AB1353C51B139EA48D12689A13AC04E815D2187A74DC9F8CC",
+      "actualTestTaskRan": false
+    },
+    {
       "name": "main-image-final",
       "head": "8b4abfce7aa8364f84d338d37e59af88e4b11a9f",
       "arguments": [
@@ -847,6 +931,15 @@
       "log": "main-image-final.log",
       "logSha256": "77D59C2BE872E39AB1353C51B139EA48D12689A13AC04E815D2187A74DC9F8CC",
       "actualTestTaskRan": false
+    },
+    {
+      "name": "main-runtime-delivery",
+      "head": "552b709154278a4b17c40dba50960e80bf33a16a",
+      "exitCode": 0,
+      "actualTestTaskRan": false,
+      "log": "main-runtime-delivery.log",
+      "logSha256": "1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82",
+      "result": "Both bundled drivers discovered through production factory; no connect calls; synthetic user.home"
     }
   ],
   "desktop": {
@@ -912,5 +1005,52 @@
       "bytes": 102363826,
       "sha256": "9F82AC5862519DEA2286B2121DFE03BC375899FB28464A58B36D54D0574AE633"
     }
-  ]
+  ],
+  "delivery": {
+    "status": "local_engineering_complete",
+    "implementation": "cc726a2ece5a80fd34873352352d5eac64ffed5f",
+    "driverFix": "8b85bd6b66675945f340d5d7edfd50117d357cec",
+    "payloadFix": "ab6b61c822e67a5304f4888a63a66b4fdc38eb61",
+    "mainCode": "552b709154278a4b17c40dba50960e80bf33a16a",
+    "finalRuns": [
+      "main-full-delivery",
+      "main-buildSrc-delivery",
+      "main-image-delivery",
+      "main-runtime-delivery"
+    ],
+    "supersededFinalCandidates": [
+      "branch-full",
+      "branch-image",
+      "main-full",
+      "branch-full-driver-fix",
+      "branch-image-driver-fix",
+      "main-full-driver-fix",
+      "main-image-final"
+    ],
+    "published": false
+  },
+  "mainArtifacts": [
+    {
+      "path": "build/jpackage/DataCube/DataCube.exe",
+      "bytes": 595968,
+      "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+    },
+    {
+      "path": "build/jpackage/DataCube/app/DataCube.cfg",
+      "bytes": 369,
+      "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+    },
+    {
+      "path": "build/jpackage/DataCube/runtime/lib/modules",
+      "bytes": 102363826,
+      "sha256": "9F82AC5862519DEA2286B2121DFE03BC375899FB28464A58B36D54D0574AE633"
+    }
+  ],
+  "mainSourceComparison": {
+    "files": 769,
+    "byteEqual": 529,
+    "crlfOnly": 240,
+    "otherDifferences": [],
+    "gitContentIdentical": true
+  }
 }

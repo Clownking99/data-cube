@@ -1,6 +1,6 @@
 # G7 / M7 迁移工程验证账本
 
-状态：分支最终验证通过，待本地合并与 main 独立复验。只记录实际运行；跳过不算通过。本地工程通过不等于发布验收。
+状态：G7/M7 本地工程完成，已提交并合并 main，修复后的 main 已独立复验通过。只记录实际运行；跳过不算通过。本地工程通过不等于发布验收。
 
 ## 范围和环境
 
@@ -97,3 +97,15 @@ main 8b4abfc 的 buildSrc 8/8 与镜像再次成功后，审查发现每行允�
 最终载荷修复版 branch-full-delivery：307 suites / 3812 tests / **3809 passed / 0 failures/errors / 3 live skipped**，3m11s。日志 SHA256 `861078BC3CC181CAE996152F127ACD45564365C51EA757911FAF1CF5A834539B`，XML manifest `1581694755144F28AAC19F0CBFEFF531D2500319EA34E8A1FF53C30BB1A7E59B`；最终 769 项源码清单 `delivery-source-manifest.json` SHA256 `D21F8E4712C6E3F2E32A313F7DEEE89AC600822F129BBBAB1BA2BFB9B85544D3`，逐项复核未变。
 
 branch-image-delivery：重新 jpackageImage 成功（31s）；branch-runtime-delivery 在临时 user.home 下再次发现两驱动，零 connect 调用。确切日志和产物摘要见 JSON。
+
+
+## main 最终交付（驱动与载荷预算修复后）
+
+主体实现 `cc726a2`、驱动补丁 `8b85bd6`、载荷补丁 `ab6b61c`；最终 main 代码合并为 `552b709154278a4b17c40dba50960e80bf33a16a`。首次 main 合并 ce797c1 与首次测试只作过程记录。所有结果均来自本轮新执行，最终三项 live skip 与通过分开。
+
+- main-full-delivery：307 suites / 3812 tests / **3809 passed / 0 failures / 0 errors / 3 live skipped**。全新 profile-main-delivery，clean test；日志 SHA256 `675DBD329D295908A154E51B5A1E2843FDADB1057C39256E18FA95EBFFC271E0`；XML manifest `F718EC24D146D8939ED5CC972A9D10F1B6762D2CC93B33FFDD8487D7D15717A8`。
+- main-buildSrc-delivery：强制重跑 **8/8 passed / 0 skipped**；日志 SHA256 `4D9F1E86B34203F09C5B919B7043A984A390540711FADFE0820A785DB76B57B6`。
+- main-image-delivery：jpackageImage 成功；日志 SHA256 `77D59C2BE872E39AB1353C51B139EA48D12689A13AC04E815D2187A74DC9F8CC`。cfg 无测试 profile/headless 参数，runtime jar 无测试/夹具类；产物摘要见 JSON。
+- main-runtime-delivery：镜像自带 Java 调用生产 driverFor，Oracle/PostgreSQL 驱动均发现；没有 connect 调用；临时 user.home。日志 SHA256 `1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82`。不将此项称为真实 JDBC 或应用启动验收。
+- 769 项源清单：529 项字节相同，240 项仅 CRLF/LF 不同，无其他差异；Git 内容一致。最终源码、测试与构建无未提交改动，仅最终文档证据提交补充结果。
+- 已完成预检查/确认/数据与证据绑定、表级事务/取消/未知提交、显式安全重试、报告恢复与 UI/CLI 边界审查。原生桌面、真库、签名/安装升级、远端 CI 与发布仍待授权；G8 未启动。
