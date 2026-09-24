@@ -195,7 +195,7 @@ class SqlEditorConnectionGuidanceTest {
         @SuppressWarnings("unchecked")
         void selectKnownCandidate(ConnConfig config) throws Exception {
             // Model a previously warmed candidate. This UI test must never do metadata/network I/O.
-            if (config != null) ((Set<String>) field(pane, "prewarmed")).add(config.id());
+            // Completion metadata is lazy; selecting a candidate performs no I/O.
             context.setActiveConnection(config);
         }
         @Override public void close() throws Exception {

@@ -30,6 +30,18 @@ import static org.junit.jupiter.api.Assertions.*;
 class OracleSqlRunnerExecutionControlTest {
     private final OracleSqlRunner runner = new OracleSqlRunner(new OracleSqlDialect());
 
+    @Test void leadingCommentDoesNotSplitOrStripAnAnonymousBlocksFinalSemicolon() {
+        JdbcScenario jdbc = new JdbcScenario();
+        String block = "-- synthetic block\nBEGIN NULL; NULL; END;";
+        var result = runner.executeScript(jdbc.connection(), block + "\n/", null, SqlExecutionOptions.defaults(5), null);
+        assertEquals(List.of(block), jdbc.executedSql);
+        assertEquals(1, result.size());
+        assertEquals(QueryResult.Kind.UPDATE, result.getFirst().result().kind);
+        assertTrue(result.getFirst().result().executionMillis >= 0);
+        var analysis = com.datacube.sqleditor.SqlSafetyAnalyzer.analyze(block + "\n/", true);
+        assertEquals(com.datacube.sqleditor.SqlSafetyAnalyzer.StatementKind.WRITE, analysis.statements().getFirst().kind());
+    }
+
     @Test
     void appliesTimeoutToSchemaUserSqlAndBothExplainPathsWithoutChangingReadOnlyState() {
         JdbcScenario jdbc = new JdbcScenario();

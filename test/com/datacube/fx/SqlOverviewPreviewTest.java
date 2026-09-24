@@ -33,7 +33,7 @@ class SqlOverviewPreviewTest {
                 f.show(List.of(new ScriptOutcome(7, "select A", QueryResult.update(1, 2)),
                         new ScriptOutcome(7, sql, QueryResult.error("original error", 2)),
                         new ScriptOutcome(7, "select B", QueryResult.timeout("timeout", 3))));
-                assertEquals(List.of("#", "类型", "耗时", "SQL 摘要", "结果"), f.table().getColumns().stream().map(TableColumn::getText).toList());
+                assertEquals(List.of("#", "类型", "原计时", "SQL 摘要", "结果"), f.table().getColumns().stream().map(TableColumn::getText).toList());
                 assertEquals("select  'Z  <b>literal</b>' from sample; -- original snapshot", preview(f).getCellData(1));
                 var column = preview(f); column.setSortType(TableColumn.SortType.DESCENDING);
                 f.table().getSortOrder().setAll(List.of(column)); f.table().sort();

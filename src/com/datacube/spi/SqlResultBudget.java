@@ -63,11 +63,13 @@ public final class SqlResultBudget {
         if (result.kind == QueryResult.Kind.ERROR) {
             String message = text(result.errorMessage, 16_384);
             if (!java.util.Objects.equals(message, result.errorMessage)) message += " [错误详情已省略]";
+            QueryResult original = result;
             result = switch (result.failureKind) {
                 case SQL_ERROR -> QueryResult.error(message, result.elapsedMillis);
                 case CANCELLED -> QueryResult.cancelled(message, result.elapsedMillis);
                 case TIMEOUT -> QueryResult.timeout(message, result.elapsedMillis);
             };
+            result = result.withExecutionDetails(original.errorPosition, original.executionMillis, original.fetchMillis);
         }
         boolean shortened = kept.length() < sql.length();
         if (shortened) result = result.withRetentionNotice("SQL 仅保留前缀；" + result.retentionNotice);

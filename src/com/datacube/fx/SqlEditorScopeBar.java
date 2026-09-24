@@ -27,6 +27,9 @@ final class SqlEditorScopeBar implements AutoCloseable {
     private final FlowPane root = new FlowPane(12, 4);
     private final Label position = new Label();
     private final Label scope = new Label();
+    private final Label currentScope = new Label();
+    private final ReadOnlyStringWrapper currentLabel = new ReadOnlyStringWrapper();
+    private BooleanSupplier oracleMode = () -> false;
     private final CheckBox wrap = new CheckBox("自动换行");
     private final InvalidationListener editorListener = ignored -> refresh();
     private final Runnable shortcutsListener = () -> {
@@ -34,6 +37,9 @@ final class SqlEditorScopeBar implements AutoCloseable {
         else Platform.runLater(this::refresh);
     };
     private boolean closed;
+    private String contextText;
+    private int contextCaret = -1;
+    private boolean contextOracle;
 
     SqlEditorScopeBar(CodeArea editor, ShortcutSettings shortcuts) {
         this(editor, shortcuts, null);
@@ -59,7 +65,8 @@ final class SqlEditorScopeBar implements AutoCloseable {
         scope.setMinWidth(0);
         scope.setMinHeight(Region.USE_PREF_SIZE);
         scope.setTooltip(new Tooltip("提示下一次执行的文本范围，不表示已执行；执行计划仍只处理范围内第一条语句。"));
-        root.getChildren().addAll(position, scope);
+        currentScope.setId("sql-current-statement-scope"); currentScope.setWrapText(true);
+        root.getChildren().addAll(position, scope, currentScope);
         if (navigation != null) root.getChildren().add(navigation);
         wrap.setId("sql-editor-wrap");
         wrap.setMinWidth(Region.USE_PREF_SIZE);
@@ -84,7 +91,10 @@ final class SqlEditorScopeBar implements AutoCloseable {
     Parent getNode() { return root; }
     ReadOnlyStringProperty executeLabelProperty() { return executeLabel.getReadOnlyProperty(); }
 
-    private void refresh() {
+    ReadOnlyStringProperty currentLabelProperty() { return currentLabel.getReadOnlyProperty(); }
+    void setOracleMode(BooleanSupplier mode) { oracleMode = mode; refresh(); }
+
+    void refresh() {
         if (closed) return;
         String text = editor.getText();
         // RichTextFX may notify text before selection/caret settle during a document replacement.
@@ -99,13 +109,19 @@ final class SqlEditorScopeBar implements AutoCloseable {
         executeLabel.set(label + " (" + shortcuts.get(ShortcutAction.SQL_EXECUTE).getDisplayText() + ")");
         scope.setText(range.selection() ? "执行范围：选中内容"
                 : end > start ? "执行范围：全部 SQL（选区仅含空白）" : "执行范围：全部 SQL");
+        currentLabel.set("执行当前语句 (" + shortcuts.get(ShortcutAction.SQL_EXECUTE_CURRENT).getDisplayText() + ")");
+        boolean oracle = oracleMode.getAsBoolean();
+        if (contextCaret != caret || contextOracle != oracle || !text.equals(contextText)) {
+            currentScope.setText(com.datacube.sqleditor.SqlCurrentStatement.resolve(text, caret, oracle).description());
+            contextText = text; contextCaret = caret; contextOracle = oracle;
+        }
         position.setAccessibleText(position.getText());
         scope.setAccessibleText(scope.getText());
     }
 
     @Override public void close() {
         if (closed) return;
-        closed = true;
+        closed = true; contextText = null;
         wrap.setDisable(true);
         editor.textProperty().removeListener(editorListener);
         editor.selectionProperty().removeListener(editorListener);

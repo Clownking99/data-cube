@@ -27,9 +27,9 @@ final class SqlScriptDetailsDialog extends Dialog<Void> {
             if (owner.getScene() != null) getDialogPane().getStylesheets().setAll(owner.getScene().getStylesheets());
         }
         Label identity = label("sql-script-detail-identity", "语句 #" + entry.index() + " · " + entry.status()
-                + " · " + entry.elapsedMillis() + "ms"
+                + " · 原计时 " + entry.elapsedMillis() + "ms · " + entry.timingDescription()
                 + (entry.kind() == QueryResult.Kind.ERROR ? "" : "\n" + entry.resultDescription()));
-        Label boundary = label("sql-script-detail-boundary", "只读：本次已返回的信息，不重新执行 SQL。\n"
+        Label boundary = label("sql-script-detail-boundary", "只读：本次已返回的信息，不重新执行 SQL。\n原计时沿用历史字段，不代表全流程耗时。计时：执行为 JDBC execute；抓取为 ResultSet 获取与读取，均不含列注释。渲染计时见结果栏（不含布局/绘制）。\n"
                 + "正常返回不代表事务已提交；失败、超时或取消不代表已回滚。"
                 + (entry.kind() == QueryResult.Kind.QUERY ? "\n这里只记录已加载行数，不保留查询数据。" : ""));
         TextArea sql = area("sql-script-detail-sql", "只读 SQL", entry.sql().value(), 10);

@@ -187,6 +187,43 @@ class SqlEditorResultFilterContractTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"button", "default", "rebound"})
+    void currentStatementHasIndependentAdmissionAndNeverUsesTheSelectionOrWholeScript(String action) throws Exception {
+        PreparedRunner prepared = new PreparedRunner(QueryResult.update(1, 0)); prepared.blockScript = true;
+        String script = "select 'excluded';\nselect 'current';\nselect 'also excluded'";
+        try (PaneFixture fixture = databaseFixture(prepared)) {
+            FxUiTestSupport.call(() -> {
+                var editor = (org.fxmisc.richtext.CodeArea) field(fixture.pane, "editorArea");
+                var current = (Button) fixture.pane.getNode().lookup("#sql-execute-current");
+                editor.replaceText("select 1;\n-- comment"); editor.moveTo(editor.getLength());
+                current.fire(); assertEquals(0, prepared.scriptCalls.get());
+                assertFalse((boolean) field(fixture.pane, "running"));
+                editor.replaceText(script); editor.selectRange(0, script.indexOf("current") + 2);
+                assertTrue(((javafx.scene.control.Label) fixture.pane.getNode().lookup("#sql-current-statement-scope")).getText().contains("行 2–2"));
+                if (action.equals("button")) current.fire();
+                else if (action.equals("default")) editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.ENTER, false, true, false, false));
+                else {
+                    ((ShortcutSettings) field(fixture.pane, "shortcuts")).apply(Map.of(
+                            com.datacube.config.ShortcutAction.SQL_EXECUTE_CURRENT,
+                            javafx.scene.input.KeyCombination.keyCombination("F6")));
+                    assertTrue(current.getText().contains("F6"));
+                    editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.ENTER, false, true, false, false));
+                    assertFalse((boolean) field(fixture.pane, "running"));
+                    editor.fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.F6, false, false, false, false));
+                }
+                assertTrue(current.isDisabled()); return null;
+            });
+            assertTrue(prepared.scriptEntered.await(5, TimeUnit.SECONDS));
+            assertEquals("select 'current'", prepared.lastScriptSql);
+            prepared.scriptRelease.countDown(); operations(fixture.pane).idle().toCompletableFuture().get(5, TimeUnit.SECONDS);
+            FxUiTestSupport.call(() -> {
+                assertEquals(script, ((org.fxmisc.richtext.CodeArea) field(fixture.pane, "editorArea")).getText());
+                return null;
+            });
+            assertEquals(1, prepared.scriptCalls.get());
+        } finally { prepared.scriptRelease.countDown(); }
+    }
+    @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"button", "shortcut"})
     void selectedMultipleStatementsReachTheResultSwitcherWithoutExecutingExcludedSql(String action) throws Exception {
         QueryResult first = QueryResult.query(List.of("first"), List.of(List.of("first-value")), 1);
@@ -1741,9 +1778,7 @@ class SqlEditorResultFilterContractTest {
         JdbcEditorSession owned = preparedSession(config, prepared);
         PaneFixture fixture = new PaneFixture(connections, owned);
         FxUiTestSupport.call(() -> {
-            @SuppressWarnings("unchecked")
-            Set<String> prewarmed = (Set<String>) field(fixture.pane, "prewarmed");
-            prewarmed.add(config.id());
+            // Metadata is now lazy; no eager prewarm suppression is needed.
             fixture.context.setActiveConnection(config);
             invoke(fixture.pane, "admitCurrentConnection");
             setField(fixture.pane, "jdbcSession", owned);

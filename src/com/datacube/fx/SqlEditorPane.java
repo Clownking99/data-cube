@@ -29,17 +29,14 @@ import com.datacube.sqleditor.result.SafeSelectEligibility;
 import com.datacube.sqleditor.result.TsvClipboardFormatter;
 import com.datacube.spi.SqlRunner;
 import com.datacube.spi.ScriptErrorPolicy;
-import com.datacube.spi.model.ColumnInfo;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.ConnectionSafetyOptions;
 import com.datacube.spi.model.DbType;
 import com.datacube.spi.model.QueryResult;
 import com.datacube.spi.model.ResultColumn;
-import com.datacube.spi.model.SchemaInfo;
 import com.datacube.spi.model.ScriptOutcome;
 import com.datacube.spi.model.TableInfo;
 import com.datacube.spi.model.TableRef;
-import com.datacube.spi.model.ViewInfo;
 
 import javafx.application.Platform;
 import javafx.beans.value.ChangeListener;
@@ -75,7 +72,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -101,12 +97,6 @@ public final class SqlEditorPane implements AutoCloseable {
     private static final List<String> SQL_KEYWORDS = java.util.stream.Stream.concat(
             SqlHighlighter.keywords().stream(), java.util.stream.Stream.of("GROUP BY", "ORDER BY")).distinct().toList();
      
-     /** 关键字集合（大写），用于别名解析时排除关键字被误判为别名。 */
-     private static final Set<String> KEYWORDS_UPPER = new java.util.HashSet<>(SQL_KEYWORDS);
-     
-     /** 匹配 FROM 子句区域（至下一个子句边界或语句结束），忽略大小写与换行。 */
-     private static final Pattern FROM_REGION = Pattern.compile(
-             "(?is)\\bfrom\\b(.*?)(?:\\bwhere\\b|\\bgroup\\b|\\border\\b|\\bhaving\\b|\\blimit\\b|\\bunion\\b|;|$)");
     private static final Pattern SAFE_DATABASE_FILTER_FAILURE = Pattern.compile(
             "数据库查询(?:失败|超时|已取消)(?: \\((?:SQLState=[A-Za-z0-9]{5}"
                     + "(?:, vendorCode=-?\\d+)?|vendorCode=-?\\d+)\\))?");
@@ -137,14 +127,10 @@ public final class SqlEditorPane implements AutoCloseable {
     private final ChangeListener<CommentMode> commentModeListener;
     private final ChangeListener<ConnConfig> activeConnectionListener;
 
-    /** 预热的元数据名称（表/视图/schema），线程安全。 */
-    private final Set<String> metaNames = ConcurrentHashMap.newKeySet();
-    /** 已预热的 connId（每连接只预热一次）。 */
-    private final Set<String> prewarmed = ConcurrentHashMap.newKeySet();
-    /** 列名缓存：key = folded(schema).folded(table)，value = 列名列表。 */
-    private final Map<String, List<String>> columnCache = new ConcurrentHashMap<>();
-    /** 正在后台加载列的 key，避免并发重复拉取。 */
-    private final Set<String> columnLoading = ConcurrentHashMap.newKeySet();
+    /** 当前明确目标的惰性元数据读取及有界缓存。 */
+    private final SqlCompletionLookup completionLookup;
+    private final Label completionNotice = new Label();
+
     private final VBox root = new VBox(8);
     private CodeArea editorArea;
     private SqlFindBar findBar;
@@ -184,6 +170,9 @@ public final class SqlEditorPane implements AutoCloseable {
     private TitledPane resultPane;
     private Label statusLabel;
     private TextField schemaField;
+    private final Button executeCurrentBtn = new Button();
+    private long editorRevision;
+    private com.datacube.sqleditor.SqlExecutionSource executionSource;
     private Button executeBtn, explainBtn, formatBtn, clearBtn;
     private Button saveSqlFileBtn, saveAsSqlFileBtn, reloadSqlFileBtn;
     private java.util.function.BooleanSupplier reloadSqlFileConfirmation = () ->
@@ -302,6 +291,13 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(tasks::close);
             this.metadataTasks = new FxSerialTaskQueue(runner);
             construction.own(metadataTasks::close);
+            this.completionLookup = new SqlCompletionLookup(runner, metadataTasks, (target, control) -> {
+                if (!java.util.Objects.equals(connections.config(target.connection().id()), target.connection()))
+                    throw new java.sql.SQLException("Completion configuration changed");
+                return com.datacube.service.SqlCompletionMetadata.load(target, connections::openDedicated, control);
+            }, () -> { if (completionAllowed() && autoComplete != null) autoComplete.refresh(); },
+                    text -> { if (completionAllowed()) completionNotice.setText(text); });
+            construction.own(completionLookup::close);
             this.sessionOperations = new SerialSessionOperationQueue(runner);
             construction.own(sessionOperations::close);
             this.sessionCleanup = new StrictCleanupRetryChannel(
@@ -320,7 +316,7 @@ public final class SqlEditorPane implements AutoCloseable {
             this.activeConnectionListener = (obs, oldConnection, connection) -> {
                 if (recoveryIntent != null) return;
                 if (admission.pinned() == null) {
-                    if (connection != null && connection.type() != DbType.REDIS) prewarm(connection);
+                    if (connection != null && connection.type() != DbType.REDIS) resetCompletionContext(connection);
                     renderDisconnectedCandidate(connection);
                     draftEdited();
                 }
@@ -554,7 +550,7 @@ public final class SqlEditorPane implements AutoCloseable {
         if (jdbcSession == null) connectionBadge.setText("🔗 " + pinned.name() + " · 未连接");
         renderConnectionGuidance();
         draftEdited();
-        if (recoveryIntent != null) prewarm(pinned);
+        if (recoveryIntent != null) resetCompletionContext(pinned);
         return pinned;
     }
 
@@ -605,6 +601,8 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
     void closeResources() {
+        completionLookup.close();
+        executionSource = null;
         SqlProgressMailbox progress = scriptProgress;
         if (progress != null) progress.close();
         if (!resourcesClosing.compareAndSet(false, true)) return;
@@ -628,6 +626,7 @@ public final class SqlEditorPane implements AutoCloseable {
     /** Lightweight JavaFX phase; callers invoke this only on the FX Application Thread. */
     void finalizeCloseOnFx() {
         if (!uiFinalized.compareAndSet(false, true)) return;
+        completionLookup.close(); executionSource = null;
         if (scriptProgress != null) scriptProgress.close();
         scriptProgress = null; displayedResult = null; lastQuerySql = null;
         BestEffortCloseSequence.run(
@@ -950,6 +949,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void runDestructiveClose(ClosePlan snapshot) {
+        completionLookup.close();
         sessionOperations.suppressCallbacks();
         if (findBar != null) findBar.close();
         if (fileController != null) fileController.close();
@@ -1012,6 +1012,7 @@ public final class SqlEditorPane implements AutoCloseable {
         primary.setAlignment(Pos.CENTER_LEFT);
 
         schemaField = new TextField();
+        schemaField.textProperty().addListener((obs, before, after) -> completionLookup.invalidate());
         schemaField.setPromptText("schema（可选）");
         schemaField.setPrefWidth(160);
 
@@ -1036,6 +1037,9 @@ public final class SqlEditorPane implements AutoCloseable {
         executeBtn = new Button();
         executeBtn.textProperty().bind(editorScopeBar.executeLabelProperty());
         executeBtn.setId("sql-execute");
+        executeCurrentBtn.setId("sql-execute-current");
+        executeCurrentBtn.textProperty().bind(editorScopeBar.currentLabelProperty());
+        executeCurrentBtn.setOnAction(e -> onExecute(true));
         executeBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
         executeBtn.setOnAction(e -> onExecute());
 
@@ -1083,7 +1087,7 @@ public final class SqlEditorPane implements AutoCloseable {
         primary.getChildren().addAll(
                 sqlActionGroup(new Label("Schema:"), schemaField),
                 sqlActionGroup(saveSqlFileBtn, saveAsSqlFileBtn, reloadSqlFileBtn),
-                sqlActionGroup(executeBtn, explainBtn, analyzeCheck),
+                sqlActionGroup(executeBtn, executeCurrentBtn, explainBtn, analyzeCheck),
                 sqlActionGroup(find, formatBtn, clearBtn),
                 sqlActionGroup(panelLayout.menu()),
                 sqlActionGroup(indentActions.indentButton(), indentActions.outdentButton(), lineCommentAction.button(), duplicateLinesAction.button()),
@@ -1242,6 +1246,8 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void renderDisconnectedCandidate(ConnConfig candidate) {
+        if (editorScopeBar != null) editorScopeBar.refresh();
+        completionLookup.invalidate();
         if (connectionBadge == null) return;
         if (candidate == null || candidate.type() == DbType.REDIS) {
             connectionBadge.setText("🔌 未绑定连接");
@@ -1339,6 +1345,7 @@ public final class SqlEditorPane implements AutoCloseable {
         editorArea.setParagraphGraphicFactory(LineNumberFactory.get(editorArea));
         // 语法高亮：文本变化后单遍正则重算样式区间并应用到富文本
         editorArea.textProperty().addListener((obs, oldText, newText) -> {
+            editorRevision++;
             recoveredUneditedSql = null;
             applyHighlighting(newText);
         });
@@ -1347,6 +1354,8 @@ public final class SqlEditorPane implements AutoCloseable {
             if (shortcuts.get(ShortcutAction.SQL_EXECUTE).match(e)) {
                 e.consume();
                 onExecute();
+            } else if (shortcuts.get(ShortcutAction.SQL_EXECUTE_CURRENT).match(e)) {
+                e.consume(); onExecute(true);
             } else if (shortcuts.get(ShortcutAction.SQL_BLOCK_COMMENT).match(e)) {
                 // 块注释切换（先于行注释判定：两者组合键精确匹配，Shift 状态互斥）
                 e.consume();
@@ -1393,7 +1402,9 @@ public final class SqlEditorPane implements AutoCloseable {
                 edit -> autoComplete.withoutSuggestions(edit));
         autoComplete = new SqlAutoComplete(editorArea, this::completionCandidates, shortcuts);
         autoComplete.setMemberProvider(this::membersFor);
-        installMetadataPrewarm();
+        autoComplete.setOracleMode(this::oracleContext);
+        autoComplete.setExplicitRequest(completionLookup::retryFailures);
+        installCompletionContextListener();
         // 虚拟化滚动容器：为 CodeArea 提供垂直/水平滚动条（宽/长 SQL 友好）。
         VirtualizedScrollPane<CodeArea> scroll = new VirtualizedScrollPane<>(editorArea);
         // A wrapped find/replace panel must not consume the entire editor half of the split pane.
@@ -1430,7 +1441,11 @@ public final class SqlEditorPane implements AutoCloseable {
         });
         editorScopeBar = new SqlEditorScopeBar(editorArea, shortcuts, goToLineBar.launcher(),
                 () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get() && !tasks.isClosed());
-        VBox content = new VBox(findBar.getNode(), goToLineBar.getNode(), scroll, editorScopeBar.getNode());
+        editorScopeBar.setOracleMode(this::oracleContext);
+        completionNotice.setId("sql-completion-notice"); completionNotice.setWrapText(true);
+        completionNotice.managedProperty().bind(completionNotice.textProperty().isNotEmpty());
+        completionNotice.visibleProperty().bind(completionNotice.managedProperty());
+        VBox content = new VBox(findBar.getNode(), goToLineBar.getNode(), scroll, editorScopeBar.getNode(), completionNotice);
         VBox.setVgrow(scroll, Priority.ALWAYS);
         TitledPane pane = new TitledPane("SQL 编辑器", content);
         // SplitPane 中不可折叠，改用分隔条调整高度；去除固定 prefHeight 以尊重用户拖拽。
@@ -1444,6 +1459,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private VBox resultContainer() {
         resultTable = new TableView<>();
+        resultTable.setMinHeight(100);
         resultRowDisplay = new SqlResultRowDisplay(resultTable, this::resultCellViewingAllowed);
         resultColumnMenu = new SqlResultColumnMenu(resultTable, this::resultCellViewingAllowed);
         resultTable.setPlaceholder(new Label("（无结果）"));
@@ -1511,6 +1527,7 @@ public final class SqlEditorPane implements AutoCloseable {
         configureResultViewMenu();
         renderResultFilterToolbar();
         batchResults = new SqlBatchResults(this::resultCellViewingAllowed, this::showBatchSelection);
+        batchResults.onLocateError(this::locateExecutionError);
         batchResults.onClear(() -> { batchViews.clear(); displayedChoice = null; });
         pinnedResults = new SqlPinnedResults(this::pinnedResultViewingAllowed, this::canPinCurrentResult, this::pinCurrentResult);
         scriptDetails = new SqlScriptDetails(resultTable, this::resultCellViewingAllowed, batchResults::selectResult);
@@ -1546,10 +1563,26 @@ public final class SqlEditorPane implements AutoCloseable {
                 editorArea.getSelection().getStart(), editorArea.getSelection().getEnd()).extract(text);
     }
 
-    private void onExecute() {
+    private boolean oracleContext() {
+        ConnConfig cfg = currentConn();
+        return cfg != null && cfg.type() == DbType.ORACLE;
+    }
+
+    private void onExecute() { onExecute(false); }
+
+    private void onExecute(boolean currentOnly) {
         if (running || sessionOperations.snapshot().pending()) return;
         if (rejectMissingConnection()) return;
-        String sql = selectedOrAllSql();
+        String sourceText = editorArea.getText();
+        var executionRange = com.datacube.sqleditor.SqlExecutionRange.resolve(sourceText,
+                editorArea.getSelection().getStart(), editorArea.getSelection().getEnd());
+        if (currentOnly) {
+            var current = com.datacube.sqleditor.SqlCurrentStatement.resolve(sourceText, editorArea.getCaretPosition(), oracleContext());
+            if (!current.available()) { statusLabel.setText(current.description()); return; }
+            executionRange = current.range();
+        }
+        String sql = executionRange.extract(sourceText);
+        var sourceSnapshot = com.datacube.sqleditor.SqlExecutionSource.capture(sourceText, editorRevision, executionRange, oracleContext());
         if (sql.trim().isEmpty()) {
             showAlert("请输入 SQL");
             return;
@@ -1574,6 +1607,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
         if (scriptProgress != null) scriptProgress.close();
         scriptProgress = progress;
+        executionSource = sourceSnapshot;
         scriptProgressCancelled = false;
         incrementalBrowsing = true;
         clearResultFilterState();
@@ -2549,7 +2583,20 @@ public final class SqlEditorPane implements AutoCloseable {
         }
     }
 
+    private void locateExecutionError(SqlBatchResults.Choice choice) {
+        if (!resultCellViewingAllowed() || executionSource == null) {
+            statusLabel.setText("此结果没有可用的原始执行快照"); return;
+        }
+        var outcome = choice.outcome();
+        var location = executionSource.locate(outcome.index(), outcome.result().errorPosition, editorRevision);
+        statusLabel.setText(location.message());
+        if (location.available() && panelLayout.revealEditor()) {
+            editorArea.moveTo(location.offset()); editorArea.requestFollowCaret(); editorArea.requestFocus();
+        }
+    }
+
     private void showBatchSelection(SqlBatchResults.Choice selection) {
+        long renderStarted = System.nanoTime();
         if (displayedChoice != null && displayedChoice.outcome() != null
                 && displayedResult != null && displayedResult.kind == QueryResult.Kind.QUERY) {
             resultToolbar.flushPendingSearch();
@@ -2567,7 +2614,7 @@ public final class SqlEditorPane implements AutoCloseable {
             if (selection.outcome() == null) {
                 clearResultFilterState(); useTable(); exportResultBtn.setDisable(true); copyInsertBtn.setDisable(true);
                 resultTable.getColumns().clear(); resultTable.getItems().clear();
-                addColumn("#", 0); addColumn("类型", 1); addColumn("耗时", 2); addColumn("SQL 摘要", 4); addColumn("结果", 3);
+                addColumn("#", 0); addColumn("类型", 1); addColumn("原计时", 2); addColumn("SQL 摘要", 4); addColumn("结果", 3);
                 resultTable.getColumns().get(0).setPrefWidth(50); resultTable.getColumns().get(1).setPrefWidth(90);
                 resultTable.getColumns().get(2).setPrefWidth(90); resultTable.getColumns().get(3).setPrefWidth(300);
                 resultTable.getColumns().get(4).setPrefWidth(320);
@@ -2588,7 +2635,7 @@ public final class SqlEditorPane implements AutoCloseable {
             }
             statusLabel.setText(report.summary());
             statusLabel.setStyle("-fx-text-fill: " + (report.hasFailures() ? "-status-error" : "-status-ok") + "; -fx-font-size: 12px;");
-        } finally { showingBatchResult = false; }
+        } finally { showingBatchResult = false; batchResults.rendered(System.nanoTime() - renderStarted); }
     }
 
     private void addColumn(String title, int idx) {
@@ -2709,6 +2756,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void clearResultFilterState() {
+        if (!showingBatchResult && scriptProgress == null) executionSource = null;
         if (!showingBatchResult && batchResults != null) batchResults.clear();
         if (scriptDetails != null) scriptDetails.clear();
         resultStatusRevision++;
@@ -2920,6 +2968,7 @@ public final class SqlEditorPane implements AutoCloseable {
         boolean busy = isRunning || running || !operation.accepting() || operation.pending();
         boolean disabled = guidance().blocksExecution(busy);
         executeBtn.setDisable(disabled);
+        executeCurrentBtn.setDisable(disabled);
         explainBtn.setDisable(disabled);
         formatAction.setBusy(busy);
         clearBtn.setDisable(busy);
@@ -2936,175 +2985,66 @@ public final class SqlEditorPane implements AutoCloseable {
 
     // ---------- 自动补全：候选词 + 元数据预热 ----------
 
-    /** 补全候选：SQL 关键字 + 已预热的元数据名称。 */
+    private boolean completionAllowed() {
+        return !recoveryPassive() && !tasks.isClosed() && !admission.closing() && !resourcesClosing.get() && !uiFinalized.get();
+    }
+
+    private String completionSchema(ConnConfig active) {
+        String raw = schemaField.getText();
+        if (raw.isBlank() && active.type() == DbType.ORACLE) raw = active.username();
+        // The existing Schema field uses unquoted-name folding. Quoted SQL qualifiers are resolved separately.
+        if (raw == null || raw.isBlank() || raw.indexOf('"') >= 0) return null;
+        return active.type() == DbType.ORACLE ? raw.trim().toUpperCase(java.util.Locale.ROOT)
+                : raw.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
     private Collection<String> completionCandidates() {
-        if (tasks.isClosed()) return List.of();
-        List<String> all = new ArrayList<>(SQL_KEYWORDS.size() + metaNames.size());
-        all.addAll(SQL_KEYWORDS);
-        all.addAll(metaNames);
+        if (!completionAllowed()) return List.of();
+        List<String> all = new ArrayList<>(SQL_KEYWORDS);
+        ConnConfig active = currentConn();
+        if (active != null && active.type() != DbType.REDIS) {
+            String schema = completionSchema(active);
+            if (schema != null) all.addAll(metadataNames(active, schema, null));
+            else completionNotice.setText("表名补全需要明确 Schema；仍可补全关键字");
+        }
         return all;
     }
 
-    /** 预热元数据名称（每连接一次）：绑定连接只预热它；未绑定时监听全局活动连接变化。 */
-    private void installMetadataPrewarm() {
+    /** Registers context changes only; no JDBC or catalog scanning on editor open. */
+    private void installCompletionContextListener() {
         if (recoveryPassive()) return;
-        if (editorConnection != null) {
-            prewarm(editorConnection);
-            return;
-        }
+        if (editorConnection != null) { resetCompletionContext(editorConnection); return; }
         session.activeConnectionProperty().addListener(activeConnectionListener);
-        ConnConfig cur = session.getActiveConnection();
-        if (cur != null) prewarm(cur);
+        resetCompletionContext(session.getActiveConnection());
     }
 
-    /**
-     * 后台加载 schema/表/视图名称并入库。best-effort：与连接树共享同一 JDBC 连接，
-     * 若并发冲突或失败则静默跳过并允许下次重试，不影响关键字补全。
-     */
-    private void prewarm(ConnConfig cfg) {
-        if (recoveryPassive()) return;
-        if (tasks.isClosed() || cfg == null || cfg.type() == DbType.REDIS) return;
-        final String connId = cfg.id();
-        final String database = cfg.database();
-        if (!prewarmed.add(connId)) return;
-        metadataTasks.submit(() -> {
-            List<String> schemas = new ArrayList<>();
-            if (treeSvc.hasSchemaLevel(connId)) {
-                for (SchemaInfo s : treeSvc.schemas(connId, database)) schemas.add(s.name());
-            } else {
-                schemas.add(null);
-            }
-            List<String> collected = new ArrayList<>();
-            for (String schema : schemas) {
-                if (schema != null) collected.add(schema);
-                try {
-                    for (TableInfo t : treeSvc.tables(connId, schema)) collected.add(t.name());
-                    for (ViewInfo v : treeSvc.views(connId, schema)) collected.add(v.name());
-                } catch (Exception ignore) {
-                    // 单个 schema 读取失败不阻断其余
-                }
-                if (collected.size() > 5000) break;
-            }
-            return collected;
-        }, metaNames::addAll, failure -> prewarmed.remove(connId));
+    private void resetCompletionContext(ConnConfig cfg) {
+        if (!completionAllowed()) return;
+        completionLookup.invalidate();
+        completionNotice.setText("");
+        if (editorScopeBar != null) editorScopeBar.refresh();
     }
 
-    // ---------- 列名成员补全（别名./表名. 上下文） ----------
-
-    /**
-     * 为限定符（别名或表名）提供列名候选：解析编辑器中 FROM/JOIN 的别名映射，
-     * 折叠标识符大小写（Oracle→大写）后按 schema.table 命中列缓存；未命中则触发
-     * 后台加载并先返回空，加载完成后回调 {@link SqlAutoComplete#refresh()}。
-     */
     private Collection<String> membersFor(String qualifier) {
-        if (recoveryPassive()) return List.of();
-        if (tasks.isClosed()) return List.of();
+        if (!completionAllowed()) return List.of();
         ConnConfig active = currentConn();
-        if (active == null) return List.of();
-        String connId = active.id();
-        var dialect = connections.provider(connId).dialect();
-        String table = resolveAlias(qualifier);
-        if (table == null) table = qualifier; // 未命中别名则当作表名直接查
-        String tableName = dialect.foldUnquotedIdentifier(table);
-        if (tableName == null || tableName.isEmpty()) return List.of();
+        if (active == null || active.type() == DbType.REDIS) return List.of();
+        var context = com.datacube.sqleditor.SqlCompletionContext.resolve(editorArea.getText(),
+                editorArea.getCaretPosition(), qualifier, active.type() == DbType.ORACLE, completionSchema(active));
+        completionNotice.setText(context.notice());
+        if (!context.physical()) return context.columns();
+        return metadataNames(active, context.schema(), context.table());
+    }
 
-        String rawSchema = schemaField.getText().trim();
-        String schema;
-        if (!rawSchema.isEmpty()) {
-            schema = dialect.foldUnquotedIdentifier(rawSchema);
-        } else if (active.type() == DbType.ORACLE
-                && active.username() != null && !active.username().isEmpty()) {
-            // Oracle 默认 schema 即登录用户名
-            schema = dialect.foldUnquotedIdentifier(active.username());
-        } else {
-            schema = null;
+    private List<String> metadataNames(ConnConfig active, String schema, String table) {
+        if (!completionAllowed()) return List.of();
+        // Pinned tabs never silently read a newer registry target under the same id.
+        if (!java.util.Objects.equals(connections.config(active.id()), active)) {
+            completionLookup.invalidate();
+            completionNotice.setText("连接配置已变化，未读取旧目标的补全元数据"); return List.of();
         }
-
-        String key = (schema == null ? "" : schema + ".") + tableName;
-        List<String> cached = columnCache.get(key);
-        if (cached != null) return cached;
-        loadColumnsAsync(connId, schema, tableName, key);
-        return List.of();
+        return completionLookup.request(new com.datacube.service.SqlCompletionMetadata.Target(active, schema, table));
     }
-
-    /** 后台加载指定表的列名并入缓存，成功后触发补全刷新。 */
-    private void loadColumnsAsync(String connId, String schema, String tableName, String key) {
-        if (recoveryPassive()) return;
-        if (tasks.isClosed()) return;
-        if (!columnLoading.add(key)) return;
-        metadataTasks.submit(() -> {
-            List<String> cols = new ArrayList<>();
-            for (ColumnInfo c : treeSvc.columns(connId, new TableRef(schema, tableName))) {
-                cols.add(c.name());
-            }
-            return cols;
-        }, cols -> {
-            columnLoading.remove(key);
-            if (!cols.isEmpty()) {
-                columnCache.put(key, cols);
-                if (autoComplete != null) autoComplete.refresh();
-            }
-        }, failure -> {
-            // 读取失败静默：允许下次重试
-            columnLoading.remove(key);
-        });
-    }
-
-    /** 解析编辑器中 FROM/JOIN 的别名→表名映射，返回 qualifier 对应的表名（大小写不敏感）。 */
-    private String resolveAlias(String qualifier) {
-        if (qualifier == null || qualifier.isEmpty()) return null;
-        Map<String, String> map = parseAliases(editorArea.getText());
-        for (Map.Entry<String, String> e : map.entrySet()) {
-            if (e.getKey().equalsIgnoreCase(qualifier)) return e.getValue();
-        }
-        return null;
-    }
-
-    /** 扫描 FROM 子句区域，构建 别名/表名 → 表名 映射。 */
-    private Map<String, String> parseAliases(String sql) {
-        Map<String, String> map = new HashMap<>();
-        if (sql == null || sql.isBlank()) return map;
-        Matcher m = FROM_REGION.matcher(sql);
-        while (m.find()) {
-            String region = m.group(1);
-            if (region == null) continue;
-            // 将 JOIN 关键字规整为逗号分隔的引用段，并剔除 ON 条件
-            String normalized = region
-                    .replaceAll("(?is)\\b(inner|left|right|full|outer|cross)\\b", " ")
-                    .replaceAll("(?is)\\bjoin\\b", ",")
-                    .replaceAll("(?is)\\bon\\b[^,]*", "");
-            for (String seg : normalized.split(",")) {
-                addRef(map, seg);
-            }
-        }
-        return map;
-    }
-
-    private static final Pattern TABLE_TOKEN =
-            Pattern.compile("[A-Za-z_][\\w$]*(\\.[A-Za-z_][\\w$]*)?");
-    private static final Pattern IDENT_TOKEN =
-            Pattern.compile("[A-Za-z_][\\w$]*");
-
-    /** 解析单个引用段「表 [AS] 别名」，写入 alias→table 与 table→table。 */
-    private void addRef(Map<String, String> map, String seg) {
-        String s = seg.trim();
-        if (s.isEmpty()) return;
-        String[] parts = s.split("\\s+");
-        if (parts.length == 0) return;
-        String table = parts[0];
-        if (!TABLE_TOKEN.matcher(table).matches()) return;
-        String tableName = table.contains(".") ? table.substring(table.indexOf('.') + 1) : table;
-        // 别名：表名之后的下一个标识符（可含 AS）
-        if (parts.length >= 2) {
-            String cand = ("AS".equalsIgnoreCase(parts[1]) && parts.length >= 3) ? parts[2] : parts[1];
-            if (IDENT_TOKEN.matcher(cand).matches() && !KEYWORDS_UPPER.contains(cand.toUpperCase())) {
-                map.put(cand, tableName);
-            }
-        }
-        // 允许以表名本身作为限定符
-        map.put(tableName, tableName);
-    }
-
     private static String truncate(String s, int max) {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max) + "...";

@@ -70,6 +70,9 @@ public final class SqlExecutionControl {
      *
      * @return 请求时是否存在活动 Statement
      */
+    /** Publishes cancellation immediately without invoking a potentially blocking JDBC method. */
+    public void requestCancellation() { cancellationRequested.set(true); }
+
     public boolean cancel() throws SQLException {
         cancellationRequested.set(true);
         Activation activation = activeStatement.get();

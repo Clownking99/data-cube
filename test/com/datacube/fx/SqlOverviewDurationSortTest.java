@@ -133,7 +133,7 @@ class SqlOverviewDurationSortTest {
                 var texts = f.table().lookupAll(".table-cell").stream().filter(TableCell.class::isInstance).map(TableCell.class::cast)
                         .filter(cell -> cell.getTableColumn() == duration(f) && !cell.isEmpty()).map(TableCell::getText).toList();
                 assertEquals(List.of("1000ms", "9ms"), texts.stream().sorted().toList());
-                assertEquals("耗时", duration(f).getText()); return null;
+                assertEquals("原计时", duration(f).getText()); return null;
             });
         }
     }

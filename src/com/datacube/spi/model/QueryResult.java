@@ -40,7 +40,7 @@ public final class QueryResult {
     public final List<List<Object>> rows;
     /** 受影响行数（仅 UPDATE 有；-1 表示无信息） */
     public final int updateCount;
-    /** 耗时（毫秒） */
+    /** Legacy provider elapsed value; not end-to-end execution/fetch/render time. */
     public final long elapsedMillis;
     /** 错误信息（仅 ERROR 有） */
     public final String errorMessage;
@@ -50,6 +50,12 @@ public final class QueryResult {
     public final boolean truncated;
     /** Explicit data/metadata omissions independent of the per-query row limit. */
     public final String retentionNotice;
+    /** Confirmed original-statement position, one-based Unicode code points; zero means unavailable. */
+    public final int errorPosition;
+    /** Monotonic measurements, -1 means not measured. Execute excludes schema setup and fetch. */
+    public final long executionMillis;
+    /** ResultSet acquisition/materialization; excludes optional column-comment metadata. */
+    public final long fetchMillis;
 
     private QueryResult(Kind kind, List<String> columns, List<String> columnComments,
                         List<List<Object>> rows, int updateCount, long elapsedMillis, String errorMessage,
@@ -61,6 +67,17 @@ public final class QueryResult {
     private QueryResult(Kind kind, List<String> columns, List<String> columnComments,
                         List<List<Object>> rows, int updateCount, long elapsedMillis, String errorMessage,
                         FailureKind failureKind, List<ResultColumn> resultColumns, boolean truncated, String notice) {
+        this(kind, columns, columnComments, rows, updateCount, elapsedMillis, errorMessage, failureKind,
+                resultColumns, truncated, notice, 0, -1, -1);
+    }
+
+    private QueryResult(Kind kind, List<String> columns, List<String> columnComments,
+                        List<List<Object>> rows, int updateCount, long elapsedMillis, String errorMessage,
+                        FailureKind failureKind, List<ResultColumn> resultColumns, boolean truncated, String notice,
+                        int errorPosition, long executionMillis, long fetchMillis) {
+        this.errorPosition = errorPosition;
+        this.executionMillis = executionMillis;
+        this.fetchMillis = fetchMillis;
         this.kind = kind;
         this.columns = columns;
         this.columnComments = columnComments;
@@ -117,12 +134,18 @@ public final class QueryResult {
      */
     public QueryResult withColumnComments(List<String> comments) {
         return new QueryResult(kind, columns, immutableNullableCopy(comments), rows,
-                updateCount, elapsedMillis, errorMessage, failureKind, resultColumns, truncated, retentionNotice);
+                updateCount, elapsedMillis, errorMessage, failureKind, resultColumns, truncated, retentionNotice, errorPosition, executionMillis, fetchMillis);
     }
 
     public QueryResult withRetentionNotice(String notice) {
         return new QueryResult(kind, columns, columnComments, rows, updateCount, elapsedMillis,
-                errorMessage, failureKind, resultColumns, truncated, notice);
+                errorMessage, failureKind, resultColumns, truncated, notice, errorPosition, executionMillis, fetchMillis);
+    }
+
+    public QueryResult withExecutionDetails(int position, long executionMillis, long fetchMillis) {
+        return new QueryResult(kind, columns, columnComments, rows, updateCount, elapsedMillis,
+                errorMessage, failureKind, resultColumns, truncated, retentionNotice,
+                kind == Kind.ERROR ? Math.max(0, position) : 0, executionMillis, fetchMillis);
     }
 
     /** Bounded editor read path. Driver buffering is outside this retained-data allowance. */

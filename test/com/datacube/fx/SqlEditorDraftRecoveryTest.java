@@ -39,11 +39,9 @@ class SqlEditorDraftRecoveryTest {
                         MouseButton.PRIMARY, 1, false, true, false, false,
                         true, false, false, false, false, true, null));
                 assertEquals(List.of(), invoke(f.pane, "membersFor", new Class<?>[]{String.class}, "a"));
-                invoke(f.pane, "prewarm", new Class<?>[]{ConnConfig.class}, f.saved);
-                invoke(f.pane, "installMetadataPrewarm", new Class<?>[0]);
-                invoke(f.pane, "loadColumnsAsync",
-                        new Class<?>[]{String.class, String.class, String.class, String.class},
-                        "saved", "raw_schema", "synthetic", "raw_schema.synthetic");
+                invoke(f.pane, "resetCompletionContext", new Class<?>[]{ConnConfig.class}, f.saved);
+                invoke(f.pane, "installCompletionContextListener", new Class<?>[0]);
+                invoke(f.pane, "metadataNames", new Class<?>[]{ConnConfig.class, String.class, String.class}, f.saved, "raw_schema", "synthetic");
             });
             f.metadataBarrier();
             f.assertOffline();

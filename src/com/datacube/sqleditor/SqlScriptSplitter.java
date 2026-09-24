@@ -2,8 +2,6 @@ package com.datacube.sqleditor;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * SQL 脚本分句器：基于状态机，正确处理字符串 / 注释中的分号。
@@ -20,11 +18,38 @@ public final class SqlScriptSplitter {
 
     private SqlScriptSplitter() {}
 
-    /** PL/SQL 块起始识别（语句起始处，忽略大小写）：DECLARE/BEGIN 或 CREATE ... 各类命名块。 */
-    private static final Pattern PLSQL_START = Pattern.compile(
-            "(?:DECLARE|BEGIN|CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:EDITIONABLE\\s+|NONEDITIONABLE\\s+)?"
-                    + "(?:PROCEDURE|FUNCTION|PACKAGE\\s+BODY|PACKAGE|TRIGGER|TYPE\\s+BODY|TYPE))\\b",
-            Pattern.CASE_INSENSITIVE);
+    /** Header-only lookahead also permits comments between CREATE/OR/REPLACE and object kind. */
+    private static boolean startsPlSql(String sql, int offset) {
+        int[] cursor = {offset};
+        String first = headerWord(sql, cursor);
+        if (first.equals("DECLARE") || first.equals("BEGIN")) return true;
+        if (!first.equals("CREATE")) return false;
+        String kind = headerWord(sql, cursor);
+        if (kind.equals("OR")) {
+            if (!headerWord(sql, cursor).equals("REPLACE")) return false;
+            kind = headerWord(sql, cursor);
+        }
+        if (kind.equals("EDITIONABLE") || kind.equals("NONEDITIONABLE")) kind = headerWord(sql, cursor);
+        return java.util.Set.of("PROCEDURE", "FUNCTION", "PACKAGE", "TRIGGER", "TYPE").contains(kind);
+    }
+
+    private static String headerWord(String sql, int[] cursor) {
+        int i = cursor[0];
+        while (i < sql.length()) {
+            if (Character.isWhitespace(sql.charAt(i))) i++;
+            else if (sql.startsWith("--", i)) {
+                while (i < sql.length() && sql.charAt(i) != '\r' && sql.charAt(i) != '\n') i++;
+            } else if (sql.startsWith("/*", i)) {
+                int close = sql.indexOf("*/", i + 2);
+                if (close < 0) return "";
+                i = close + 2;
+            } else break;
+        }
+        int start = i;
+        while (i < sql.length() && SqlLexicalRules.isWordPart(sql.charAt(i))) i++;
+        cursor[0] = i;
+        return sql.substring(start, i).toUpperCase(java.util.Locale.ROOT);
+    }
 
     public static List<String> split(String sql) {
         return split(sql, false);
@@ -41,7 +66,17 @@ public final class SqlScriptSplitter {
      */
     public static List<String> split(String sql, boolean plsql) {
         if (sql == null || sql.isEmpty()) return new ArrayList<>();
-        return new SplitState(plsql).run(sql);
+        return fragments(sql, plsql).stream().map(fragment -> fragment.text(sql)).toList();
+    }
+
+    /** Exact UTF-16 source offsets; delimiter is excluded, leading comments are preserved. */
+    public record Fragment(int start, int end, int delimiterEnd, boolean terminated, boolean procedural) {
+        public String text(String source) { return source.substring(start, end); }
+    }
+
+    public static List<Fragment> fragments(String sql, boolean oracle) {
+        if (sql == null || sql.isEmpty()) return List.of();
+        return new SplitState(oracle).run(sql);
     }
 
     /** 仅纯 trivia 可丢弃；INVALID 与可执行内容都必须留给后续保守处理。 */
@@ -58,7 +93,7 @@ public final class SqlScriptSplitter {
     /** 单次 split 调用的可变状态。 */
     private static final class SplitState {
         private final StringBuilder cur = new StringBuilder();
-        private final List<String> stmts = new ArrayList<>();
+        private final List<Fragment> stmts = new ArrayList<>();
         private State state = State.NORMAL;
         private String dollarTag;
         private boolean backslashEscapes;
@@ -66,15 +101,16 @@ public final class SqlScriptSplitter {
         private char oracleQuoteClose;
         private final boolean plsql;
         private boolean plsqlBlock;
+        private boolean onlyTrivia = true;
+        private int fragmentStart;
 
         SplitState(boolean plsql) {
             this.plsql = plsql;
         }
 
-        List<String> run(String sql) {
+        List<Fragment> run(String sql) {
             int n = sql.length();
             int i = 0;
-            Matcher blockMatcher = plsql ? PLSQL_START.matcher(sql) : null;
 
             while (i < n) {
                 char c = sql.charAt(i);
@@ -82,10 +118,12 @@ public final class SqlScriptSplitter {
                 switch (state) {
                     case NORMAL:
                         // 语句起始处探测 PL/SQL 块：命中后块内 ; 不再切分
-                        if (plsql && !plsqlBlock && !Character.isWhitespace(c) && isBlank(cur)
-                                && blockMatcher.region(i, n).lookingAt()) {
+                        if (plsql && !plsqlBlock && !Character.isWhitespace(c) && onlyTrivia
+                                && startsPlSql(sql, i)) {
                             plsqlBlock = true;
                         }
+                        if (!Character.isWhitespace(c) && !(c == '-' && i + 1 < n && sql.charAt(i + 1) == '-')
+                                && !(c == '/' && i + 1 < n && sql.charAt(i + 1) == '*')) onlyTrivia = false;
                         SqlLexicalRules.OracleQuote oracleQuote =
                                 SqlLexicalRules.oracleQuoteAt(sql, i, plsql);
                         if (oracleQuote != null) {
@@ -114,9 +152,10 @@ public final class SqlScriptSplitter {
                             i += 2;
                         } else if (plsql && c == '/' && isLineAloneSlash(sql, i)) {
                             // SQL*Plus 终止符：单独成行的 /
-                            flush();
+                            flush(true, i + 1);
                             plsqlBlock = false;
                             i = advancePastLine(sql, i);
+                            fragmentStart = i;
                         } else if (c == '$') {
                             String tag = SqlLexicalRules.dollarDelimiterAt(sql, i, plsql);
                             if (tag != null) {
@@ -129,8 +168,9 @@ public final class SqlScriptSplitter {
                                 i++;
                             }
                         } else if (c == ';' && !plsqlBlock) {
-                            flush();
+                            flush(true, i + 1);
                             i++;
+                            fragmentStart = i;
                         } else {
                             cur.append(c);
                             i++;
@@ -220,27 +260,21 @@ public final class SqlScriptSplitter {
                 }
             }
 
-            flush();
+            flush(false, n);
             return stmts;
         }
 
-        private void flush() {
+        private void flush(boolean terminated, int delimiterEnd) {
             String s = cur.toString().trim();
             // 仅含注释/空白的单元不作为语句：整段被注释掉的 SQL 不应发往数据库
             // （Oracle 对纯注释文本报 ORA-00900）。
-            if (!s.isEmpty() && hasExecutableContent(s, plsql)) stmts.add(s);
+            int leading = 0;
+            while (leading < cur.length() && cur.charAt(leading) <= ' ') leading++;
+            if (!s.isEmpty() && hasExecutableContent(s, plsql))
+                stmts.add(new Fragment(fragmentStart + leading, fragmentStart + leading + s.length(),
+                        delimiterEnd, terminated, plsqlBlock));
+            onlyTrivia = true;
             cur.setLength(0);
-        }
-
-        /**
-         * 剥离 {@code --} 行注释与 {@code /* ... *}{@code /} 块注释后是否仍有非空白内容。
-         * 引号内的注释起始符不误判（如 {@code SELECT '--'} 为可执行语句）。
-         */
-        private static boolean isBlank(StringBuilder sb) {
-            for (int k = 0; k < sb.length(); k++) {
-                if (!Character.isWhitespace(sb.charAt(k))) return false;
-            }
-            return true;
         }
 
         /** {@code i} 处为 {@code /}，且该行除首尾空白外仅有此 {@code /}（SQL*Plus 终止符）。 */
@@ -258,8 +292,9 @@ public final class SqlScriptSplitter {
         private static int advancePastLine(String sql, int i) {
             int n = sql.length();
             int j = i + 1;
-            while (j < n && sql.charAt(j) != '\n') j++;
-            return j < n ? j + 1 : n;
+            while (j < n && sql.charAt(j) != '\n' && sql.charAt(j) != '\r') j++;
+            if (j < n && sql.charAt(j++) == '\r' && j < n && sql.charAt(j) == '\n') j++;
+            return j;
         }
 
     }
