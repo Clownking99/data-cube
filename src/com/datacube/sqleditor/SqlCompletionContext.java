@@ -133,7 +133,14 @@ public final class SqlCompletionContext {
         }
         boolean symbol(int i, String value) { return i >= 0 && i < t.size() && t.get(i).text().equals(value); }
         boolean word(int i, String value) { return i >= 0 && i < t.size() && t.get(i).is(value); }
-        boolean id(int i) { return i >= 0 && i < t.size() && t.get(i).identifier() && (t.get(i).kind() == Kind.IDENTIFIER || (Character.isLetter(t.get(i).text().charAt(0)) || t.get(i).text().charAt(0) == '_') && !RESERVED.contains(t.get(i).text().toUpperCase(Locale.ROOT))); }
+        boolean id(int i) {
+            if (i < 0 || i >= t.size() || !t.get(i).identifier()) return false;
+            Token token = t.get(i);
+            // An unfinished source identifier must not lose its last character and name another table.
+            if (token.kind() == Kind.IDENTIFIER) return SqlContextTokens.scan(token.text(), oracle).closed();
+            return (Character.isLetter(token.text().charAt(0)) || token.text().charAt(0) == '_')
+                    && !RESERVED.contains(token.text().toUpperCase(Locale.ROOT));
+        }
         int end(int i) { return ends.getOrDefault(i, t.size()); }
         boolean correlated(Scope scope) {
             if (scope.lo == 0) return true;

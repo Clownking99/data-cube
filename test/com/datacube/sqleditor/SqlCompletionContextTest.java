@@ -48,6 +48,11 @@ class SqlCompletionContextTest {
         }
         assertEquals(List.of("\"NULL\""), at("with q as (select \"NULL\" from s.t) select q. from q", "q.", "q").columns());
     }
+    @Test void unfinishedQuotedSourceCannotBeTruncatedIntoAnotherTable() {
+        assertFalse(at("select \"table\". from s.\"tableX", "\"table\".", "\"table\"").physical());
+        assertFalse(at("select \"a\". from s.t as \"aX", "\"a\".", "\"a\"").physical());
+        assertEquals("tableX", at("select \"tableX\". from s.\"tableX\"", "\"tableX\".", "\"tableX\"").table());
+    }
     @Test void replacementRangeIncludesQuotedPrefixAndWholeQualifiedName() {
         String text = "select \"Schema\".\"Table\".\"Co";
         var input = SqlCompletionContext.input(text, text.length(), false);
