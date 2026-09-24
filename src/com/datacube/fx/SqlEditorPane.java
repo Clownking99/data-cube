@@ -163,6 +163,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlResultRowDisplay resultRowDisplay;
     private SqlScriptDetails scriptDetails;
     private SqlBatchResults batchResults;
+    private SqlPinnedResults pinnedResults;
     private boolean showingBatchResult;
     private final ResultFilterState resultFilterState = new ResultFilterState();
     private record BatchView(ResultFilterState.SavedView filter, SqlResultViewState table) {}
@@ -330,6 +331,7 @@ public final class SqlEditorPane implements AutoCloseable {
             construction.own(() -> { if (panelLayout != null) panelLayout.close(); });
             construction.own(() -> { if (scriptDetails != null) scriptDetails.close(); });
             construction.own(() -> { if (batchResults != null) batchResults.close(); });
+            construction.own(() -> { if (pinnedResults != null) pinnedResults.close(); });
             construction.own(() -> { if (editorScopeBar != null) editorScopeBar.close(); });
             construction.own(() -> { if (goToLineBar != null) goToLineBar.close(); });
             construction.own(() -> { if (lineCommentAction != null) lineCommentAction.close(); });
@@ -632,6 +634,7 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> { if (panelLayout != null) panelLayout.close(); },
                 () -> { if (scriptDetails != null) scriptDetails.close(); },
                 () -> { if (batchResults != null) batchResults.close(); },
+                () -> { if (pinnedResults != null) pinnedResults.close(); },
                 () -> { if (findBar != null) findBar.detachUi(); },
                 () -> { if (editorScopeBar != null) editorScopeBar.close(); },
                 () -> { if (goToLineBar != null) goToLineBar.close(); },
@@ -1509,8 +1512,9 @@ public final class SqlEditorPane implements AutoCloseable {
         renderResultFilterToolbar();
         batchResults = new SqlBatchResults(this::resultCellViewingAllowed, this::showBatchSelection);
         batchResults.onClear(() -> { batchViews.clear(); displayedChoice = null; });
+        pinnedResults = new SqlPinnedResults(this::pinnedResultViewingAllowed, this::canPinCurrentResult, this::pinCurrentResult);
         scriptDetails = new SqlScriptDetails(resultTable, this::resultCellViewingAllowed, batchResults::selectResult);
-        VBox box = new VBox(batchResults.getNode(), resultToolbar.getNode(), scriptDetails.getNode(), resultPane);
+        VBox box = new VBox(batchResults.getNode(), pinnedResults.getNode(), resultToolbar.getNode(), scriptDetails.getNode(), resultPane);
         VBox.setVgrow(resultPane, Priority.ALWAYS);
         return box;
     }
@@ -2203,6 +2207,26 @@ public final class SqlEditorPane implements AutoCloseable {
                 && resultPane.getContent() == resultTable;
     }
 
+    private boolean pinnedResultViewingAllowed() {
+        return !admission.closing() && !resourcesClosing.get() && !uiFinalized.get() && !tasks.isClosed()
+                && !root.isDisabled() && sessionOperations.snapshot().accepting();
+    }
+
+    private boolean canPinCurrentResult() {
+        return resultCellViewingAllowed() && displayedResult != null && displayedResult.kind == QueryResult.Kind.QUERY
+                && resultFilterState.snapshot().activeResult() == displayedResult;
+    }
+
+    private void pinCurrentResult() {
+        if (!canPinCurrentResult()) return;
+        var snapshot = resultFilterState.snapshot();
+        // The admitted target is immutable; another tab's active connection is never used as provenance.
+        ConnConfig target = admission.pinned();
+        String identity = target == null ? null : target.name() + " · " + target.type() + " · ID " + target.id();
+        pinnedResults.pin(snapshot.activeResult(), new com.datacube.sqleditor.result.PinnedResultStore.Source(
+                identity, snapshot.effectiveSchema(), snapshot.originalSql(), snapshot.activeResult() != snapshot.originalResult()));
+    }
+
     private boolean canResetResultOrder(long expectedRevision) {
         if (!resultCellViewingAllowed() || resultToolbar.getNode().isDisabled() || resultStatusRevision != expectedRevision
                 || displayedResult == null || displayedResult.kind != QueryResult.Kind.QUERY
@@ -2673,6 +2697,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void renderResultFilterToolbar(ResultFilterState.Snapshot snapshot) {
         if (resultToolbar != null) resultToolbar.render(snapshot);
+        if (pinnedResults != null) pinnedResults.refresh();
         if (resultRowDisplay != null) {
             QueryResult active = snapshot.activeResult();
             resultRowDisplay.refreshAvailability(active != null && active.kind == QueryResult.Kind.QUERY);
@@ -2906,6 +2931,7 @@ public final class SqlEditorPane implements AutoCloseable {
             scriptDetails.refresh();
         }
         if (batchResults != null) batchResults.getNode().setDisable(blockResults);
+        if (pinnedResults != null) pinnedResults.refresh();
     }
 
     // ---------- 自动补全：候选词 + 元数据预热 ----------
