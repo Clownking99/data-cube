@@ -1,426 +1,223 @@
 package com.datacube.migration;
 
-import com.datacube.cli.ConsoleLogger;
 import com.datacube.core.MigrationLogger;
-import com.datacube.core.SqlUtils;
-
-import java.io.*;
-import java.nio.file.*;
+import java.io.IOException;
 import java.sql.*;
+import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
+import static com.datacube.migration.MigrationPreflight.*;
+import static com.datacube.migration.MigrationRun.*;
 
+/** Reviewed, data-only import. Each table commits once after its complete comparison. */
 public class PgImporter {
-
-    private static final String BASE_DIR = "pg_migration";
-    private static final int BATCH_SIZE = 1000;
-    private static final int MAX_RETRY = 2;
-
+    @FunctionalInterface public interface Checkpoint { void save(MigrationRun run) throws IOException; }
     private final MigrationLogger logger;
-    private int maxConcurrency = 20;
     private final MigrationCancellation cancellation;
+    private final MigrationConnections connections;
+    private final Checkpoint checkpoint;
+    private volatile MigrationRun lastRun;
 
-    public PgImporter(MigrationLogger logger) {
-        this(logger, new MigrationCancellation());
+    public PgImporter(MigrationLogger logger) { this(logger,new MigrationCancellation()); }
+    public PgImporter(MigrationLogger logger,MigrationCancellation cancellation) {
+        this(logger,cancellation,DriverManager::getConnection,run -> MigrationReport.of(run).checkpoint(MigrationReport.defaultDirectory()));
     }
-
-    public PgImporter(MigrationLogger logger, MigrationCancellation cancellation) {
-        this.logger = logger;
-        this.cancellation = Objects.requireNonNull(cancellation, "cancellation");
+    public PgImporter(MigrationLogger logger,MigrationCancellation cancellation,MigrationConnections connections,Checkpoint checkpoint) {
+        this.logger=Objects.requireNonNull(logger); this.cancellation=Objects.requireNonNull(cancellation);
+        this.connections=Objects.requireNonNull(connections); this.checkpoint=Objects.requireNonNull(checkpoint);
     }
-
-    public void setMaxConcurrency(int concurrency) {
-        if (concurrency < 1) concurrency = 1;
-        if (concurrency > 100) concurrency = 100;
-        this.maxConcurrency = concurrency;
-    }
-
+    /** Export concurrency remains configurable; imports serialize whole-table transactions. */
+    public void setMaxConcurrency(int concurrency) { }
     public void cancel() { cancellation.cancel(); }
     public void resetCancel() { cancellation.reset(); }
     public boolean isCancelled() { return cancellation.isCancelled(); }
+    public MigrationRun lastRun() { return lastRun; }
 
-    public void importToPg(String pgUrl, String pgUser, String pgPass, String owner, String schema, boolean incremental) throws Exception {
+    /** Legacy callers must obtain the same reviewed plan and one-shot approval as the GUI. */
+    public void importToPg(String url,String user,String pass,String owner,String schema,boolean incremental) {
+        throw new IllegalStateException("Import requires an explicit preflight plan and approval");
+    }
+
+    public MigrationRun importPrepared(MigrationPlan plan,MigrationPlan.Approval approval,MigrationRequest current) throws Exception {
+        if(approval==null)throw new IllegalStateException("Migration approval is required");
+        approval.consume(plan,current);
         cancellation.checkCancelled();
-        String mode = incremental ? "增量模式" : "完整模式";
-        logger.logSection("导入到 PostgreSQL：" + owner + " → " + schema + "（" + mode + "）");
-
-        String basePath = BASE_DIR + "/" + schema.toLowerCase();
-
-        Connection conn = null;
+        MigrationRun run=new MigrationRun(plan); lastRun=run;
+        checkpoint.save(run); // Failure here cannot acquire a write resource.
+        Connection source=null;
         try {
-            conn = cancellation.register(DriverManager.getConnection(pgUrl, pgUser, pgPass));
-            ensureSchema(conn, schema);
-
-            Statement stmt = conn.createStatement();
-            stmt.execute("SET search_path TO " + schema);
-
-            Set<String> existingTables = new HashSet<>();
-            ResultSet rs = conn.createStatement().executeQuery(
-                    "SELECT table_name FROM information_schema.tables WHERE table_schema = '" + schema + "'");
-            while (rs.next()) existingTables.add(rs.getString(1).toLowerCase());
-
-            int beforeTableCount = existingTables.size();
-
-            if (cancellation.isCancelled()) { logger.logWarn("已取消，跳过导入"); return; }
-
-            if (incremental) {
-                logger.logInfo("[1/7] 建表（增量: 仅创建缺失表）...");
-                execSqlFileIncremental(conn, basePath + "/02_tables.sql", existingTables);
-            } else {
-                logger.logInfo("[1/7] 建表（完整模式）...");
-                execSqlFile(conn, basePath + "/02_tables.sql");
-            }
-
-            if (cancellation.isCancelled()) { logger.logWarn("已取消"); return; }
-            logger.logInfo("[2/7] 检测并修复缺失表...");
-            int fixed = fixMissing(conn, schema, basePath + "/02_tables.sql");
-            if (fixed > 0) logger.logOk("修复了 " + fixed + " 个缺失表");
-            else logger.logOk("无缺失表");
-
-            logger.logInfo("[3/7] 建序列...");
-            cancellation.checkCancelled();
-            execSqlFile(conn, basePath + "/01_sequences.sql");
-
-            logger.logInfo("[4/7] 建索引...");
-            cancellation.checkCancelled();
-            execSqlFile(conn, basePath + "/03_indexes.sql");
-
-            logger.logInfo("[5/7] 导入数据（虚拟线程, 并发上限 " + maxConcurrency + ", 批大小 " + BATCH_SIZE + "）...");
-            cancellation.checkCancelled();
-            importData(pgUrl, pgUser, pgPass, schema, basePath + "/data", incremental);
-
-            logger.logInfo("[6/7] 建约束（主键/唯一）...");
-            cancellation.checkCancelled();
-            execSqlFile(conn, basePath + "/04_constraints.sql");
-
-            logger.logInfo("[7/7] 建触发器...");
-            cancellation.checkCancelled();
-            execSqlFile(conn, basePath + "/07_triggers.sql");
-
-            rs = conn.createStatement().executeQuery(
-                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '" + schema + "'");
-            rs.next();
-            int afterTableCount = rs.getInt(1);
-
-            Map<String, Object> stats = new LinkedHashMap<>();
-            stats.put("导入前表数", beforeTableCount);
-            stats.put("导入后表数", afterTableCount);
-            stats.put("新增表数", afterTableCount - beforeTableCount);
-            logger.logSummary("导入统计", stats);
-        } finally {
-            cancellation.release(conn);
+            source=cancellation.register(connections.open(current.source().url(),current.source().user(),current.source().password()));
+            source.setReadOnly(true);
+            if(!plan.sourceIdentity().equals(sourceIdentity(source,cancellation)))throw guard(Reason.SOURCE_CHANGED);
+        } catch(Exception failure) {
+            Reason reason=cancellation.isCancelled() || failure instanceof java.util.concurrent.CancellationException?Reason.CANCELLED:
+                    failure instanceof GuardFailure guard?guard.reason:Reason.SOURCE_UNAVAILABLE;
+            run.update(0,State.FAILED_BEFORE_WRITE,Phase.PRECHECK,reason,0);
+            save(run); return run;
+        } finally { cancellation.release(source); }
+        for(int index=0;index<plan.tables().size();index++) {
+            if(cancellation.isCancelled())break;
+            var table=plan.tables().get(index);
+            run.update(index,State.RUNNING,Phase.PRECHECK,Reason.NONE,0);
+            if(!save(run))break;
+            importTable(run,index,table);
+            if(!save(run))break;
+            logger.logProgress("迁移表任务",index+1,plan.tables().size());
+            State state=run.outcomes().get(index).state();
+            if(state!=State.COMMITTED_VERIFIED && state!=State.SKIPPED_NONEMPTY)break;
         }
+        logger.logSummary("迁移结果（有限范围）",Map.of(
+                "已提交并完成文件对账",run.outcomes().stream().filter(o -> o.state()==State.COMMITTED_VERIFIED).count(),
+                "跳过",run.outcomes().stream().filter(o -> o.state()==State.SKIPPED_NONEMPTY).count(),
+                "结果范围","逐表提交；文件与目标的行数/空值/摘要对账，不是当前源库全量一致证明"));
+        return run;
     }
 
-    private void ensureSchema(Connection conn, String schema) throws SQLException {
-        boolean schemaExists = false;
-        try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT 1 FROM information_schema.schemata WHERE schema_name = ?")) {
-            ps.setString(1, schema);
-            try (ResultSet rs = ps.executeQuery()) { schemaExists = rs.next(); }
-        }
-        if (!schemaExists) {
-            logger.logInfo("Schema \"" + schema + "\" 不存在，正在创建...");
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute("CREATE SCHEMA " + schema);
-                logger.logOk("Schema \"" + schema + "\" 创建成功");
-            } catch (SQLException e) {
-                logger.logErr("创建 Schema 失败: " + e.getMessage());
-                logger.logToFile(ConsoleLogger.stackTrace(e));
-                throw e;
+    private void importTable(MigrationRun run,int index,MigrationPlan.Table table) {
+        MigrationRequest request=run.plan().request(); Connection conn=null;
+        boolean transaction=false,commitStarted=false,committed=false;
+        long importedRows=0; Phase phase=Phase.PRECHECK;
+        try {
+            cancellation.checkCancelled();
+            try { MigrationFiles.verify(table.data(),cancellation);
+                if(!Objects.equals(table.evidence(),MigrationExportEvidence.read(table.data().path())))throw new IOException("Source evidence changed"); }
+            catch(IOException invalid) { throw guard(Reason.INPUT_CHANGED); }
+            conn=cancellation.register(connections.open(request.target().url(),request.target().user(),request.target().password()));
+            conn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+            conn.setAutoCommit(false); transaction=true;
+            if(!run.plan().targetIdentity().equals(targetIdentity(conn,cancellation)))throw guard(Reason.TARGET_CHANGED);
+            execute(conn,"SET LOCAL lock_timeout='5s'");
+            execute(conn,"SET LOCAL statement_timeout='600s'");
+            Long schemaOid=namespaceOid(conn,request.schema());
+            if(!Objects.equals(schemaOid,run.schemaOid()))throw guard(Reason.TARGET_CHANGED);
+            phase=Phase.CREATE;
+            if(schemaOid==null) {
+                execute(conn,"CREATE SCHEMA "+quote(request.schema()));
+                schemaOid=namespaceOid(conn,request.schema());
+                if(schemaOid==null)throw guard(Reason.TARGET_CHANGED);
             }
-        }
-    }
-
-    // ==================== 数据导入（虚拟线程 + 批量 INSERT） ====================
-
-    private void importData(String pgUrl, String pgUser, String pgPass, String schema, String dataDir, boolean incremental) throws Exception {
-        File dir = new File(dataDir);
-        if (!dir.exists()) { logger.logWarn("无数据目录: " + dataDir); return; }
-
-        File[] files = dir.listFiles((d, n) -> n.endsWith(".sql"));
-        if (files == null || files.length == 0) { logger.logWarn("无数据文件"); return; }
-
-        int total = files.length;
-        logger.logInfo("共 " + total + " 个数据文件，启动虚拟线程并行导入...");
-
-        AtomicInteger ok = new AtomicInteger(0);
-        AtomicInteger fail = new AtomicInteger(0);
-        AtomicInteger skip = new AtomicInteger(0);
-        AtomicLong totalRows = new AtomicLong(0);
-        AtomicInteger done = new AtomicInteger(0);
-        ConcurrentLinkedQueue<String> failedTables = new ConcurrentLinkedQueue<>();
-
-        Semaphore semaphore = new Semaphore(maxConcurrency);
-        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
-        List<Future<?>> futures = new ArrayList<>();
-
-        for (File file : files) {
-            if (cancellation.isCancelled()) break;
-            futures.add(pool.submit(() -> {
-                boolean acquired = false;
-                try {
-                    semaphore.acquire();
-                    acquired = true;
+            String qualified=quote(request.schema())+"."+quote(table.targetName());
+            Long oid=relationOid(conn,request.schema(),table.targetName());
+            if(!Objects.equals(oid,table.targetOid()))throw guard(Reason.TARGET_CHANGED);
+            if(oid==null) {
+                execute(conn,createTable(qualified,table));
+                oid=relationOid(conn,request.schema(),table.targetName());
+                if(oid==null)throw guard(Reason.TARGET_CHANGED);
+            } else execute(conn,"LOCK TABLE ONLY "+qualified+" IN SHARE ROW EXCLUSIVE MODE");
+            // Repeat identity after acquiring the lock; a same-name replacement is not the reviewed table.
+            if(!Objects.equals(oid,relationOid(conn,request.schema(),table.targetName()))
+                    || !Objects.equals(schemaOid,namespaceOid(conn,request.schema())))throw guard(Reason.TARGET_CHANGED);
+            checkTarget(conn,oid,table);
+            boolean hasRows=!rows(conn,"SELECT 1 FROM "+qualified+" LIMIT 1",cancellation).isEmpty();
+            if(hasRows!=table.targetHasRows())throw guard(Reason.TARGET_CHANGED);
+            if(hasRows) {
+                if(request.mode()!=MigrationRequest.Mode.SKIP_NONEMPTY)throw guard(Reason.TARGET_CHANGED);
+                conn.rollback(); transaction=false;
+                run.update(index,State.SKIPPED_NONEMPTY,Phase.FINISHED,Reason.NOT_SELECTED,0);
+                return;
+            }
+            phase=Phase.READ_FILE; run.update(index,State.RUNNING,phase,Reason.NONE,0);
+            if(!save(run))throw guard(Reason.REPORT_IO);
+            String columns=table.columns().stream().map(c -> quote(c.targetName())).collect(java.util.stream.Collectors.joining(","));
+            String insert="INSERT INTO "+qualified+" ("+columns+") VALUES ("+String.join(",",Collections.nCopies(table.columns().size(),"?"))+")";
+            MigrationDataFile.Statistics expected;
+            phase=Phase.INSERT;
+            try(PreparedStatement writer=conn.prepareStatement(insert)) {
+                writer.setQueryTimeout(600); int[] pending={0};
+                expected=MigrationDataFile.read(table.data(),table,cancellation,row -> {
                     cancellation.checkCancelled();
-                    String tableName = file.getName().replace(".sql", "");
-                    long rows = 0;
-                    boolean success = false;
-                    for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
-                        if (cancellation.isCancelled()) break;
-                        Connection conn = null;
-                        try {
-                            conn = cancellation.register(
-                                    DriverManager.getConnection(pgUrl, pgUser, pgPass));
-                            conn.createStatement().execute("SET search_path TO " + schema);
-                            rows = execDataFileBatch(conn, file, incremental);
-                            if (rows == 0 && incremental) skip.incrementAndGet();
-                            totalRows.addAndGet(rows);
-                            ok.incrementAndGet();
-                            success = true;
-                            break;
-                        } catch (CancellationException cancelled) {
-                            break;
-                        } catch (Exception e) {
-                            logger.logToFile("[ERR]   " + tableName + " (attempt " + attempt + "): " + e.getMessage());
-                        } finally {
-                            cancellation.release(conn);
-                        }
+                    for(int c=0;c<row.size();c++) {
+                        Object value=row.get(c);
+                        if(value==null)writer.setNull(c+1,table.columns().get(c).numeric()?Types.NUMERIC:Types.VARCHAR);
+                        else if(value instanceof java.math.BigDecimal number)writer.setBigDecimal(c+1,number);
+                        else writer.setString(c+1,(String)value);
                     }
-                    if (!success && !cancellation.isCancelled()) {
-                        fail.incrementAndGet();
-                        failedTables.add(file.getName().replace(".sql", ""));
-                        synchronized (logger) {
-                            logger.logErr("导入失败: " + file.getName().replace(".sql", ""));
-                        }
-                    }
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                } finally {
-                    if (acquired) semaphore.release();
+                    writer.addBatch(); if(++pending[0]>=500) { flush(writer); pending[0]=0; }
+                });
+                if(pending[0]>0)flush(writer);
+            }
+            if(!Objects.equals(table.evidence(),MigrationExportEvidence.read(table.data().path()))
+                    || table.evidence()!=null && table.evidence().rows()!=expected.rows())throw guard(Reason.INPUT_CHANGED);
+            importedRows=expected.rows(); phase=Phase.COMPARE;
+            run.update(index,State.RUNNING,phase,Reason.NONE,importedRows);
+            if(!save(run))throw guard(Reason.REPORT_IO);
+            MigrationDataFile.Accumulator observed=new MigrationDataFile.Accumulator(table.columns().size());
+            try(PreparedStatement read=conn.prepareStatement("SELECT "+columns+" FROM "+qualified)) {
+                read.setQueryTimeout(600); read.setFetchSize(1000);
+                try(ResultSet result=read.executeQuery()) {
+                    while(result.next()) { cancellation.checkCancelled(); observed.add(MigrationDataFile.jdbcRow(result,table.columns())); }
                 }
-
-                if (!cancellation.isCancelled()) {
-                    int d = done.incrementAndGet();
-                    logger.logProgress("导入数据", d, total);
+            }
+            if(!expected.equals(observed.finish()))throw guard(Reason.DATA_MISMATCH);
+            if(!table.primaryKey().isEmpty()) {
+                String keyColumns=table.primaryKey().stream().map(MigrationPreflight::quote).collect(java.util.stream.Collectors.joining(","));
+                long distinct=Long.parseLong(one(conn,"SELECT COUNT(*) FROM (SELECT "+keyColumns+" FROM "+qualified+" GROUP BY "+keyColumns+") dc_keys",cancellation));
+                if(distinct!=expected.rows())throw guard(Reason.DATA_MISMATCH);
+                for(String key:table.primaryKey()) {
+                    int position=-1; for(int i=0;i<table.columns().size();i++)if(table.columns().get(i).targetName().equals(key))position=i;
+                    if(position<0 || expected.nulls().get(position)!=0)throw guard(Reason.DATA_MISMATCH);
                 }
-            }));
-        }
-
-        boolean completed = MigrationTaskCoordinator.awaitAll(futures, pool, cancellation,
-                java.time.Duration.ofHours(1));
-        if (!completed) {
-            logger.logWarn("数据导入已取消，已停止剩余表任务");
-            return;
-        }
-
-        logger.logOk("数据导入完成: " + ok.get() + " 个表处理, " + fail.get() + " 个失败, "
-                + skip.get() + " 个跳过(已有数据), 共 " + totalRows.get() + " 行");
-        if (!failedTables.isEmpty()) {
-            logger.logWarn("失败的表 (" + failedTables.size() + "): " + String.join(", ", failedTables));
-        }
+            }
+            cancellation.checkCancelled();
+            phase=Phase.COMMIT; run.update(index,State.RUNNING,phase,Reason.NONE,importedRows);
+            if(!save(run))throw guard(Reason.REPORT_IO);
+            cancellation.checkCancelled(); commitStarted=true;
+            conn.commit(); committed=true; transaction=false;
+            run.schemaOid(schemaOid);
+            run.update(index,State.COMMITTED_VERIFIED,Phase.FINISHED,Reason.NONE,importedRows);
+        } catch(Exception failure) {
+            Reason reason=failure instanceof GuardFailure guard?guard.reason:
+                    cancellation.isCancelled() || failure instanceof java.util.concurrent.CancellationException?Reason.CANCELLED:Reason.SQL_FAILED;
+            State state=State.FAILED_BEFORE_WRITE;
+            if(commitStarted && !committed) { state=State.COMMIT_UNKNOWN; reason=Reason.COMMIT_UNCERTAIN; }
+            else if(transaction) {
+                try { conn.rollback(); state=reason==Reason.CANCELLED?State.CANCELLED_ROLLED_BACK:State.FAILED_ROLLED_BACK; }
+                catch(SQLException rollbackFailure) { state=State.COMMIT_UNKNOWN; reason=Reason.COMMIT_UNCERTAIN; }
+            }
+            run.update(index,state,phase,reason,importedRows);
+            logger.logErr("表任务 T"+(index+1)+"： "+state+" / "+reason+"；未自动重试");
+        } finally { cancellation.release(conn); }
     }
 
-    /**
-     * 批量执行数据文件，使用 addBatch/executeBatch 替代逐行 execute。
-     * 流式逐行读取，每 BATCH_SIZE 条提交一次，始终 clearBatch 防止内存堆积。
-     */
-    private long execDataFileBatch(Connection conn, File file, boolean incremental) throws Exception {
-        String tableName = file.getName().replace(".sql", "");
-
-        if (incremental) {
-            try (ResultSet rs = conn.createStatement().executeQuery("SELECT COUNT(*) FROM " + tableName)) {
-                rs.next();
-                if (rs.getInt(1) > 0) return 0;
-            }
-        }
-
-        conn.setAutoCommit(false);
-        long rows = 0;
-        int batchCount = 0;
-
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(file), "UTF-8"), 1024 * 1024);
-             Statement stmt = conn.createStatement()) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                cancellation.checkCancelled();
-                line = line.trim();
-                if (line.isEmpty() || line.startsWith("--")) continue;
-                if (line.endsWith(";")) line = line.substring(0, line.length() - 1).trim();
-                if (line.isEmpty() || !line.toUpperCase().startsWith("INSERT")) continue;
-
-                stmt.addBatch(line);
-                batchCount++;
-                rows++;
-
-                if (batchCount >= BATCH_SIZE) {
-                    flushBatch(conn, stmt, tableName);
-                    batchCount = 0;
-                }
-            }
-            // 执行剩余的批次
-            if (batchCount > 0) {
-                flushBatch(conn, stmt, tableName);
-            }
-        }
-
-        return rows;
+    private void checkTarget(Connection conn,long oid,MigrationPlan.Table table) throws SQLException {
+        String safe=one(conn,"SELECT (relkind='r' AND NOT relrowsecurity AND NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid=c.oid AND NOT tgisinternal) AND NOT EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class=c.oid AND rulename<>'_RETURN') AND NOT EXISTS (SELECT 1 FROM pg_inherits WHERE inhrelid=c.oid OR inhparent=c.oid))::text FROM pg_class c WHERE c.oid=?::oid",cancellation,Long.toString(oid));
+        if(!truth(safe))throw guard(Reason.UNSUPPORTED_TARGET);
+        if(!targetColumnsMatch(conn,oid,table.columns(),cancellation))throw guard(Reason.UNSUPPORTED_TARGET);
     }
-
-    /**
-     * 执行并清空当前批次，失败时回滚但始终 clearBatch 释放内存
-     */
-    private void flushBatch(Connection conn, Statement stmt, String tableName) throws SQLException {
-        try {
-            stmt.executeBatch();
-            conn.commit();
-        } catch (SQLException e) {
-            logger.logToFile("[ERR]   " + tableName + ": " + e.getMessage());
-            try { conn.rollback(); } catch (SQLException ignored) {}
-            throw e;
-        } finally {
-            stmt.clearBatch();
-        }
+    private Long namespaceOid(Connection connection,String schema) throws SQLException {
+        var values=rows(connection,"SELECT oid::text FROM pg_namespace WHERE nspname=?",cancellation,schema);
+        if(values.size()>1)throw guard(Reason.TARGET_CHANGED);
+        return values.isEmpty()?null:Long.valueOf(values.getFirst().getFirst());
     }
-
-    // ==================== SQL 文件执行 ====================
-
-    private int fixMissing(Connection conn, String schema, String scriptPath) throws Exception {
-        File scriptFile = new File(scriptPath);
-        if (!scriptFile.exists()) {
-            logger.logWarn("DDL 文件不存在: " + scriptPath);
-            return 0;
-        }
-
-        List<String> scriptTables = new ArrayList<>();
-        for (String line : Files.readAllLines(scriptFile.toPath())) {
-            line = line.trim();
-            if (line.toUpperCase().startsWith("CREATE TABLE IF NOT EXISTS")) {
-                String[] p = line.split("\\s+");
-                if (p.length >= 6) scriptTables.add(p[5].toLowerCase().replace("(", "").trim());
-            }
-        }
-
-        Set<String> dbTables = new HashSet<>();
-        ResultSet rs = conn.createStatement().executeQuery(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = '" + schema + "'");
-        while (rs.next()) dbTables.add(rs.getString(1).toLowerCase());
-
-        Set<String> missing = new HashSet<>(scriptTables);
-        missing.removeAll(dbTables);
-        if (missing.isEmpty()) return 0;
-
-        logger.logWarn("发现 " + missing.size() + " 个缺失表: " + String.join(", ", missing));
-
-        Map<String, String> ddlMap = new HashMap<>();
-        List<String> lines = Files.readAllLines(scriptFile.toPath());
-        StringBuilder cur = null;
-        String curTable = null;
-        for (String line : lines) {
-            String t = line.trim();
-            if (t.toUpperCase().startsWith("CREATE TABLE IF NOT EXISTS")) {
-                String[] p = t.split("\\s+");
-                if (p.length >= 6) {
-                    curTable = p[5].toLowerCase().replace("(", "").trim();
-                    if (missing.contains(curTable)) {
-                        cur = new StringBuilder();
-                        cur.append(line).append("\n");
-                        continue;
-                    }
-                }
-            }
-            if (cur != null) {
-                cur.append(line).append("\n");
-                if (t.equals(");")) {
-                    ddlMap.put(curTable, cur.toString());
-                    cur = null;
-                    curTable = null;
-                }
-            }
-        }
-
-        int fixed = 0;
-        try (Statement stmt = conn.createStatement()) {
-            for (String table : missing) {
-                String ddl = ddlMap.get(table);
-                if (ddl == null) { logger.logWarn("未找到DDL: " + table); continue; }
-                try {
-                    stmt.execute(fixDDL(ddl));
-                    fixed++;
-                    logger.logOk("修复: " + table);
-                } catch (SQLException e) {
-                    logger.logErr("修复失败: " + table + " - " + e.getMessage().substring(0, Math.min(60, e.getMessage().length())));
-                }
-            }
-        }
-        return fixed;
+    private Long relationOid(Connection connection,String schema,String table) throws SQLException {
+        var values=rows(connection,"SELECT c.oid::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=? AND c.relname=?",cancellation,schema,table);
+        if(values.size()>1)throw guard(Reason.TARGET_CHANGED);
+        return values.isEmpty()?null:Long.valueOf(values.getFirst().getFirst());
     }
-
-    private void execSqlFile(Connection conn, String path) throws Exception {
-        File file = new File(path);
-        if (!file.exists()) return;
-        String sql = new String(Files.readAllBytes(file.toPath()), "UTF-8");
-        List<String> stmts = SqlUtils.splitSql(sql);
-        int ok = 0, err = 0;
-        try (Statement stmt = conn.createStatement()) {
-            for (String s : stmts) {
-                s = s.trim();
-                if (s.isEmpty() || s.startsWith("--")) continue;
-                try { stmt.execute(s); ok++; }
-                catch (SQLException e) { if (!e.getMessage().contains("already exists")) err++; }
-            }
+    private String createTable(String qualified,MigrationPlan.Table table) {
+        List<String> parts=new ArrayList<>();
+        for(var column:table.columns()) {
+            if(!Set.of("TEXT","NUMERIC").contains(column.pgType()))throw new IllegalStateException("Unreviewed type");
+            parts.add(quote(column.targetName())+" "+column.pgType()+(column.nullable()?"":" NOT NULL"));
         }
-        logger.logOk("执行 " + ok + " 条语句" + (err > 0 ? ", " + err + " 条错误/跳过" : ""));
+        if(!table.primaryKey().isEmpty())parts.add("PRIMARY KEY ("+table.primaryKey().stream().map(MigrationPreflight::quote).collect(java.util.stream.Collectors.joining(","))+")");
+        return "CREATE TABLE "+qualified+" ("+String.join(",",parts)+")";
     }
-
-    private void execSqlFileIncremental(Connection conn, String path, Set<String> existingTables) throws Exception {
-        File file = new File(path);
-        if (!file.exists()) return;
-        String sql = new String(Files.readAllBytes(file.toPath()), "UTF-8");
-        List<String> stmts = SqlUtils.splitSql(sql);
-        int created = 0, skipped = 0;
-        try (Statement stmt = conn.createStatement()) {
-            for (String s : stmts) {
-                s = s.trim();
-                if (s.isEmpty() || s.startsWith("--")) continue;
-                if (s.toUpperCase().startsWith("CREATE TABLE IF NOT EXISTS")) {
-                    String[] parts = s.split("\\s+");
-                    if (parts.length >= 6) {
-                        String tableName = parts[5].toLowerCase().replace("(", "").trim();
-                        if (existingTables.contains(tableName)) { skipped++; continue; }
-                    }
-                }
-                try { stmt.execute(s); created++; }
-                catch (SQLException e) {
-                    if (!e.getMessage().contains("already exists"))
-                        logger.logErr(e.getMessage().substring(0, Math.min(60, e.getMessage().length())));
-                }
-            }
-        }
-        logger.logOk("新建 " + created + " 个对象" + (skipped > 0 ? ", 跳过 " + skipped + " 个已存在" : ""));
+    private void execute(Connection connection,String sql) throws SQLException {
+        cancellation.checkCancelled();
+        try(Statement statement=connection.createStatement()) { statement.setQueryTimeout(600); statement.execute(sql); }
     }
-
-    private String fixDDL(String ddl) {
-        String f = ddl;
-        f = f.replaceAll("(?i)\\bNVARCHAR2\\b", "VARCHAR");
-        f = f.replaceAll("(?i)\\bVARCHAR2\\b", "VARCHAR");
-        f = f.replaceAll("(?i)\\bNCLOB\\b", "TEXT");
-        f = f.replaceAll("(?i)\\bCLOB\\b", "TEXT");
-        f = f.replaceAll("(?i)\\bBLOB\\b", "BYTEA");
-        f = f.replaceAll("(?i)\\bNUMBER\\b", "NUMERIC");
-        f = f.replaceAll("(?i)\\bDATE\\b", "TIMESTAMP");
-        f = f.replaceAll("(?i)\\bBINARY_FLOAT\\b", "DOUBLE PRECISION");
-        f = f.replaceAll("(?i)\\bBINARY_DOUBLE\\b", "DOUBLE PRECISION");
-
-        StringBuilder r = new StringBuilder();
-        boolean inQ = false;
-        for (int i = 0; i < f.length(); i++) {
-            char c = f.charAt(i);
-            if (c == '\'') inQ = !inQ;
-            if (inQ && c == ';') r.append(',');
-            else r.append(c);
-        }
-        return r.toString();
+    private void flush(PreparedStatement statement) throws SQLException {
+        cancellation.checkCancelled();
+        try { for(int count:statement.executeBatch())if(count==Statement.EXECUTE_FAILED)throw new SQLException("Batch failed","DC003"); }
+        finally { statement.clearBatch(); }
+    }
+    private boolean save(MigrationRun run) {
+        try { checkpoint.save(run); return true; }
+        catch(IOException failed) { run.reportFailed(true); logger.logErr("报告写入失败，已停止后续写入"); return false; }
+    }
+    private static GuardFailure guard(Reason reason) { return new GuardFailure(reason); }
+    private static final class GuardFailure extends SQLException {
+        final Reason reason;
+        GuardFailure(Reason reason) { super(reason.name(),"DC003"); this.reason=reason; }
     }
 }

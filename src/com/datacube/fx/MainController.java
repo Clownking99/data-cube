@@ -1,481 +1,211 @@
 package com.datacube.fx;
 
-import com.datacube.cli.ConsoleLogger;
-import com.datacube.core.ConnectionHelper;
+import com.datacube.core.MigrationLogger;
 import com.datacube.fx.task.FxTaskScope;
-import com.datacube.migration.MigrationCancellation;
-import com.datacube.migration.OracleExporter;
-import com.datacube.migration.PgImporter;
-import com.datacube.migration.PgVerifier;
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
+import com.datacube.migration.*;
+import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.util.Duration;
+import javafx.stage.DirectoryChooser;
+import javafx.stage.FileChooser;
 
-import java.sql.*;
+import java.nio.file.Path;
+import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
+/** Migration UI with immutable request snapshots, explicit approval and owner-scoped callbacks. */
 public class MainController {
-
+    private enum Job { TEST, DDL, DATA, EXPORT_PREPARE, PREPARE, EXECUTE, RETRY, STATISTICS }
     private final FxTaskScope tasks;
     private final Executor cleanupExecutor;
+    private final Function<MigrationLogger,MigrationOperations> backendFactory;
+    private final Predicate<MigrationPlan> confirmation;
+    private final AtomicReference<MigrationCancellation> activeOperation=new AtomicReference<>();
+    private final List<Control> inputs=new ArrayList<>();
+    private final List<Button> actions=new ArrayList<>();
+    private TextField sourceUrl,sourceUser,targetUrl,targetUser,schema,root;
+    private PasswordField sourcePassword,targetPassword;
+    private ComboBox<String> mode;
+    private Spinner<Integer> concurrency;
+    private CheckBox bool;
+    private ProgressBar progress;
+    private Label status;
+    private TextArea log,review,report;
+    private TabPane views;
+    private Button cancel,execute,retry;
+    private FxLogger logger;
+    private MigrationOperations backend;
+    private MigrationPlan prepared;
+    private MigrationRun lastRun;
+    private long revision;
+    private volatile boolean running,shuttingDown;
 
-    // 连接输入
-    private TextField oraUrlField, oraUserField, pgUrlField, pgUserField, pgSchemaField;
-    private PasswordField oraPassField, pgPassField;
-
-    // 配置
-    private Spinner<Integer> concurrencySpinner;
-    private CheckBox boolCheck;
-
-    // 状态
-    private ProgressBar progressBar;
-    private Label statusLabel;
-    private TextArea logArea;
-    private Button[] actionButtons;
-    private Button cancelBtn;
-
-    // 业务逻辑
-    private FxLogger fxLogger;
-    private OracleExporter exporter;
-    private PgImporter importer;
-    private PgVerifier verifier;
-
-    private Connection oraConn;
-    private String oraUrl, oraUser, oraPass, pgUrl, pgUser, pgPass, pgSchema;
-    private volatile boolean shuttingDown = false;
-    private final AtomicReference<MigrationCancellation> activeOperation = new AtomicReference<>();
-
-    MainController(FxTaskScope tasks) {
-        this(tasks, Runnable::run);
+    MainController(FxTaskScope tasks) { this(tasks,Runnable::run); }
+    MainController(FxTaskScope tasks,Executor cleanupExecutor) { this(tasks,cleanupExecutor,MigrationOperations::new,null); }
+    MainController(FxTaskScope tasks,Executor cleanupExecutor,Function<MigrationLogger,MigrationOperations> backendFactory,Predicate<MigrationPlan> confirmation) {
+        this.tasks=Objects.requireNonNull(tasks);this.cleanupExecutor=Objects.requireNonNull(cleanupExecutor);
+        this.backendFactory=Objects.requireNonNull(backendFactory);this.confirmation=confirmation==null?this::confirmPlan:confirmation;
     }
-
-    MainController(FxTaskScope tasks, Executor cleanupExecutor) {
-        this.tasks = java.util.Objects.requireNonNull(tasks, "tasks");
-        this.cleanupExecutor = java.util.Objects.requireNonNull(cleanupExecutor, "cleanupExecutor");
-    }
-
-    /** 迁移 Tab 内容：原 UI 拆出。作为独立面板嵌入 AppShell。 */
     public VBox createMigrationContent() {
-        VBox content = new VBox(10);
-        content.setPadding(new Insets(15));
-
-        TitledPane oraPane = createOraclePane();
-        TitledPane pgPane = createPgPane();
-        HBox configBox = createConfigBox();
-        FlowPane buttonPane = createButtonPane();
-        VBox progressBox = createProgressBox();
-        VBox logBox = createLogBox();
-
-        content.getChildren().addAll(oraPane, pgPane, configBox, buttonPane, progressBox, logBox);
-        VBox.setVgrow(logBox, Priority.ALWAYS);
-
-        // 初始化 logger（日志区域创建后）
-        fxLogger = new FxLogger(logArea, progressBar, statusLabel, tasks::dispatch);
-        return content;
+        sourceUrl=field("source.url","jdbc:oracle:thin:@127.0.0.1:1521/orcl");
+        sourceUser=field("source.user","scott");sourcePassword=password("source.password");
+        targetUrl=field("target.url","jdbc:postgresql://127.0.0.1:5432/postgres");
+        targetUser=field("target.user","postgres");targetPassword=password("target.password");schema=field("schema","scott");
+        root=field("directory",Path.of("pg_migration").toAbsolutePath().normalize().toString());
+        root.setTooltip(new Tooltip("导出文件包含明文数据；脱敏报告另存本地，不包含数据值或凭据"));
+        mode=new ComboBox<>(FXCollections.observableArrayList("仅导入空表（拒绝已有数据）","跳过已有数据（不是增量同步）"));
+        mode.setId("migration.mode");mode.getSelectionModel().selectFirst();inputs.add(mode);mode.valueProperty().addListener((o,a,b)->invalidatePlan());
+        concurrency=new Spinner<>(1,100,20);concurrency.setPrefWidth(80);inputs.add(concurrency);
+        bool=new CheckBox("旧布尔推断（自动迁移不支持）");bool.setId("migration.boolean");inputs.add(bool);bool.selectedProperty().addListener((o,a,b)->invalidatePlan());
+        Button choose=new Button("选择导出根目录");choose.setId("migration.directory.choose");actions.add(choose);
+        choose.setOnAction(event->{DirectoryChooser picker=new DirectoryChooser();picker.setTitle("选择迁移导出根目录");var selected=picker.showDialog(root.getScene()==null?null:root.getScene().getWindow());if(selected!=null)root.setText(selected.getAbsolutePath());});
+        GridPane source=grid(new String[]{"JDBC URL","用户名","密码"},sourceUrl,sourceUser,sourcePassword);
+        GridPane target=grid(new String[]{"JDBC URL","用户名","密码","Schema"},targetUrl,targetUser,targetPassword,schema);
+        var sourcePane=new TitledPane("Oracle 源（仅读取）",source);sourcePane.setCollapsible(false);
+        var targetPane=new TitledPane("PostgreSQL 目标（执行前确认）",target);targetPane.setCollapsible(false);
+        FlowPane options=new FlowPane(10,8,new Label("导出并发"),concurrency,mode,bool);
+        HBox directory=new HBox(8,new Label("导出根目录"),root,choose);HBox.setHgrow(root,Priority.ALWAYS);
+        FlowPane buttons=new FlowPane(10,8);
+        buttons.getChildren().addAll(
+                button("test","测试连接",Job.TEST),button("ddl","导出参考 DDL",Job.DDL),
+                button("data","导出数据",Job.DATA),button("prepare","预检查（仅读取）",Job.PREPARE),
+                button("all","导出并预检查",Job.EXPORT_PREPARE));
+        execute=button("execute","确认并执行导入",Job.EXECUTE);retry=button("retry","重新预检查可重试项",Job.RETRY);
+        Button load=new Button("读取脱敏报告");load.setId("migration.report.load");actions.add(load);load.setOnAction(e->loadReport());
+        cancel=new Button("取消");cancel.setId("migration.cancel");cancel.setVisible(false);cancel.setManaged(false);
+        cancel.setOnAction(e->{var operation=activeOperation.get();if(operation!=null){cancel.setDisable(true);status.setText("正在取消，等待资源关闭");operation.cancelAsync(cleanupExecutor);}});
+        buttons.getChildren().addAll(execute,retry,button("statistics","目标端统计",Job.STATISTICS),load,cancel);
+        progress=new ProgressBar(0);progress.setMaxWidth(Double.MAX_VALUE);status=new Label("先导出数据，再预检查并确认导入；参考 DDL 不会自动执行");
+        status.setId("migration.status");
+        log=area("log");review=area("review");report=area("report");
+        views=new TabPane(tab("预检查",review),tab("逐表报告",report),tab("日志",log));
+        VBox.setVgrow(views,Priority.ALWAYS);
+        VBox content=new VBox(10,sourcePane,targetPane,directory,options,buttons,progress,status,views);content.setPadding(new Insets(15));
+        logger=new FxLogger(log,progress,status,tasks::dispatch);backend=backendFactory.apply(logger);
+        updateControls();return content;
     }
-
-    private TitledPane createOraclePane() {
-        GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(8);
-        grid.setPadding(new Insets(10));
-
-        oraUrlField = new TextField("jdbc:oracle:thin:@127.0.0.1:1521/orcl");
-        oraUrlField.setPrefWidth(400);
-        oraUserField = new TextField("scott");
-        oraPassField = new PasswordField();
-
-        grid.add(new Label("JDBC URL:"), 0, 0);
-        grid.add(oraUrlField, 1, 0);
-        grid.add(new Label("用户名:"), 0, 1);
-        grid.add(oraUserField, 1, 1);
-        grid.add(new Label("密码:"), 0, 2);
-        grid.add(oraPassField, 1, 2);
-
-        ColumnConstraints col = new ColumnConstraints();
-        col.setMinWidth(70);
-        grid.getColumnConstraints().add(col);
-
-        TitledPane pane = new TitledPane("Oracle 连接", grid);
-        pane.setCollapsible(false);
-        return pane;
+    private TextField field(String id,String value) {
+        TextField field=new TextField(value);field.setId("migration."+id);inputs.add(field);field.textProperty().addListener((o,a,b)->invalidatePlan());return field;
     }
-
-    private TitledPane createPgPane() {
-        GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(8);
-        grid.setPadding(new Insets(10));
-
-        pgUrlField = new TextField("jdbc:postgresql://127.0.0.1:5432/postgres");
-        pgUrlField.setPrefWidth(400);
-        pgUserField = new TextField("postgres");
-        pgPassField = new PasswordField();
-        pgSchemaField = new TextField("scott");
-
-        grid.add(new Label("JDBC URL:"), 0, 0);
-        grid.add(pgUrlField, 1, 0);
-        grid.add(new Label("用户名:"), 0, 1);
-        grid.add(pgUserField, 1, 1);
-        grid.add(new Label("密码:"), 0, 2);
-        grid.add(pgPassField, 1, 2);
-        grid.add(new Label("Schema:"), 0, 3);
-        grid.add(pgSchemaField, 1, 3);
-
-        ColumnConstraints col = new ColumnConstraints();
-        col.setMinWidth(70);
-        grid.getColumnConstraints().add(col);
-
-        TitledPane pane = new TitledPane("PostgreSQL 连接", grid);
-        pane.setCollapsible(false);
-        return pane;
+    private PasswordField password(String id) {
+        PasswordField field=new PasswordField();field.setId("migration."+id);inputs.add(field);field.textProperty().addListener((o,a,b)->invalidatePlan());return field;
     }
-
-    private HBox createConfigBox() {
-        HBox box = new HBox(15);
-        box.setPadding(new Insets(5));
-        box.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-
-        concurrencySpinner = new Spinner<>(1, 100, 20);
-        concurrencySpinner.setPrefWidth(80);
-        concurrencySpinner.setEditable(true);
-
-        boolCheck = new CheckBox("布尔值转换 (0/1→TRUE/FALSE)");
-
-        box.getChildren().addAll(new Label("并发上限:"), concurrencySpinner, boolCheck);
-        return box;
+    private static GridPane grid(String[] labels,Control... controls) {
+        GridPane grid=new GridPane();grid.setHgap(10);grid.setVgap(6);grid.setPadding(new Insets(8));
+        for(int i=0;i<labels.length;i++){grid.add(new Label(labels[i]),0,i);grid.add(controls[i],1,i);GridPane.setHgrow(controls[i],Priority.ALWAYS);}
+        return grid;
     }
-
-    private FlowPane createButtonPane() {
-        FlowPane pane = new FlowPane(10, 10);
-        pane.setPadding(new Insets(5, 0, 5, 0));
-
-        Button testBtn = new Button("测试连接");
-        Button ddlBtn = new Button("导出 DDL");
-        Button dataBtn = new Button("导出数据");
-        Button fullBtn = new Button("完整导入");
-        Button incrBtn = new Button("增量导入");
-        Button allBtn = new Button("一键全部");
-        Button verifyBtn = new Button("目标端统计");
-        verifyBtn.setTooltip(new Tooltip("仅查看目标可见对象与估算行数，不能证明迁移数据一致"));
-        cancelBtn = new Button("取消");
-        cancelBtn.setStyle("-fx-background-color: #f44336; -fx-text-fill: white; -fx-font-weight: bold;");
-        cancelBtn.setVisible(false);
-        cancelBtn.setOnAction(e -> onCancel());
-
-        // 一键全部按钮突出显示
-        allBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
-
-        actionButtons = new Button[]{testBtn, ddlBtn, dataBtn, fullBtn, incrBtn, allBtn, verifyBtn, cancelBtn};
-
-        testBtn.setOnAction(e -> startAsync(false, this::onTestConnection));
-        ddlBtn.setOnAction(e -> startAsync(true, this::onExportDDL));
-        dataBtn.setOnAction(e -> startAsync(true, this::onExportData));
-        fullBtn.setOnAction(e -> startAsync(true, operation -> onImport(operation, false)));
-        incrBtn.setOnAction(e -> startAsync(true, operation -> onImport(operation, true)));
-        allBtn.setOnAction(e -> startAsync(true, this::onAll));
-        verifyBtn.setOnAction(e -> startAsync(true, this::onVerify));
-
-        pane.getChildren().addAll(actionButtons);
-        return pane;
+    private TextArea area(String id) {TextArea area=new TextArea();area.setId("migration."+id);area.setEditable(false);area.setWrapText(true);return area;}
+    private static Tab tab(String title,TextArea content){Tab tab=new Tab(title,content);tab.setClosable(false);return tab;}
+    private Button button(String id,String text,Job job){Button button=new Button(text);button.setId("migration."+id);button.setOnAction(event->start(job));actions.add(button);return button;}
+    private void invalidatePlan() {revision++;prepared=null;if(execute!=null)updateControls();}
+    private void updateControls() {
+        inputs.forEach(input->input.setDisable(running));actions.forEach(action->action.setDisable(running));
+        if(execute!=null)execute.setDisable(running || prepared==null || !prepared.canRun());
+        if(retry!=null)retry.setDisable(running || lastRun==null);
     }
-
-    private VBox createProgressBox() {
-        progressBar = new ProgressBar(0);
-        progressBar.setPrefWidth(Double.MAX_VALUE);
-        statusLabel = new Label("就绪");
-        VBox box = new VBox(5, progressBar, statusLabel);
-        return box;
+    private MigrationRequest readInputs(boolean sourceRequired) {
+        String owner=sourceUser.getText().trim().toUpperCase(Locale.ROOT),scope=schema.getText().trim();
+        if(sourceRequired && (sourceUrl.getText().isBlank() || owner.isEmpty()))throw new IllegalArgumentException("请输入 Oracle 源连接信息");
+        if(targetUrl.getText().isBlank() || targetUser.getText().isBlank() || scope.isEmpty() || root.getText().isBlank())throw new IllegalArgumentException("请输入 PostgreSQL 目标和导出目录");
+        return new MigrationRequest(new MigrationRequest.Endpoint(sourceUrl.getText().trim(),sourceUser.getText().trim(),sourcePassword.getText()),
+                new MigrationRequest.Endpoint(targetUrl.getText().trim(),targetUser.getText().trim(),targetPassword.getText()),
+                owner.isEmpty()?"UNUSED":owner,scope,Path.of(root.getText().trim()).resolve(scope),
+                mode.getSelectionModel().getSelectedIndex()==1?MigrationRequest.Mode.SKIP_NONEMPTY:MigrationRequest.Mode.EMPTY_TABLES_ONLY,bool.isSelected());
     }
-
-    private VBox createLogBox() {
-        logArea = new TextArea();
-        logArea.setEditable(false);
-        logArea.setWrapText(false);
-        logArea.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 12px;");
-        logArea.setPrefRowCount(15);
-
-        TitledPane pane = new TitledPane("日志输出", logArea);
-        pane.setCollapsible(false);
-
-        VBox box = new VBox(pane);
-        VBox.setVgrow(pane, Priority.ALWAYS);
-        return box;
-    }
-
-    // ==================== 业务逻辑 ====================
-
-    private boolean readInputs() {
-        oraUrl = oraUrlField.getText().trim();
-        oraUser = oraUserField.getText().trim().toUpperCase();
-        oraPass = oraPassField.getText();
-        pgUrl = pgUrlField.getText().trim();
-        pgUser = pgUserField.getText().trim();
-        pgPass = pgPassField.getText();
-        pgSchema = pgSchemaField.getText().trim();
-
-        if (oraUrl.isEmpty() || oraUser.isEmpty()) {
-            showAlert("请输入 Oracle 连接信息");
-            return false;
+    private void start(Job job) {
+        if(shuttingDown || running)return;
+        final MigrationRequest request;
+        try {request=readInputs(job!=Job.STATISTICS);}
+        catch(RuntimeException invalid){status.setText("输入不完整或目录无效");return;}
+        final MigrationPlan plan=prepared;
+        MigrationPlan.Approval approved=null;
+        if(job==Job.EXECUTE) {
+            if(plan==null || !plan.request().equals(request) || !plan.canRun()){invalidatePlan();status.setText("目标或配置已变化，请重新预检查");return;}
+            if(!confirmation.test(plan)){status.setText("已取消确认，未开始导入");return;}
+            // A modal confirmation may process nested UI events.
+            if(shuttingDown || running || prepared!=plan || !request.equals(readInputs(true))){invalidatePlan();status.setText("确认期间配置已变化，请重新预检查");return;}
+            approved=plan.approve(request);
         }
-        if (pgUrl.isEmpty() || pgUser.isEmpty() || pgSchema.isEmpty()) {
-            showAlert("请输入 PostgreSQL 连接信息");
-            return false;
-        }
-        return true;
-    }
-
-    private boolean connect(MigrationCancellation cancellation) {
-        ConnectionHelper.loadDrivers(fxLogger);
-
-        Connection opened = null;
+        final MigrationPlan.Approval approval=approved;
+        final MigrationRun prior=lastRun;
+        final int parallelism=concurrency.getValue();
+        final long expectedRevision=revision;
+        MigrationCancellation cancellation=new MigrationCancellation();
+        if(!activeOperation.compareAndSet(null,cancellation))return;
+        running=true;updateControls();cancel.setVisible(true);cancel.setManaged(true);cancel.setDisable(false);progress.setProgress(-1);status.setText("执行中");
+        if(job==Job.PREPARE || job==Job.RETRY || job==Job.EXPORT_PREPARE)prepared=null;
         try {
-            opened = cancellation.register(
-                    ConnectionHelper.openAndTest(oraUrl, oraUser, oraPass, "Oracle", fxLogger));
-            oraConn = opened;
-            cancellation.checkCancelled();
-        } catch (SQLException | CancellationException e) {
-            cancellation.release(opened);
-            oraConn = null;
-            return false;
-        }
-
-        Connection pgConn = null;
-        try {
-            pgConn = cancellation.register(
-                    ConnectionHelper.openAndTest(pgUrl, pgUser, pgPass, "PostgreSQL", fxLogger));
-            ConnectionHelper.ensureSchema(pgConn, pgSchema, fxLogger);
-            cancellation.checkCancelled();
-        } catch (SQLException | CancellationException e) {
-            closeOraConn(cancellation);
-            return false;
-        } finally {
-            cancellation.release(pgConn);
-        }
-
-        return true;
-    }
-
-    private void initModules(MigrationCancellation cancellation) {
-        // Spinner setEditable(true) 后用户可能输入越界值，需 clamp
-        int concurrency = concurrencySpinner.getValue();
-        if (concurrency < 1) concurrency = 1;
-        if (concurrency > 100) concurrency = 100;
-        boolean convertBool = boolCheck.isSelected();
-
-        exporter = new OracleExporter(fxLogger, cancellation);
-        exporter.setMaxConcurrency(concurrency);
-        exporter.setConvertBool(convertBool);
-
-        importer = new PgImporter(fxLogger, cancellation);
-        importer.setMaxConcurrency(concurrency);
-
-        verifier = new PgVerifier(fxLogger, cancellation);
-    }
-
-    private void onTestConnection(MigrationCancellation cancellation) {
-        fxLogger.logSection("测试连接");
-        ConnectionHelper.loadDrivers(fxLogger);
-        testConnection(cancellation, oraUrl, oraUser, oraPass, "Oracle");
-        cancellation.checkCancelled();
-        testConnection(cancellation, pgUrl, pgUser, pgPass, "PostgreSQL");
-    }
-
-    private void testConnection(MigrationCancellation cancellation, String url, String user,
-                                String password, String label) {
-        Connection connection = null;
-        try {
-            connection = cancellation.register(
-                    ConnectionHelper.openAndTest(url, user, password, label, fxLogger));
-        } catch (SQLException ignored) {
-        } finally {
-            cancellation.release(connection);
-        }
-    }
-
-    private void onExportDDL(MigrationCancellation cancellation) {
-        if (!connect(cancellation)) return;
-        try {
-            exporter.exportDDL(oraConn, oraUser, pgSchema);
-        } catch (CancellationException ignored) {
-        } catch (Exception e) {
-            if (!cancellation.isCancelled()) fxLogger.logErr("导出 DDL 失败: " + e.getMessage());
-        } finally {
-            closeOraConn(cancellation);
-        }
-    }
-
-    private void onExportData(MigrationCancellation cancellation) {
-        if (!connect(cancellation)) return;
-        try {
-            exporter.exportData(oraConn, oraUrl, oraUser, oraPass, pgSchema);
-        } catch (CancellationException ignored) {
-        } catch (Exception e) {
-            if (!cancellation.isCancelled()) fxLogger.logErr("导出数据失败: " + e.getMessage());
-        } finally {
-            closeOraConn(cancellation);
-        }
-    }
-
-    private void onImport(MigrationCancellation cancellation, boolean incremental) {
-        if (!connect(cancellation)) return;
-        closeOraConn(cancellation);
-        try {
-            importer.importToPg(pgUrl, pgUser, pgPass, oraUser, pgSchema, incremental);
-        } catch (CancellationException ignored) {
-        } catch (Exception e) {
-            if (!cancellation.isCancelled()) fxLogger.logErr("导入失败: " + e.getMessage());
-        }
-    }
-
-    private void onAll(MigrationCancellation cancellation) {
-        if (!connect(cancellation)) return;
-        try {
-            exporter.exportDDL(oraConn, oraUser, pgSchema);
-            cancellation.checkCancelled();
-            exporter.exportData(oraConn, oraUrl, oraUser, oraPass, pgSchema);
-            cancellation.checkCancelled();
-            closeOraConn(cancellation);
-            importer.importToPg(pgUrl, pgUser, pgPass, oraUser, pgSchema, true);
-            cancellation.checkCancelled();
-            verifier.verify(pgUrl, pgUser, pgPass, pgSchema);
-        } catch (CancellationException ignored) {
-        } catch (Exception e) {
-            if (!cancellation.isCancelled()) fxLogger.logErr("操作失败: " + e.getMessage());
-        } finally {
-            closeOraConn(cancellation);
-        }
-    }
-
-    private void onVerify(MigrationCancellation cancellation) {
-        try {
-            verifier.verify(pgUrl, pgUser, pgPass, pgSchema);
-        } catch (CancellationException ignored) {
-        } catch (Exception e) {
-            if (!cancellation.isCancelled()) fxLogger.logErr("目标端统计失败，未产生一致性结论");
-        }
-    }
-
-    // ==================== 工具方法 ====================
-
-    private void startAsync(boolean initializeModules, Consumer<MigrationCancellation> task) {
-        if (shuttingDown || !readInputs()) return;
-        MigrationCancellation cancellation = new MigrationCancellation();
-        if (initializeModules) initModules(cancellation);
-        runAsync(cancellation, task);
-    }
-
-    private void runAsync(MigrationCancellation cancellation,
-                          Consumer<MigrationCancellation> task) {
-        if (!activeOperation.compareAndSet(null, cancellation)) return;
-        // 禁用其他按钮，显示取消按钮
-        for (Button btn : actionButtons) {
-            if (btn == cancelBtn) continue;
-            btn.setDisable(true);
-        }
-        cancelBtn.setVisible(true);
-        cancelBtn.setDisable(false);
-        progressBar.setProgress(-1);
-        statusLabel.setText("执行中...");
-
-        try {
-            tasks.submit(() -> {
+            tasks.submit(()-> {
+                Object value=null;boolean wasCancelled=false;boolean failed=false;
                 try {
-                    task.accept(cancellation);
-                    return null;
-                } catch (CancellationException ignored) {
-                    return null;
-                } finally {
+                    value=switch(job) {
+                        case TEST->{backend.test(request,cancellation);yield null;}
+                        case DDL,DATA->{backend.export(request,cancellation,parallelism,job==Job.DATA);yield null;}
+                        case PREPARE->backend.prepare(request,cancellation);
+                        case EXPORT_PREPARE->{backend.export(request,cancellation,parallelism,false);cancellation.checkCancelled();backend.export(request,cancellation,parallelism,true);cancellation.checkCancelled();yield backend.prepare(request,cancellation);}
+                        case RETRY->{if(prior==null)throw new IllegalStateException();yield prior.retryPlan(backend.prepare(request,cancellation));}
+                        case EXECUTE->backend.execute(plan,approval,request,cancellation);
+                        case STATISTICS->backend.statistics(request,cancellation);
+                    };
+                    wasCancelled=cancellation.isCancelled();
+                } catch(CancellationException cancelled){wasCancelled=true;}
+                catch(Exception error){failed=true;wasCancelled=cancellation.isCancelled();}
+                finally {
                     cancellation.close();
-                    try {
-                        cancellation.awaitCleanup();
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                    }
-                    activeOperation.compareAndSet(cancellation, null);
+                    try {cancellation.awaitCleanup();}catch(InterruptedException interrupted){Thread.currentThread().interrupt();wasCancelled=true;}
+                    activeOperation.compareAndSet(cancellation,null);
                 }
-            }, ignored -> finishTask(), error -> {
-                fxLogger.logErr("异常: " + error.getMessage());
-                // 保留完整堆栈到日志文件，便于事后排查
-                fxLogger.logToFile(ConsoleLogger.stackTrace(error));
-                finishTask();
-            });
-        } catch (RuntimeException rejected) {
-            cancellation.close();
-            activeOperation.compareAndSet(cancellation, null);
-            if (!shuttingDown) finishTask();
-            throw rejected;
+                return new Completion(value,wasCancelled,failed);
+            }, result->finish(job,result,expectedRevision), error->finish(job,new Completion(null,false,true),expectedRevision));
+        } catch(RuntimeException rejected) {
+            cancellation.cancelAsync(cleanupExecutor);activeOperation.compareAndSet(cancellation,null);
+            finish(job,new Completion(null,false,true),expectedRevision);
         }
     }
-
-    private void finishTask() {
-        setButtonsDisabled(false);
-        cancelBtn.setVisible(false);
-        progressBar.setProgress(1.0);
-        statusLabel.setText("完成");
-        // 延迟 1.5s 重置进度条，避免视觉“突然消失”
-        Timeline delay = new Timeline(new KeyFrame(Duration.seconds(1.5), ev -> {
-            if (!controller_shutting_down()) {
-                progressBar.setProgress(0);
-                statusLabel.setText("就绪");
-            }
-        }));
-        delay.play();
-        // 不再在此处关闭日志文件，避免连续任务日志丢失；
-        // 统一在窗口关闭时由 shutdown() 关闭。
+    private record Completion(Object value,boolean cancelled,boolean failed) { }
+    private void finish(Job job,Completion result,long expectedRevision) {
+        if(shuttingDown)return;
+        running=false;cancel.setVisible(false);cancel.setManaged(false);progress.setProgress(0);
+        if(result.value() instanceof MigrationRun run){lastRun=run;prepared=null;report.setText(MigrationReport.of(run).display()+"\n本地报告目录："+MigrationReport.defaultDirectory());views.getSelectionModel().select(1);}
+        if(result.failed()){status.setText("操作失败，未生成成功结论");logger.logErr("迁移操作失败；原始异常、连接信息及 SQL 未写入报告");}
+        else if(result.cancelled())status.setText("已取消；已提交或未知结果仍需查看逐表报告");
+        else if(expectedRevision!=revision){prepared=null;status.setText("配置已变化，结果不可用于执行；请重新预检查");}
+        else if(result.value() instanceof MigrationPlan next){
+            prepared=next;review.setText(describe(next));views.getSelectionModel().select(0);
+            status.setText(next.canRun()?"预检查完成，请审阅目标、范围和限制后确认":"预检查存在阻断项，不能执行");
+        } else if(result.value() instanceof MigrationRun run)status.setText(run.completeWithinScope()?(run.plan().previousRun()==null?"表数据导入和文件对账完成；其他对象仍需审阅":"本次选定重试项完成；原报告其他项仍需查看"):"存在跳过、失败或未知结果，请查看逐表报告");
+        else if(job==Job.STATISTICS)status.setText("目标端统计完成（非迁移一致性结论）");
+        else if(job==Job.DDL)status.setText("参考 DDL 已导出，需人工审阅，不自动执行");
+        else if(job==Job.DATA)status.setText("数据导出完成；各表读取窗口独立");
+        else status.setText("连接检查完成，未写入目标");
+        updateControls();
     }
-
-    private void onCancel() {
-        fxLogger.logWarn("收到取消请求，正在停止...");
-        cancelBtn.setDisable(true);
-        MigrationCancellation operation = activeOperation.get();
-        if (operation != null) operation.cancelAsync(cleanupExecutor);
+    static String describe(MigrationPlan plan) { return MigrationReview.describe(plan); }
+    private static String targetLabel(MigrationRequest request) { return MigrationReview.target(request); }
+    private boolean confirmPlan(MigrationPlan plan) {
+        Alert dialog=new Alert(Alert.AlertType.CONFIRMATION,"确认向此目标创建缺失表并写入已审阅的空表？\n"+targetLabel(plan.request())+"\n共 "+plan.tables().size()+" 个表任务；逐表提交，取消不能回滚已提交表。\n请先阅读预检查中的未支持对象和对账范围。",ButtonType.CANCEL,ButtonType.OK);
+        dialog.setHeaderText("确认本次迁移目标和范围");if(status.getScene()!=null)dialog.initOwner(status.getScene().getWindow());
+        return dialog.showAndWait().orElse(ButtonType.CANCEL)==ButtonType.OK;
     }
-
-    /**
-     * 关闭资源（仅由窗口关闭事件调用）
-     */
-    public void shutdown() {
-        shuttingDown = true;
-        MigrationCancellation operation = activeOperation.getAndSet(null);
-        if (operation != null) operation.cancelAsync(cleanupExecutor);
-        tasks.close();
-        if (fxLogger != null) fxLogger.closeLog();
+    private void loadReport() {
+        if(running || shuttingDown)return;
+        FileChooser chooser=new FileChooser();chooser.setTitle("读取迁移脱敏报告（不会恢复写入）");chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("迁移报告","*.report"));
+        var selected=chooser.showOpenDialog(status.getScene()==null?null:status.getScene().getWindow());if(selected==null)return;
+        prepared=null;lastRun=null;running=true;updateControls();
+        try {
+            tasks.submit(()->MigrationReport.read(selected.toPath()),value->{running=false;report.setText(value.display());views.getSelectionModel().select(1);status.setText("已读取报告，仅供查看，不授权重放");updateControls();},
+                    error->{running=false;status.setText("报告损坏、版本不支持或无法读取；原文件保留");updateControls();});
+        } catch(RuntimeException rejected) {running=false;status.setText("报告读取任务无法启动");updateControls();}
     }
-
-    /** 供 Timeline 延迟回调查询是否正在关闭 */
-    private boolean controller_shutting_down() {
-        return shuttingDown;
-    }
-
-    /**
-     * 当前是否有任务在运行（供窗口关闭事件查询）
-     */
-    public boolean isRunning() {
-        return progressBar.getProgress() < 0;
-    }
-
-    private void setButtonsDisabled(boolean disabled) {
-        for (Button btn : actionButtons) {
-            btn.setDisable(disabled);
-        }
-    }
-
-    private void closeOraConn(MigrationCancellation cancellation) {
-        Connection connection = oraConn;
-        oraConn = null;
-        cancellation.release(connection);
-    }
-
-    private void showAlert(String msg) {
-        Alert alert = new Alert(Alert.AlertType.WARNING, msg, ButtonType.OK);
-        alert.setHeaderText(null);
-        alert.showAndWait();
+    public boolean isRunning(){return running;}
+    public void shutdown(){
+        shuttingDown=true;prepared=null;lastRun=null;var operation=activeOperation.getAndSet(null);if(operation!=null)operation.cancelAsync(cleanupExecutor);
+        tasks.close();if(logger!=null)logger.closeLog();
     }
 }

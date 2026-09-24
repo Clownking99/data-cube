@@ -1,0 +1,7 @@
+allprojects {
+ tasks.withType(Test).configureEach {
+  systemProperty 'user.home', System.getenv('DATACUBE_G7_PROFILE')
+  systemProperty 'java.awt.headless', 'false'
+  environment.keySet().findAll { it.startsWith('DATACUBE_REDIS_') || it.startsWith('DATACUBE_SCHEMA_DIFF_') }.each { environment.remove(it) }
+ }
+}

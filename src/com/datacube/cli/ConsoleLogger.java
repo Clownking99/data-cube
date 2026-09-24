@@ -14,9 +14,11 @@ public class ConsoleLogger implements MigrationLogger {
 
     public void openLog() {
         try {
-            String logFileName = "migration_" + new SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date()) + ".log";
-            logWriter = new PrintWriter(new FileWriter(logFileName), true);
-            logInfo("日志文件: " + new File(logFileName).getAbsolutePath());
+            java.nio.file.Path directory=java.nio.file.Path.of(System.getProperty("user.home"),".datacube","migration-logs");
+            java.nio.file.Files.createDirectories(directory);
+            java.nio.file.Path file=directory.resolve("migration_"+java.util.UUID.randomUUID()+".log");
+            logWriter=new PrintWriter(java.nio.file.Files.newBufferedWriter(file,java.nio.charset.StandardCharsets.UTF_8,java.nio.file.StandardOpenOption.CREATE_NEW),true);
+            logInfo("日志已在本地迁移日志目录创建");
         } catch (IOException e) {
             System.err.println("  无法创建日志文件: " + e.getMessage());
         }
