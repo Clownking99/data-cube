@@ -83,7 +83,7 @@ class SqlEditorDuplicateIntegrationTest {
                 shortcuts.apply(Map.of(ShortcutAction.SQL_DUPLICATE_LINES, KeyCombination.keyCombination("Ctrl+Shift+J")));
                 f.editor.moveTo(3); f.editor.fireEvent(SqlDuplicateLinesActionTest.key(KeyCode.D)); assertEquals("select 1;", f.editor.getText());
                 f.editor.fireEvent(SqlDuplicateLinesActionTest.key(KeyCode.J)); assertEquals("select 1;\nselect 1;", f.editor.getText());
-                f.editor.undo(); ((Button) f.pane.getNode().lookup("#sql-line-comment")).fire(); assertEquals("-- select 1;", f.editor.getText());
+                f.editor.undo(); SqlMenuTestSupport.find(f.pane.getNode(),"sql-line-comment").fire(); assertEquals("-- select 1;", f.editor.getText());
                 return null;
             }); f.assertOffline();
         }
@@ -147,11 +147,11 @@ class SqlEditorDuplicateIntegrationTest {
                 root.getScene().getStylesheets().addAll(ThemeManager.class.getResource("theme-base.css").toExternalForm(),
                         ThemeManager.class.getResource("theme-" + theme + ".css").toExternalForm());
                 root.resize(width, 850); root.applyCss(); root.layout();
-                var button = f.button(); var bounds = button.localToScene(button.getLayoutBounds());
+                var button = f.button(); var menu = (javafx.scene.control.MenuButton) root.lookup("#sql-text-actions"); var bounds = menu.localToScene(menu.getLayoutBounds());
                 assertTrue(bounds.getMinX() >= 0 && bounds.getMaxX() <= width + 1);
                 assertTrue(bounds.getMinY() >= 0 && bounds.getMaxY() <= root.getLayoutBounds().getHeight());
-                var text = (javafx.scene.text.Text) button.lookup(".text"); assertEquals("重复行", text.getText());
-                assertTrue(text.getLayoutBounds().getWidth() <= button.getWidth());
+                assertTrue(button.getText().startsWith("重复行 ("));
+                assertTrue(menu.getWidth() + 1 >= menu.prefWidth(-1));
                 button.fire(); assertEquals("select 1;\nselect 1;", f.editor.getText()); return null;
             }); f.assertOffline();
         }
@@ -173,7 +173,7 @@ class SqlEditorDuplicateIntegrationTest {
             editor = FxUiTestSupport.call(() -> (CodeArea) pane.getNode().lookup("#sql-editor"));
             FxUiTestSupport.call(() -> { editor.getUndoManager().forgetHistory(); return null; });
         }
-        Button button() { return (Button) pane.getNode().lookup("#sql-duplicate-lines"); }
+        javafx.scene.control.MenuItem button() { return SqlMenuTestSupport.find(pane.getNode(),"sql-duplicate-lines"); }
         SqlScriptDocument document() { return (SqlScriptDocument) field(field(pane, "fileController"), "document"); }
         void assertOffline() {
             assertEquals(0, probe.providers.get()); assertEquals(0, probe.sessions.get());

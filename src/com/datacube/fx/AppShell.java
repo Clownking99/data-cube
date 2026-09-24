@@ -26,7 +26,6 @@ import com.datacube.update.UpdateService;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.geometry.Insets;
-import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -34,15 +33,11 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
-import javafx.scene.control.Separator;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.stage.FileChooser;
 
@@ -184,7 +179,7 @@ public final class AppShell {
     }
 
 
-    private HBox topBar(ConnectionTreePane treePane) {
+    private Node topBar(ConnectionTreePane treePane) {
         // 品牌以小立方体图标呈现（标题文字与系统标题栏重复，故省略）
         Node logo = BrandLogo.mark(20);
 
@@ -209,11 +204,6 @@ public final class AppShell {
         openTabsBtn.setOnAction(event -> OpenTabsDialog.show((TabPane) contentTabs.getNode(),
                 root.getScene() == null ? null : root.getScene().getWindow(), themeManager,
                 () -> !root.isDisabled() && !fileOpenTasks.isClosed()));
-        Separator sep = new Separator(Orientation.VERTICAL);
-
-        // 弹性留白：把右侧功能按钮推向右端（“活动连接”不再在头部展示，改由各页面自行标识）
-        Region spacer = new Region();
-
         Button themeBtn = new Button();
         Runnable syncThemeBtn = () -> themeBtn.setText(
                 settings.getTheme() == AppSettings.Theme.DARK ? "☀ 亮色" : "🌙 暗色");
@@ -231,12 +221,23 @@ public final class AppShell {
         settingsBtn.setOnAction(e ->
                 SettingsDialog.show(settings, shortcuts, root.getScene() == null ? null : root.getScene().getWindow(), themeManager));
 
-        HBox bar = new HBox(6, logo, addConnBtn, refreshBtn, newSqlBtn, sqlFilesMenu, historyBtn, draftsBtn, openTabsBtn, sep, spacer,
-                migrationBtn, themeBtn, aboutBtn, settingsBtn);
+        MenuButton connections=SqlActionMenus.menu("连接","workspace-connections",addConnBtn,refreshBtn);
+        MenuButton library=SqlActionMenus.menu("SQL 资料","workspace-sql-library",historyBtn,draftsBtn);
+        MenuItem favorites=new MenuItem("SQL 收藏…"); favorites.setId("sql-favorites");
+        favorites.setOnAction(event -> openSqlFavorites(""));
+        MenuItem capture=new MenuItem("收藏当前脚本…"); capture.setId("sql-favorite-current");
+        capture.setOnAction(event -> {
+            String text=selectedFavoriteText();
+            if(text!=null) openSqlFavorites(text);
+        });
+        library.getItems().addAll(favorites,capture);
+        library.setOnShowing(event -> capture.setDisable(selectedFavoriteText()==null));
+        MenuButton tools=SqlActionMenus.menu("工具","workspace-tools",migrationBtn,themeBtn,settingsBtn,aboutBtn);
+        javafx.scene.layout.FlowPane bar = new javafx.scene.layout.FlowPane(8,6,
+                logo,connections,newSqlBtn,sqlFilesMenu,library,openTabsBtn,tools);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPadding(new Insets(6, 12, 6, 12));
         bar.getStyleClass().add("top-bar");
-        HBox.setHgrow(spacer, Priority.ALWAYS);
         return bar;
     }
 
@@ -585,6 +586,24 @@ public final class AppShell {
                             @Override public void bind(SqlEditorPane pane) { sqlDrafts.get().bind(pane); }
                             @Override public void installed(Node content) { sqlDrafts.get().installed(content); }
                         }, sqlFileTabs));
+    }
+
+    private String selectedFavoriteText() {
+        Tab tab=((TabPane)contentTabs.getNode()).getSelectionModel().getSelectedItem();
+        return SqlEditorPane.favoriteText(tab==null ? null : tab.getContent());
+    }
+
+    private void openSqlFavorites(String initialSql) {
+        var owner=root.getScene()==null ? null : root.getScene().getWindow();
+        SqlFavoritesDialog.show(Path.of(System.getProperty("user.home"),".datacube","sql-favorites"),
+                owner,tasks,initialSql).ifPresent(favorite -> SqlFavoriteTabs.open(contentTabs,favorite,
+                () -> SqlEditorPane.openSqlFile(new SessionContext(),connMgr,treeSvc,settings,
+                        treeActions::openTableDesigner,sqlHistory,shortcuts,tasks),
+                connectionTree::connectionConfigsSnapshot,sqlScriptFileStore,recentSqlFiles,
+                new SqlFileDraftLifecycle() {
+                    @Override public void bind(SqlEditorPane pane) { sqlDrafts.get().bind(pane); }
+                    @Override public void installed(Node node) { sqlDrafts.get().installed(node); }
+                },sqlFileTabs));
     }
 
     private void openSqlTab(String title, Supplier<SqlEditorPane> factory) {

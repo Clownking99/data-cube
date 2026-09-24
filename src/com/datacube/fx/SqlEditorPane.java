@@ -558,6 +558,16 @@ public final class SqlEditorPane implements AutoCloseable {
         return root;
     }
 
+    private static final Object FAVORITE_SOURCE = new Object();
+    static String favoriteText(Node content) {
+        Object source=content==null ? null : content.getProperties().get(FAVORITE_SOURCE);
+        if (!(source instanceof SqlEditorPane pane) || pane.draftEditingBlocked() || pane.admission.closing()
+                || pane.resourcesClosing.get() || pane.uiFinalized.get() || pane.tasks.isClosed()
+                || pane.root.isDisabled() || pane.fileController!=null && pane.fileController.isBusy()) return null;
+        String text=pane.editorArea.getText();
+        return text.isBlank() ? null : text;
+    }
+
     @Override
     @Deprecated(forRemoval = false)
     public void close() {
@@ -1007,6 +1017,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private Node toolbar() {
+        root.getProperties().put(FAVORITE_SOURCE,this);
         FlowPane primary = new FlowPane(12, 6);
         primary.setId("sql-primary-toolbar");
         primary.setAlignment(Pos.CENTER_LEFT);
@@ -1087,11 +1098,13 @@ public final class SqlEditorPane implements AutoCloseable {
         primary.getChildren().addAll(
                 sqlActionGroup(new Label("Schema:"), schemaField),
                 sqlActionGroup(saveSqlFileBtn, saveAsSqlFileBtn, reloadSqlFileBtn),
-                sqlActionGroup(executeBtn, executeCurrentBtn, explainBtn, analyzeCheck),
+                sqlActionGroup(executeBtn, executeCurrentBtn),
+                sqlActionGroup(explainBtn, analyzeCheck),
                 sqlActionGroup(find, formatBtn, clearBtn),
                 sqlActionGroup(panelLayout.menu()),
-                sqlActionGroup(indentActions.indentButton(), indentActions.outdentButton(), lineCommentAction.button(), duplicateLinesAction.button()),
-                sqlActionGroup(moveLinesActions.upButton(), moveLinesActions.downButton()),
+                sqlActionGroup(SqlActionMenus.textMenu(shortcuts,
+                        indentActions.indentButton(), indentActions.outdentButton(), lineCommentAction.button(),
+                        duplicateLinesAction.button(), moveLinesActions.upButton(), moveLinesActions.downButton())),
                 sqlActionGroup(exportResultBtn, copyInsertBtn));
 
         environmentBadge = new Label();

@@ -1,0 +1,773 @@
+{
+  "goal": "G6/M6",
+  "baseline": "c3481d1118a51b3855b486628e2356ac2e542126",
+  "implementationCommit": "",
+  "mergeCommit": "",
+  "scratch": "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e",
+  "recordedAt": "2026-09-24T23:00:33.9065387+08:00",
+  "runs": [
+    {
+      "name": "baseline-full",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:04:53.6785257+08:00",
+      "exitCode": 0,
+      "log": "baseline-full.log",
+      "logSha256": "CE9FF6956E2BFB9700D28F2F55B0ADDB04F515944DA7DF137D4C1A941EE5AA48",
+      "actualTestTaskRan": true,
+      "suites": 292,
+      "tests": 3727,
+      "passed": 3724,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "baseline-full-xml",
+      "xmlManifestSha256": "A507EA51C2DD54B7CEF401C40DAFB913917A63978CDAFEE22EFD677FABEF78BD"
+    },
+    {
+      "name": "m6a-service",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "test",
+        "--tests",
+        "*SchemaMetadataSearchTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:07:41.7817689+08:00",
+      "exitCode": 0,
+      "log": "m6a-service.log",
+      "logSha256": "E1FF12B140216BAD5565CDFFF1ECA68C4F678CAA14D91E29974C29089D58C5D5",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 5,
+      "passed": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "m6a-service-xml",
+      "xmlManifestSha256": "1AD595DA36B8DAF7FEDD09A30CBA4B03DF37ACE2B7AA22AFAAD0E36F72AF57B8"
+    },
+    {
+      "name": "m6a-ui",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "test",
+        "--tests",
+        "*SchemaMetadataSearch*Test",
+        "--tests",
+        "*SchemaObject*Test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:11:17.1207445+08:00",
+      "exitCode": 1,
+      "log": "m6a-ui.log",
+      "logSha256": "DB02E1886A787400B654E43D2F33CAAE91FA929A9A89B20CF91BB2DB6CA8B5CB",
+      "actualTestTaskRan": true,
+      "suites": 9,
+      "tests": 109,
+      "passed": 108,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.cancellationWaitsForPhysicalCompletionAndCloseDropsLateResults()"
+      ],
+      "xmlDirectory": "m6a-ui-xml",
+      "xmlManifestSha256": "C3D7FC8F8266D397C06862EA71F8FBF3A454C2DA57F1D7DA28206DCB0A619012"
+    },
+    {
+      "name": "m6-storage-and-search",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "test",
+        "--tests",
+        "*SqlFavoriteStoreTest",
+        "--tests",
+        "*SqlDraftDirectoryTest",
+        "--tests",
+        "*SchemaMetadataSearch*Test",
+        "--tests",
+        "*SchemaObject*Test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:16:29.8350115+08:00",
+      "exitCode": 0,
+      "log": "m6-storage-and-search.log",
+      "logSha256": "EDBB78623169CB168DC611D76560E73921816B8F35C7146BFE5DF875E814029E",
+      "actualTestTaskRan": true,
+      "suites": 11,
+      "tests": 134,
+      "passed": 134,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "m6-storage-and-search-xml",
+      "xmlManifestSha256": "E5D0DA44162EC1BF4A59481068E4387430E56A1F0F504FF661F51F7ADDE0F285"
+    },
+    {
+      "name": "m6-favorites-compile",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "testClasses",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:24:59.4668734+08:00",
+      "exitCode": 1,
+      "log": "m6-favorites-compile.log",
+      "logSha256": "01F33E2CCD720C0E641FF2B02904A4995F3740F358A55DCF5DE67087B05B2989",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "m6-favorites-compile-fixed",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "g6DesktopClasspath",
+        "--init-script",
+        "C:/Users/hetia/AppData/Local/Temp/datacube-g6-1ec13ec5fd364937afd7b481d1372e3e/desktop.gradle",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:25:41.2781248+08:00",
+      "exitCode": 0,
+      "log": "m6-favorites-compile-fixed.log",
+      "logSha256": "4B229FF1318FF4B0F48A8046BCEA584D0375112DEE536ADF924BAC7B20131420",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "m6-library-ui-1",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "test",
+        "--tests",
+        "*SqlFavoritesDialogTest",
+        "--tests",
+        "*SqlFavoriteTabsTest",
+        "--tests",
+        "*SqlEditor*IntegrationTest",
+        "--tests",
+        "*SqlEditorUsabilityTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:32:55.4882159+08:00",
+      "exitCode": 1,
+      "log": "m6-library-ui-1.log",
+      "logSha256": "3F3DB1A3CFA45CF8EF0E7A1329D2DD6A38266E17A538DC16949CCF95A5473BA5",
+      "actualTestTaskRan": true,
+      "suites": 13,
+      "tests": 131,
+      "passed": 72,
+      "failures": 59,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.[1] 600, dark",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.[2] 880, dark",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.[3] 600, light",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.[4] 880, light",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.toolbarDuplicatesCurrentLineWithoutWritingFileOrOpeningConnection()",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.mixedSeparatorsReverseSelectionFileIdentityAndPassiveReadOnlyTargetSurviveUndoRedo()",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.[1] admission",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.[2] resources",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.[3] tasks",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.[4] file-busy",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.[5] finalized",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.[6] readonly",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.[7] disabled",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.newShortcutIsEditorScopedAndRebindingKeepsExistingCommentAction()",
+        "com.datacube.fx.SqlEditorDuplicateIntegrationTest.duplicateEntersDraftCheckpointButFreezeStopsFurtherCopiesAndSourceRemainsUntouched()",
+        "com.datacube.fx.SqlEditorIndentIntegrationTest.indentationUsesDraftCheckpointWithoutSavingFileAndFreezeBlocksFurtherEdits()",
+        "com.datacube.fx.SqlEditorIndentIntegrationTest.[1] admission",
+        "com.datacube.fx.SqlEditorIndentIntegrationTest.[2] resources",
+        "com.datacube.fx.SqlEditorIndentIntegrationTest.[3] tasks",
+        "com.datacube.fx.SqlEditorIndentIntegrationTest.[4] file-busy",
+        "com.datacube.fx.SqlEditorIndentIntegrationTest.[5] finalized",
+        "com.datacube.fx.SqlEditorIndentIntegrationTest.mixedPhysicalSeparatorsFileIdentityAndPassiveReadOnlyTargetSurviveIndentUndoRedo()",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.[1] admission",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.[2] resources",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.[3] tasks",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.[4] file-busy",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.[5] finalized",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.[6] readonly",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.[7] disabled",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.toggleUsesDraftCheckpointWithoutSavingSourceAndFreezeBlocksFurtherEdits()",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.mixedPhysicalSeparatorsFileIdentityPassiveConnectionAndSelectionSurviveToggleUndoRedo()",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.[1] 600, dark",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.[2] 880, dark",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.[3] 600, light",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.[4] 880, light",
+        "com.datacube.fx.SqlEditorLineCommentIntegrationTest.shortcutRebindingIsLiveScopedToEditorAndBlockShortcutStaysSeparate()",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.movementEntersDraftCheckpointButFreezeStopsLaterEdits()",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[1] true",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[2] false",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[1] 600, dark",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[2] 880, dark",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[3] 600, light",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[4] 880, light",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[1] admission",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[2] resources",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[3] tasks",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[4] file-busy",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[5] finalized",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[6] readonly",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.[7] disabled",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.toolbarOffersBothDirectionsWithoutConnecting()",
+        "com.datacube.fx.SqlEditorMoveLinesIntegrationTest.movingQualifiedTextDoesNotRequestCompletionAndPreservesExplicitExecutionRange()",
+        "com.datacube.fx.SqlEditorUsabilityTest.[1] 880, dark",
+        "com.datacube.fx.SqlEditorUsabilityTest.[2] 640, dark",
+        "com.datacube.fx.SqlEditorUsabilityTest.[3] 480, dark",
+        "com.datacube.fx.SqlEditorUsabilityTest.[4] 880, light",
+        "com.datacube.fx.SqlEditorUsabilityTest.[5] 640, light",
+        "com.datacube.fx.SqlEditorUsabilityTest.[6] 480, light",
+        "com.datacube.fx.SqlFavoriteTabsTest.favoriteIsAnIndependentManagedOfflineScriptWithExplicitConnectionAndDraftLifecycle()"
+      ],
+      "xmlDirectory": "m6-library-ui-1-xml",
+      "xmlManifestSha256": "A483296218C863EC9558DAC3325CFB807247B32D1848E5E87F7145C16AB52C9C"
+    },
+    {
+      "name": "m6-library-ui-2",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "test",
+        "--tests",
+        "*SqlFavoritesDialogTest",
+        "--tests",
+        "*SqlFavoriteTabsTest",
+        "--tests",
+        "*SqlEditor*IntegrationTest",
+        "--tests",
+        "*SqlEditorUsabilityTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:34:48.7955338+08:00",
+      "exitCode": 0,
+      "log": "m6-library-ui-2.log",
+      "logSha256": "9B92DC42F8FE1090F973E3F0EDBBB55AAE45185D111A7D80E80A686939F3262C",
+      "actualTestTaskRan": true,
+      "suites": 13,
+      "tests": 131,
+      "passed": 131,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "m6-library-ui-2-xml",
+      "xmlManifestSha256": "935EB91561DCDF029E5088ABD1D71EAA578056881F1C479680BD14A217F7EA77"
+    },
+    {
+      "name": "m6-final-targeted",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "test",
+        "--tests",
+        "*SqlFavorite*Test",
+        "--tests",
+        "*SchemaMetadataSearch*Test",
+        "--tests",
+        "*SchemaObject*Test",
+        "--tests",
+        "*SqlEditor*IntegrationTest",
+        "--tests",
+        "*SqlEditorUsabilityTest",
+        "--tests",
+        "*SqlHistoryTabsTest",
+        "--tests",
+        "*SqlDraft*Test",
+        "--tests",
+        "*SqlScriptFile*Test",
+        "--tests",
+        "*WriteSafety*Test",
+        "--tests",
+        "*SqlEditor*ContractTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:36:38.7685113+08:00",
+      "exitCode": 1,
+      "log": "m6-final-targeted.log",
+      "logSha256": "2FEE90E39A068CC22A4C66930E413E5774E7472A99BD6950918A366AEBC1B844",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "m6-final-targeted-2",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "test",
+        "--tests",
+        "*SqlFavorite*Test",
+        "--tests",
+        "*SchemaMetadataSearch*Test",
+        "--tests",
+        "*SchemaObject*Test",
+        "--tests",
+        "*SqlEditor*IntegrationTest",
+        "--tests",
+        "*SqlEditorUsabilityTest",
+        "--tests",
+        "*SqlHistoryTabsTest",
+        "--tests",
+        "*SqlDraft*Test",
+        "--tests",
+        "*SqlScriptFile*Test",
+        "--tests",
+        "*WriteSafety*Test",
+        "--tests",
+        "*SqlEditor*ContractTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:38:43.7177344+08:00",
+      "exitCode": 0,
+      "log": "m6-final-targeted-2.log",
+      "logSha256": "73511A3DF81A511AB7EF2CB287BFA598DE4C9DB8B6FEDF546C205F1C46AD5994",
+      "actualTestTaskRan": true,
+      "suites": 44,
+      "tests": 652,
+      "passed": 652,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "m6-final-targeted-2-xml",
+      "xmlManifestSha256": "756932E2F39066645156AEA427B1D8055ED90EAB48F1C8BC02AB3C7A2CB99084"
+    },
+    {
+      "name": "branch-full",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:43:14.4055125+08:00",
+      "exitCode": 0,
+      "log": "branch-full.log",
+      "logSha256": "A25ACF6BDDA5D602AD3385B281D06B08405ADBFDAD3B94B9C139307AF71AD980",
+      "actualTestTaskRan": true,
+      "suites": 297,
+      "tests": 3753,
+      "passed": 3750,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "branch-full-xml",
+      "xmlManifestSha256": "5E0BABE2ABE6796685CB64884B3DC6A56E6AD0A419F628BF0D234E5896BBC84E"
+    },
+    {
+      "name": "branch-buildSrc",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "g6DesktopClasspath",
+        "--init-script",
+        "C:/Users/hetia/AppData/Local/Temp/datacube-g6-1ec13ec5fd364937afd7b481d1372e3e/desktop.gradle",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:44:15.391355+08:00",
+      "exitCode": 0,
+      "log": "branch-buildSrc.log",
+      "logSha256": "FA4CB8C49ABC208304988BA660F7B2BD5A9A4F6D221A8E574799C5F72FB88843",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "branch-buildSrc-xml",
+      "xmlManifestSha256": "0FC2DA032FDBDD1BE36A741EB0C3C5FC066293FBE64B0074A20582FFB05AD082"
+    },
+    {
+      "name": "branch-image",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-24T22:45:26.8080486+08:00",
+      "exitCode": 0,
+      "log": "branch-image.log",
+      "logSha256": "679A194F7BFFB92364D80F5F36F56E0679A00AA84CD7F833BBB883CF557EFCEB",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "m6-focus",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "test",
+        "--tests",
+        "*SqlFavoritesDialogTest",
+        "--tests",
+        "*SchemaMetadataSearchDialogTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:52:16.4504408+08:00",
+      "exitCode": 0,
+      "log": "m6-focus.log",
+      "logSha256": "4C5F8724A91C9DC9F8559FF25EDF9D7A52A61BEEC57F4D0E431BDF65B9300DF2",
+      "actualTestTaskRan": true,
+      "suites": 2,
+      "tests": 13,
+      "passed": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "m6-focus-xml",
+      "xmlManifestSha256": "0CD7C56C73DBD6DC810206356FF08E8E56D7484630280CD7EC95C3D7DE1249B4"
+    },
+    {
+      "name": "m6-fresh-profile-red",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "test",
+        "--tests",
+        "*SqlFavoritesDialogTest.localRepositoryWorksBeforeAnyOtherFeatureCreatesTheProfileDirectory",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:54:11.0045333+08:00",
+      "exitCode": 1,
+      "log": "m6-fresh-profile-red.log",
+      "logSha256": "479C4971EF8B792436AA96E97FA9821893CFA93D57805733C3A2895C740A2B7F",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 1,
+      "passed": 0,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.SqlFavoritesDialogTest.localRepositoryWorksBeforeAnyOtherFeatureCreatesTheProfileDirectory(Path)"
+      ],
+      "xmlDirectory": "m6-fresh-profile-red-xml",
+      "xmlManifestSha256": "C87D575865006860787F536B050FB758C9FBACDE11A9BDEE6C5862A05C0F70A6"
+    },
+    {
+      "name": "m6-fresh-profile-green",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "test",
+        "--tests",
+        "*SqlFavoritesDialogTest",
+        "--tests",
+        "*SqlFavoriteTabsTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:55:06.593379+08:00",
+      "exitCode": 0,
+      "log": "m6-fresh-profile-green.log",
+      "logSha256": "89FD383CF82B193AD351ADF60A9B04DF528356994E95A50AF4BCC83EDE79E536",
+      "actualTestTaskRan": true,
+      "suites": 2,
+      "tests": 9,
+      "passed": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "m6-fresh-profile-green-xml",
+      "xmlManifestSha256": "9327992941ADD5B91E72D550EBDDCE38D8CB1EB56BF4FA580816A7E208239F5D"
+    },
+    {
+      "name": "branch-full-final",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g6-1ec13ec5fd364937afd7b481d1372e3e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T22:58:47.5775329+08:00",
+      "exitCode": 0,
+      "log": "branch-full-final.log",
+      "logSha256": "BF9B61FA404719C08D0E0C584246CFF960774C05E7DCA5DA16A0C0D89EC74886",
+      "actualTestTaskRan": true,
+      "suites": 297,
+      "tests": 3756,
+      "passed": 3753,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "branch-full-final-xml",
+      "xmlManifestSha256": "A3982F06195EA177C91ABC358CCE9D8091FDD350AA272A5F4BF2908497ED2A17"
+    },
+    {
+      "name": "branch-image-final",
+      "head": "c3481d1118a51b3855b486628e2356ac2e542126",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-24T22:59:51.0610834+08:00",
+      "exitCode": 0,
+      "log": "branch-image-final.log",
+      "logSha256": "20B12CB7B8E80EA970BF40E80E8BBC5C5259C4BB7C0B15EC396718A221D15B26",
+      "actualTestTaskRan": false
+    }
+  ],
+  "images": [
+    {
+      "path": "evidence/g6/after100-dark-narrow.jpg",
+      "bytes": 40591,
+      "sha256": "C2EA2EE4C5A5C4812FF68E13EAFD66AC135DAAE39D45F996F022B60E53925E77"
+    },
+    {
+      "path": "evidence/g6/after100-dark-wide.jpg",
+      "bytes": 46976,
+      "sha256": "4EAAF8B0A6D623F7D3BC1FDD01219DEF24CA0806ED633A55BC02FD0ECBC541CE"
+    },
+    {
+      "path": "evidence/g6/after100-favorites-light.jpg",
+      "bytes": 26775,
+      "sha256": "1E9C3181F0EC75E57CD46538E98B15D562F2103F48F1E958E0E93663D2E85C65"
+    },
+    {
+      "path": "evidence/g6/after100-light-narrow.jpg",
+      "bytes": 39952,
+      "sha256": "DBCA196FB1F0AF4FFC0B742297433DC18ABC08E586C06E1815C57085E1C86C1A"
+    },
+    {
+      "path": "evidence/g6/after100-text-menu.jpg",
+      "bytes": 42013,
+      "sha256": "9222CAF4B1EDBC3309ED66E192DEFAC846447FAAD7B4A355647E652FEA4AA3E2"
+    },
+    {
+      "path": "evidence/g6/after150-dark-narrow.jpg",
+      "bytes": 73437,
+      "sha256": "DE958C5C9F56FEBEB66E7E0A6E49AA2C22AFECD6C83F940DAD88163179429738"
+    },
+    {
+      "path": "evidence/g6/after150-dark-wide.jpg",
+      "bytes": 83863,
+      "sha256": "FB796F1D1DAF2B6F97AA2874C37ABD153A929FD8F231BFAA2414552ED5F2C3CB"
+    },
+    {
+      "path": "evidence/g6/after150-light-narrow.jpg",
+      "bytes": 75978,
+      "sha256": "AF0DAE35CACBF2948FD7D503312CF9B9CB58EBE316E0A2B05857C5978042626A"
+    },
+    {
+      "path": "evidence/g6/after150-metadata-light.jpg",
+      "bytes": 35669,
+      "sha256": "D8CA44E5C774FD04A7446CD7ABC636030F75604CE99823F51B2D13B07ED5F5F9"
+    },
+    {
+      "path": "evidence/g6/after150-offline-counts.jpg",
+      "bytes": 75524,
+      "sha256": "4292184774E302B5D39885DBFBD91C9CF10272D55B12D162A85452EC1F30F9BB"
+    },
+    {
+      "path": "evidence/g6/after150-tab-save.jpg",
+      "bytes": 75468,
+      "sha256": "BCD26557653352F33FE8850A112791E2453A222B43114C546283CC06130AAFF8"
+    },
+    {
+      "path": "evidence/g6/after150-tab-schema.jpg",
+      "bytes": 75285,
+      "sha256": "346B1088F406BF443AD74E3FA55022E69BE98F0683D780AA9BB5B71A99939836"
+    },
+    {
+      "path": "evidence/g6/desktop-before-100-narrow.jpg",
+      "bytes": 41101,
+      "sha256": "7DA1A08875AB7239106CB4C857A20E36CA5C5974913559ACF4E0AF830834F390"
+    },
+    {
+      "path": "evidence/g6/desktop-before-100.jpg",
+      "bytes": 47969,
+      "sha256": "216B1DAE2A2C3015EBC72E55E5BE41A6224FBCCC9EA11EC263C913F598297FD1"
+    }
+  ],
+  "imageArtifacts": [
+    {
+      "name": "branch-image-hashes",
+      "files": [
+        {
+          "path": "build/jpackage/DataCube/DataCube.exe",
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F",
+          "bytes": 595968
+        },
+        {
+          "path": "build/jpackage/DataCube/app/DataCube.cfg",
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D",
+          "bytes": 369
+        },
+        {
+          "path": "build/jpackage/DataCube/runtime/lib/modules",
+          "sha256": "4D92AAC6F7C513888D0686DDA25FA78E67E8CC7A080EC6F80E926DAFACE74BA1",
+          "bytes": 102193297
+        }
+      ]
+    },
+    {
+      "name": "branch-image-final-hashes",
+      "files": [
+        {
+          "path": "build/jpackage/DataCube/DataCube.exe",
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F",
+          "bytes": 595968
+        },
+        {
+          "path": "build/jpackage/DataCube/app/DataCube.cfg",
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D",
+          "bytes": 369
+        },
+        {
+          "path": "build/jpackage/DataCube/runtime/lib/modules",
+          "sha256": "BB6B8819BA83C5C77866A26FD67848317F1A8428A0C116357D222EB81E690D94",
+          "bytes": 102193737
+        }
+      ]
+    }
+  ],
+  "harness": [
+    {
+      "file": "run-check.ps1",
+      "sha256": "731EA0FB15B183332B375339005E08EF9DC4F1CF27E3D0ECFBA97D48EBE48A60"
+    },
+    {
+      "file": "isolated-tests.gradle",
+      "sha256": "A1E32960CD97D8255FBC36377F055C09228ACD5A54EB1F6D61C7A854468A8CA8"
+    },
+    {
+      "file": "desktop.gradle",
+      "sha256": "ACD43698C9CA067957930C2B545863FE8E6C2E4B5E8847D3D1D257F21189E71B"
+    },
+    {
+      "file": "launch-desktop.ps1",
+      "sha256": "4D4BF9D4E5DCF3EEC20975F6AC2559759CEC8009AA067B98386418B548EB013C"
+    }
+  ],
+  "pending": [
+    "Real database catalogs and driver lifecycle",
+    "Native modal keyboard input and complete AppShell workflows",
+    "OS scale changes and multiple monitors",
+    "Signed installation and upgrade",
+    "Remote CI and release"
+  ]
+}

@@ -642,6 +642,23 @@ public final class ConnectionTreePane implements AutoCloseable {
                 root.getScene() == null ? null : root.getScene().getWindow(),
                 () -> new SchemaObjectCatalog(connMgr).load(connection, schema), runner, allowed);
         picker.installCopyAction(ref -> objectClipboard.copyResult(connection, ref));
+        var metadata = new java.util.concurrent.atomic.AtomicReference<SchemaMetadataSearchDialog>();
+        java.util.function.BooleanSupplier metadataAllowed = () -> allowed.getAsBoolean()
+                && connection.equals(connMgr.config(connection.id()));
+        picker.installMetadataSearch(() -> {
+            if (metadata.get()!=null || !metadataAllowed.getAsBoolean()) return;
+            var search = new SchemaMetadataSearchDialog(connection,schema,picker.dialog().getDialogPane().getScene().getWindow(),runner,
+                    (request, control) -> {
+                        if (!connection.equals(connMgr.config(connection.id()))) throw new java.sql.SQLException("Catalog target changed");
+                        return com.datacube.service.SchemaMetadataSearch.search(request,connMgr::openDedicated,control);
+                    },metadataAllowed);
+            metadata.set(search);
+            try { search.showAndWait().ifPresent(selection -> {
+                if (!metadataAllowed.getAsBoolean() || !schema.equals(selection.hit().object().schema())) return;
+                picker.dialog().close();
+                openMetadataMatch(connection,schema,metadataAllowed,selection);
+            }); } finally { search.close(); metadata.set(null); }
+        },() -> { var search=metadata.get(); if (search!=null) search.close(); });
         objectSearch = picker;
         TreeItem<NodeData> sourceRoot = tree.getRoot();
         javafx.event.EventHandler<TreeItem.TreeModificationEvent<NodeData>> changed = event -> picker.sourceChanged();
@@ -653,6 +670,21 @@ public final class ConnectionTreePane implements AutoCloseable {
             picker.close(); objectSearch = null;
             sourceRoot.removeEventHandler(TreeItem.treeNotificationEvent(), changed);
             tree.rootProperty().removeListener(replaced);
+        }
+    }
+
+    void openMetadataMatch(ConnConfig connection,String schema,java.util.function.BooleanSupplier allowed,
+                           SchemaMetadataSearchDialog.Selection selection) {
+        if(tasks.isClosed() || !allowed.getAsBoolean() || !connection.equals(connMgr.config(connection.id()))
+                || selection==null || selection.hit()==null) return;
+        var object=selection.hit().object();
+        if(object==null || !schema.equals(object.schema()) || object.name()==null || object.name().isEmpty()
+                || object.kind()!=TableInfo.Kind.TABLE && object.kind()!=TableInfo.Kind.VIEW) return;
+        switch(selection.action()) {
+            case SELECT -> actions.openSelectSql(connection,object.ref());
+            case DATA -> actions.openDataGrid(connection.id(),object.ref(),true);
+            case DDL -> actions.openDdl(connection.id(),new NodeData(object.kind()==TableInfo.Kind.VIEW ? Kind.VIEW : Kind.TABLE,
+                    object.name(),null,connection.id(),schema,object.name()));
         }
     }
 

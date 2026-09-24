@@ -142,7 +142,7 @@ class SqlEditorIndentIntegrationTest {
             editor = FxUiTestSupport.call(() -> (CodeArea) pane.getNode().lookup("#sql-editor"));
             FxUiTestSupport.call(() -> { editor.getUndoManager().forgetHistory(); return null; });
         }
-        Button button(String id) { return (Button) pane.getNode().lookup("#sql-" + id); }
+        javafx.scene.control.MenuItem button(String id) { return SqlMenuTestSupport.find(pane.getNode(),"sql-" + id); }
         SqlScriptDocument document() { return (SqlScriptDocument) field(field(pane, "fileController"), "document"); }
         void assertOffline() {
             assertEquals(0, probe.providers.get()); assertEquals(0, probe.sessions.get());

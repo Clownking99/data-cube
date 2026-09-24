@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Local draft filesystem boundary. Caller supplies a trusted existing parent. */
+/** Atomic local document boundary shared by drafts and the separate favorites directory. */
 final class SqlDraftDirectory implements AutoCloseable {
     enum Stage { OPEN, BUSY, CLOSED, UNSAFE, SCAN_LIMIT, READ, WRITE, PUBLISH, CLEANUP, DELETE, CLOSE }
     static final class Failure extends IOException {
@@ -199,11 +199,12 @@ final class SqlDraftDirectory implements AutoCloseable {
     private Path target(String name) throws IOException {
         boolean allowed = "preferences.bin".equals(name) || "workspace.bin".equals(name)
                 || "workspace-preferences.bin".equals(name);
-        if (name != null && name.endsWith(".draft")) {
-            String id = name.substring(0, name.length() - 6);
-            try { allowed = UUID.fromString(id).toString().equals(id); }
-            catch (IllegalArgumentException invalid) { }
-        }
+        if (name != null) for (String suffix : List.of(".draft", ".favorite", ".favorite-backup"))
+            if (name.endsWith(suffix)) {
+                String id = name.substring(0, name.length() - suffix.length());
+                try { allowed = UUID.fromString(id).toString().equals(id); }
+                catch (IllegalArgumentException invalid) { }
+            }
         if (!allowed) throw new Failure(Stage.UNSAFE);
         for (String existing : entries()) {
             if (existing.equalsIgnoreCase(name) && !existing.equals(name)) throw new Failure(Stage.UNSAFE);
