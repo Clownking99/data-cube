@@ -92,6 +92,23 @@
 - 失败/未验：最终分支和 main 无测试失败。3 live skips 均明确未执行；unchecked/JEP 493 提示保留；旧偶发异常根因未明。下列原生桌面、真库、CI、安装与发布仍待验，不宣称发布验收完成。
 - 下一步：交付 G1 并停止扩展。M2–M7 不自动启动；用户可另立 G2。回退可在审查后 revert 实现提交 `965c3a3` 或合并提交（含文档），本轮未改变持久化数据格式、未触碰真实数据库，无用户数据迁移需要回滚。
 
+## 检查点 5：当前 main 的 G1 定向复核（2026-09-24 14:39）
+
+- 当前目标：复核并交付 G1，不将含糊的“继续推进”自动解释为 M2–M8 授权。当前目标工具没有未完成目标；没有另设预算或伪造完成状态。
+- 基线：main `9b334a18b0d5561ba86e13b1128dae419c0ead24`；受跟踪文件干净。`git merge-base --is-ancestor` 确认 G1 实现 `965c3a3` 和合并 `6596c00` 均已包含。既有 G3 工作区存在未提交改动，保留原状，没有纳入此次验证或合并。
+- 改动：本检查点仅补充验收记录。G1 的 WriteTarget / WriteOperation 及写入口服务没有新修改；本次审阅确认请求身份、单次执行、配置代际复核和只读拒绝仍在。
+- 新验证：在 main 使用独占临时 profile，执行下述定向命令，exit 0、36 秒；39 suites / 408 tests / 408 passed / 0 failures / 0 errors / 0 skipped，8 个 Gradle task 均实际执行。未运行的 `buildSrc:test` 不因编译 buildSrc 而算通过。
+- 原始日志与 XML：`C:\Users\hetia\AppData\Local\Temp\datacube-g1-recheck-dc81ffa66f4d4f1ca43835fbff71b231`；日志 `main-g1-targeted.log` 的 SHA-256 为 `6123C6E50B14BD7245CB756ABC5CA15FB608E23EF464A47D9CA3164C7358E260`；XML 目录 `main-g1-targeted-xml/`。本次机器可读记录见 [G1 定向复核结果](2026-09-24-datacube-g1-recheck.json)，包含 XML 整组摘要。
+- 失败/未验：没有新测试失败，保留既有 unchecked 编译提示。本检查点未重跑全量、buildSrc:test 或 jpackageImage；检查点 4 的成功属于原 SHA 的历史证据，未重标为本次结果。原生桌面、真库、安装升级、远端 CI 和发布仍未验；旧 SchemaDiff 偶发异常根因仍未明确。
+- 下一步：审查并本地提交此记录，确认 main 未变后集成；交付 G1。继续 G3 属于重大范围变化，等待维护者明确选择，不修改或丢弃既有 G3 工作区。
+
+```powershell
+$env:DATACUBE_G1_RECHECK_PROFILE = Join-Path $reviewScratch 'profile-main'
+.\gradlew.bat test --tests 'com.datacube.service.*' --tests 'com.datacube.fx.WriteSafetyIntegrationTest' --tests 'com.datacube.fx.SchemaDiff*' --tests 'com.datacube.fx.SqlEditor*' --tests 'com.datacube.fx.ObjectEditorPaneLifecycleTest' --rerun-tasks --offline --no-daemon --console=plain --init-script (Join-Path $reviewScratch 'isolated-tests.gradle')
+```
+
+隔离 init script 与下方模板相同，仅将环境变量名改为 `DATACUBE_G1_RECHECK_PROFILE`。镜像/正式运行参数未改变；没有访问真实应用 profile。
+
 ## 待外部验收（不计为本地通过）
 
 - 原生桌面：合成 profile 的窗口、键盘、确认取消、明暗主题、缩放。
