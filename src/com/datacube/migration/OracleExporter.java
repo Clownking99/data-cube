@@ -27,7 +27,7 @@ public class OracleExporter {
     }
 
     public OracleExporter(MigrationLogger logger, MigrationCancellation cancellation) {
-        this(logger,cancellation,Path.of("pg_migration"),DriverManager::getConnection);
+        this(logger,cancellation,Path.of("pg_migration"),MigrationConnections::connect);
     }
 
     public OracleExporter(MigrationLogger logger, MigrationCancellation cancellation, Path baseDirectory, MigrationConnections connections) {

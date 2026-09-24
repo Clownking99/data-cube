@@ -46,6 +46,85 @@
       "xmlManifestSha256": "10AF55A543F54633CCAC4EB3632A62A96EDE83F36F6D44F39AC1C393E9A0DD91"
     },
     {
+      "name": "branch-buildSrc",
+      "head": "67dff1edc5c07c100179c7e3e7dca203883d1cdf",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g7-75f4f39caf5d46e4b1c30922a0804c7b\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T01:10:10.1639159+08:00",
+      "exitCode": 0,
+      "log": "branch-buildSrc.log",
+      "logSha256": "4D9F1E86B34203F09C5B919B7043A984A390540711FADFE0820A785DB76B57B6",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "branch-buildSrc-xml",
+      "xmlManifestSha256": "D6C878552F9CC05359FDFDDBAC6612BD75714DCB273B6B855F7C2820D1F60811"
+    },
+    {
+      "name": "branch-driver-discovery-original",
+      "head": "cc726a2ece5a80fd34873352352d5eac64ffed5f",
+      "exitCode": 1,
+      "actualTestTaskRan": false,
+      "log": "branch-driver-probe.log",
+      "logSha256": "FF1F3DBA9B44A67ECF5938032974A5ABF8C4E361A3722D922F9E92356E99BA86",
+      "result": "No suitable driver before explicit initialization; ServiceLoader empty; zero connect calls",
+      "supersededBy": "branch-runtime-fixed"
+    },
+    {
+      "name": "branch-full-driver-fix",
+      "head": "cc726a2ece5a80fd34873352352d5eac64ffed5f",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g7-75f4f39caf5d46e4b1c30922a0804c7b\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T01:20:22.5900494+08:00",
+      "exitCode": 0,
+      "log": "branch-full-driver-fix.log",
+      "logSha256": "1D2F07D0E149EE7FEA9AEF60904C2EC99081770F339E3B52AA7B12BBF0C7EDA1",
+      "actualTestTaskRan": true,
+      "suites": 307,
+      "tests": 3811,
+      "passed": 3808,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "branch-full-driver-fix-xml",
+      "xmlManifestSha256": "1EA72AC0D648EB0531917799A2E01FFAB05C6E444A02375C766D87BF53475A16"
+    },
+    {
       "name": "branch-full",
       "head": "67dff1edc5c07c100179c7e3e7dca203883d1cdf",
       "arguments": [
@@ -87,6 +166,46 @@
       "xmlManifestSha256": "157A36ECCFA293B98592DE52F0AA87FB787C2D6CF98FE2567300983BB8C075E0"
     },
     {
+      "name": "branch-image-driver-fix",
+      "head": "cc726a2ece5a80fd34873352352d5eac64ffed5f",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-25T01:16:38.3304442+08:00",
+      "exitCode": 0,
+      "log": "branch-image-driver-fix.log",
+      "logSha256": "00944735E7E423B9A190A2EDE1CD3CAACA3F44BDC7E4C9A459B96D33710F0CE9",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "branch-image",
+      "head": "67dff1edc5c07c100179c7e3e7dca203883d1cdf",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-25T01:11:02.1063133+08:00",
+      "exitCode": 0,
+      "log": "branch-image.log",
+      "logSha256": "2FE9525F7800359BCA56F42BFD2FF2DA71AC4C4A230136C1818974F48FC1A147",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "branch-runtime-fixed",
+      "head": "cc726a2ece5a80fd34873352352d5eac64ffed5f",
+      "uncommittedDriverFix": true,
+      "exitCode": 0,
+      "actualTestTaskRan": false,
+      "log": "branch-runtime-fixed.log",
+      "logSha256": "1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82",
+      "result": "Both bundled JDBC drivers discovered through production MigrationConnections.driverFor; zero connect calls"
+    },
+    {
       "name": "m7-desktop-compile",
       "head": "67dff1edc5c07c100179c7e3e7dca203883d1cdf",
       "arguments": [
@@ -104,6 +223,39 @@
       "log": "m7-desktop-compile.log",
       "logSha256": "E1CB2718733F8B4B8CB69EDC9BF2FA3504EFF2CE0281799365F1DA73ADC075E8",
       "actualTestTaskRan": false
+    },
+    {
+      "name": "m7-driver-bootstrap",
+      "head": "cc726a2ece5a80fd34873352352d5eac64ffed5f",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.migration.*",
+        "--tests",
+        "com.datacube.fx.Migration*",
+        "--tests",
+        "com.datacube.cli.MigrationConsoleTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g7-75f4f39caf5d46e4b1c30922a0804c7b\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T01:15:36.3772972+08:00",
+      "exitCode": 0,
+      "log": "m7-driver-bootstrap.log",
+      "logSha256": "8AB9794742D2A428F5B88F8C77B41B70D8B057DBDDDB016DAA6A37F4AFDD5359",
+      "actualTestTaskRan": true,
+      "suites": 13,
+      "tests": 64,
+      "passed": 64,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "m7-driver-bootstrap-xml",
+      "xmlManifestSha256": "2EE4747F0D36CAAEC97A00F4BF9F0E220C3FDC8A5308FC7AD6CB499BA071EA19"
     },
     {
       "name": "m7-entry-workflows",
@@ -442,47 +594,45 @@
       "xmlManifestSha256": "5FC8B99BC123097F4B11C5A7FB8716F91D62993A432FB4556421AFCF648418FF"
     },
     {
-      "name": "branch-buildSrc",
-      "head": "67dff1edc5c07c100179c7e3e7dca203883d1cdf",
+      "name": "main-full",
+      "head": "ce797c1077d9c2f6556c2a46be662d6b02c8a142",
       "arguments": [
-        ":buildSrc:test",
-        "--rerun-tasks",
+        "clean",
+        "test",
         "--offline",
         "--no-daemon",
         "--console=plain",
         "--init-script",
         "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g7-75f4f39caf5d46e4b1c30922a0804c7b\\isolated-tests.gradle"
       ],
-      "completedAt": "2026-09-25T01:10:10.1639159+08:00",
+      "completedAt": "2026-09-25T01:15:55.6300386+08:00",
       "exitCode": 0,
-      "log": "branch-buildSrc.log",
-      "logSha256": "4D9F1E86B34203F09C5B919B7043A984A390540711FADFE0820A785DB76B57B6",
+      "log": "main-full.log",
+      "logSha256": "779B7EC2EADC7CB03EEDCCF1407313D71DFC41F00913B8BD36B1C29D28257126",
       "actualTestTaskRan": true,
-      "suites": 1,
-      "tests": 8,
-      "passed": 8,
+      "suites": 306,
+      "tests": 3809,
+      "passed": 3806,
       "failures": 0,
       "errors": 0,
-      "skipped": 0,
-      "skipDetails": [],
-      "failedTests": [],
-      "xmlDirectory": "branch-buildSrc-xml",
-      "xmlManifestSha256": "D6C878552F9CC05359FDFDDBAC6612BD75714DCB273B6B855F7C2820D1F60811"
-    },
-    {
-      "name": "branch-image",
-      "head": "67dff1edc5c07c100179c7e3e7dca203883d1cdf",
-      "arguments": [
-        "jpackageImage",
-        "--offline",
-        "--no-daemon",
-        "--console=plain"
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
       ],
-      "completedAt": "2026-09-25T01:11:02.1063133+08:00",
-      "exitCode": 0,
-      "log": "branch-image.log",
-      "logSha256": "2FE9525F7800359BCA56F42BFD2FF2DA71AC4C4A230136C1818974F48FC1A147",
-      "actualTestTaskRan": false
+      "failedTests": [],
+      "xmlDirectory": "main-full-xml",
+      "xmlManifestSha256": "900B13C6E67AB68C2BFEF1F4079AF8E6253D727DB94A978B75F9916F760A8E93"
     }
   ],
   "desktop": {
@@ -509,5 +659,27 @@
       "bytes": 102362527,
       "sha256": "6DCE729E01E0EF0B8FFAC5F0E41B0CB2885EFAF1E0982A04B4671980FC596CF4"
     }
-  ]
+  ],
+  "branchArtifactsDriverFix": [
+    {
+      "path": "build/jpackage/DataCube/DataCube.exe",
+      "bytes": 595968,
+      "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+    },
+    {
+      "path": "build/jpackage/DataCube/app/DataCube.cfg",
+      "bytes": 369,
+      "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+    },
+    {
+      "path": "build/jpackage/DataCube/runtime/lib/modules",
+      "bytes": 102363349,
+      "sha256": "F23434164C11D76063B3C666E82D46975ECF7C377A63A00A11CB9A916ED0368C"
+    }
+  ],
+  "finalSourceManifest": {
+    "files": 769,
+    "name": "driver-fix-source-manifest.json",
+    "sha256": "66D234149C068AA95879D0AC8D802A37872E3A93828F36A86D1CFAEE6166A4D1"
+  }
 }

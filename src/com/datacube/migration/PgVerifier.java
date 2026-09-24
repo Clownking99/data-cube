@@ -18,7 +18,7 @@ public class PgVerifier {
     public PgVerifier(MigrationLogger logger) { this(logger, new MigrationCancellation()); }
 
     public PgVerifier(MigrationLogger logger, MigrationCancellation cancellation) {
-        this(logger, cancellation, DriverManager::getConnection);
+        this(logger, cancellation, MigrationConnections::connect);
     }
 
     public PgVerifier(MigrationLogger logger, MigrationCancellation cancellation, MigrationConnections connections) {

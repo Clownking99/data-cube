@@ -8,7 +8,7 @@ import java.util.Objects;
 public class MigrationOperations {
     protected final MigrationLogger logger;
     protected final MigrationConnections connections;
-    public MigrationOperations(MigrationLogger logger) { this(logger,DriverManager::getConnection); }
+    public MigrationOperations(MigrationLogger logger) { this(logger,MigrationConnections::connect); }
     public MigrationOperations(MigrationLogger logger,MigrationConnections connections) {
         this.logger=Objects.requireNonNull(logger);this.connections=Objects.requireNonNull(connections);
     }

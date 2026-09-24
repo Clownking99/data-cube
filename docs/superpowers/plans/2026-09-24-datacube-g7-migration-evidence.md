@@ -61,3 +61,11 @@
 - 验证：branch-full 3806 passed / 3 live skipped / 0 failures/errors；buildSrc 强制重跑 8/8；jpackageImage 成功，产物 cfg 不含测试参数，runtime jar 不含测试夹具；768 项源清单逐一匹配。
 - 失败/未验：脚本 EOF 空行在 staged diff 检查中发现并修正；仍有 unchecked/JEP 493 提示。原生桌面本轮未验、真库/签名/安装升级/CI/发布待授权，详见验证账本，不计通过。
 - 下一步：提交并核对 main 原基线/干净状态，本地合并；main 独立 profile clean test + buildSrc + image，之后更新最终交接。尚未宣布 G7 完成。
+
+## CP5：镜像运行时探针发现驱动加载缺口（2026-09-25）
+
+- 当前目标：第一次实现已合并 `ce797c1077d9c2f6556c2a46be662d6b02c8a142`；main 旧代码全量仍在执行，不能据此结束 G7。
+- 新失败：branch-image 虽构建成功，额外运行时 DriverManager.getDriver（未调用 connect、无凭据）返回 No suitable driver。ServiceLoader 枚举为空；显式 Class.forName 后两驱动可发现。jlink 的 mergedModule 没有 JDBC provides 声明，旧入口显式加载驱动，本次共享入口重构遗漏了该行为。
+- 修正：仍在独立 G7 worktree 内给 MigrationConnections 增加精确 Oracle/PG 驱动初始化，所有生产构造入口共用；注入 mock 的路径不变。不调整全局模块图，不新增依赖。driverFor 只初始化/发现，不连接数据库。
+- 验证：新增 bundled-driver discovery 与未知协议在 connect 前拒绝用例；定向、重打镜像和运行时探针正在执行，不能把 classpath 单测代替模块化镜像验证。
+- 下一步：实际镜像探针通过后重新全量，提交补丁、合并 main 并重新复验。保留首次探针失败日志；原生桌面和真实 JDBC 连接仍未验。
