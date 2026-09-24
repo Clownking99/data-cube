@@ -16,8 +16,8 @@ import java.util.List;
  */
 public final class EditableGridModel {
 
-    /** 行状态：未改 / 已改 / 新增。 */
-    public enum RowState { CLEAN, MODIFIED, NEW }
+    /** All pending changes stay in memory until an explicit page save. */
+    public enum RowState { CLEAN, MODIFIED, NEW, DELETED, SAVED, UNKNOWN }
 
     /** 单元格：保留加载时的原始值（供 WHERE 定位）与当前编辑态。 */
     public static final class Cell {
@@ -27,9 +27,9 @@ public final class EditableGridModel {
         private boolean touched;   // 是否被用户改过
 
         private Cell(Object original) {
-            this.original = original;
-            this.isNull = (original == null);
-            this.text = original == null ? "" : original.toString();
+            this.original = com.datacube.spi.model.ImmutableResultValue.freeze(original);
+            this.isNull = (this.original == null);
+            this.text = this.original == null ? "" : this.original.toString();
         }
 
         static Cell of(Object original) {
@@ -76,12 +76,17 @@ public final class EditableGridModel {
 
     /** 行：单元格集合 + 状态。 */
     public static final class Row {
+        private static final java.util.concurrent.atomic.AtomicLong NEXT_ID = new java.util.concurrent.atomic.AtomicLong();
+        private final long id = NEXT_ID.incrementAndGet();
         private final List<Cell> cells;
+        private final boolean created;
         private RowState state;
+        private String result = "";
 
         Row(List<Cell> cells, RowState state) {
             this.cells = cells;
             this.state = state;
+            this.created = state == RowState.NEW;
         }
 
         public Cell cell(int i) {
@@ -91,13 +96,18 @@ public final class EditableGridModel {
         public RowState state() {
             return state;
         }
+        public long id() { return id; }
+        public boolean created() { return created; }
+        public String result() { return result; }
+        void result(String value) { result = value; }
+        public boolean editable() { return state == RowState.CLEAN || state == RowState.MODIFIED || state == RowState.NEW; }
 
         void setState(RowState s) {
             this.state = s;
         }
 
         public boolean dirty() {
-            return state == RowState.MODIFIED || state == RowState.NEW;
+            return state == RowState.MODIFIED || state == RowState.NEW || state == RowState.DELETED || state == RowState.UNKNOWN;
         }
     }
 
@@ -195,7 +205,8 @@ public final class EditableGridModel {
         LinkedHashMap<String, String> m = new LinkedHashMap<>();
         for (int i = 0; i < columns.size(); i++) {
             Cell c = row.cell(i);
-            if (c.touched()) m.put(columns.get(i).name(), c.committedText());
+            boolean same = c.isNull() ? c.original() == null : c.original() != null && c.text().equals(c.original().toString());
+            if (c.touched() && (row.created() || !same)) m.put(columns.get(i).name(), c.committedText());
         }
         return m;
     }
@@ -216,6 +227,42 @@ public final class EditableGridModel {
             vals.add(idx < 0 ? null : row.cell(idx).original());
         }
         return new RowKey(keyColumns, vals);
+    }
+
+    /** Optimistic matching adds comparable original columns, never truncated result wrappers. */
+    public RowKey optimisticKeyOf(Row row) {
+        List<String> names = new ArrayList<>(keyColumns);
+        for (EditableColumn column : columns) {
+            if (isKeyMatchable(column.jdbcType()) && !names.contains(column.name())) names.add(column.name());
+        }
+        List<Object> values = new ArrayList<>();
+        for (String name : names) {
+            Object value = row.cell(indexOf(name)).original();
+            if (value instanceof com.datacube.spi.model.ImmutableResultValue)
+                throw new IllegalArgumentException("该行定位值为裁剪或不支持的类型，不能安全保存");
+            values.add(value);
+        }
+        return new RowKey(names, values);
+    }
+
+    void reconcile(Row row) {
+        if (row.state() == RowState.CLEAN || row.state() == RowState.MODIFIED)
+            row.setState(changedValues(row).isEmpty() ? RowState.CLEAN : RowState.MODIFIED);
+        row.result("");
+    }
+
+    void discard(Row row) {
+        for (Cell cell : row.cells) {
+            cell.isNull = cell.original == null;
+            cell.text = cell.original == null ? "" : cell.original.toString();
+            cell.touched = false;
+        }
+        if (row.state() == RowState.UNKNOWN) {
+            row.setState(RowState.SAVED);
+            row.result("已清除本地标记；此前结果不确定，请刷新核对");
+        } else {
+            row.setState(RowState.CLEAN); row.result("");
+        }
     }
 
     /** 提交成功后清理脏标记（原地，仅当未改动定位列时使用）。 */
@@ -263,8 +310,13 @@ public final class EditableGridModel {
             case Types.TIMESTAMP:
             case Types.TIMESTAMP_WITH_TIMEZONE:
                 return false;
-            default:
+            case Types.CHAR: case Types.VARCHAR: case Types.LONGVARCHAR:
+            case Types.NCHAR: case Types.NVARCHAR: case Types.LONGNVARCHAR:
+            case Types.TINYINT: case Types.SMALLINT: case Types.INTEGER: case Types.BIGINT:
+            case Types.NUMERIC: case Types.DECIMAL: case Types.FLOAT: case Types.REAL: case Types.DOUBLE:
+            case Types.BOOLEAN: case Types.BIT: case Types.DATE: case Types.TIME:
                 return true;
+            default: return false;
         }
     }
 }
