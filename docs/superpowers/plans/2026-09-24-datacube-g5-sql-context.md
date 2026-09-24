@@ -51,3 +51,18 @@
 - `branch-buildSrc`：强制执行 4 tasks，8/8 passed；`branch-image`：39s exit 0。cfg 无测试参数，exe/cfg/runtime modules 的 hashes 已归档。
 - 源码、回归和 diff 空白审查通过，未新增依赖或存储迁移。失败历史与所有降级保留；本地门槛通过不代替外部待验。
 - 下一步：在确认 main 干净且仍为基线后提交并合并，使用新 `profile-main` 对提交后的代码独立复验。
+
+## CP4：main 集成与独立复验（进行中）
+
+- 当前目标：对已提交 G5 完成 main 本地复验及账本收尾。
+- 改动：实现提交 `76dd22104cb62e2890eeb45f79f4d6c23691d6cd`，main 合并 `28723b3391a76f268744b1f743ac75b232e22117`。合并前 main 为预期 `fb849b2`，排除受保护目录后的工作区干净，合并无冲突；合并后源码/测试/构建与实现提交一致。
+- 验证：已确认独立 `profile-main` 事前不存在，以此运行新的 main `clean test`；分支日志不充当 main 证据。
+- 失败/未验：main 复验尚未结束；三个 live 环境仍不启用，原生桌面/真库/签名安装/远端 CI 发布边界不变。
+- 下一步：等待实际全量结果，再 fresh buildSrc、镜像及参数/hash 核验；通过后更新路线图、交接和机器结果并提交文档收尾。
+
+### CP4 补充修正
+
+- 首次 main `28723b3` 全量为 3723 passed / 0 failures/errors / 3 live skipped。
+- 同期补全边界审查的纯合成反例证实未闭合引用标识符可被截去末字符而误认其他表；`m5-unclosed-source-red` 8 passed / 1 failed。
+- 分支修正只接受闭合引用来源；保留编辑中的补全前缀和合法引用标识符。相关补全/当前语句/焦点 36 项全部通过；修正提交 `c62e86cb71aa30f95b94490b90cd338c30faeb4d`。
+- 下一步：本地合并修正，以另一新 profile 重跑 main 全量，然后 buildSrc 和镜像；首次 main 全量不替代这次修正的验证。外部待验不变。
