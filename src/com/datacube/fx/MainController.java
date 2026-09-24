@@ -162,7 +162,8 @@ public class MainController {
         Button fullBtn = new Button("完整导入");
         Button incrBtn = new Button("增量导入");
         Button allBtn = new Button("一键全部");
-        Button verifyBtn = new Button("验证");
+        Button verifyBtn = new Button("目标端统计");
+        verifyBtn.setTooltip(new Tooltip("仅查看目标可见对象与估算行数，不能证明迁移数据一致"));
         cancelBtn = new Button("取消");
         cancelBtn.setStyle("-fx-background-color: #f44336; -fx-text-fill: white; -fx-font-weight: bold;");
         cancelBtn.setVisible(false);
@@ -357,7 +358,7 @@ public class MainController {
             verifier.verify(pgUrl, pgUser, pgPass, pgSchema);
         } catch (CancellationException ignored) {
         } catch (Exception e) {
-            if (!cancellation.isCancelled()) fxLogger.logErr("验证失败: " + e.getMessage());
+            if (!cancellation.isCancelled()) fxLogger.logErr("目标端统计失败，未产生一致性结论");
         }
     }
 

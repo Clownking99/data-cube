@@ -140,7 +140,7 @@ public class DataCube {
                 System.out.println("  3. 导入到 PostgreSQL（完整模式 - 先清空再导入）");
                 System.out.println("  4. 导入到 PostgreSQL（增量模式 - 仅补充缺失）");
                 System.out.println("  5. 一键全部（导出DDL + 导出数据 + 增量导入）");
-                System.out.println("  6. 验证导入结果");
+                System.out.println("  6. 目标端统计（估算行数，非迁移一致性验证）");
                 System.out.println("  0. 退出");
                 logger.logLine();
 
