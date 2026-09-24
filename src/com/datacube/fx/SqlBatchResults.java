@@ -32,6 +32,9 @@ final class SqlBatchResults implements AutoCloseable {
     }
     private final ComboBox<Choice> choices = new ComboBox<>();
     private final Label summary = new Label();
+    private final Label timings = new Label();
+    private final Button locateError = new Button("定位错误");
+    private Consumer<Choice> errorLocator = ignored -> {};
     private final Button details = new Button("执行详情");
     private final Button previousFailure = new Button("上一异常");
     private final Button nextFailure = new Button("下一异常");
@@ -57,9 +60,15 @@ final class SqlBatchResults implements AutoCloseable {
         configureFailureNavigation(previousFailure, "sql-batch-previous-failure", -1);
         configureFailureNavigation(nextFailure, "sql-batch-next-failure", 1);
         var label = new Label("本次结果"); label.setMinWidth(Region.USE_PREF_SIZE);
-        var row = new HBox(8, label, choices, previousFailure, nextFailure, details); HBox.setHgrow(choices, Priority.ALWAYS);
+        choices.setPrefWidth(220);
+        var navigation = new HBox(8, previousFailure, nextFailure, details);
+        var row = new javafx.scene.layout.FlowPane(8, 4, label, choices, navigation, locateError);
         summary.setId("sql-batch-summary"); summary.setWrapText(true); summary.setMinHeight(Region.USE_PREF_SIZE);
-        bar = new VBox(4, row, summary); bar.setId("sql-batch-results");
+        locateError.setId("sql-locate-error");
+        locateError.setTooltip(new Tooltip("仅使用驱动确认的位置；执行后修改过正文则提示过期，不移动光标。"));
+        locateError.setOnAction(event -> { if (canShowDetails() && selected.outcome().result().kind == QueryResult.Kind.ERROR) errorLocator.accept(selected); });
+        timings.setId("sql-result-timings"); timings.setWrapText(true);
+        bar = new VBox(4, row, summary, timings); bar.setId("sql-batch-results");
         bar.disabledProperty().addListener((obs, before, disabled) -> {
             if (disabled) closeDetails();
             refreshActions();
@@ -75,6 +84,12 @@ final class SqlBatchResults implements AutoCloseable {
             closeDetails(); selected = candidate; render.accept(candidate); refreshActions();
         });
         clear();
+    }
+
+    void onLocateError(Consumer<Choice> locator) { errorLocator = locator; }
+    void rendered(long nanos) {
+        timings.setText((selected != null && selected.detail() != null ? selected.detail().timingDescription() + " · " : "")
+                + "FX 渲染准备 " + nanos / 1_000_000 + "ms（不含布局/绘制）");
     }
 
     VBox getNode() { return bar; }
@@ -106,7 +121,7 @@ final class SqlBatchResults implements AutoCloseable {
         for (int i = 0; i < report.entries().size(); i++) {
             var entry = report.entries().get(i); var outcome = outcomes.get(i);
             String kind = switch (entry.kind()) { case QUERY -> "查询 · " + entry.resultDescription(); case UPDATE -> "更新 · " + entry.resultDescription(); case ERROR -> entry.status(); };
-            var choice = new Choice(outcome, entry, "语句 #" + entry.index() + " · " + kind + " · " + entry.elapsedMillis() + "ms");
+            var choice = new Choice(outcome, entry, "语句 #" + entry.index() + " · " + kind + " · " + entry.timingDescription());
             items.add(choice);
             if (initial.outcome() == null && entry.kind() == QueryResult.Kind.QUERY) initial = choice;
         }
@@ -189,6 +204,7 @@ final class SqlBatchResults implements AutoCloseable {
 
     private void refreshActions() {
         details.setDisable(!canShowDetails());
+        locateError.setDisable(!canShowDetails() || selected.outcome().result().kind != QueryResult.Kind.ERROR);
         previousFailure.setDisable(failureIndex(-1) < 0);
         nextFailure.setDisable(failureIndex(1) < 0);
     }
@@ -220,7 +236,7 @@ final class SqlBatchResults implements AutoCloseable {
         updating = true;
         try { selected = null; choices.setValue(null); choices.getItems().clear(); }
         finally { updating = false; }
-        report = null; schema = null; summary.setText(""); bar.setVisible(false); bar.setManaged(false); refreshActions();
+        report = null; schema = null; summary.setText(""); timings.setText(""); bar.setVisible(false); bar.setManaged(false); refreshActions();
     }
 
     @Override public void close() { if (closed) return; closed = true; clear(); bar.setDisable(true); }

@@ -32,6 +32,8 @@ public final class PgSqlRunner implements SqlRunner {
     @Override
     public QueryResult execute(Connection conn, String sql, String schema, SqlExecutionOptions options) {
         long t0 = System.currentTimeMillis();
+        long executionStarted = -1, executionMillis = -1, fetchStarted = -1, fetchMillis = -1;
+        boolean userExecute = false;
         try {
             applySchema(conn, schema, options);
             try (Statement stmt = conn.createStatement()) {
@@ -39,12 +41,20 @@ public final class PgSqlRunner implements SqlRunner {
                 try {
                     options.control().ensureNotCancelled(activation);
                     JdbcStatementLimits.apply(stmt, options.maxRows());
+                    executionStarted = System.nanoTime();
+                    userExecute = true;
                     boolean hasResult = stmt.execute(sql);
+                    userExecute = false;
+                    executionMillis = (System.nanoTime() - executionStarted) / 1_000_000;
                     long elapsed = System.currentTimeMillis() - t0;
                     if (hasResult) {
+                        fetchStarted = System.nanoTime();
                         try (var rs = stmt.getResultSet()) {
                             java.sql.ResultSetMetaData md = rs.getMetaData();
                             QueryResult r = QueryResult.fromResultSet(rs, elapsed, options.maxRows(), options.resultBudget(), options.control());
+                            fetchMillis = (System.nanoTime() - fetchStarted) / 1_000_000;
+                            fetchStarted = -1;
+                            r = r.withExecutionDetails(0, executionMillis, fetchMillis);
                             options.control().release(activation);
                             activation = null;
                             // best-effort 解析列注释；失败或无表列时返回 null，不影响结果展示
@@ -55,22 +65,23 @@ public final class PgSqlRunner implements SqlRunner {
                             return comments == null ? r : r.withColumnComments(comments);
                         }
                     } else {
-                        return QueryResult.update(elapsed, stmt.getUpdateCount());
+                        return QueryResult.update(elapsed, stmt.getUpdateCount()).withExecutionDetails(0, executionMillis, 0);
                     }
                 } finally {
                     if (activation != null) options.control().release(activation);
                 }
             }
-        } catch (SQLTimeoutException e) {
-            return QueryResult.timeout(e.getMessage(), System.currentTimeMillis() - t0);
         } catch (SQLException e) {
             long elapsed = System.currentTimeMillis() - t0;
-            return options.control().cancellationRequested()
-                    ? QueryResult.cancelled(e.getMessage(), elapsed)
+            if (userExecute) executionMillis = (System.nanoTime() - executionStarted) / 1_000_000;
+            if (fetchStarted >= 0) fetchMillis = (System.nanoTime() - fetchStarted) / 1_000_000;
+            QueryResult result = e instanceof SQLTimeoutException ? QueryResult.timeout(e.getMessage(), elapsed)
+                    : options.control().cancellationRequested() ? QueryResult.cancelled(e.getMessage(), elapsed)
                     : QueryResult.error(e.getMessage(), elapsed);
+            int position = result.failureKind == QueryResult.FailureKind.SQL_ERROR ? (userExecute ? PgErrorPosition.originalPosition(e, conn, sql) : 0) : 0;
+            return result.withExecutionDetails(position, executionMillis, fetchMillis);
         }
     }
-
     @Override
     public QueryResult executePrepared(
             Connection conn, String sql, List<SqlParameter> parameters,

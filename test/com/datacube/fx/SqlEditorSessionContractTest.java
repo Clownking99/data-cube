@@ -54,7 +54,7 @@ class SqlEditorSessionContractTest {
         String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
         int listener = source.indexOf("this.activeConnectionListener");
         int pinnedGuard = source.indexOf("if (admission.pinned() == null)", listener);
-        int prewarm = source.indexOf("prewarm(connection)", listener);
+        int prewarm = source.indexOf("resetCompletionContext(connection)", listener);
 
         assertTrue(listener >= 0 && pinnedGuard > listener);
         assertTrue(prewarm > pinnedGuard,

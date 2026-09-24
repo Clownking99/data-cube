@@ -20,11 +20,11 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * 为 {@link CodeArea} 提供轻量级自动补全：SQL 关键字 + 元数据名称（表/视图/schema）。
+ * 为 {@link CodeArea} 提供轻量级自动补全：SQL 关键字 + 指定 Schema 的表/视图名称。
  *
  * <p>无额外 UI 依赖：用 {@link Popup} + {@link ListView} 呈现候选，前缀过滤，
  * 方向键/Enter/Tab 选中，Ctrl+Space 强制触发，Esc 关闭。候选词由外部
- * {@link Supplier} 惰性提供（含后台预热的元数据名称）。
+ * {@link Supplier} 惰性提供（含按需读取的元数据名称）。
  *
  * <p>光标屏幕坐标直接取自 {@link CodeArea#getCaretBounds()}（已为屏幕坐标），
  * 无需字体度量估算，定位更精确。
@@ -43,12 +43,18 @@ final class SqlAutoComplete {
     private final Supplier<Collection<String>> candidateSupplier;
     private final ShortcutSettings shortcuts;
     private MemberProvider memberProvider;
+    private Runnable explicitRequest = () -> {};
+    void setExplicitRequest(Runnable request) { explicitRequest = request; }
+    private java.util.function.BooleanSupplier oracleMode = () -> false;
+    void setOracleMode(java.util.function.BooleanSupplier mode) { oracleMode = mode; }
     private final Popup popup = new Popup();
     private final ListView<String> list = new ListView<>();
 
     /** 抑制补全替换文本时触发的 textProperty 递归。 */
     private boolean mutating = false;
     private long automaticGeneration;
+    private String shownText;
+    private int shownCaret;
 
     SqlAutoComplete(CodeArea area, Supplier<Collection<String>> candidateSupplier, ShortcutSettings shortcuts) {
         this.area = area;
@@ -110,7 +116,7 @@ final class SqlAutoComplete {
     private void onKeyPressed(KeyEvent e) {
         if (shortcuts.get(ShortcutAction.SQL_COMPLETE).match(e)) {
             e.consume();
-            maybeShow();
+            explicitRequest.run(); maybeShow();
             return;
         }
         if (!popup.isShowing()) return;
@@ -136,9 +142,11 @@ final class SqlAutoComplete {
     private void maybeShow() {
         if (!area.isEditable() || area.isDisabled()) { hide(); return; }
         int caret = area.getCaretPosition();
-        int start = wordStart(caret);
+        var context = com.datacube.sqleditor.SqlCompletionContext.input(area.getText(), caret, oracleMode.getAsBoolean());
+        if (!context.allowed()) { hide(); return; }
+        int start = context.start();
         String prefix = caret <= start ? "" : area.getText(start, caret);
-        String qualifier = qualifierBefore(start);
+        String qualifier = context.qualifier();
 
         Collection<String> pool;
         if (qualifier != null && memberProvider != null) {
@@ -150,38 +158,21 @@ final class SqlAutoComplete {
         }
         if (pool == null || pool.isEmpty()) { hide(); return; }
 
-        String lower = prefix.toLowerCase();
+
         List<String> matches = new ArrayList<>();
         for (String c : pool) {
             if (c == null) continue;
-            if (c.toLowerCase().startsWith(lower) && !c.equalsIgnoreCase(prefix)) {
+            if (com.datacube.sqleditor.SqlCompletionContext.matches(c, prefix)) {
                 matches.add(c);
             }
         }
         if (matches.isEmpty()) { hide(); return; }
         matches.sort(String.CASE_INSENSITIVE_ORDER);
         if (matches.size() > MAX_ITEMS) matches = matches.subList(0, MAX_ITEMS);
+        shownText = area.getText(); shownCaret = caret;
         list.getItems().setAll(matches);
         list.getSelectionModel().select(0);
         showAtCaret();
-    }
-
-    /**
-     * 若光标前当前单词的紧邻左侧是 {@code .} 且其前为标识符，返回该标识符（限定符）；
-     * 否则返回 null。用于识别 {@code 别名./表名.} 的列补全上下文。
-     */
-    private String qualifierBefore(int wordStart) {
-        String text = area.getText();
-        if (wordStart <= 0 || wordStart > text.length()) return null;
-        if (text.charAt(wordStart - 1) != '.') return null;
-        int qEnd = wordStart - 1;
-        int qStart = qEnd;
-        while (qStart > 0) {
-            char ch = text.charAt(qStart - 1);
-            if (Character.isLetterOrDigit(ch) || ch == '_') qStart--;
-            else break;
-        }
-        return qStart < qEnd ? text.substring(qStart, qEnd) : null;
     }
 
     /**
@@ -215,13 +206,16 @@ final class SqlAutoComplete {
 
     private void applySelection() {
         if (!area.isEditable() || area.isDisabled()) { hide(); return; }
+        if (shownText != null && (!shownText.equals(area.getText()) || shownCaret != area.getCaretPosition())) { hide(); return; }
         String sel = list.getSelectionModel().getSelectedItem();
         if (sel == null) { hide(); return; }
         int caret = area.getCaretPosition();
-        int start = wordStart(caret);
+        var context = com.datacube.sqleditor.SqlCompletionContext.input(area.getText(), caret, oracleMode.getAsBoolean());
+        if (!context.allowed()) { hide(); return; }
+        int start = context.start();
         mutating = true;
         try {
-            area.replaceText(start, caret, sel);
+            area.replaceText(start, context.end(), sel);
             area.moveTo(start + sel.length());
         } finally {
             mutating = false;
@@ -229,24 +223,6 @@ final class SqlAutoComplete {
         hide();
         // 弹窗列表可能曾抢占焦点，应用后将焦点交回编辑器以便继续输入。
         area.requestFocus();
-    }
-
-    /** 光标前的当前单词（字母/数字/下划线）。 */
-    private String currentWord() {
-        int caret = area.getCaretPosition();
-        int start = wordStart(caret);
-        return caret <= start ? "" : area.getText(start, caret);
-    }
-
-    private int wordStart(int caret) {
-        String text = area.getText();
-        int i = Math.min(caret, text.length());
-        while (i > 0) {
-            char ch = text.charAt(i - 1);
-            if (Character.isLetterOrDigit(ch) || ch == '_') i--;
-            else break;
-        }
-        return i;
     }
 
     /** Explicit text transforms must neither request members nor reopen an older queued popup. */
@@ -260,6 +236,7 @@ final class SqlAutoComplete {
     }
 
     void hide() {
+        shownText = null;
         if (popup.isShowing()) popup.hide();
     }
 }

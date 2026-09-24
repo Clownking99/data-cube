@@ -84,10 +84,9 @@ class SqlFileConnectionTest {
                         MouseButton.PRIMARY, 1, false, true, false, false,
                         true, false, false, false, false, true, null));
                 assertEquals(List.of(), invoke(f.pane, "membersFor", new Class<?>[]{String.class}, "a"));
-                invoke(f.pane, "prewarm", new Class<?>[]{ConnConfig.class}, oracle);
-                invoke(f.pane, "installMetadataPrewarm");
-                invoke(f.pane, "loadColumnsAsync", new Class<?>[]{String.class, String.class, String.class, String.class},
-                        "oracle", "chosen_schema", "synthetic", "chosen_schema.synthetic");
+                invoke(f.pane, "resetCompletionContext", new Class<?>[]{ConnConfig.class}, oracle);
+                invoke(f.pane, "installCompletionContextListener");
+                invoke(f.pane, "metadataNames", new Class<?>[]{ConnConfig.class, String.class, String.class}, oracle, "chosen_schema", "synthetic");
                 assertEquals(f.sql, f.area().getText());
                 assertFalse(f.document().dirty());
                 assertEquals(f.path.toRealPath(), f.document().target().path());

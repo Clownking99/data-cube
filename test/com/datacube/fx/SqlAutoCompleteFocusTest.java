@@ -50,6 +50,35 @@ class SqlAutoCompleteFocusTest {
         });
     }
 
+    @Test void quotedMemberReplacesWholeTokenAndStaleCaretCannotApplyAnOldCandidate() throws Exception {
+        try (Fixture fixture = new Fixture(directory.resolve("quoted.properties"))) {
+            fixture.focus(fixture.area);
+            FxUiTestSupport.call(() -> {
+                fixture.completion.setMemberProvider(qualifier -> {
+                    assertEquals("\"Schema\".\"Table\"", qualifier); return List.of("\"Column\"");
+                });
+                fixture.area.replaceText("select \"Schema\".\"Table\".\"CoOld\" from t");
+                fixture.area.moveTo(fixture.area.getText().indexOf("CoOld") + 2);
+                return null;
+            });
+            fixture.drain();
+            FxUiTestSupport.call(() -> {
+                assertTrue(fixture.popup().isShowing());
+                Event.fireEvent(fixture.area, new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.TAB, false, false, false, false));
+                assertEquals("select \"Schema\".\"Table\".\"Column\" from t", fixture.area.getText());
+                fixture.area.replaceText("select \"Schema\".\"Table\".Co");
+                return null;
+            });
+            fixture.drain();
+            FxUiTestSupport.call(() -> {
+                assertTrue(fixture.popup().isShowing(), "unquoted prefixes must discover quoted names");
+                String before = fixture.area.getText(); fixture.area.moveTo(2);
+                Event.fireEvent(fixture.area, new KeyEvent(KeyEvent.KEY_PRESSED, "", "", KeyCode.TAB, false, false, false, false));
+                assertEquals(before, fixture.area.getText()); assertFalse(fixture.popup().isShowing()); return null;
+            });
+        }
+    }
+
     @Test void unfocusedReplacementThenFocusGainedDoesNotRequestCandidates() throws Exception {
         try (Fixture fixture = new Fixture(directory.resolve("focus-after-replacement.properties"))) {
             fixture.focus(fixture.other);

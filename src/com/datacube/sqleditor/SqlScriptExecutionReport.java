@@ -19,7 +19,11 @@ public record SqlScriptExecutionReport(List<Entry> entries, int returned, int no
 
     public record Entry(int index, QueryResult.Kind kind, QueryResult.FailureKind failureKind,
             long elapsedMillis, int rowCount, boolean rowsTruncated, int updateCount, Text sql, Text error,
-            Text retentionNotice) {
+            Text retentionNotice, long executionMillis, long fetchMillis) {
+        public String timingDescription() {
+            return "JDBC 执行 " + measured(executionMillis) + " · 抓取 " + measured(fetchMillis);
+        }
+        private static String measured(long value) { return value < 0 ? "未测量" : value + "ms"; }
         public String status() {
             if (kind != QueryResult.Kind.ERROR) return kind.name();
             return switch (failureKind) {
@@ -73,7 +77,7 @@ public record SqlScriptExecutionReport(List<Entry> entries, int returned, int no
                 Text error = budget.capture(result.errorMessage);
                 entries.add(new Entry(outcome.index(), result.kind, result.failureKind, result.elapsedMillis,
                         result.rows.size(), result.truncated, result.updateCount, sql, error,
-                        budget.capture(result.retentionNotice)));
+                        budget.capture(result.retentionNotice), result.executionMillis, result.fetchMillis));
             }
         }
         return new SqlScriptExecutionReport(entries, outcomes.size(), normal, failed, timedOut, cancelled, elapsedMillis);
@@ -83,7 +87,7 @@ public record SqlScriptExecutionReport(List<Entry> entries, int returned, int no
 
     public String summary() {
         return "已返回 " + returned + " 条结果：正常 " + normal + " · 失败 " + failed
-                + " · 超时 " + timedOut + " · 取消 " + cancelled + " - " + elapsedMillis + "ms";
+                + " · 超时 " + timedOut + " · 取消 " + cancelled + " - 工作线程累计 " + elapsedMillis + "ms（含等待，不含渲染）";
     }
 
     public String displayNotice() {

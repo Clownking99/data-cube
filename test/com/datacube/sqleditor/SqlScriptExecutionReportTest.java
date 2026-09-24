@@ -20,7 +20,7 @@ class SqlScriptExecutionReportTest {
                 new ScriptOutcome(9, "cancel", QueryResult.cancelled("cancelled", 7))), 30);
         assertEquals(6, report.returned()); assertEquals(3, report.normal()); assertEquals(1, report.failed());
         assertEquals(1, report.timedOut()); assertEquals(1, report.cancelled()); assertTrue(report.hasFailures());
-        assertEquals("已返回 6 条结果：正常 3 · 失败 1 · 超时 1 · 取消 1 - 30ms", report.summary());
+        assertEquals("已返回 6 条结果：正常 3 · 失败 1 · 超时 1 · 取消 1 - 工作线程累计 30ms（含等待，不含渲染）", report.summary());
         assertEquals(List.of("QUERY", "UPDATE", "UPDATE", "失败", "超时", "取消"), report.entries().stream().map(Entry::status).toList());
         assertEquals("已加载 1 行（结果已截断）", report.entries().getFirst().resultDescription());
         assertEquals("影响 7 行", report.entries().get(1).resultDescription());

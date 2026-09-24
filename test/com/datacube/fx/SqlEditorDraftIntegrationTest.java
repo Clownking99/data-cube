@@ -278,9 +278,7 @@ class SqlEditorDraftIntegrationTest {
                     "user",
                     "",
                     Map.of());
-            @SuppressWarnings("unchecked")
-            Set<String> warmed = (Set<String>) field(f.pane, "prewarmed");
-            warmed.add(cfg.id());
+            // Metadata is now lazy; no eager prewarm suppression is needed.
             f.context.setActiveConnection(cfg);
             invoke(f.pane, "admitCurrentConnection");
             assertNull(field(f.pane, "jdbcSession"));

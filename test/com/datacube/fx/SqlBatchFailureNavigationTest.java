@@ -183,17 +183,23 @@ class SqlBatchFailureNavigationTest {
                 f.show(outcomes()); f.root.resize(width, 850); f.root.applyCss(); f.root.layout();
                 var previous = navigation(f, "previous"); var next = navigation(f, "next");
                 var details = (Button) f.root.lookup("#sql-batch-details");
-                var row = (javafx.scene.layout.HBox) previous.getParent();
+                var row = (javafx.scene.layout.Pane) previous.getParent();
                 var rootBounds = f.root.localToScene(f.root.getLayoutBounds());
                 var rowBounds = row.localToScene(row.getLayoutBounds());
                 assertTrue(rowBounds.getMinX() >= rootBounds.getMinX() - 1);
                 assertTrue(rowBounds.getMaxX() <= rootBounds.getMaxX() + 1, "bar must fit the editor width");
-                double right = 0;
+
                 for (var child : row.getChildren()) {
                     var bounds = child.getBoundsInParent();
-                    assertTrue(bounds.getMinX() >= right - 1, "controls must not overlap");
+                    assertTrue(bounds.getMinX() >= -1);
+                    for (var other : row.getChildren()) if (other != child) {
+                        var otherBounds = other.getBoundsInParent();
+                        boolean overlapsX = Math.max(bounds.getMinX(), otherBounds.getMinX()) < Math.min(bounds.getMaxX(), otherBounds.getMaxX()) - 1;
+                        boolean overlapsY = Math.max(bounds.getMinY(), otherBounds.getMinY()) < Math.min(bounds.getMaxY(), otherBounds.getMaxY()) - 1;
+                        assertFalse(overlapsX && overlapsY, "wrapped controls must not overlap");
+                    }
                     assertTrue(bounds.getMaxX() <= row.getWidth() + 1, "controls must fit in the result bar");
-                    right = bounds.getMaxX();
+
                 }
                 assertTrue(choice(f).getWidth() >= 100);
                 assertEquals("上一异常", previous.getText()); assertEquals("下一异常", next.getText());

@@ -18,7 +18,6 @@ import java.sql.SQLException;
 import java.sql.SQLTimeoutException;
 import java.sql.Statement;
 import java.util.List;
-import java.util.regex.Pattern;
 
 /**
  * Oracle SQL 执行器：与 {@code PgSqlRunner} 对等，schema 切换委托 {@link SqlDialect}。
@@ -38,6 +37,8 @@ public final class OracleSqlRunner implements SqlRunner {
     @Override
     public QueryResult execute(Connection conn, String sql, String schema, SqlExecutionOptions options) {
         long t0 = System.currentTimeMillis();
+        long executionStarted = -1, executionMillis = -1, fetchStarted = -1, fetchMillis = -1;
+        boolean userExecute = false;
         try {
             applySchema(conn, schema, options);
             try (Statement stmt = conn.createStatement()) {
@@ -45,12 +46,20 @@ public final class OracleSqlRunner implements SqlRunner {
                 try {
                     options.control().ensureNotCancelled(activation);
                     JdbcStatementLimits.apply(stmt, options.maxRows());
+                    executionStarted = System.nanoTime();
+                    userExecute = true;
                     boolean hasResult = stmt.execute(strip(sql));
+                    userExecute = false;
+                    executionMillis = (System.nanoTime() - executionStarted) / 1_000_000;
                     long elapsed = System.currentTimeMillis() - t0;
                     if (hasResult) {
+                        fetchStarted = System.nanoTime();
                         try (ResultSet rs = stmt.getResultSet()) {
                             ResultSetMetaData md = rs.getMetaData();
                             QueryResult r = QueryResult.fromResultSet(rs, elapsed, options.maxRows(), options.resultBudget(), options.control());
+                            fetchMillis = (System.nanoTime() - fetchStarted) / 1_000_000;
+                            fetchStarted = -1;
+                            r = r.withExecutionDetails(0, executionMillis, fetchMillis);
                             options.control().release(activation);
                             activation = null;
                             // best-effort 解析列注释；失败或无表列时返回 null，不影响结果展示
@@ -62,19 +71,22 @@ public final class OracleSqlRunner implements SqlRunner {
                             return comments == null ? r : r.withColumnComments(comments);
                         }
                     } else {
-                        return QueryResult.update(elapsed, stmt.getUpdateCount());
+                        return QueryResult.update(elapsed, stmt.getUpdateCount()).withExecutionDetails(0, executionMillis, 0);
                     }
                 } finally {
                     if (activation != null) options.control().release(activation);
                 }
             }
-        } catch (SQLTimeoutException e) {
-            return QueryResult.timeout(e.getMessage(), System.currentTimeMillis() - t0);
         } catch (SQLException e) {
-            return failure(e, t0, options);
+            long elapsed = System.currentTimeMillis() - t0;
+            if (userExecute) executionMillis = (System.nanoTime() - executionStarted) / 1_000_000;
+            if (fetchStarted >= 0) fetchMillis = (System.nanoTime() - fetchStarted) / 1_000_000;
+            QueryResult result = e instanceof SQLTimeoutException ? QueryResult.timeout(e.getMessage(), elapsed)
+                    : options.control().cancellationRequested() ? QueryResult.cancelled(e.getMessage(), elapsed)
+                    : QueryResult.error(e.getMessage(), elapsed);
+            return result.withExecutionDetails(0, executionMillis, fetchMillis);
         }
     }
-
     @Override
     public QueryResult executePrepared(
             Connection conn, String sql, List<SqlParameter> parameters,
@@ -191,11 +203,8 @@ public final class OracleSqlRunner implements SqlRunner {
         return s;
     }
 
-    private static final Pattern PLSQL_BLOCK = Pattern.compile(
-            "(?is)^(?:DECLARE|BEGIN|CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:EDITIONABLE\\s+|NONEDITIONABLE\\s+)?"
-                    + "(?:PROCEDURE|FUNCTION|PACKAGE\\s+BODY|PACKAGE|TRIGGER|TYPE\\s+BODY|TYPE))\\b.*");
-
     private static boolean isPlSqlBlock(String sql) {
-        return PLSQL_BLOCK.matcher(sql).matches();
+        var fragments = com.datacube.sqleditor.SqlScriptSplitter.fragments(sql, true);
+        return fragments.size() == 1 && fragments.getFirst().procedural();
     }
 }

@@ -37,6 +37,8 @@ public enum ShortcutAction {
 
     SQL_EXECUTE("sql.execute", "SQL 编辑器", "执行 SQL",
             new KeyCodeCombination(KeyCode.F5)),
+    SQL_EXECUTE_CURRENT("sql.executeCurrent", "SQL 编辑器", "执行当前语句",
+            new KeyCodeCombination(KeyCode.ENTER, KeyCombination.CONTROL_DOWN)),
     SQL_COMPLETE("sql.complete", "SQL 编辑器", "触发自动补全",
             new KeyCodeCombination(KeyCode.SPACE, KeyCombination.CONTROL_DOWN)),
     SQL_LINE_COMMENT("sql.lineComment", "SQL 编辑器", "行注释切换",
