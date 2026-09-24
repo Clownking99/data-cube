@@ -1,6 +1,6 @@
 # G6 / M6 本地验证账本
 
-当前状态：已获明确授权，分支实现及最终本地工程验证完成；准备本地提交、合并及 main 独立复验。不进入 M7。以下不是发布验收。
+当前状态：已获明确授权，G6/M6 本地工程完成，已本地提交并合并 main，main 独立复验通过。不进入 M7。以下不是发布验收。
 
 ## 范围与基线
 
@@ -38,7 +38,7 @@ Catalog 依据：[Oracle ALL_TAB_COMMENTS](https://docs.oracle.com/en/database/o
 
 ## 本轮已执行记录
 
-机器可读记录将在交付时汇总为同目录 `2026-09-24-datacube-g6-results.json`。编译失败没有采集/引用旧 XML。通过数字不包括 skipped。
+机器可读记录见同目录 [实际结果](2026-09-24-datacube-g6-results.json)。编译失败没有采集/引用旧 XML。通过数字不包括 skipped。
 
 | 运行 | 实际结果 | 说明 |
 | --- | --- | --- |
@@ -87,7 +87,7 @@ Catalog 依据：[Oracle ALL_TAB_COMMENTS](https://docs.oracle.com/en/database/o
 
 桌面工具 `focused_element` 未同步反映 JavaFX 按钮焦点，最初 100% 的仅 UIA 观测不记为通过；150% 后续以实际焦点描边截图确认 Schema→保存。模态窗口只作为 owned 截图出现，未返回可单独定位的 Window；点击报“point is over SQL 收藏, not target DataCube G6 合成验收”，故未继续模态输入。收藏/检索原生键盘路径、完整 AppShell 全局入口和真实驱动仍待人工或可正确定位模态窗口的环境验证。合成界面的成功不等于完整产品/发布验收。
 
-最终源码/测试/资源/构建文件清单共 752 项，内容摘要记录于独占证据目录 `final-source-manifest.json`，文件 SHA256 `4D2D5C71FFD7F5BC8E73F68A8D7A14BD46AEC5CB4037ECA344AA882B09B53128`。main 复验前后将逐项比对，避免将旧通过当作变更后的证据。明文 SQL 收藏的隐私提示不保证 SQL 本文不含敏感值；用户须自行决定保存内容。
+最终源码/测试/资源/构建文件清单共 752 项，内容摘要记录于独占证据目录 `final-source-manifest.json`，文件 SHA256 `4D2D5C71FFD7F5BC8E73F68A8D7A14BD46AEC5CB4037ECA344AA882B09B53128`。合并后逐项比较：516 项字节相同、236 项仅 checkout 的 CRLF/LF 不同，无其他差异；Git 内容比较为空。行尾转换不称为字节完全相同，main 仍独立运行全量和构建。明文 SQL 收藏的隐私提示不保证 SQL 本文不含敏感值；用户须自行决定保存内容。
 
 ## 最终分支验证
 
@@ -96,3 +96,13 @@ Catalog 依据：[Oracle ALL_TAB_COMMENTS](https://docs.oracle.com/en/database/o
 - 3 项跳过分别为 Redis live、Oracle SchemaDiff live、PostgreSQL SchemaDiff live；均因没有明确真库环境/写授权，不计入 passed。
 - `git diff --check` 通过；最终 752 项清单逐项匹配。旧全量/镜像均保留作为过程证据，最终镜像及 main 另行记录。
 - `branch-image-final`：最终产品代码 jpackageImage 成功，41s；日志 SHA256 `20B12CB7B8E80EA970BF40E80E8BBC5C5259C4BB7C0B15EC396718A221D15B26`。重新核对 cfg，无测试启动参数；exe/cfg/runtime modules 摘要在汇总 JSON。
+
+## 本地合并与 main 复验
+
+- 实现提交：`d4b02debdf59e7af1c81a0c54a7ed0f3c2db9c1d`；main 合并：`c182128a64c970f05469129bdc1adfbd2bd1a452`。合并前 main 仍为起点 `c3481d1`，授权范围工作区干净；没有覆盖其他任务的变更。
+- `main-full`：使用运行前确认不存在的 `profile-main`，`clean test --offline --no-daemon --console=plain` 加隔离 Test init；**297 suites / 3756 tests / 3753 passed / 0 failures/errors / 3 live skipped**，3m35s。日志 SHA256 `C66A5837953C573668407B3A8B1CC748CB3B3338A4BAA3505A47804168F387A9`；XML 清单 SHA256 `8DDF4E908995D90FB5627CFFD0EC83DCE6D2FF333215BA4E448DB4F5ED3EA4FF`。
+- `main-buildSrc`：`:buildSrc:test --rerun-tasks`，**8/8 passed / 0 skipped**，8s；实际任务执行，非 UP-TO-DATE。日志 SHA256 `69A28754A437E4B48A48F3AC09B6B4091A32D58084DB461E73CAE58FD21B9171`。
+- `main-image`：`jpackageImage --offline --no-daemon --console=plain`，成功，33s；日志 SHA256 `E47878C969391F32518B0989490E3AD398B54342F6F6AB673F85EF20BA119747`。本轮仍有既有 unchecked 编译提示及 JEP 493 jlink 提示，不称为零警告。
+- 镜像 cfg 没有 user.home、headless、验收入口或测试 profile 参数；`jimage list` 确认包含收藏/检索产品类，不包含 `G6DiscoveryDesktopFixture`。exe、cfg、runtime modules 三项 SHA256 与最终分支镜像相同；这三项比对不代表对整个安装包作可复现构建承诺。精确摘要见 [实际结果](2026-09-24-datacube-g6-results.json)。
+- main 复验后仅更新计划、交接和验证记录，产品/测试/构建文件保持已验证内容。完整失败记录与 3 项真实环境 skip 保留，跳过不算通过。
+- 本地工程交付到此结束。原生模态输入、完整 AppShell、真实 catalog/驱动、OS 缩放/多屏、安装运行与升级、签名、远端 CI 和发布仍待验；不进入 M7，不推送或发布。

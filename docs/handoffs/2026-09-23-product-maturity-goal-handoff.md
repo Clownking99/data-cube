@@ -2,7 +2,9 @@
 
 编写日期：2026-09-23。此文档旨在让新会话不依赖旧聊天全文即可接手。
 
-**2026-09-24 最新状态：维护者单独授权的 G5/M5 已本地工程完成。** 当前语句执行、可靠来源错误定位、作用域补全与计时口径实现 `76dd221`，补全引用来源边界修正 `c62e86c`，main 最终代码合并 `0e7ca79` 已重新通过全量（3724 passed、3 live skips）、buildSrc（8/8）与 jpackageImage。实际 SHA、失败历史、产物摘要与降级见 [G5 账本](../superpowers/verification/2026-09-24-datacube-g5-sql-context.md)。下文首个目标启动内容为历史记录；勿重复实施 G1–G5。M6–M8 未自动启动，原生桌面、真库、签名/安装升级及发布仍待验。
+**2026-09-24 最新状态：维护者单独授权的 G6/M6 已本地工程完成。** 选定 Schema 的字段/注释检索、离线 SQL 收藏与入口整理实现 `d4b02de`，main 合并 `c182128` 已在全新合成 profile 重新通过全量（3753 passed、3 live skips）、强制 buildSrc（8/8）与 jpackageImage。实际 SHA、失败历史、产物摘要及 14 张合成桌面截图见 [G6 账本](../superpowers/verification/2026-09-24-datacube-g6-discovery-library.md) 和 [实际结果](../superpowers/verification/2026-09-24-datacube-g6-results.json)。原生模态输入与完整 AppShell 流程、OS 缩放/多屏、真库、签名/安装升级和发布仍待验，不能称为发布验收。下文首个目标启动内容为历史记录；勿重复实施 G1–G6。M7–M8 未自动启动。
+
+**G5 历史交付：** 当前语句执行、可靠来源错误定位、作用域补全与计时口径实现 `76dd221`，补全引用来源边界修正 `c62e86c`，main 最终代码合并 `0e7ca79` 的全量为 3724 passed、3 live skips，buildSrc 8/8 与 jpackageImage 通过。实际证据及降级保留在 [G5 账本](../superpowers/verification/2026-09-24-datacube-g5-sql-context.md)，不作为 G6 新验证使用。
 
 **2026-09-24 更新：G1（M0 + M1）已本地工程完成。** 实现提交 `965c3a3`，main 合并代码 `6596c00` 已重新通过全量测试（3514 passed、3 live skips）、buildSrc（8/8）与 jpackageImage。详见 [G1 实施与验收账本](../superpowers/verification/2026-09-23-datacube-g1-write-safety.md) 和 [实际结果](../superpowers/verification/2026-09-24-datacube-g1-results.json)。原生桌面、真库、安装升级与远端 CI/发布仍待验。下文保留最初启动交接的历史现场和指令；新会话应先看当前路线图，避免重新实施 G1。本任务未扩展到 M2–M8，后续 G2 由维护者单独启动。
 

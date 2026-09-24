@@ -40,6 +40,22 @@
 
 - 当前目标：合入 main 并在新 profile 复验，范围仍为 G6/M6。
 - 改动：首次 profile 初始化修复完成；此后没有产品代码变化。
-- 验证：m6-fresh-profile-green 9/9；branch-full-final 3753 passed、0 failed/errors、3 live skipped。最终镜像构建中；buildSrc 本轮强制执行 8/8。
+- 验证：m6-fresh-profile-green 9/9；branch-full-final 3753 passed、0 failed/errors、3 live skipped；branch-image-final 成功，cfg 无测试参数；buildSrc 本轮强制执行 8/8。
 - 失败/未验：此前失败均有原始日志与对应复验；真实数据库跳过及原生模态输入限制保持待验，不标为通过。
 - 下一步：最终镜像/参数检查、提交、main 前置检查及合并；main fresh 全量/buildSrc/image，记录精确提交及产物摘要。
+
+## CP4：已合并 main，独立复验进行中
+
+- 当前目标：完成 G6 的 main 复验和交付记录；不进入 M7。
+- 改动：实现提交 `d4b02debdf59e7af1c81a0c54a7ed0f3c2db9c1d`，main 合并 `c182128a64c970f05469129bdc1adfbd2bd1a452`。合并前 main 仍为 `c3481d1` 且授权范围工作区干净。
+- 验证：分支与合并后 Git 产品内容一致；752 项清单中 516 项字节相同、236 项仅 CRLF/LF 转换，无其他差异。`profile-main` 运行前确认不存在，随后用于 main fresh clean test。
+- 失败/未验：main 测试及构建结果待产生；此前失败和外部待验保留，不借用分支结果宣称 main 已通过。
+- 下一步：main 全量、强制 buildSrc、jpackageImage；更新路线图、交接及实际结果后提交文档并交付。
+
+## CP5：main 复验通过，本地工程交付
+
+- 当前目标：G6/M6 本地实现、审查、提交、合并及复验完成；交付截至本阶段。
+- 改动：复验后仅同步路线图、交接、验证账本和实际结果；产品与测试保持 `c182128a64c970f05469129bdc1adfbd2bd1a452` 内容。
+- 验证：main fresh 全量 297 suites / 3756 tests / 3753 passed / 0 failures/errors / 3 live skipped（3m35s）；main buildSrc 强制执行 8/8（8s）；main jpackageImage 成功（33s）。镜像没有测试启动参数或桌面夹具，exe/cfg/runtime modules 摘要与最终分支镜像一致。精确命令、日志/XML/产物摘要见验证账本和结果 JSON。
+- 失败/未验：main 复验无失败；先前编译/测试失败保留，既有 SchemaDiff 偶发原因未明，3 个真库 skip 不算通过。原生模态输入与完整壳流程、OS 缩放/多屏、真库/驱动、安装运行/签名升级、远端 CI/发布仍未验。
+- 下一步：提交最终文档并检查 main 工作区及产品内容；交付 G6。M7/M8 需另行明确启动，当前不扩展。
