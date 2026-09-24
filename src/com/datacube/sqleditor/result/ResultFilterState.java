@@ -92,6 +92,34 @@ public final class ResultFilterState {
     private long nextGeneration;
     private long inFlightGeneration = NO_IN_FLIGHT;
 
+    /** Opaque same-batch view. Raw filter values never pass through a redacted public snapshot. */
+    public static final class SavedView {
+        private final QueryResult original, active;
+        private final String sql, schema, search, unavailable, error;
+        private final List<FilterCondition> conditions;
+        private final List<Integer> indexes;
+        private final DatabaseStatus status;
+        private SavedView(ResultFilterState state) {
+            original = state.originalResult; active = state.activeResult;
+            sql = state.originalSql; schema = state.effectiveSchema; search = state.searchText;
+            unavailable = state.databaseUnavailableReason; error = state.recoverableError;
+            conditions = state.conditions; indexes = state.visibleRowIndexes; status = state.databaseStatus;
+        }
+        @Override public String toString() { return "SavedView[values=<redacted>]"; }
+    }
+
+    public synchronized SavedView saveView() { return new SavedView(this); }
+
+    public synchronized void restoreView(SavedView view) {
+        Objects.requireNonNull(view);
+        originalResult = view.original; activeResult = view.active;
+        originalSql = view.sql; effectiveSchema = view.schema; searchText = view.search;
+        databaseUnavailableReason = view.unavailable; recoverableError = view.error;
+        conditions = view.conditions; snapshotConditions = redactConditions(conditions);
+        visibleRowIndexes = view.indexes; databaseStatus = view.status;
+        invalidateRequests();
+    }
+
     public synchronized void showOriginal(QueryResult result, String sql, String unavailableReason) {
         showOriginal(result, sql, null, unavailableReason);
     }

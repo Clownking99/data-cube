@@ -34,7 +34,8 @@ final class PgColumnComments {
     static List<String> resolve(Connection conn, ResultSetMetaData md, SqlExecutionOptions options)
             throws SQLException {
         try {
-            int colCount = md.getColumnCount();
+            if (options.resultBudget().remainingText() == 0) return null;
+            int colCount = Math.min(md.getColumnCount(), options.resultBudget().limits().columns());
             // 每列底层三元组（schema/table/column），非表列为 null
             String[] schemas = new String[colCount];
             String[] tables = new String[colCount];
@@ -104,12 +105,18 @@ final class PgColumnComments {
             try {
                 options.control().ensureNotCancelled(activation);
                 try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        String descr = rs.getString("descr");
+                    int read = 0;
+                    while (read++ < options.resultBudget().limits().columns() && options.resultBudget().remainingText() > 0 && rs.next()) {
+                        options.control().ensureNotCancelled(activation);
+                        String descr = options.resultBudget().readText(rs.getCharacterStream("descr"), 512);
                         if (descr == null || descr.isEmpty()) continue;
-                        map.put(rs.getString("s") + '\u0000' + rs.getString("t")
-                                + '\u0000' + rs.getString("col"), descr);
+                        String schema = rs.getString("s"), table = rs.getString("t"), column = rs.getString("col");
+                        if (schema == null || table == null || column == null
+                                || schema.length() > 512 || table.length() > 512 || column.length() > 512) continue;
+                        map.put(schema + '\u0000' + table + '\u0000' + column, descr);
                     }
+                    if (read > options.resultBudget().limits().columns() || options.resultBudget().remainingText() == 0)
+                        options.resultBudget().noteOmission();
                 }
             } finally {
                 options.control().release(activation);
@@ -119,7 +126,7 @@ final class PgColumnComments {
     }
 
     private static String trimToNull(String s) {
-        if (s == null) return null;
+        if (s == null || s.length() > 512) return null;
         String t = s.trim();
         return t.isEmpty() ? null : t;
     }

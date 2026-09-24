@@ -18,6 +18,7 @@ public final class SafeSelectEligibility {
 
     public static Result check(String sql, boolean oracleMode, QueryResult result) {
         if (sql == null || result == null) return Result.rejected("SQL 与结果不能为空");
+        if (!result.retentionNotice.isEmpty()) return Result.rejected("结果包含预算省略；请明确缩小原查询后重新执行");
         List<String> statements = SqlScriptSplitter.split(sql, oracleMode);
         if (statements.size() != 1) return Result.rejected("仅支持单条 SELECT");
 

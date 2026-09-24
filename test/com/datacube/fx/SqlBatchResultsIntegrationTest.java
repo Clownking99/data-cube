@@ -47,7 +47,8 @@ class SqlBatchResultsIntegrationTest {
                 choice.getSelectionModel().select(4); assertNull(f.pane.captureResultExportSnapshot());
                 assertEquals("synthetic error", f.table().getItems().getFirst().getFirst());
                 choice.getSelectionModel().select(0); assertEquals(4, f.table().getItems().size()); assertTrue(f.details().getNode().isVisible());
-                choice.getSelectionModel().select(1); assertEquals(2, f.table().getItems().size());
+                choice.getSelectionModel().select(1); assertEquals(1, f.table().getItems().size());
+                assertEquals("beta", state(f).snapshot().searchText());
                 Label summary = (Label) f.root.lookup("#sql-batch-summary"); assertTrue(summary.getText().contains("失败 1"));
                 assertFalse(summary.getStyle().contains("-status-ok"));
                 assertEquals(f.original.replace("\r\n", "\n"), f.editor.getText()); assertFalse(f.editor.isUndoAvailable()); assertFalse(f.document().dirty());

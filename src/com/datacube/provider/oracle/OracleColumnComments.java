@@ -43,7 +43,8 @@ final class OracleColumnComments {
             String defaultSchema,
             SqlExecutionOptions options) throws SQLException {
         try {
-            int colCount = md.getColumnCount();
+            if (options.resultBudget().remainingText() == 0) return null;
+            int colCount = Math.min(md.getColumnCount(), options.resultBudget().limits().columns());
             String[] schemas = new String[colCount];
             String[] tables = new String[colCount];
             String[] cols = new String[colCount];
@@ -108,12 +109,18 @@ final class OracleColumnComments {
             try {
                 options.control().ensureNotCancelled(activation);
                 try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        String descr = rs.getString("COMMENTS");
+                    int read = 0;
+                    while (read++ < options.resultBudget().limits().columns() && options.resultBudget().remainingText() > 0 && rs.next()) {
+                        options.control().ensureNotCancelled(activation);
+                        String descr = options.resultBudget().readText(rs.getCharacterStream("COMMENTS"), 512);
                         if (descr == null || descr.isEmpty()) continue;
-                        map.put(rs.getString("OWNER") + '\u0000' + rs.getString("TABLE_NAME")
-                                + '\u0000' + rs.getString("COLUMN_NAME"), descr);
+                        String owner = rs.getString("OWNER"), table = rs.getString("TABLE_NAME"), column = rs.getString("COLUMN_NAME");
+                        if (owner == null || table == null || column == null
+                                || owner.length() > 512 || table.length() > 512 || column.length() > 512) continue;
+                        map.put(owner + '\u0000' + table + '\u0000' + column, descr);
                     }
+                    if (read > options.resultBudget().limits().columns() || options.resultBudget().remainingText() == 0)
+                        options.resultBudget().noteOmission();
                 }
             } finally {
                 options.control().release(activation);
@@ -150,10 +157,15 @@ final class OracleColumnComments {
             try {
                 options.control().ensureNotCancelled(activation);
                 try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        String d = rs.getString("COMMENTS");
-                        if (d != null && !d.isEmpty()) byCol.put(rs.getString("COLUMN_NAME"), d);
+                    int read = 0;
+                    while (read++ < options.resultBudget().limits().columns() && options.resultBudget().remainingText() > 0 && rs.next()) {
+                        options.control().ensureNotCancelled(activation);
+                        String d = options.resultBudget().readText(rs.getCharacterStream("COMMENTS"), 512);
+                        String column = rs.getString("COLUMN_NAME");
+                        if (d != null && !d.isEmpty() && column != null && column.length() <= 512) byCol.put(column, d);
                     }
+                    if (read > options.resultBudget().limits().columns() || options.resultBudget().remainingText() == 0)
+                        options.resultBudget().noteOmission();
                 }
             } finally {
                 options.control().release(activation);
@@ -161,7 +173,7 @@ final class OracleColumnComments {
         }
         if (byCol.isEmpty()) return null;
 
-        int colCount = md.getColumnCount();
+        int colCount = Math.min(md.getColumnCount(), options.resultBudget().limits().columns());
         List<String> out = new ArrayList<>(colCount);
         boolean anyHit = false;
         for (int i = 1; i <= colCount; i++) {
@@ -261,7 +273,7 @@ final class OracleColumnComments {
     }
 
     private static String trimToNull(String s) {
-        if (s == null) return null;
+        if (s == null || s.length() > 512) return null;
         String t = s.trim();
         return t.isEmpty() ? null : t;
     }

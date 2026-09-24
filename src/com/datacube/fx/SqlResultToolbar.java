@@ -367,6 +367,7 @@ public final class SqlResultToolbar {
                     + loadedText + " 行 · " + columnCount + " 列 · " + elapsedText;
         };
         if (active.truncated) text += "（当前结果已截断）";
+        if (!active.retentionNotice.isEmpty()) text += "；" + active.retentionNotice;
         if (snapshot.recoverableError() != null && !snapshot.recoverableError().isBlank()) {
             text += " · " + snapshot.recoverableError();
         }

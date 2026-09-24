@@ -18,7 +18,8 @@ public record SqlScriptExecutionReport(List<Entry> entries, int returned, int no
     public record Text(String value, boolean truncated) { }
 
     public record Entry(int index, QueryResult.Kind kind, QueryResult.FailureKind failureKind,
-            long elapsedMillis, int rowCount, boolean rowsTruncated, int updateCount, Text sql, Text error) {
+            long elapsedMillis, int rowCount, boolean rowsTruncated, int updateCount, Text sql, Text error,
+            Text retentionNotice) {
         public String status() {
             if (kind != QueryResult.Kind.ERROR) return kind.name();
             return switch (failureKind) {
@@ -30,7 +31,8 @@ public record SqlScriptExecutionReport(List<Entry> entries, int returned, int no
 
         public String resultDescription() {
             return switch (kind) {
-                case QUERY -> "已加载 " + rowCount + " 行" + (rowsTruncated ? "（结果已截断）" : "");
+                case QUERY -> "已加载 " + rowCount + " 行" + (rowsTruncated ? "（结果已截断）" : "")
+                        + (retentionNotice.value().isEmpty() ? "" : "；" + retentionNotice.value());
                 case UPDATE -> updateCount < 0 ? "影响行数未提供" : "影响 " + updateCount + " 行";
                 case ERROR -> error.value().isEmpty()
                         ? (error.truncated() ? "错误详情因显示上限省略" : "未提供错误信息") : error.value();
@@ -67,9 +69,11 @@ public record SqlScriptExecutionReport(List<Entry> entries, int returned, int no
             }
             if (entries.size() < MAX_ENTRIES) {
                 Text sql = budget.capture(outcome.sql());
+                if (result.retentionNotice.contains("SQL 仅保留前缀")) sql = new Text(sql.value(), true);
                 Text error = budget.capture(result.errorMessage);
                 entries.add(new Entry(outcome.index(), result.kind, result.failureKind, result.elapsedMillis,
-                        result.rows.size(), result.truncated, result.updateCount, sql, error));
+                        result.rows.size(), result.truncated, result.updateCount, sql, error,
+                        budget.capture(result.retentionNotice)));
             }
         }
         return new SqlScriptExecutionReport(entries, outcomes.size(), normal, failed, timedOut, cancelled, elapsedMillis);

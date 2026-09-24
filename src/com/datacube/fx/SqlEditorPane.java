@@ -165,6 +165,12 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlBatchResults batchResults;
     private boolean showingBatchResult;
     private final ResultFilterState resultFilterState = new ResultFilterState();
+    private record BatchView(ResultFilterState.SavedView filter, SqlResultViewState table) {}
+    private final Map<SqlBatchResults.Choice, BatchView> batchViews = new IdentityHashMap<>();
+    private SqlBatchResults.Choice displayedChoice;
+    private volatile SqlProgressMailbox scriptProgress;
+    private boolean incrementalBrowsing;
+    private boolean scriptProgressCancelled;
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
     private ClipboardWriter clipboardWriter = SqlEditorPane::writeSystemClipboard;
     private SqlResultExportCoordinator resultExports;
@@ -597,6 +603,8 @@ public final class SqlEditorPane implements AutoCloseable {
 
     /** Thread-safe resource phase; callers run this from a virtual-thread close guard. */
     void closeResources() {
+        SqlProgressMailbox progress = scriptProgress;
+        if (progress != null) progress.close();
         if (!resourcesClosing.compareAndSet(false, true)) return;
         if (findBar != null) findBar.close();
         if (fileController != null) fileController.close();
@@ -618,6 +626,8 @@ public final class SqlEditorPane implements AutoCloseable {
     /** Lightweight JavaFX phase; callers invoke this only on the FX Application Thread. */
     void finalizeCloseOnFx() {
         if (!uiFinalized.compareAndSet(false, true)) return;
+        if (scriptProgress != null) scriptProgress.close();
+        scriptProgress = null; displayedResult = null; lastQuerySql = null;
         BestEffortCloseSequence.run(
                 () -> { if (panelLayout != null) panelLayout.close(); },
                 () -> { if (scriptDetails != null) scriptDetails.close(); },
@@ -1498,6 +1508,7 @@ public final class SqlEditorPane implements AutoCloseable {
         configureResultViewMenu();
         renderResultFilterToolbar();
         batchResults = new SqlBatchResults(this::resultCellViewingAllowed, this::showBatchSelection);
+        batchResults.onClear(() -> { batchViews.clear(); displayedChoice = null; });
         scriptDetails = new SqlScriptDetails(resultTable, this::resultCellViewingAllowed, batchResults::selectResult);
         VBox box = new VBox(batchResults.getNode(), resultToolbar.getNode(), scriptDetails.getNode(), resultPane);
         VBox.setVgrow(resultPane, Priority.ALWAYS);
@@ -1549,11 +1560,20 @@ public final class SqlEditorPane implements AutoCloseable {
         final String schema = schemaField.getText().trim();
         final String effectiveSchema = schema.isEmpty() ? null : schema;
         final boolean oracle = active.type() == DbType.ORACLE;
+        var progress = new SqlProgressMailbox(Platform::runLater,
+                event -> renderScriptProgress(event, effectiveSchema));
         var request = ensureEditorSession().prepareScript(sql, effectiveSchema,
-                settings.getMaxResultRows(), this::askScriptError, oracle);
+                settings.getMaxResultRows(), this::askScriptError, oracle, progress::offer);
         var confirmation = WriteSafetyDialog.confirm(request, false);
         if (confirmation == null || tasks.isClosed() || admission.closing()) return;
         HistorySnapshot historySnapshot = captureHistory(sql, active, schema);
+
+        if (scriptProgress != null) scriptProgress.close();
+        scriptProgress = progress;
+        scriptProgressCancelled = false;
+        incrementalBrowsing = true;
+        clearResultFilterState();
+        resultTable.getItems().clear(); resultTable.getColumns().clear();
 
         running = true;
         setButtonsRunning(true);
@@ -1564,18 +1584,41 @@ public final class SqlEditorPane implements AutoCloseable {
             recordHistory(historySnapshot);
             return request.execute(confirmation);
         }, batch -> {
+            if (scriptProgress != progress) return;
+            progress.close();
             running = false;
+            incrementalBrowsing = false;
             JdbcEditorSession editorSession = jdbcSession;
             if (editorSession != null) renderSessionSnapshot(editorSession.snapshot());
             else setButtonsRunning(false);
-            showScriptResults(batch.outcomes(), batch.elapsedMillis(), effectiveSchema);
+            if (!scriptProgressCancelled) {
+                batchResults.update(batch.outcomes(), batch.elapsedMillis(), effectiveSchema, "");
+                statusLabel.setText(batchResults.report().summary());
+                statusLabel.setStyle("-fx-text-fill: " + (batchResults.report().hasFailures() ? "-status-error" : "-status-ok") + ";");
+            }
+            else {
+                batchResults.cancelled();
+                statusLabel.setText("已取消；保留取消前已显示的结果，事务状态见上方");
+            }
+            scriptProgress = null;
+            renderResultFilterToolbar(refreshDatabaseFilterAvailability());
         }, failure -> {
+            if (scriptProgress != progress) return;
+            progress.close(); scriptProgress = null; incrementalBrowsing = false;
             running = false;
             JdbcEditorSession editorSession = jdbcSession;
             if (editorSession != null) renderSessionSnapshot(editorSession.snapshot());
             else setButtonsRunning(false);
             showError(message(failure), 0);
         });
+    }
+
+    private void renderScriptProgress(com.datacube.spi.SqlScriptProgress event, String schema) {
+        if (scriptProgress == null || scriptProgressCancelled || !incrementalBrowsing || admission.closing()
+                || resourcesClosing.get() || uiFinalized.get() || tasks.isClosed()) return;
+        String progress = "已完成 " + event.completed() + "/" + event.total() + " 条；执行中";
+        batchResults.update(event.outcomes(), event.elapsedMillis(), schema, progress);
+        statusLabel.setText(progress);
     }
 
     private JdbcEditorSession ensureEditorSession() {
@@ -1754,6 +1797,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private void onCancelExecution() {
         JdbcEditorSession editorSession = currentEditorSession();
         if (editorSession == null) return;
+        if (scriptProgress != null) { scriptProgressCancelled = true; scriptProgress.close(); }
         cancelBtn.setDisable(true);
         transactionStatus.setText("正在取消...");
         tasks.submit(editorSession::cancel,
@@ -1979,6 +2023,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void onApplyDatabaseFilter() {
+        if (running || sessionOperations.snapshot().pending() || admission.closing()) return;
         ResultFilterState.DatabaseFilterRequest request;
         try {
             refreshDatabaseFilterAvailability();
@@ -2044,6 +2089,8 @@ public final class SqlEditorPane implements AutoCloseable {
         QueryResult candidate = request.originalResult().columnComments.isEmpty()
                 ? result : result.withColumnComments(request.originalResult().columnComments);
         if (!resultFilterState.databaseApplied(request.generation(), candidate)) return;
+        // An explicit database query starts a new result context; release the old batch budget.
+        batchResults.clear();
         renderResultFilterSnapshot();
         statusLabel.setText("数据库筛选已应用（" + schemaContext(request.effectiveSchema())
                 + "） - " + formatResultRowCount(candidate));
@@ -2151,8 +2198,8 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private boolean resultCellViewingAllowed() {
         return !admission.closing() && !resourcesClosing.get() && !uiFinalized.get() && !tasks.isClosed()
-                && !root.isDisabled() && !resultTable.isDisabled() && !running
-                && sessionOperations.snapshot().accepting() && !sessionOperations.snapshot().pending()
+                && !root.isDisabled() && !resultTable.isDisabled() && (!running || incrementalBrowsing)
+                && sessionOperations.snapshot().accepting() && (!sessionOperations.snapshot().pending() || incrementalBrowsing)
                 && resultPane.getContent() == resultTable;
     }
 
@@ -2479,6 +2526,17 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void showBatchSelection(SqlBatchResults.Choice selection) {
+        if (displayedChoice != null && displayedChoice.outcome() != null
+                && displayedResult != null && displayedResult.kind == QueryResult.Kind.QUERY) {
+            resultToolbar.flushPendingSearch();
+            batchViews.put(displayedChoice, new BatchView(resultFilterState.saveView(),
+                    SqlResultViewState.capture(resultTable, resultRowIndexes)));
+        }
+        BatchView saved = batchViews.get(selection);
+        if (saved == null) resultFilterState.clearAll();
+        else resultFilterState.restoreView(saved.filter());
+        displayedResult = null;
+        displayedChoice = selection;
         showingBatchResult = true;
         try {
             var report = batchResults.report();
@@ -2492,7 +2550,16 @@ public final class SqlEditorPane implements AutoCloseable {
                 scriptDetails.display(report); resultPane.setText("结果 · 执行概览");
             } else {
                 var outcome = selection.outcome();
-                showScriptResults(List.of(outcome), outcome.result().elapsedMillis, batchResults.schema());
+                if (saved == null) {
+                    showScriptResults(List.of(outcome), outcome.result().elapsedMillis, batchResults.schema());
+                } else {
+                    lastQuerySql = outcome.sql();
+                    renderResultFilterSnapshot();
+                    saved.table().restore(resultTable, resultRowIndexes);
+                    Platform.runLater(() -> {
+                        if (displayedChoice == selection && !uiFinalized.get()) saved.table().restoreScroll(resultTable);
+                    });
+                }
                 resultPane.setText("结果 · 语句 #" + outcome.index());
             }
             statusLabel.setText(report.summary());
@@ -2671,6 +2738,7 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private String databaseFilterUnavailableReason(
             String sql, QueryResult result, List<FilterCondition> conditions) {
+        if (running || sessionOperations.snapshot().pending()) return "执行中；仅可筛选已加载数据";
         ConnConfig connection = currentConn();
         SafeSelectEligibility.Result eligibility = SafeSelectEligibility.check(
                 sql, connection != null && connection.type() == DbType.ORACLE, result);
@@ -2689,7 +2757,8 @@ public final class SqlEditorPane implements AutoCloseable {
     private String formatResultRowCount(QueryResult result) {
         int count = result.rows.size();
         String formatted = String.format(Locale.ROOT, "%,d", count);
-        return result.truncated ? formatted + "+，当前结果已截断" : formatted + " rows";
+        return (result.truncated ? formatted + "+，当前结果已截断" : formatted + " rows")
+                + (result.retentionNotice.isEmpty() ? "" : "；" + result.retentionNotice);
     }
 
     private static String schemaContext(String effectiveSchema) {
@@ -2829,13 +2898,14 @@ public final class SqlEditorPane implements AutoCloseable {
         explainBtn.setDisable(disabled);
         formatAction.setBusy(busy);
         clearBtn.setDisable(busy);
-        if (resultToolbar != null) resultToolbar.getNode().setDisable(busy);
+        boolean blockResults = busy && !incrementalBrowsing;
+        if (resultToolbar != null) resultToolbar.getNode().setDisable(blockResults);
         refreshSqlFileReload();
         if (scriptDetails != null) {
-            scriptDetails.getNode().setDisable(busy);
+            scriptDetails.getNode().setDisable(blockResults);
             scriptDetails.refresh();
         }
-        if (batchResults != null) batchResults.getNode().setDisable(busy);
+        if (batchResults != null) batchResults.getNode().setDisable(blockResults);
     }
 
     // ---------- 自动补全：候选词 + 元数据预热 ----------
