@@ -35,6 +35,13 @@ class PgImporterTest {
         assertFalse(MigrationReport.of(run).display().contains("target-secret"));
         assertTrue(f.checkpoints.stream().anyMatch(r -> r.outcomes().getFirst().phase()==Phase.COMMIT && r.outcomes().getFirst().state()==State.RUNNING));
     }
+    @Test void largeScalarRowsFlushByPayloadBudgetBeforeTheRowCountLimit() throws Exception {
+        Fixture f=new Fixture(5);String label="界".repeat(500_000);StringBuilder file=new StringBuilder();
+        for(int i=0;i<5;i++)file.append(MigrationDataFile.format("items",f.columns,List.of(new BigDecimal(i),label))).append('\n');
+        Files.writeString(root.resolve("data/items.sql"),file);f.plan=f.freshPlan();
+        var run=f.run();assertTrue(run.completeWithinScope());assertEquals(5,f.committed.size());
+        assertTrue(f.batches>1,"Large rows must flush before accumulating 500 rows");assertEquals(1,f.commits);
+    }
     @Test void laterBatchFailureRollsBackEntireTableWithoutAutomaticReplay() throws Exception {
         Fixture f=new Fixture(501); f.failBatch=2;
         MigrationRun run=f.run();

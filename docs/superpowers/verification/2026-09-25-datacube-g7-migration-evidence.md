@@ -87,3 +87,13 @@ G7MigrationDesktopFixture 使用真实迁移面板、合成 backend、专用空 
 正在基于修复重新全量验证；旧 768 项清单和首次 main-full 保留为过程证据，最终源清单和 main 将另行记录。模块化驱动加载通过仍不能代替真实 JDBC 连接/事务/权限验证。
 
 修复版分支全量 branch-full-driver-fix：**307 suites / 3811 tests / 3808 passed / 0 failures/errors / 3 live skipped**，3m13s；日志 SHA256 `1D2F07D0E149EE7FEA9AEF60904C2EC99081770F339E3B52AA7B12BBF0C7EDA1`，XML manifest `1EA72AC0D648EB0531917799A2E01FFAB05C6E444A02375C766D87BF53475A16`。修复版 769 项 source manifest SHA256 `66D234149C068AA95879D0AC8D802A37872E3A93828F36A86D1CFAEE6166A4D1`，已逐项核对未变。镜像探针日志 SHA256 `1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82`。至此具备提交驱动补丁并再次合并 main 的证据；仍须 main 独立最终复验。
+
+### 大文本批次资源检查
+
+main 8b4abfc 的 buildSrc 8/8 与镜像再次成功后，审查发现每行允许 1 Mi 字符、批次只限制 500 行，累计的 JDBC 参数载荷可能显著超过镜像 256 MiB 堆。新增合成大文本回归 m7-payload-budget-red 实际 **1 test / 0 passed / 1 failed**，证明 5 行各 500000 中文字符仍全部累积在一批；没有制造堆耗尽，也没有调用真实数据库。
+
+修正：批次同时受 500 行与约 4 MiB UTF-16 参数载荷预算约束，达到载荷预算前先 flush；单行已有 1 Mi 字符上限。这个数值约束应用提交给驱动的待处理载荷，不承诺驱动内部拷贝等于固定堆用量。每批 flush 仍不 commit，整表对账通过后才提交一次。m7-payload-budget-green **65/65 passed**，含多批失败全表回滚、载荷触发多批且仅一次提交。继续新全量/main 复验，不将旧候选验证充当最终结果。
+
+最终载荷修复版 branch-full-delivery：307 suites / 3812 tests / **3809 passed / 0 failures/errors / 3 live skipped**，3m11s。日志 SHA256 `861078BC3CC181CAE996152F127ACD45564365C51EA757911FAF1CF5A834539B`，XML manifest `1581694755144F28AAC19F0CBFEFF531D2500319EA34E8A1FF53C30BB1A7E59B`；最终 769 项源码清单 `delivery-source-manifest.json` SHA256 `D21F8E4712C6E3F2E32A313F7DEEE89AC600822F129BBBAB1BA2BFB9B85544D3`，逐项复核未变。
+
+branch-image-delivery：重新 jpackageImage 成功（31s）；branch-runtime-delivery 在临时 user.home 下再次发现两驱动，零 connect 调用。确切日志和产物摘要见 JSON。

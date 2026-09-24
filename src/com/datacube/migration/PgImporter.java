@@ -10,6 +10,7 @@ import static com.datacube.migration.MigrationRun.*;
 
 /** Reviewed, data-only import. Each table commits once after its complete comparison. */
 public class PgImporter {
+    private static final long BATCH_PAYLOAD_BYTES=4L*1024*1024;
     @FunctionalInterface public interface Checkpoint { void save(MigrationRun run) throws IOException; }
     private final MigrationLogger logger;
     private final MigrationCancellation cancellation;
@@ -122,16 +123,20 @@ public class PgImporter {
             MigrationDataFile.Statistics expected;
             phase=Phase.INSERT;
             try(PreparedStatement writer=conn.prepareStatement(insert)) {
-                writer.setQueryTimeout(600); int[] pending={0};
+                writer.setQueryTimeout(600); int[] pending={0};long[] payload={0};
                 expected=MigrationDataFile.read(table.data(),table,cancellation,row -> {
                     cancellation.checkCancelled();
+                    long rowBytes=32;
+                    for(Object value:row)rowBytes+=32+(value instanceof String text?2L*text.length():value instanceof java.math.BigDecimal number?2L*number.toPlainString().length():0);
+                    if(pending[0]>0 && payload[0]+rowBytes>BATCH_PAYLOAD_BYTES){flush(writer);pending[0]=0;payload[0]=0;}
                     for(int c=0;c<row.size();c++) {
                         Object value=row.get(c);
                         if(value==null)writer.setNull(c+1,table.columns().get(c).numeric()?Types.NUMERIC:Types.VARCHAR);
                         else if(value instanceof java.math.BigDecimal number)writer.setBigDecimal(c+1,number);
                         else writer.setString(c+1,(String)value);
                     }
-                    writer.addBatch(); if(++pending[0]>=500) { flush(writer); pending[0]=0; }
+                    writer.addBatch();payload[0]+=rowBytes;
+                    if(++pending[0]>=500) { flush(writer); pending[0]=0;payload[0]=0; }
                 });
                 if(pending[0]>0)flush(writer);
             }
