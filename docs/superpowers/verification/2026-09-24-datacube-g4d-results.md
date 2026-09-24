@@ -1,6 +1,6 @@
 # G4/M4d 固定结果实施与验收账本
 
-状态：进行中。用户在 G4/M4a–c 交付后要求继续推进，本轮完成同一 G4 的 M4d，不进入 M5–M8。设计与资源边界见 [G4d 计划](../plans/2026-09-24-g4d-pinned-results.md)。
+状态：**M4d 本地工程完成，已合并 main 并复验**。用户在 G4/M4a–c 交付后要求继续推进，本轮完成同一 G4 的 M4d，不进入 M5–M8。设计与资源边界见 [G4d 计划](../plans/2026-09-24-g4d-pinned-results.md)。
 
 ## 检查点 0：基线与隔离
 
@@ -31,6 +31,7 @@
 | 重复身份、移除归还预算、不可变数据、关闭禁止再次固定 | `PinnedResultStoreTest.occurrencesAreIndependentAndCapacityReclaimsOnlyExplicitlyRemovedEntries` |
 | 共享总预算/字段边界、拒绝大数值与不明复合值，不部分加入 | `PinnedResultStoreTest.aggregateTextBudgetIncludesSourceMetadataCommentsNumbersAndPreviewPrefixes` / `overBudgetOrUnknownValuesRejectAtomicallyWithoutEvicting` / `sharedShapeBudgetAcceptsExactLimitAndRejectsNextUnit` |
 | 第二句阻塞时固定第一句，取消保留、关闭释放，新执行不会改固定数据 | `SqlIncrementalResultsTest.firstResultIsBrowsableWhileSecondIsBlockedAndLateResultsRespectLifecycle` |
+| 长来源信息有界布局，关闭后排队搜索不恢复数据 | `SqlPinnedResultsTest.longProvenanceHasBoundedLayoutAndLateSearchCannotRepopulateClosedViewer`（dark/light） |
 
 ## 检查点 2：审查与分支最终验证
 
@@ -43,6 +44,17 @@
 - 源码/测试差异审查及 `git diff --cached --check` 通过。分支各轮发生在未提交改动上，日志 HEAD 为基线，随后提交保持源码不变；机器结果区分这一事实与 main 的已提交 SHA 复验。
 - 失败/未验：仅 red 回归按预期失败；最终分支无失败。3 skips 为 Redis standalone、Oracle/PG Schema Diff live，因缺少真实环境授权/前提而跳过，不算通过。unchecked 编译和 JEP 493 提示仍在。自动 FX 布局测试不代替原生手动主题/缩放验收。
 - 下一步：提交并合并 main，在新的 `profile-main` 重跑全量、fresh buildSrc 和镜像，更新实际 SHA。
+
+## 检查点 3：main 集成与复验
+
+- 当前目标：完成 M4d 本地交付。实现提交 `d40504e2169e8efaa036c2d0557562ccf153eb60`，main 合并 `435df7635ed7d1bbe83e50767fc3aec7c6b2d2dc`。
+- 合并前 main 仍为 `eaea5c3` 且工作区无任务修改；合并无冲突。源码/测试/构建与实现提交一致，main 全量使用新的 `profile-main`，未复用分支报告。
+- `g4d-main-full`：`clean test` 加相同离线/隔离参数，2m33s，285 suites / 3693 tests / **3690 passed** / 0 failures / 0 errors / **3 existing live skips**。
+- `g4d-main-buildSrc`：`:buildSrc:test --rerun-tasks`，8s，4 tasks 实际执行，**8/8 passed**，0 skipped。
+- `g4d-main-image`：`jpackageImage --offline --no-daemon --console=plain`，29s，exit 0。启动配置无测试 profile/headless/合成入口；`D:\Projects\朝花夕拾\build\jpackage\DataCube\DataCube.exe`、cfg 和 runtime/lib/modules 的 SHA-256 在 `g4d-main-image-manifest.json` 与[机器可读结果](2026-09-24-datacube-g4d-results.json)。没有启动安装或更新。
+- 11 轮原始命令、首次失败、通过/失败/跳过、日志和 XML 摘要均归档；main 证据绑定上述合并 SHA。之后的路线图/账本文档收尾不冒充代码测试时的 SHA。
+- 失败/未验：main 无新失败。3 live skips 仍不算通过；原生手动桌面、真库、安装/签名/外部发布仍待验。历史 SchemaDiff 偶发问题本轮未复现，根因仍未明。
+- 下一步：交付 G4/M4 的本地工程结果，M5–M8 不自动启动。仅更新文档和本地提交，无持久化格式迁移、真实数据改动、推送或发布。必要时审查后 revert 实现或合并提交即可回退功能。
 
 ## 仍待验
 

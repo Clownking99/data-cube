@@ -21,3 +21,5 @@
 ## 交付状态
 
 M4a–c 本地工程完成：实现 `f7fa9bc`，main 合并 `4d0467a`，分支/main 全量均 3656 passed、3 existing live skips；两边 fresh buildSrc 8/8 与 jpackageImage 通过。首轮失败、逐项行为证据和未验范围见 [G4 验收账本](../verification/2026-09-24-datacube-g4-results.md)。M4d 和 M5–M8 未启动；上述不等于原生桌面/真库或发布验收完成。
+
+后续更新：维护者要求继续推进后，M4d 已作为独立增量完成并合并 main，见 [M4d 计划与交付](2026-09-24-g4d-pinned-results.md)；上段保留 M4a–c 交付时的历史范围，M5–M8 仍未启动。

@@ -17,3 +17,7 @@
 目标：实现并交付 M4d。已完整复核交接/路线图，main 为上述 SHA 且无任务改动；G4a–c 旧测试只作基线线索，不作新证据。既有 QueryResult 已不可变，结果只读窗口/生命周期可复用；无需改变执行器与安全门禁。
 
 下一步：先加跨批次固定的失败回归；实现纯保留模型和 FX 入口，覆盖重复身份、容量边界、来源、原数据/SQL 不变、清理与迟到动作。随后定向/全量/fresh buildSrc/jpackageImage，审查、提交、合并 main 后复验。原生桌面、真库、安装/签名/远端发布仍待验。
+
+## 交付状态
+
+M4d 本地工程完成。实现 `d40504e`、main 合并 `435df76`；分支/main 全量各 3690 passed、0 failed/errors、3 existing live skips，fresh buildSrc 各 8/8、jpackageImage 均通过。首次失败、实际命令与待验见 [M4d 账本](../verification/2026-09-24-datacube-g4d-results.md)。这完成 G4/M4 的本地工程范围，不等于原生桌面/真库/发布验收完成；M5–M8 未启动。
