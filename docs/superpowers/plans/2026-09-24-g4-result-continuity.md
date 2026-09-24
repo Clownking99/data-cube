@@ -17,3 +17,7 @@
 ## 检查点 0
 
 目标：核实基线与范围。main 干净，G1/G2/G3 已包含；G1 历史日志/XML 摘要核对一致，属于旧证据，未算新测试。G4 新 worktree 无改动后创建阶段分支。源码确认切换重置和执行阶段累计 outcomes 的缺口。下一步：M4a 回归和最小实现。桌面、真库、安装、签名、远端 CI/发布均未验。
+
+## 交付状态
+
+M4a–c 本地工程完成：实现 `f7fa9bc`，main 合并 `4d0467a`，分支/main 全量均 3656 passed、3 existing live skips；两边 fresh buildSrc 8/8 与 jpackageImage 通过。首轮失败、逐项行为证据和未验范围见 [G4 验收账本](../verification/2026-09-24-datacube-g4-results.md)。M4d 和 M5–M8 未启动；上述不等于原生桌面/真库或发布验收完成。

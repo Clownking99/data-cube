@@ -1,6 +1,6 @@
 # G4/M4 本地实施与验收账本
 
-状态：进行中。范围是用户 2026-09-24 明确授权的 M4a–c；M4d 跨批次固定结果按路线图保留为后续增量，不自动进入 M5–M8。设计见 [G4 计划](../plans/2026-09-24-g4-result-continuity.md)。
+状态：**M4a–c 本地工程完成，已合并 main 并复验**。范围是用户 2026-09-24 明确授权启动的 G4；M4d 跨批次固定结果按路线图保留为后续增量，不自动进入 M5–M8。设计见 [G4 计划](../plans/2026-09-24-g4-result-continuity.md)。
 
 ## 基线与隔离
 
@@ -56,6 +56,18 @@
 - 分支测试发生在尚未提交的修改上，日志里的 HEAD 为基线；随后原样提交为上述实现 SHA，没有在测试后改源码。机器可读结果明确区分这一事实与之后 main 的已提交 SHA 复验。
 - 失败/未验：最终分支无失败；保留前述首轮失败。3 skips 分别为 Redis standalone、Oracle Schema Diff live、PostgreSQL Schema Diff live，均因未启用真实连接前提跳过，不能算通过。编译 unchecked/JEP 493 提示保留。
 - 下一步：确认 main 仍为 `42e4aff` 且干净，本地合并并在独立 `profile-main` 重新运行全量、fresh buildSrc、镜像。此时尚不宣称 main 复验完成。
+
+## 检查点 4：main 合并、复验与交付
+
+- 当前目标：交付本轮 M4a–c，停止扩展。实现 `f7fa9bc`、分支证据 `3abeea7`、main 合并 `4d0467a36cc515112827806dfddb35f3ec6240a5`。
+- main 合并前仍为基线 `42e4aff`，工作区干净；合并无冲突。源码/测试/构建与实现提交完全一致，`git diff f7fa9bc HEAD -- src test build.gradle buildSrc gradle.properties` 为空。
+- `profile-main` 中重新执行全量：`g4-main-full`，2m20s，283 suites / 3659 tests / **3656 passed** / 0 failures / 0 errors / **3 live skips**。不是复用分支或 G1–G3 的测试结果。
+- `g4-main-buildSrc`：`:buildSrc:test --rerun-tasks`，8s，4 tasks 实际执行，8/8 passed，0 skipped。
+- `g4-main-image`：jpackageImage，28s，exit 0；检查运行配置不含测试 profile/headless/合成入口。产物为 `D:\Projects\朝花夕拾\build\jpackage\DataCube\DataCube.exe`，EXE/config/modules 摘要在 `g4-main-image-manifest.json`。
+- [机器可读结果](2026-09-24-datacube-g4-results.json) 保留分支/main、失败/修正/最终各轮命令、计数、跳过理由、日志与 XML 摘要；原始证据位于本账本顶部的独占目录。
+- 文档收尾同步路线图及 README 的结果切换/资源限制说明，仅改文档；不会把后续文档提交 SHA 冒充编译/测试时的 SHA。
+- 失败/未验：main 复验无新失败。3 live skips 单列；原生手动桌面、真库、安装/CI/签名发布仍未验。历史 SchemaDiff 偶发问题本轮未复现，根因未明。
+- 下一步：本轮交付，不自动启动 M4d/M5–M8。回退可审查后 revert 实现提交或本次合并；本轮没有持久化格式变更，没有真实连接/数据迁移，也没有推送或发布。
 
 ## 未执行验收
 

@@ -2,8 +2,8 @@
   "scope": "G4 M4a-M4c local engineering; M4d deferred",
   "baseline": "42e4aff83c9496cb0dfa768aeba4f4d90cc10e96",
   "implementation": "f7fa9bcffae0f72de4a8856b2348cc70298094d0",
-  "verifiedMain": null,
-  "generatedAt": "2026-09-24T18:17:32.2720862+08:00",
+  "verifiedMain": "4d0467a36cc515112827806dfddb35f3ec6240a5",
+  "generatedAt": "2026-09-24T18:25:03.6444610+08:00",
   "evidenceRoot": "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g4-fb23e6cdc9f3490ab76f56b628b72b8e",
   "branchRunHeadNote": "Branch runs report baseline HEAD plus the then-uncommitted implementation. Final source was committed unchanged as implementation SHA.",
   "testIsolation": "Temporary user.home; live Redis/Schema Diff environment removed from Test processes; offline Gradle",
@@ -435,6 +435,87 @@
       "exitCode": 0,
       "log": "g4-image-final.log",
       "logSha256": "26CD2849C41429838157CD52BEEA1FDE0BDCE7EDF440DD2F0539DA9AD88FC6A7"
+    },
+    {
+      "name": "g4-main-full",
+      "head": "4d0467a36cc515112827806dfddb35f3ec6240a5",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g4-fb23e6cdc9f3490ab76f56b628b72b8e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T18:20:20.1249524+08:00",
+      "exitCode": 0,
+      "log": "g4-main-full.log",
+      "logSha256": "4E91512F3E46506886DF15067C40D93B25F3E7D8F1EC0FBABD6758060D482E66",
+      "suites": 283,
+      "tests": 3659,
+      "passed": 3656,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "g4-main-full-xml",
+      "xmlManifestSha256": "4B26B39CB737911CC12699D1F8263906CB2A11B8461139E2444018BF66767FA4"
+    },
+    {
+      "name": "g4-main-buildSrc",
+      "head": "4d0467a36cc515112827806dfddb35f3ec6240a5",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g4-fb23e6cdc9f3490ab76f56b628b72b8e\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-24T18:21:11.6101381+08:00",
+      "exitCode": 0,
+      "log": "g4-main-buildSrc.log",
+      "logSha256": "69A28754A437E4B48A48F3AC09B6B4091A32D58084DB461E73CAE58FD21B9171",
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "g4-main-buildSrc-xml",
+      "xmlManifestSha256": "0FFCFF4D1A22CA5F8EB3C4289E011F8EA64AAB12C6AACAF1B7AEC21EE9AABAC5"
+    },
+    {
+      "name": "g4-main-image",
+      "head": "4d0467a36cc515112827806dfddb35f3ec6240a5",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-24T18:21:53.455519+08:00",
+      "exitCode": 0,
+      "log": "g4-main-image.log",
+      "logSha256": "34BD12CB231000CF0030A20F274B30BD5D639A0686E1CBCB53F0BB0569744582"
     }
   ],
   "branchPackagedImage": [
@@ -460,5 +541,22 @@
     "Installation, upgrade and recovery",
     "Signing, remote CI and release",
     "M4d cross-batch pinned results"
+  ],
+  "mainPackagedImage": [
+    {
+      "path": "build/jpackage/DataCube/DataCube.exe",
+      "length": 595968,
+      "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+    },
+    {
+      "path": "build/jpackage/DataCube/app/DataCube.cfg",
+      "length": 369,
+      "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+    },
+    {
+      "path": "build/jpackage/DataCube/runtime/lib/modules",
+      "length": 101945485,
+      "sha256": "1ADE70F7945974552D6118E1F8F38A565BE41CD2A4FF624D773894830D83F3C1"
+    }
   ]
 }
