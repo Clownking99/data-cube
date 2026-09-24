@@ -44,12 +44,13 @@ final class SqlBatchResults implements AutoCloseable {
     private boolean updating;
     private boolean closed;
     private SqlScriptDetailsDialog dialog;
+    private Runnable onClear = () -> {};
 
     SqlBatchResults(BooleanSupplier allowed, Consumer<Choice> render) {
         this.allowed = allowed; this.render = render;
         choices.setId("sql-batch-choice"); choices.setAccessibleText("本次执行结果");
         choices.setMaxWidth(Double.MAX_VALUE); choices.setMinWidth(100); choices.setVisibleRowCount(12);
-        choices.setTooltip(new Tooltip("切换本次已返回的结果，不重新执行 SQL。切换后重置当前结果的本地筛选和列布局。"));
+        choices.setTooltip(new Tooltip("切换本次已返回的结果，不重新执行 SQL。同批次保留各结果的本地筛选、列布局和选区。"));
         details.setId("sql-batch-details"); details.setMinWidth(Region.USE_PREF_SIZE);
         details.setTooltip(new Tooltip("查看当前语句已返回的 SQL 和执行信息（只读，不重新执行）。执行概览请选择表格中的记录。"));
         details.setOnAction(event -> showDetails());
@@ -79,6 +80,10 @@ final class SqlBatchResults implements AutoCloseable {
     VBox getNode() { return bar; }
     SqlScriptExecutionReport report() { return report; }
     String schema() { return schema; }
+    void onClear(Runnable action) { onClear = action; }
+    void cancelled() {
+        if (report != null) summary.setText("已取消；仅保留取消前已显示结果；" + report.summary());
+    }
 
     /** Overview rows hold the very same bounded entries, even after table sorting. */
     void selectResult(SqlScriptExecutionReport.Entry entry) {
@@ -113,6 +118,38 @@ final class SqlBatchResults implements AutoCloseable {
         bar.setVisible(true); bar.setManaged(true); selected = initial; selectWithoutRendering(initial);
         // Initial rendering is the execution completion callback, not a new user operation.
         render.accept(initial); refreshActions();
+    }
+
+    /** Append-only completed prefix: existing choices keep occurrence identity and view state. */
+    void update(List<ScriptOutcome> outcomes, long elapsed, String effectiveSchema, String progress) {
+        if (closed) return;
+        int retained = Math.min(outcomes.size(), SqlScriptExecutionReport.MAX_ENTRIES);
+        boolean compatible = choices.getItems().size() <= retained + 1;
+        for (int i = 1; compatible && i < choices.getItems().size(); i++)
+            compatible = choices.getItems().get(i).outcome() == outcomes.get(i - 1);
+        if (!compatible) clear();
+        if (choices.getItems().isEmpty()) { display(outcomes, elapsed, effectiveSchema); }
+        else {
+            var captured = SqlScriptExecutionReport.capture(outcomes, elapsed);
+            updating = true;
+            try {
+                for (int i = choices.getItems().size() - 1; i < retained; i++) {
+                    var entry = captured.entries().get(i);
+                    choices.getItems().add(new Choice(outcomes.get(i), entry, "语句 #" + entry.index()
+                            + " · " + entry.status() + " · " + entry.resultDescription()));
+                }
+            } finally { updating = false; }
+            var entries = choices.getItems().stream().skip(1).map(Choice::detail).toList();
+            report = new SqlScriptExecutionReport(entries, captured.returned(), captured.normal(),
+                    captured.failed(), captured.timedOut(), captured.cancelled(), elapsed);
+            if (selected != null && selected.outcome() == null) render.accept(selected);
+        }
+        summary.setText((progress.isEmpty() ? "" : progress + "；") + report.summary());
+        if (!outcomes.isEmpty() && outcomes.getLast().result().errorMessage != null
+                && outcomes.getLast().result().errorMessage.startsWith("结果预算已用尽"))
+            summary.setText(summary.getText() + "；" + outcomes.getLast().result().errorMessage);
+        summary.setStyle("-fx-text-fill: " + (report.hasFailures() ? "-status-error" : "-status-ok") + ";");
+        refreshActions();
     }
 
     private boolean canShowDetails() {
@@ -178,6 +215,7 @@ final class SqlBatchResults implements AutoCloseable {
     }
 
     void clear() {
+        onClear.run();
         closeDetails();
         updating = true;
         try { selected = null; choices.setValue(null); choices.getItems().clear(); }

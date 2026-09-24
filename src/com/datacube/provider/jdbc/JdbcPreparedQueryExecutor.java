@@ -31,7 +31,7 @@ public final class JdbcPreparedQueryExecutor {
                 options.control().ensureNotCancelled(activation);
                 try (ResultSet rows = statement.executeQuery()) {
                     return QueryResult.fromResultSet(
-                            rows, System.currentTimeMillis() - started, options.maxRows());
+                            rows, System.currentTimeMillis() - started, options.maxRows(), options.resultBudget(), options.control());
                 }
             } finally {
                 options.control().release(activation);

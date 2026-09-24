@@ -210,7 +210,7 @@ public final class ImmutableResultValue {
     }
 
     private static boolean isStandardImmutable(Object value) {
-        return value instanceof ImmutableResultValue || value instanceof String
+        return value instanceof ImmutableResultValue || value instanceof ResultValuePreview || value instanceof String
                 || value instanceof Boolean || value instanceof Character
                 || value instanceof Byte || value instanceof Short || value instanceof Integer
                 || value instanceof Long || value instanceof Float || value instanceof Double

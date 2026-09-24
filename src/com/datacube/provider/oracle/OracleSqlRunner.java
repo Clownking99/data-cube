@@ -3,7 +3,6 @@ package com.datacube.provider.oracle;
 import com.datacube.provider.jdbc.JdbcPreparedQueryExecutor;
 import com.datacube.provider.jdbc.JdbcDiagnostics;
 import com.datacube.provider.jdbc.JdbcStatementLimits;
-import com.datacube.sqleditor.SqlScriptSplitter;
 import com.datacube.spi.SqlDialect;
 import com.datacube.spi.SqlExecutionOptions;
 import com.datacube.spi.SqlParameter;
@@ -18,7 +17,6 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.SQLTimeoutException;
 import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -52,12 +50,15 @@ public final class OracleSqlRunner implements SqlRunner {
                     if (hasResult) {
                         try (ResultSet rs = stmt.getResultSet()) {
                             ResultSetMetaData md = rs.getMetaData();
-                            QueryResult r = QueryResult.fromResultSet(rs, elapsed, options.maxRows());
+                            QueryResult r = QueryResult.fromResultSet(rs, elapsed, options.maxRows(), options.resultBudget(), options.control());
                             options.control().release(activation);
                             activation = null;
                             // best-effort 解析列注释；失败或无表列时返回 null，不影响结果展示
+                            int omissions = options.resultBudget().omittedFields();
                             List<String> comments = OracleColumnComments.resolve(
                                     conn, md, sql, schema, options);
+                            if (options.resultBudget().omittedFields() > omissions)
+                                r = r.withRetentionNotice(r.retentionNotice + " 列注释读取受预算限制");
                             return comments == null ? r : r.withColumnComments(comments);
                         }
                     } else {
@@ -97,26 +98,8 @@ public final class OracleSqlRunner implements SqlRunner {
     public List<ScriptOutcome> executeScript(Connection conn, String script, String schema,
                                              SqlExecutionOptions options,
                                              ScriptErrorPolicy policy) {
-        List<String> stmts = SqlScriptSplitter.split(script, true);
-        List<ScriptOutcome> outcomes = new ArrayList<>(stmts.size());
-        boolean continueAll = false;
-        for (int i = 0; i < stmts.size(); i++) {
-            if (options.control().cancellationRequested()) break;
-            String sql = stmts.get(i);
-            QueryResult r = execute(conn, sql, schema, options);
-            outcomes.add(new ScriptOutcome(i + 1, sql, r));
-            if (r.failureKind == QueryResult.FailureKind.CANCELLED) break;
-            if (r.kind == QueryResult.Kind.ERROR && !continueAll && i + 1 < stmts.size()
-                    && !options.control().cancellationRequested()) {
-                ScriptErrorPolicy.Decision d = policy == null
-                        ? ScriptErrorPolicy.Decision.ABORT
-                        : policy.onError(i + 1, sql, r.errorMessage);
-                if (d == ScriptErrorPolicy.Decision.ABORT) break;
-                if (d == ScriptErrorPolicy.Decision.CONTINUE_ALL) continueAll = true;
-            }
-            if (options.control().cancellationRequested()) break;
-        }
-        return outcomes;
+        return com.datacube.provider.jdbc.JdbcScriptExecutor.execute(
+                this, conn, script, schema, options, policy, true);
     }
 
     @Override

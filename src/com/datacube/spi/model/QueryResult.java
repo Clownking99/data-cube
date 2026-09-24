@@ -48,10 +48,19 @@ public final class QueryResult {
     public final FailureKind failureKind;
     /** 是否因达到最大行数限制而仍有未读取行 */
     public final boolean truncated;
+    /** Explicit data/metadata omissions independent of the per-query row limit. */
+    public final String retentionNotice;
 
     private QueryResult(Kind kind, List<String> columns, List<String> columnComments,
                         List<List<Object>> rows, int updateCount, long elapsedMillis, String errorMessage,
                         FailureKind failureKind, List<ResultColumn> resultColumns, boolean truncated) {
+        this(kind, columns, columnComments, rows, updateCount, elapsedMillis, errorMessage,
+                failureKind, resultColumns, truncated, "");
+    }
+
+    private QueryResult(Kind kind, List<String> columns, List<String> columnComments,
+                        List<List<Object>> rows, int updateCount, long elapsedMillis, String errorMessage,
+                        FailureKind failureKind, List<ResultColumn> resultColumns, boolean truncated, String notice) {
         this.kind = kind;
         this.columns = columns;
         this.columnComments = columnComments;
@@ -62,6 +71,7 @@ public final class QueryResult {
         this.failureKind = failureKind;
         this.resultColumns = resultColumns;
         this.truncated = truncated;
+        this.retentionNotice = notice;
     }
 
     public static QueryResult query(List<String> columns, List<List<Object>> rows, long elapsedMillis) {
@@ -107,7 +117,112 @@ public final class QueryResult {
      */
     public QueryResult withColumnComments(List<String> comments) {
         return new QueryResult(kind, columns, immutableNullableCopy(comments), rows,
-                updateCount, elapsedMillis, errorMessage, failureKind, resultColumns, truncated);
+                updateCount, elapsedMillis, errorMessage, failureKind, resultColumns, truncated, retentionNotice);
+    }
+
+    public QueryResult withRetentionNotice(String notice) {
+        return new QueryResult(kind, columns, columnComments, rows, updateCount, elapsedMillis,
+                errorMessage, failureKind, resultColumns, truncated, notice);
+    }
+
+    /** Bounded editor read path. Driver buffering is outside this retained-data allowance. */
+    public static QueryResult fromResultSet(ResultSet rs, long elapsedMillis, int maxRows,
+            com.datacube.spi.SqlResultBudget budget, com.datacube.spi.SqlExecutionControl control) throws SQLException {
+        ResultSetMetaData md = rs.getMetaData();
+        int originalColumns = md.getColumnCount();
+        int count = Math.min(originalColumns, budget.limits().columns());
+        boolean omitted = count < originalColumns;
+        var columns = new ArrayList<ResultColumn>(count);
+        for (int i = 1; i <= count; i++) {
+            String label = md.getColumnLabel(i), type = md.getColumnTypeName(i);
+            String keptLabel = budget.text(label, 512), keptType = budget.text(type, 128);
+            omitted |= !Objects.equals(label, keptLabel) || !Objects.equals(type, keptType);
+            columns.add(new ResultColumn(i - 1, keptLabel, md.getColumnType(i), keptType));
+        }
+        var rows = new ArrayList<List<Object>>();
+        int max = maxRows <= 0 ? Integer.MAX_VALUE : maxRows;
+        while (rows.size() < max && budget.canReadRow(count)) {
+            checkCancelled(control);
+            if (!rs.next()) return frozenQuery(List.copyOf(columns), Collections.unmodifiableList(rows), elapsedMillis, false)
+                    .withRetentionNotice(omitted ? "部分列或单元格仅预览/已省略（结果预算）" : "");
+            budget.takeRow(count);
+            var row = new ArrayList<Object>(count);
+            for (int i = 1; i <= count; i++) {
+                checkCancelled(control);
+                Object value = readBudgetedCell(rs, i, columns.get(i - 1), budget, control);
+                omitted |= value instanceof ResultValuePreview;
+                row.add(value);
+            }
+            rows.add(Collections.unmodifiableList(row));
+        }
+        checkCancelled(control);
+        boolean more = rs.next();
+        omitted |= more && !budget.canReadRow(count);
+        return frozenQuery(List.copyOf(columns), Collections.unmodifiableList(rows), elapsedMillis, more)
+                .withRetentionNotice(omitted ? "部分行、列或单元格仅预览/已省略（结果预算）" : "");
+    }
+
+    private static Object readBudgetedCell(ResultSet rs, int index, ResultColumn column,
+            com.datacube.spi.SqlResultBudget budget, com.datacube.spi.SqlExecutionControl control) throws SQLException {
+        int type = column.jdbcType();
+        if (type == Types.CHAR || type == Types.VARCHAR || type == Types.LONGVARCHAR
+                || type == Types.NCHAR || type == Types.NVARCHAR || type == Types.LONGNVARCHAR
+                || type == Types.CLOB || type == Types.NCLOB || type == Types.SQLXML
+                || "json".equalsIgnoreCase(column.jdbcTypeName()) || "jsonb".equalsIgnoreCase(column.jdbcTypeName())) {
+            try (Reader reader = rs.getCharacterStream(index)) {
+                if (reader == null) return null;
+                int cap = Math.min(budget.remainingText(), budget.limits().cellUnits());
+                char[] buffer = new char[cap + 1]; int used = 0;
+                while (used < buffer.length) {
+                    checkCancelled(control);
+                    int n = reader.read(buffer, used, buffer.length - used);
+                    if (n < 0) break;
+                    if (n == 0) { int c = reader.read(); if (c < 0) break; buffer[used++] = (char) c; }
+                    else used += n;
+                }
+                String source = new String(buffer, 0, used);
+                String kept = budget.text(source, cap);
+                return kept.length() < used ? new ResultValuePreview(kept) : kept;
+            } catch (java.io.IOException failure) { throw new SQLException("无法读取结果文本", failure); }
+        }
+        if (type == Types.BINARY || type == Types.VARBINARY || type == Types.LONGVARBINARY || type == Types.BLOB) {
+            try (var stream = rs.getBinaryStream(index)) {
+                if (stream == null) return null;
+                byte[] bytes = stream.readNBytes(Math.min(64, budget.remainingText() / 2));
+                return new ResultValuePreview(budget.text("0x" + java.util.HexFormat.of().formatHex(bytes), 130));
+            } catch (java.io.IOException failure) { throw new SQLException("无法读取结果二进制预览", failure); }
+        }
+        if (type == Types.ARRAY || type == Types.STRUCT || type == Types.REF || type == Types.JAVA_OBJECT
+                || (type == Types.OTHER && !"uuid".equalsIgnoreCase(column.jdbcTypeName())))
+            return new ResultValuePreview("此复合类型未读取");
+        // Avoid recursively freezing unexpected driver aggregates on the bounded path.
+        Object raw = isTimestampWithLocalTimeZone(column.jdbcTypeName())
+                ? rs.getObject(index, OffsetDateTime.class) : rs.getObject(index);
+        int scalarLimit = Math.min(budget.limits().cellUnits(), budget.remainingText());
+        if (raw instanceof java.math.BigDecimal number && number.precision() > scalarLimit
+                || raw instanceof java.math.BigInteger integer && integer.bitLength() > scalarLimit * 3L)
+            return new ResultValuePreview("数值超过单值预算");
+        if (raw != null && !(raw instanceof Number || raw instanceof String || raw instanceof Boolean
+                || raw instanceof java.util.UUID || raw instanceof java.util.Date
+                || "java.time".equals(raw.getClass().getPackageName())))
+            return new ResultValuePreview("此驱动值类型未保留");
+        Object value = ImmutableResultValue.freezeJdbc(raw,
+                isTimestampWithLocalTimeZone(column.jdbcTypeName()) ? Types.TIMESTAMP_WITH_TIMEZONE : type);
+        if (value instanceof java.math.BigDecimal || value instanceof java.math.BigInteger) {
+            String number = value.toString();
+            if (number.length() > scalarLimit) return new ResultValuePreview("数值超过单值预算");
+            budget.text(number, scalarLimit);
+        }
+        if (value instanceof String string) {
+            String kept = budget.text(string, budget.limits().cellUnits());
+            return kept.length() < string.length() ? new ResultValuePreview(kept) : kept;
+        }
+        return value;
+    }
+
+    private static void checkCancelled(com.datacube.spi.SqlExecutionControl control) throws SQLException {
+        if (control.cancellationRequested() || Thread.currentThread().isInterrupted())
+            throw new SQLException("SQL execution cancelled");
     }
 
     /**

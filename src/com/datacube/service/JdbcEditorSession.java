@@ -165,17 +165,30 @@ public final class JdbcEditorSession implements AutoCloseable {
     WriteOperation<ExecutionBatch> prepareScript(String script, String schema, int maxRows,
                                                 ScriptErrorPolicy policy, boolean oracleMode,
                                                 BooleanSupplier cancellation) {
+        return prepareScript(script, schema, maxRows, policy, oracleMode, cancellation, ignored -> {});
+    }
+
+    public WriteOperation<ExecutionBatch> prepareScript(String script, String schema, int maxRows,
+            ScriptErrorPolicy policy, boolean oracleMode,
+            java.util.function.Consumer<com.datacube.spi.SqlScriptProgress> progress) {
+        return prepareScript(script, schema, maxRows, policy, oracleMode, () -> false, progress);
+    }
+
+    private WriteOperation<ExecutionBatch> prepareScript(String script, String schema, int maxRows,
+            ScriptErrorPolicy policy, boolean oracleMode, BooleanSupplier cancellation,
+            java.util.function.Consumer<com.datacube.spi.SqlScriptProgress> progress) {
         Objects.requireNonNull(script, "script");
         long revision = operationRevision;
         return WriteOperation.sql(writeTarget, "SQL 执行", "Schema: " + schema + "\n" + script,
                 script, oracleMode, false,
                 revalidate -> executeScriptAdmitted(script, schema, maxRows, policy, oracleMode,
-                        cancellation, revalidate, revision));
+                        cancellation, revalidate, revision, progress));
     }
 
     private ExecutionBatch executeScriptAdmitted(String script, String schema, int maxRows,
             ScriptErrorPolicy policy, boolean oracleMode, BooleanSupplier parentCancellationRequested,
-            Runnable revalidate, long revision) {
+            Runnable revalidate, long revision,
+            java.util.function.Consumer<com.datacube.spi.SqlScriptProgress> progress) {
         Objects.requireNonNull(script, "script");
         Objects.requireNonNull(parentCancellationRequested, "parentCancellationRequested");
         singleFlight.lock();
@@ -200,7 +213,8 @@ public final class JdbcEditorSession implements AutoCloseable {
             }
 
             SqlExecutionOptions options =
-                    new SqlExecutionOptions(maxRows, safety.queryTimeoutSeconds(), control);
+                    new SqlExecutionOptions(maxRows, safety.queryTimeoutSeconds(), control,
+                            new com.datacube.spi.SqlResultBudget(), progress);
             ScriptErrorPolicy effectivePolicy =
                     transactionMode == TransactionMode.MANUAL ? null : policy;
             Connection target = connection(control);
