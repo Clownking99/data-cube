@@ -41,8 +41,8 @@ class SqlEditorMoveLinesIntegrationTest {
         });
         try {
             FxUiTestSupport.call(() -> {
-                assertNotNull(pane.getNode().lookup("#sql-move-lines-up"), "Toolbar needs explicit move-up entry");
-                assertNotNull(pane.getNode().lookup("#sql-move-lines-down"), "Toolbar needs explicit move-down entry");
+                assertNotNull(SqlMenuTestSupport.find(pane.getNode(),"sql-move-lines-up"), "Menu needs explicit move-up entry");
+                assertNotNull(SqlMenuTestSupport.find(pane.getNode(),"sql-move-lines-down"), "Menu needs explicit move-down entry");
                 return null;
             });
             assertEquals(0, probe.providers.get() + probe.sessions.get() + probe.metadata.get() + probe.network.get());
@@ -159,11 +159,11 @@ class SqlEditorMoveLinesIntegrationTest {
                         ThemeManager.class.getResource("theme-" + theme + ".css").toExternalForm());
                 root.resize(width, 850); root.applyCss(); root.layout();
                 for (boolean up : new boolean[]{true, false}) {
-                    var button = f.button(up); var bounds = button.localToScene(button.getLayoutBounds());
+                    var button = f.button(up); var menu = (javafx.scene.control.MenuButton) root.lookup("#sql-text-actions"); var bounds = menu.localToScene(menu.getLayoutBounds());
                     assertTrue(bounds.getMinX() >= 0 && bounds.getMaxX() <= width + 1);
                     assertTrue(bounds.getMinY() >= 0 && bounds.getMaxY() <= 850);
-                    var label = (javafx.scene.text.Text) button.lookup(".text"); assertEquals(up ? "上移行" : "下移行", label.getText());
-                    assertTrue(label.getLayoutBounds().getWidth() <= button.getWidth());
+                    assertTrue(button.getText().startsWith(up ? "上移行 (" : "下移行 ("));
+                    assertTrue(menu.getWidth() + 1 >= menu.prefWidth(-1));
                 }
                 f.editor.moveTo(0); f.button(false).fire(); assertEquals("bb\na\nc", f.editor.getText()); return null;
             }); f.assertOffline();
@@ -186,7 +186,7 @@ class SqlEditorMoveLinesIntegrationTest {
             editor = FxUiTestSupport.call(() -> (CodeArea) pane.getNode().lookup("#sql-editor"));
             FxUiTestSupport.call(() -> { editor.getUndoManager().forgetHistory(); return null; });
         }
-        Button button(boolean up) { return (Button) pane.getNode().lookup(up ? "#sql-move-lines-up" : "#sql-move-lines-down"); }
+        javafx.scene.control.MenuItem button(boolean up) { return SqlMenuTestSupport.find(pane.getNode(),up ? "sql-move-lines-up" : "sql-move-lines-down"); }
         SqlScriptDocument document() { return (SqlScriptDocument) field(field(pane, "fileController"), "document"); }
         void assertOffline() {
             assertEquals(0, probe.providers.get()); assertEquals(0, probe.sessions.get());

@@ -66,7 +66,9 @@ class SqlEditorLineCommentIntegrationTest {
                 assertEquals("select 1;", f.editor.getText());
                 var settings = (ShortcutSettings) field(f.pane, "shortcuts");
                 settings.apply(Map.of(ShortcutAction.SQL_LINE_COMMENT, KeyCombination.keyCombination("Ctrl+U")));
-                assertTrue(f.button().getTooltip().getText().contains("Ctrl+U"));
+                var menu = (javafx.scene.control.MenuButton) f.pane.getNode().lookup("#sql-text-actions");
+                menu.getOnShowing().handle(new javafx.event.Event(javafx.scene.control.MenuButton.ON_SHOWING));
+                assertTrue(f.button().getText().contains("Ctrl+U"));
                 f.editor.moveTo(4); f.editor.fireEvent(key(KeyCode.SLASH, false)); assertEquals("select 1;", f.editor.getText());
                 f.editor.fireEvent(key(KeyCode.U, false)); assertEquals("-- select 1;", f.editor.getText());
                 assertEquals(7, f.editor.getAnchor()); assertEquals(7, f.editor.getCaretPosition());
@@ -136,9 +138,9 @@ class SqlEditorLineCommentIntegrationTest {
                 root.getScene().getStylesheets().addAll(ThemeManager.class.getResource("theme-base.css").toExternalForm(),
                         ThemeManager.class.getResource("theme-" + theme + ".css").toExternalForm());
                 root.resize(width, 850); root.applyCss(); root.layout();
-                var button = f.button(); var bounds = button.localToScene(button.getLayoutBounds());
+                var button = f.button(); var menu = (javafx.scene.control.MenuButton) root.lookup("#sql-text-actions"); var bounds = menu.localToScene(menu.getLayoutBounds());
                 assertTrue(bounds.getMinX() >= 0 && bounds.getMaxX() <= width + 1);
-                assertEquals("行注释", ((javafx.scene.text.Text) button.lookup(".text")).getText());
+                assertTrue(button.getText().startsWith("行注释 ("));
                 button.fire(); assertEquals("-- select 1;", f.editor.getText());
                 return null;
             });
@@ -162,7 +164,7 @@ class SqlEditorLineCommentIntegrationTest {
             editor = FxUiTestSupport.call(() -> (CodeArea) pane.getNode().lookup("#sql-editor"));
             FxUiTestSupport.call(() -> { editor.getUndoManager().forgetHistory(); return null; });
         }
-        Button button() { return (Button) pane.getNode().lookup("#sql-line-comment"); }
+        javafx.scene.control.MenuItem button() { return SqlMenuTestSupport.find(pane.getNode(),"sql-line-comment"); }
         SqlScriptDocument document() { return (SqlScriptDocument) field(field(pane, "fileController"), "document"); }
         void assertOffline() {
             assertEquals(0, probe.providers.get()); assertEquals(0, probe.sessions.get());

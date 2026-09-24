@@ -49,6 +49,8 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     private final Label placeholder = new Label();
     private final Button retry = new Button("重新读取");
     private final Button copy = new Button("复制限定名称");
+    private final Button metadataSearch = new Button("按字段 / 注释查找…");
+    private Runnable closeMetadata = () -> {};
     private final Label copyStatus = new Label();
     private Function<TableRef, ConnectionTreeClipboard.CopyResult> copyAction;
     private final Button confirm;
@@ -133,7 +135,8 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
         copy.setTooltip(new Tooltip("复制到系统剪贴板；其他应用或系统剪贴板同步功能可能读取名称。"));
         copyStatus.setId("schema-object-copy-status"); copyStatus.setWrapText(true); copyStatus.setMinWidth(0);
         copyStatus.setMinHeight(Region.USE_PREF_SIZE); clearCopyStatus();
-        FlowPane tools = new FlowPane(8, 6, retry, copy); tools.setMinWidth(0);
+        metadataSearch.setId("schema-object-metadata-search"); metadataSearch.setVisible(false); metadataSearch.setManaged(false);
+        FlowPane tools = new FlowPane(8, 6, retry, copy, metadataSearch); tools.setMinWidth(0);
         Label hint = new Label("读取仅限此 Schema 的名称和类型，筛选不再请求数据库。\n复制写入系统剪贴板，不自动粘贴；粘贴前请核对目标连接。\n确认生成 SELECT 脚本，不自动执行。↓ 选择 · Enter 确认 · Ctrl+F 筛选 · Esc 取消");
         hint.setWrapText(true); hint.setMinHeight(Region.USE_PREF_SIZE);
         VBox content = new VBox(8, target, search, filters, list, preview, tools, copyStatus, hint);
@@ -185,6 +188,11 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
 
     Dialog<TableRef> dialog() { return dialog; }
     Optional<TableRef> showAndWait() { return dialog.showAndWait(); }
+
+    void installMetadataSearch(Runnable open, Runnable close) {
+        closeMetadata=close; metadataSearch.setVisible(true); metadataSearch.setManaged(true);
+        metadataSearch.setOnAction(event -> { if (usable()) open.run(); });
+    }
 
     private boolean usable() { return !closed.get() && allowed.getAsBoolean() && !dialog.getDialogPane().isDisabled(); }
     private boolean candidateAllowed() {
@@ -287,6 +295,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     private void cancelActive() { Future<?> task = active; if (task != null) task.cancel(true); }
     @Override public void close() {
         if (!closed.compareAndSet(false, true)) return;
+        closeMetadata.run();
         cancelActive(); closeScope.run();
     }
 }

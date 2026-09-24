@@ -118,6 +118,7 @@ class SchemaObjectFindEntryTest {
     private final class Fixture implements AutoCloseable {
         final DraftConnectionProbe probe = new DraftConnectionProbe();
         final List<List<Object>> calls = new java.util.ArrayList<>();
+        final List<String> methods = new java.util.ArrayList<>();
         final ConnConfig config;
         final ConnectionTreePane pane;
         final TreeView<NodeData> tree;
@@ -125,7 +126,7 @@ class SchemaObjectFindEntryTest {
         @SuppressWarnings("unchecked") Fixture(FxTaskRunner runner, DbType type) {
             var actions = (ConnectionTreePane.Actions) Proxy.newProxyInstance(getClass().getClassLoader(),
                     new Class<?>[]{ConnectionTreePane.Actions.class}, (proxy, method, args) -> {
-                        assertEquals("openSelectSql", method.getName(), "search must not open data or execute SQL");
+                        methods.add(method.getName());
                         calls.add(List.of(args)); return null;
                     });
             pane = new ConnectionTreePane(new ConnectionStore(directory.resolve("empty")), probe.manager,
@@ -148,5 +149,30 @@ class SchemaObjectFindEntryTest {
             }
         }
         @Override public void close() { pane.close(); }
+    }
+
+    @Test void metadataActionsAreExplicitBoundToSnapshotAndPreserveTableViewIdentity() throws Exception {
+        try(var runner=new FxTaskRunner()) {
+            FxUiTestSupport.call(() -> {
+                try(var f=new Fixture(runner,DbType.POSTGRESQL)) {
+                    f.probe.manager.register(f.config);
+                    var hit=new com.datacube.service.SchemaMetadataSearch.Hit(
+                            new TableInfo("Exact Schema","quoted \" view",TableInfo.Kind.VIEW,null),
+                            com.datacube.service.SchemaMetadataSearch.Mode.COLUMN_COMMENT,"id","synthetic");
+                    for(var action:SchemaMetadataSearchDialog.Action.values())
+                        f.pane.openMetadataMatch(f.config,"Exact Schema",() -> true,new SchemaMetadataSearchDialog.Selection(hit,action));
+                    assertEquals(List.of("openSelectSql","openDataGrid","openDdl"),f.methods);
+                    assertEquals(List.of(f.config,hit.object().ref()),f.calls.get(0));
+                    assertEquals(List.of(f.config.id(),hit.object().ref(),true),f.calls.get(1));
+                    var node=(NodeData)f.calls.get(2).get(1);
+                    assertEquals(Kind.VIEW,node.kind); assertEquals("Exact Schema",node.schema); assertEquals("quoted \" view",node.name);
+                    f.pane.openMetadataMatch(f.config,"other",() -> true,new SchemaMetadataSearchDialog.Selection(hit,SchemaMetadataSearchDialog.Action.DATA));
+                    f.pane.openMetadataMatch(f.config,"Exact Schema",() -> false,new SchemaMetadataSearchDialog.Selection(hit,SchemaMetadataSearchDialog.Action.DATA));
+                    f.probe.manager.register(TableSelectSqlTabsTest.config("source",DbType.POSTGRESQL,"changed"));
+                    f.pane.openMetadataMatch(f.config,"Exact Schema",() -> true,new SchemaMetadataSearchDialog.Selection(hit,SchemaMetadataSearchDialog.Action.DATA));
+                    assertEquals(3,f.calls.size()); assertEquals(0,f.probe.providers.get()+f.probe.network.get());
+                } return null;
+            });
+        }
     }
 }
