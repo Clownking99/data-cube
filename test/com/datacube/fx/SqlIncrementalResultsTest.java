@@ -42,6 +42,12 @@ class SqlIncrementalResultsTest {
                     var search = (TextField) pane.getNode().lookup("#sql-result-search");
                     assertFalse(search.isDisabled()); search.setText("1"); search.fireEvent(new javafx.event.ActionEvent());
                     table(pane).getColumns().get(1).setPrefWidth(222);
+                    var pin = (Button) pane.getNode().lookup("#sql-result-pin");
+                    assertFalse(pin.isDisabled()); pin.fire();
+                    var retained = pinned(pane).entries().getFirst();
+                    assertEquals(List.of(1), retained.result().rows.getFirst());
+                    assertTrue(retained.source().target().contains(probe.config.id()));
+                    assertEquals("select 1", retained.source().sql().strip());
                     if (action.equals("cancel")) button(pane, "cancelBtn").fire();
                     return null;
                 });
@@ -57,7 +63,10 @@ class SqlIncrementalResultsTest {
                     if (action.equals("close")) {
                         assertTrue(chooser.getItems().isEmpty());
                         assertNull(((ResultFilterState) field(pane, "resultFilterState")).snapshot().activeResult());
+                        assertTrue(pinned(pane).entries().isEmpty());
                     } else {
+                        assertEquals(1, pinned(pane).entries().size());
+                        assertEquals(List.of(1), pinned(pane).entries().getFirst().result().rows.getFirst());
                         assertEquals(List.of(1), table(pane).getItems().getFirst());
                         assertFalse((boolean) field(pane, "running"));
                         assertFalse(((Label) field(pane, "statusLabel")).getText().contains("执行中"));
@@ -79,6 +88,7 @@ class SqlIncrementalResultsTest {
                         assertEquals(List.of(3), table(pane).getItems().getFirst());
                         assertEquals("", ((ResultFilterState) field(pane, "resultFilterState")).snapshot().searchText());
                         assertTrue(((java.util.Map<?, ?>) field(pane, "batchViews")).isEmpty());
+                        assertEquals(List.of(1), pinned(pane).entries().getFirst().result().rows.getFirst());
                         return null;
                     });
                     assertEquals(3, probe.executed.get());
@@ -90,6 +100,9 @@ class SqlIncrementalResultsTest {
         }
     }
     private static Button button(SqlEditorPane pane, String name) { return (Button) field(pane, name); }
+    private static com.datacube.sqleditor.result.PinnedResultStore pinned(SqlEditorPane pane) {
+        return (com.datacube.sqleditor.result.PinnedResultStore) field(field(pane, "pinnedResults"), "store");
+    }
     @SuppressWarnings("unchecked") private static TableView<ObservableList<Object>> table(SqlEditorPane pane) {
         return (TableView<ObservableList<Object>>) field(pane, "resultTable");
     }
