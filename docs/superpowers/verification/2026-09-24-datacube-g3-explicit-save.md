@@ -2,7 +2,7 @@
 
 范围：表数据页内存变更集、预览、显式保存、离开页面/关闭守卫。仅本地工程；不自动扩大到 M4–M8。原生桌面、真实数据库及发布证据独立列为待验。
 
-状态：分支本地验证与审查通过，实现已提交 `92a03a1`；等待合并 main 及复验，尚未宣称目标完成。
+最终状态（2026-09-24）：G3 / M3 **本地工程完成**。实现 `92a03a1`；main 合并 `3ebe872` 已通过全量、实际执行的 buildSrc 与 jpackageImage 复验。后续证据文档提交不改变被验证源码/测试/构建配置。原生桌面、真实数据库及发布仍待验，M4–M7 不自动启动。
 
 ## 检查点 1：范围、基线与事务决定
 
@@ -43,6 +43,18 @@
 - 失败/未验：最终分支无失败；既有 unchecked 编译和 JEP 493 jlink 提示保留，不称零警告。旧 SchemaDiff 偶发异常本轮未复现，根因仍未知。原生桌面、真库、安装/CI/发布未验。
 - 证据：[机器可读结果](2026-09-24-datacube-g3-results.json) 汇总命令、实际 XML 计数/跳过、日志和 XML 整组摘要。分支运行时 HEAD 为 `d2808f5` 加本轮已验证工作区，随后原样提交为 `92a03a1`；不把运行时 HEAD 误称为无修改的源码版本。
 - 下一步：重新核对 main SHA/工作区；本地合并后在独立 `profile-main` 上重新 clean 全量、实际执行 buildSrc 并构建镜像。通过前不把 M3 标为本地工程完成。
+
+## 检查点 5：main 集成复验与交付
+
+- 当前目标：完成本地集成与新证据交付。合并前 main 仍为 `d2808f5`，tracked/staged 干净，相关源码/文档目录没有未跟踪冲突；`git merge --no-ff codex/datacube-g3-explicit-save` 无冲突，生成 `3ebe8726bfc11d0f9ce060534166a11a9fb42563`。实现 `92a03a1`，分支证据 `16bfe31`。
+- 改动核对：`git diff 92a03a1 HEAD -- src test build.gradle buildSrc resources gradle settings.gradle gradle.properties` 为空；基线至合并 `git diff --check` 通过。没有修改其他用户 worktree 或 `.testagent/`。
+- main 全量：独立 `profile-main`，`g3-main-full`，exit 0，2m21s；278 suites / 3637 tests / 3634 passed / 0 failures / 0 errors / 3 live skips。所有本轮新增回归执行通过；跳过仅为已列明的原有 Redis/Oracle/PG opt-in live 测试，未计为通过。
+- main buildSrc：`g3-main-buildSrc`，exit 0，8s；8/8 passed，0 skipped，4 tasks executed。
+- main 镜像：`g3-main-image`，exit 0，27s；实际执行 jar、jlink、jpackageImage，产物 `D:\Projects\朝花夕拾\build\jpackage\DataCube\DataCube.exe`，595968 bytes。检查 cfg 无测试 profile/headless/合成入口；EXE、cfg、runtime modules 的 SHA-256 纳入机器可读结果，没有启动真实应用/安装升级。
+- 实际证据：[结果汇总](2026-09-24-datacube-g3-results.json) 已加入验证 main SHA、main 三轮命令/日志摘要、XML 实际计数/跳过原因及产物摘要。初始红灯、中间通过和最终分支/main 证据分别保留。
+- 失败/未验：main 无新失败；unchecked/JEP 493 提示保留；历史 SchemaDiff 偶发异常根因未明。原生桌面、真库、签名/安装升级/远端 CI/发布均未执行，不宣称发布验收完成。
+- 下一步：只提交并合入此次结果文档，核对与验证 main 的源码树相同，然后交付 G3。M4–M7 等后续阶段需另行明确启动，不自动扩展；不推送、不打/删 tag、不发布、不建 PR。
+- 回退边界：审查后可 revert 实现 `92a03a1` 或合并 `3ebe872`；没有持久化格式迁移。源码回退无法撤销用户日后已提交的数据库行，产品界面也不作此承诺。
 
 ## 行为证据索引
 
