@@ -29,6 +29,59 @@ import static org.junit.jupiter.api.Assertions.*;
 class SqlPanelLayoutIntegrationTest {
     @TempDir Path directory;
 
+    @ParameterizedTest
+    @CsvSource({"900,700,dark", "900,700,light", "640,600,dark", "1200,900,light"})
+    void findAndReplaceKeepDraftControlsReachableWithoutChangingWork(double width, double height, String theme) throws Exception {
+        try (var f = new Fixture(); var writer = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var runtime = FxUiTestSupport.call(() -> new SqlDraftCoordinator(directory.resolve("viewport-drafts"), writer,
+                    javafx.application.Platform::runLater, javafx.application.Platform::isFxApplicationThread,
+                    () -> java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime()), System::currentTimeMillis));
+            try {
+                FxUiTestSupport.call(() -> {
+                    f.pane.bindDraft(runtime, java.util.UUID.randomUUID(), null, ignored -> {});
+                    f.root.getScene().setRoot(new javafx.scene.layout.VBox());
+                    new Scene(f.root, width, height).getStylesheets().addAll(
+                            ThemeManager.class.getResource("theme-base.css").toExternalForm(),
+                            ThemeManager.class.getResource("theme-" + theme + ".css").toExternalForm());
+                    f.root.resize(width, height); f.root.applyCss(); f.root.layout();
+                    f.showRows(); f.table().getSelectionModel().clearAndSelect(1, f.table().getColumns().get(1));
+                    var rows = f.table().getItems();
+                    String editorText = f.editor.getText();
+                    var find = (SqlFindBar) field(f.pane, "findBar");
+                    for (var mode : List.of(SPLIT, EDITOR, RESULTS, SPLIT)) {
+                        f.choose(mode);
+                        if (mode != RESULTS) find.showReplace();
+                        f.root.applyCss(); f.root.layout();
+                        // Scroll if available, then prove the actual management controls fit in the visible scene.
+                        var viewport = (ScrollPane) f.root.lookup("#sql-workspace-scroll");
+                        if (viewport != null) { viewport.setVvalue(1); f.root.layout(); }
+                        for (String id : List.of("sql-draft-toggle", "sql-draft-clear", "sql-draft-privacy")) {
+                            var control = f.root.lookup("#" + id);
+                            var bounds = control.localToScene(control.getLayoutBounds());
+                            assertTrue(bounds.getMinY() >= -1 && bounds.getMaxY() <= height + 1,
+                                    id + " must remain reachable inside the window: " + bounds);
+                            assertTrue(bounds.getMinX() >= -1 && bounds.getMaxX() <= width + 1, id);
+                        }
+                        if (viewport != null) { viewport.setVvalue(0); f.root.layout(); }
+                        var menuBounds = f.layout().menu().localToScene(f.layout().menu().getLayoutBounds());
+                        assertTrue(menuBounds.getMinY() >= 0 && menuBounds.getMaxY() < height);
+                        assertSame(rows, f.table().getItems());
+                        assertEquals("Beta", f.table().getSelectionModel().getSelectedItem().get(1));
+                        assertEquals(editorText, f.editor.getText());
+                        assertEquals(f.original, f.document().physicalText());
+                        assertFalse(f.document().dirty()); assertFalse(f.editor.isUndoAvailable());
+                        find.hide(false); f.root.applyCss(); f.root.layout();
+                    }
+                    return null;
+                });
+                f.assertOfflineAndUnwritten();
+            } finally {
+                f.pane.closeResources();
+                FxUiTestSupport.call(runtime::shutdown).get(5, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        }
+    }
+
     @Test void layoutMenuOffersThreeModesOnRealSqlFileTab() throws Exception {
         try (var f = new Fixture()) {
             FxUiTestSupport.call(() -> {
@@ -38,6 +91,67 @@ class SqlPanelLayoutIntegrationTest {
                         menu.getItems().stream().map(javafx.scene.control.MenuItem::getText).toList());
                 return null;
             });
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"find", "replace", "line"})
+    void keyboardEntryFromBottomRevealsFocusedControl(String entry) throws Exception {
+        try (var f = new Fixture(); var writer = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var runtime = FxUiTestSupport.call(() -> new SqlDraftCoordinator(directory.resolve("keyboard-drafts"), writer,
+                    javafx.application.Platform::runLater, javafx.application.Platform::isFxApplicationThread,
+                    () -> java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime()), System::currentTimeMillis));
+            var stage = FxUiTestSupport.call(() -> {
+                f.pane.bindDraft(runtime, java.util.UUID.randomUUID(), null, ignored -> {});
+                f.root.getScene().setRoot(new javafx.scene.layout.VBox());
+                var scene = new Scene(f.root, 640, 600);
+                scene.getStylesheets().addAll(ThemeManager.class.getResource("theme-base.css").toExternalForm(),
+                        ThemeManager.class.getResource("theme-dark.css").toExternalForm());
+                var window = new javafx.stage.Stage(); window.setScene(scene); window.show(); return window;
+            });
+            try {
+                pulse(f.root.getScene());
+                FxUiTestSupport.call(() -> {
+                    var viewport = (ScrollPane) f.root.lookup("#sql-workspace-scroll");
+                    viewport.setVvalue(1);
+                    f.root.lookup("#sql-draft-toggle").requestFocus();
+                    return null;
+                });
+                pulse(f.root.getScene());
+                FxUiTestSupport.call(() -> {
+                    f.root.fireEvent(key(switch (entry) { case "find" -> KeyCode.F; case "replace" -> KeyCode.H; default -> KeyCode.G; }));
+                    return null;
+                });
+                pulse(f.root.getScene());
+                FxUiTestSupport.call(() -> {
+                    var focus = f.root.getScene().getFocusOwner();
+                    assertSame(f.root.lookup(entry.equals("line") ? "#sql-go-to-line-input" : "#sql-find-query"), focus);
+                    var bounds = focus.localToScene(focus.getLayoutBounds());
+                    assertTrue(bounds.getMinY() >= 0 && bounds.getMaxY() <= f.root.getScene().getHeight(),
+                            "keyboard entry must reveal its focused field: " + bounds);
+                    assertEquals(f.original, f.document().physicalText()); assertFalse(f.document().dirty());
+                    assertFalse(f.editor.isUndoAvailable());
+                    return null;
+                });
+                FxUiTestSupport.call(() -> {
+                    f.root.getScene().getFocusOwner().fireEvent(new KeyEvent(KeyEvent.KEY_PRESSED, "", "",
+                            KeyCode.ESCAPE, false, false, false, false));
+                    return null;
+                });
+                pulse(f.root.getScene());
+                FxUiTestSupport.call(() -> {
+                    assertSame(f.editor, f.root.getScene().getFocusOwner());
+                    var bounds = f.editor.localToScene(f.editor.getLayoutBounds());
+                    assertTrue(bounds.getMaxY() > 0 && bounds.getMinY() < f.root.getScene().getHeight(),
+                            "Escape must return to a visible SQL editor");
+                    assertEquals(f.original, f.document().physicalText()); assertFalse(f.document().dirty());
+                    return null;
+                });
+                f.assertOfflineAndUnwritten();
+            } finally {
+                f.pane.closeResources();
+                FxUiTestSupport.call(runtime::shutdown).get(5, java.util.concurrent.TimeUnit.SECONDS);
+                FxUiTestSupport.call(() -> { stage.close(); return null; });
+            }
         }
     }
 

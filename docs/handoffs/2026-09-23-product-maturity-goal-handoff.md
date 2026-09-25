@@ -2,6 +2,8 @@
 
 编写日期：2026-09-23。此文档旨在让新会话不依赖旧聊天全文即可接手。
 
+**2026-09-25 小窗口跟进：维护者要求继续推进产品。** 从 G8 已记录的 SQL 页底部裁切切入，增加按需滚动，保留文件、草稿、结果与键盘语义；新证据及首次全量失败经过见 [小窗口账本](../superpowers/verification/2026-09-25-sql-small-window.md)。当前分支验证中，尚未合并。原生工具激活/取屏连续失败后停止，本轮未取得原生滚动/键盘截图，不用旧 G8 证据替代。
+
 **2026-09-25 G8 更新：维护者已明确授权本地桌面验收。** 已取得合成迁移确认/取消/在途关闭、结果切换保留、表格显式保存/只读、收藏离线打开和镜像内空白 AppShell 的原生证据，并修复窄窗分页按钮省略与暗色收藏/检索空提示。本地交付已完成：实现 b1135d9，main 产品代码 4885c40、证据集成 e65edb3；main 全量 3815 passed / 3 live skipped、buildSrc 8/8、镜像及零连接探针通过。最新状态以 [G8 账本](../superpowers/verification/2026-09-25-datacube-g8-local-acceptance.md) 和 [实际结果](../superpowers/verification/2026-09-25-datacube-g8-results.json) 为准。字段检索原生输入工具失败、OS 缩放/多屏、正式启动器/真库/签名/安装升级/CI/真实用户任务仍待验；总体 M8 不称完成。下方“G8 须授权/未启动”是 G7 交付时的历史状态，不再用于重复提问。
 
 **G7 历史交付：G7/M7 已本地工程完成。** 迁移只读预检查、明确确认、整表事务、逐表状态/安全重试/脱敏报告与有限文件对账已提交并合并 main。主体 cc726a2、驱动修复 8b85bd6、载荷修复 ab6b61c，最终 main 代码 552b709；新 profile 全量 3809 passed、3 live skipped，强制 buildSrc 8/8、jpackageImage 和零连接镜像驱动发现通过。首次镜像驱动失败、大文本载荷回归失败及修复经过见 [G7 账本](../superpowers/verification/2026-09-25-datacube-g7-migration-evidence.md) 和 [实际结果](../superpowers/verification/2026-09-25-datacube-g7-results.json)。原生桌面本轮未取得可定位窗口，真库/签名/安装升级/CI/发布仍未验；不称发布验收。下文 G1–G6 为历史，勿重复实施；G8 须明确授权，不自动启动。

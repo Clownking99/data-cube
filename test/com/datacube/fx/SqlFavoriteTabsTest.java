@@ -29,6 +29,9 @@ class SqlFavoriteTabsTest {
                     var pane=SqlEditorPane.openSqlFile(new SessionContext(),probe.manager,new ObjectTreeService(probe.manager),
                             new AppSettings(directory.resolve("settings")),(id,ref) -> fail("no navigation"),
                             new SqlHistoryStore(directory.resolve("history")),new ShortcutSettings(directory.resolve("shortcuts")),runner);
+                    // Create control skins before inspecting an off-scene tab's controls.
+                    var setupScene = new Scene((Parent) pane.getNode());
+                    pane.getNode().applyCss(); setupScene.setRoot(new Group());
                     panes.add(pane); return pane;
                 },() -> List.of(target),new SqlScriptFileStore(),new RecentSqlFiles(directory.resolve("recent")),
                         new AppShell.SqlFileDraftLifecycle() {
