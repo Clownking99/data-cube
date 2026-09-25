@@ -2,6 +2,8 @@
 
 本目录不含真实连接、凭据、历史或业务文件。截图源为合成窗口；截图工具返回 JPEG，归档时使用 .jpg 扩展名，字节未改。desktop-manifest.json 记录全部截图/观察树和桌面进程输出摘要。编号 27 是未成功输入的观察，31 无文件，不能作为通过证据。
 
+原始捕获文件使用局部 .gitattributes 禁止换行转换，SHA-256 可在 Windows checkout 后复核。仅原始证据关闭行尾空白检查，以保留工具原样输出的 CRLF/尾空格；源代码、脚本和文档仍执行常规空白检查。首次保留 CRLF 后 diff --check 报出原始证据行尾空白，未修改捕获字节；通过上述局部属性区分原始记录后重验。
+
 重跑时先把本目录脚本复制到一个全新临时目录，设置当前进程 JAVA_HOME/PATH 为本机已安装 JDK；不得安装工具。run-check.ps1 的 Repository 指向独立 worktree，Name 与 ProfileName 每次唯一；参数示例：
 
 ```powershell
