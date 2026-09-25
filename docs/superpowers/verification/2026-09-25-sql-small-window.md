@@ -2,6 +2,8 @@
 
 维护者在 G8 交付后要求“继续推进产品”。本轮仅修复 G8 已实际记录的 SQL 页底部裁切，沿用本地实现、验证与合并授权。基线 main 为 5b721aa62bf1d1e616552094740be8e87051a8c4，分支 codex/datacube-editor-small-window；不重复 G1–G8 已有功能，不扩充格式化主线。
 
+本地工程交付完成：实现 3440a50，main 产品代码 584699c；main 全量、强制 buildSrc、镜像与零连接审计均已重新执行通过。原生桌面与外部发布验收仍待验。
+
 ## 行为与实现
 
 查找/替换展开时，工具栏、SQL/结果最小高度、状态和草稿区会超过小窗口高度。SQL 页现在按需滚动到底部，顶部布局入口仍可返回；正常尺寸保留自动填充。外部根 VBox、收藏来源、编辑器/结果实例、连接选择、键盘及生命周期守卫保持原身份。
@@ -47,7 +49,9 @@ JDK 25.0.1+8、JavaFX 25、Gradle 9.2.0；所有命令 --offline --no-daemon --c
 | targeted-final-expanded | 四个夹具补 CSS 后，139 passed / 0 skipped |
 | branch-full-verified | clean test；307 suites / 3825 tests / 3822 passed / 0 failed/error / 3 live skipped，3m14s |
 | branch-buildSrc / image / runtime | 强制 buildSrc 8/8；jpackageImage 成功，34s；无测试配置/探针泄漏，Oracle/PG 驱动发现成功且 connectCalls=0 |
-| main full / buildSrc / image / runtime | 待合并后新 profile 执行 |
+| main-full | 584699c 的新 profile clean test；307 suites / 3825 tests / 3822 passed / 0 failed/error / 3 live skipped，3m14s |
+| main-buildSrc | 584699c 的 --rerun-tasks；8/8 passed / 0 skipped，8s |
+| main-image / runtime | 584699c 的 jpackageImage 成功，31s；无测试配置/探针泄漏，Oracle/PG 驱动发现成功且 connectCalls=0 |
 
 三项 live skip 是 Redis、Oracle Schema Diff、PostgreSQL Schema Diff，缺少显式真库环境/写入开关且本轮主动移除环境；跳过不算通过。历史 SchemaDiffService 偶发失败若未复现，只记未复现，不称根因已修复。
 
@@ -55,10 +59,14 @@ JDK 25.0.1+8、JavaFX 25、Gradle 9.2.0；所有命令 --offline --no-daemon --c
 
 首次红测对 CodeArea 的换行归一化假设错误已修正为编辑器快照/物理文件分别断言，真实裁切失败保留。首次全量 15 例是 ScrollPane 未建立 skin 时旧夹具查找不到后代控件；临时 Scene + applyCss 后保留所有原有业务断言，新脚本 draft bind 也在相同初始化后检查。
 
+归档 suite XML 还保留未挂主题的初始夹具中的 CSS 变量解析/颜色转换警告；明暗尺寸矩阵在实际断言前加载主题，警告未作为通过证据，也不宣称视觉零警告。空白桌面探针有 unnamed module 的 JavaFX 配置警告。编译 unchecked 与镜像 JEP 493 提示同样保留。
+
 原生工具先遇到 GetCursorPos 0x80070005，重新枚举并绑定同一窗口后取屏仍失败 CreateForMonitor 0x80070057；按边界停止重试，没有成功截图或原生输入。独占空白探针只输出 OUTPUT_SCALE=1.5，核对 PID 13240、JDK javaw 路径和精确标题后停止进程；强制清理不计优雅关闭。原生滚动、完整键盘遍历与实际缩放观感仍待验，旧 G8 截图未复用为本轮证据。
 
 真库、OS 多屏/缩放切换、签名、正式启动器/安装升级/回退、远端 CI、真实用户任务继续待授权或人工验收。本轮不读取 .testagent、真实连接、凭据、SQL 历史或业务文件，不访问真实实例，不 push/tag/PR/发布。
 
 ## 审查与交付检查点
 
-目标、过程、失败与下一步见 [实施检查点](../plans/2026-09-25-sql-small-window.md)。分支全量、强制 buildSrc、镜像/零连接探针均已通过；6 项改动的源文件/测试 SHA 与最终验证时一致。根节点属性、连接选择插入点、取消/关闭守卫与分隔条逻辑审查无额外问题。27 份日志/元数据/新增布局 suite XML 已归档核对，原始证据在首次暂存前设置 -text。保留 unchecked 与 JEP 493 提示，不称零警告。当前准备本地提交合并；main 复验仍待执行。
+分支提交前的历史检查点：目标、过程、失败与下一步见 [实施检查点](../plans/2026-09-25-sql-small-window.md)。分支全量、强制 buildSrc、镜像/零连接探针均通过；6 项改动的源文件/测试 SHA 与最终验证时一致。根节点属性、连接选择插入点、取消/关闭守卫与分隔条逻辑审查无额外问题。当时 27 份日志/元数据/新增布局 suite XML 已归档核对，原始证据在首次暂存前设置 -text。首次暂存将清单 CRLF 视为尾空白，增加该类原始清单的 cr-at-eol 后重查通过；忽略规则下的日志以精确路径强制暂存并比对 blob，未丢弃日志。保留警告，不称零警告。
+
+交付复核：实现 3440a50fb8c333bce73de4e8d35770ebc6aadb91，本地 main 合并 584699ccb8102aed4080d5976a6b3228735227d3。合并前 main 授权范围干净且仍为基线；合并后全部源码/测试/构建 Git 内容相同，六项变更的原始 SHA 也完全一致。main 新 profile 全量、强制 buildSrc、镜像与零连接审计均通过。分支/main 的 DataCube.exe、cfg、runtime modules 三项 SHA-256 完全相同，最终 15 个执行记录与 35 份原始证据文件归档核对完成。最终文档提交只补这些实际记录，不把未重跑的测试伪称另一套执行。未执行推送、真实连接、安装更新或发布；本轮到此交付。

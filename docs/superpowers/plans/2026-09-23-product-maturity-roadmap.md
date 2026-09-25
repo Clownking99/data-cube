@@ -204,7 +204,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 
 2026-09-25 维护者明确授权 G8 本地验收。实际原生桌面范围、两处修复、失败限制和新自动化证据见 [G8 账本](../verification/2026-09-25-datacube-g8-local-acceptance.md)；本地交付已完成（实现 b1135d9，main 产品代码 4885c40，证据集成 e65edb3；main 全量 3815 passed / 3 live skipped，buildSrc 8/8，镜像/零连接探针通过）。总体 M8 仍为待外部验收，以下完整桌面/真库/发布条目不因局部证据自动全部勾选。
 
-同日维护者要求继续推进产品，跟进 G8 的 SQL 小窗口草稿控制裁切；实现与新回归见 [小窗口账本](../verification/2026-09-25-sql-small-window.md)。本轮原生取屏失败，布局/键盘 FX 证据不替代完整原生验收；当前待分支最终验证与 main 复验。
+同日维护者要求继续推进产品，跟进 G8 的 SQL 小窗口草稿控制裁切；实现与新回归见 [小窗口账本](../verification/2026-09-25-sql-small-window.md)。本轮原生取屏失败，布局/键盘 FX 证据不替代完整原生验收；本地工程已交付：实现 3440a50，main 产品代码 584699c，新 profile 全量 3822 passed / 3 live skipped、强制 buildSrc 8/8、镜像/零连接审计通过。
 
 ### 本地工程门槛
 
@@ -252,7 +252,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 | M5 | 本地工程完成 | 实现 76dd221、修正 c62e86c；main 最终合并 0e7ca79；[G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)，main 全量 3724 passed/3 live skips、fresh buildSrc 8、镜像通过 | G5 交付；原生桌面/真库及明确降级单列 |
 | M6 | 本地工程完成 | 实现 d4b02de；main 合并 c182128；[G6 账本](../verification/2026-09-24-datacube-g6-discovery-library.md)，main 全量 3753 passed/3 live skips、fresh buildSrc 8、镜像及 14 张合成桌面截图 | G6 交付；原生模态输入/完整壳流程、真库等单列待验 |
 | M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | G8 已补合成迁移原生预检查/确认/取消/在途关闭；真库事务/权限/一致性与发布仍待验 |
-| M8 | 待外部验收 | [G8 本地交付账本](../verification/2026-09-25-datacube-g8-local-acceptance.md)：两处可读性修复、50 张合成原生截图；main 3815 passed/3 live skipped、buildSrc 8、镜像/零连接探针通过 | 授权本地范围已交付；原生字段检索/极限布局/完整键盘、OS 多屏、真库、正式启动器/安装升级/签名/CI/真实用户任务仍待验，不称已发布 |
+| M8 | 待外部验收 | [G8 账本](../verification/2026-09-25-datacube-g8-local-acceptance.md) 保留原生范围；[小窗口跟进](../verification/2026-09-25-sql-small-window.md) 已合并 584699c 并复验：3822 passed/3 live skipped、buildSrc 8、镜像/零连接审计通过 | 本地修复已交付；本轮原生工具失败，字段检索/极限布局/完整键盘、OS 多屏、真库、正式启动器/安装升级/签名/CI/真实用户任务仍待验，不称已发布 |
 
 ## 16. 参考与历史记录
 
