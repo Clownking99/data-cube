@@ -298,6 +298,90 @@
       "log": "branch-final-image.log",
       "logSha256": "CFC82CA6476E9007765F8560DDFD6E32FF61E9227A6400038A4F5A74B8646FDE",
       "actualTestTaskRan": false
+    },
+    {
+      "name": "main-final-full",
+      "head": "4885c40d729835427a15ddd655a97f8055c56122",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T09:11:17.8983224+08:00",
+      "exitCode": 0,
+      "log": "main-final-full.log",
+      "logSha256": "EEEC11D4B3088C6744CC90AC90C2AC05EEA17E1EA07AAECC0802E3E8D626D833",
+      "actualTestTaskRan": true,
+      "suites": 307,
+      "tests": 3818,
+      "passed": 3815,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "main-final-full-xml",
+      "xmlManifestSha256": "9AB07AE1F2327AC1B84F86E3C00A8067B6A90D3A56A2A48EBB2A3BE2F92C5FE0"
+    },
+    {
+      "name": "main-final-buildSrc",
+      "head": "e65edb3fe20f8eecc7350de47b29d075bded03eb",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T09:12:26.8976706+08:00",
+      "exitCode": 0,
+      "log": "main-final-buildSrc.log",
+      "logSha256": "18BD8F277036423F108CE4A04D24D2CBD641EBC6E21BA25877BBD0CFA447AE0F",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "main-final-buildSrc-xml",
+      "xmlManifestSha256": "82F3328891BD5B07F3C67EF0383708B3F708DCCF19B956D2074DABCAAA51B024"
+    },
+    {
+      "name": "main-final-image",
+      "head": "e65edb3fe20f8eecc7350de47b29d075bded03eb",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-25T09:13:09.4382125+08:00",
+      "exitCode": 0,
+      "log": "main-final-image.log",
+      "logSha256": "00944735E7E423B9A190A2EDE1CD3CAACA3F44BDC7E4C9A459B96D33710F0CE9",
+      "actualTestTaskRan": false
     }
   ],
   "branchRuntime": {
@@ -338,8 +422,12 @@
     "path": "evidence/g8/desktop-manifest.json"
   },
   "delivery": {
-    "status": "branch_validated_awaiting_local_merge",
-    "published": false
+    "implementation": "b1135d9",
+    "mainCode": "4885c40d729835427a15ddd655a97f8055c56122",
+    "evidenceIntegration": "e65edb3fe20f8eecc7350de47b29d075bded03eb",
+    "overallM8": "awaiting_external_and_remaining_native_acceptance",
+    "published": false,
+    "status": "authorized_local_acceptance_complete"
   },
   "unverified": [
     "Native metadata query and result actions: UIA unavailable twice, stopped",
@@ -348,5 +436,50 @@
     "Real PostgreSQL/Oracle/Redis permissions transactions cancellation migration validation",
     "Formal DataCube.exe startup, update check, signed install/upgrade/rollback",
     "Remote same-SHA CI and 3-5 real user tasks"
-  ]
+  ],
+  "mainRuntime": {
+    "name": "main-final-runtime",
+    "head": "e65edb3fe20f8eecc7350de47b29d075bded03eb",
+    "completedAt": "2026-09-25T09:13:35.4911544+08:00",
+    "testClassLeaks": 0,
+    "testConfigLeaks": 0,
+    "driverExit": 0,
+    "driverOutput": "oracle=oracle.jdbc.OracleDriver\r\npostgres=org.postgresql.Driver\r\nconnectCalls=0; no credentials or user profile loaded\r\n",
+    "driverLogSha256": "1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82",
+    "artifacts": [
+      {
+        "path": "DataCube.exe",
+        "bytes": 595968,
+        "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+      },
+      {
+        "path": "app/DataCube.cfg",
+        "bytes": 369,
+        "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+      },
+      {
+        "path": "runtime/lib/modules",
+        "bytes": 102364050,
+        "sha256": "B058EAEDEC19FCC1DB78F40A487FB85099A062C200B8F6A8F28CCA9E04E3ED22"
+      }
+    ]
+  },
+  "mainSourceComparison": {
+    "sourceDifferences": [],
+    "desktopFiles": 112,
+    "head": "e65edb3fe20f8eecc7350de47b29d075bded03eb",
+    "crlfOnly": 215,
+    "sourceFiles": 781,
+    "byteEqual": 566,
+    "desktopByteMismatches": 0
+  },
+  "initialMainEvidenceMismatch": {
+    "desktopByteMismatches": 21,
+    "sourceFiles": 781,
+    "crlfOnly": 215,
+    "head": "4885c40d729835427a15ddd655a97f8055c56122",
+    "desktopFiles": 112,
+    "byteEqual": 566,
+    "sourceDifferences": []
+  }
 }

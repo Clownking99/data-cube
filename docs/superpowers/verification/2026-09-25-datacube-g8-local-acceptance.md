@@ -1,6 +1,6 @@
 # G8 本地验收账本（非发布验收）
 
-维护者于 2026-09-25 明确授权 G8 本地桌面验收及本地集成。基线 main 为 e03d493243e6da60fedec63d5e0f924383992c75，独立分支 codex/datacube-g8-local-acceptance。本轮使用 Windows、Java 25.0.1+8、JavaFX 25、Gradle 9.2.0，所有构建离线。当前为分支验证记录；main 合并与复验结果在交付检查点补齐。
+维护者于 2026-09-25 明确授权 G8 本地桌面验收及本地集成。基线 main 为 e03d493243e6da60fedec63d5e0f924383992c75，独立分支 codex/datacube-g8-local-acceptance。本轮使用 Windows、Java 25.0.1+8、JavaFX 25、Gradle 9.2.0，所有构建离线。授权的本地范围已交付：实现 b1135d9，main 产品代码合并 4885c40，证据修正集成 e65edb3；分支与 main 均有新验证。总体 M8 仍待剩余原生及外部验收。
 
 ## 产品变更与回归
 
@@ -45,7 +45,9 @@
 | branch-final-full | clean test；307 suites / 3818 tests / 3815 passed / 0 failures/errors / 3 live skipped，3m36s |
 | branch-final-buildSrc | --rerun-tasks；8/8 passed，0 skipped，8s |
 | branch-final-image / runtime | jpackageImage 成功；正式 cfg 无测试参数、镜像无夹具类；PG/Oracle 驱动发现成功，connectCalls=0 |
-| main 复验 | 等待本地合并后执行 |
+| main-final-full | 合并 4885c40 的新 profile clean test；307 suites / 3818 tests / 3815 passed / 0 failures/errors / 3 live skipped，3m33s |
+| main-final-buildSrc | e65edb3 的 --rerun-tasks；8/8 passed，0 skipped，9s |
+| main-final-image / runtime | e65edb3 的 jpackageImage 成功，32s；镜像无测试类/参数，PG/Oracle 驱动发现成功，connectCalls=0 |
 
 三项 live skips 为 Redis、Oracle Schema Diff、PostgreSQL Schema Diff：未提供相应环境及允许写入开关，本轮故意移除 DATACUBE_REDIS_* / DATACUBE_SCHEMA_DIFF_*，没有访问真实实例。跳过不是通过。
 
@@ -64,4 +66,8 @@
 
 ## 审查与交付检查点
 
-分支审查：产品只改 DataGridPane 布局与五个 CSS 提示选择器，动作处理器、门禁、请求/目标绑定、事务、取消与关闭实现未改。回归先红后绿，最终 clean test 和强制 buildSrc 均实际运行；三个 live skips 单列。镜像 jimage 列表无 DesktopFixture/探针/测试 provider，正式 cfg 无 profile/headless/G8 参数，镜像零连接驱动探针通过。781 个源码/测试/构建文件记录原始与 LF 归一化摘要，最终验证后复核未变；后续 main 将再次对比。全部可见验收窗口已退出。git diff --check 无问题；主目录授权范围干净且 main 仍 e03d493。准备本地提交与合并，尚不记录为 main 通过。
+分支提交前审查（历史检查点）：产品只改 DataGridPane 布局与五个 CSS 提示选择器，动作处理器、门禁、请求/目标绑定、事务、取消与关闭实现未改。回归先红后绿，最终 clean test 和强制 buildSrc 均实际运行；三个 live skips 单列。镜像 jimage 列表无 DesktopFixture/探针/测试 provider，正式 cfg 无 profile/headless/G8 参数，镜像零连接驱动探针通过。781 个源码/测试/构建文件记录原始与 LF 归一化摘要，最终验证后复核未变；后续 main 将再次对比。全部可见验收窗口已退出。git diff --check 无问题；主目录授权范围干净且 main 仍 e03d493。准备本地提交与合并，尚不记录为 main 通过。
+
+交付复核：main 产品代码合并 4885c40 完成全量复验；随后仅合并证据换行修正和检查点为 e65edb3，源码/测试/构建与 4885c40 的 Git 内容完全相同，因此没有把未重跑的测试称作另一套新执行。e65edb3 完成强制 buildSrc、镜像及运行时探针。分支/main 的 DataCube.exe、cfg、runtime modules 三项 SHA-256 完全相同（摘要见结果 JSON）。781 项源文件无实质差异，566 项字节相同、215 项仅 CRLF。112 份桌面捕获、13 份构建日志及两个清单均按原始 SHA-256 核对通过。
+
+证据归档首次出现的行尾空白报告及 main 的 21 项字节不符均保留在实施检查点和结果 JSON。原因是先暂存再设置 -text，旧 index 已归一化；分支 6c4079f 重新暂存原始字节后合并，未修改捕获内容或测试结论。局部属性只对原始捕获排除尾空白/末尾空行检查，代码与文档常规检查通过。后续最终提交只更新交付文档/日志，没有产品变动，不额外重复已通过测试。没有执行 push、tag、PR、安装更新、真实连接或发布。

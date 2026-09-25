@@ -66,7 +66,7 @@
 | M5 | P1 | 当前语句执行、错误定位、作用域补全 | M1；M4 的来源身份模型 | 大 |
 | M6 | P1 | 字段/注释检索、SQL 收藏、入口整理 | M0；M5 元数据能力可复用 | 中 |
 | M7 | P2 | 迁移预检查、逐表报告与对账 | M1 的原则；独立迁移安全设计 | 大 |
-| M8 | 贯穿/发布门槛 | 真库、桌面、安装升级与用户任务验收 | 各增量 | 持续，含授权依赖 |
+| M8 | 待外部验收 | [G8 本地交付账本](../verification/2026-09-25-datacube-g8-local-acceptance.md)：两处可读性修复、50 张合成原生截图；main 3815 passed/3 live skipped、buildSrc 8、镜像/零连接探针通过 | 授权本地范围已交付；原生字段检索/极限布局/完整键盘、OS 多屏、真库、正式启动器/安装升级/签名/CI/真实用户任务仍待验，不称已发布 |
 
 默认顺序：M0 → M1 → M2 可自主完成部分 → M3 → M4 → M5 → M6 → M7；M8 每阶段更新。签名配置/真库授权等外部事项登记后，不冒险绕过；可继续无依赖的本地工作，但不得把相关阶段判为全部完成。
 
@@ -202,7 +202,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 
 ## 13. M8：贯穿每阶段的验收与发布门槛
 
-2026-09-25 维护者明确授权 G8 本地验收。实际原生桌面范围、两处修复、失败限制和新自动化证据见 [G8 账本](../verification/2026-09-25-datacube-g8-local-acceptance.md)；当前正在本地集成。总体 M8 仍为待外部验收，以下完整桌面/真库/发布条目不因局部证据自动全部勾选。
+2026-09-25 维护者明确授权 G8 本地验收。实际原生桌面范围、两处修复、失败限制和新自动化证据见 [G8 账本](../verification/2026-09-25-datacube-g8-local-acceptance.md)；本地交付已完成（实现 b1135d9，main 产品代码 4885c40，证据集成 e65edb3；main 全量 3815 passed / 3 live skipped，buildSrc 8/8，镜像/零连接探针通过）。总体 M8 仍为待外部验收，以下完整桌面/真库/发布条目不因局部证据自动全部勾选。
 
 ### 本地工程门槛
 
@@ -249,8 +249,8 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 | M4d | 本地工程完成 | 实现 d40504e；main 合并 435df76；[M4d 账本](../verification/2026-09-24-datacube-g4d-results.md)，main 全量 3690 passed/3 live skips、fresh buildSrc 8、镜像通过 | G4 本地工程交付；原生桌面/真库单列待验 |
 | M5 | 本地工程完成 | 实现 76dd221、修正 c62e86c；main 最终合并 0e7ca79；[G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)，main 全量 3724 passed/3 live skips、fresh buildSrc 8、镜像通过 | G5 交付；原生桌面/真库及明确降级单列 |
 | M6 | 本地工程完成 | 实现 d4b02de；main 合并 c182128；[G6 账本](../verification/2026-09-24-datacube-g6-discovery-library.md)，main 全量 3753 passed/3 live skips、fresh buildSrc 8、镜像及 14 张合成桌面截图 | G6 交付；原生模态输入/完整壳流程、真库等单列待验 |
-| M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | 原生桌面、真库事务/权限/一致性与发布仍待验；G8 未启动 |
-| M8 | 待外部验收 | G1–G7 本地自动化证据独立记录，G7 原生桌面未验，G6 合成桌面证据有明确范围，不替代完整桌面/真库/安装/CI | 获授权后单独安排 |
+| M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | G8 已补合成迁移原生预检查/确认/取消/在途关闭；真库事务/权限/一致性与发布仍待验 |
+| M8 | 待外部验收 | [G8 本地交付账本](../verification/2026-09-25-datacube-g8-local-acceptance.md)：两处可读性修复、50 张合成原生截图；main 3815 passed/3 live skipped、buildSrc 8、镜像/零连接探针通过 | 授权本地范围已交付；原生字段检索/极限布局/完整键盘、OS 多屏、真库、正式启动器/安装升级/签名/CI/真实用户任务仍待验，不称已发布 |
 
 ## 16. 参考与历史记录
 
