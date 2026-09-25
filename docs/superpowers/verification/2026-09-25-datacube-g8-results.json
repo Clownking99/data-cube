@@ -1,0 +1,352 @@
+{
+  "goal": "G8 local acceptance only",
+  "baseline": "e03d493243e6da60fedec63d5e0f924383992c75",
+  "branch": "codex/datacube-g8-local-acceptance",
+  "scratch": "C:/Users/hetia/AppData/Local/Temp/datacube-g8-df85f6c35cf0457d9255e8714dd114a4",
+  "runs": [
+    {
+      "name": "baseline-full",
+      "head": "e03d493243e6da60fedec63d5e0f924383992c75",
+      "arguments": [
+        "clean",
+        "test",
+        "g8DesktopClasspath",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\desktop.gradle",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T08:32:10.2952106+08:00",
+      "exitCode": 0,
+      "log": "baseline-full.log",
+      "logSha256": "C251166A8B4FCF1284895CE43F6A4878905124511454A0EB4E05FE0DFEF6B844",
+      "actualTestTaskRan": true,
+      "suites": 307,
+      "tests": 3812,
+      "passed": 3809,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "baseline-full-xml",
+      "xmlManifestSha256": "D1F7348ABEAFD532748C3BAF912E81D98D6342ADB53695B96A299DD0784287F0"
+    },
+    {
+      "name": "fixture-compile",
+      "head": "e03d493243e6da60fedec63d5e0f924383992c75",
+      "arguments": [
+        "g8DesktopClasspath",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\desktop.gradle",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T08:32:53.2357022+08:00",
+      "exitCode": 0,
+      "log": "fixture-compile.log",
+      "logSha256": "14B2F3F503DE275278AB9767E8ED018D5AD1F8AC4BBD730478B98F34E647A4E5",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "grid-layout-red",
+      "head": "e03d493243e6da60fedec63d5e0f924383992c75",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.DataGridExplicitSaveTest.pagingActionsRemainLegibleWithinNarrowAndWidePanels",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T08:41:33.6185055+08:00",
+      "exitCode": 1,
+      "log": "grid-layout-red.log",
+      "logSha256": "301DA29C254C090A8E202E6F0A73759F1C85FAA3CFBDCEA95E2E69DD28008E26",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 4,
+      "passed": 1,
+      "failures": 3,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.DataGridExplicitSaveTest.[1] 480, dark",
+        "com.datacube.fx.DataGridExplicitSaveTest.[2] 760, dark",
+        "com.datacube.fx.DataGridExplicitSaveTest.[3] 760, light"
+      ],
+      "xmlDirectory": "grid-layout-red-xml",
+      "xmlManifestSha256": "33E8D481A79C746976F1FE805B6275209F5E08F41F7EF39B50B481F1988B81A6"
+    },
+    {
+      "name": "grid-layout-green",
+      "head": "e03d493243e6da60fedec63d5e0f924383992c75",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.DataGrid*",
+        "g8DesktopClasspath",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\desktop.gradle",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T08:42:46.1503033+08:00",
+      "exitCode": 0,
+      "log": "grid-layout-green.log",
+      "logSha256": "AF5F32606F6CF358DF011FED8EAB3D4F6054FAE30FF3545DD36E60F96D07A184",
+      "actualTestTaskRan": true,
+      "suites": 3,
+      "tests": 16,
+      "passed": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "grid-layout-green-xml",
+      "xmlManifestSha256": "CF747DB2F0CE49100A1D079BD67D3D68C2D4D6EE3D98806A96EFDB25B8C2A5D4"
+    },
+    {
+      "name": "discovery-prompt-red",
+      "head": "e03d493243e6da60fedec63d5e0f924383992c75",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.SqlFavoritesDialogTest.emptyLibraryInputs*",
+        "--tests",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.emptyQueryGuidance*",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T08:49:07.6105576+08:00",
+      "exitCode": 1,
+      "log": "discovery-prompt-red.log",
+      "logSha256": "80E3228AD83813B590D0948AEAA3ABE311D1FD4E345AA42A093C824A717323B6",
+      "actualTestTaskRan": true,
+      "suites": 2,
+      "tests": 2,
+      "passed": 0,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.emptyQueryGuidanceRemainsVisibleInBothThemesAndFocusStatesWithoutReading()",
+        "com.datacube.fx.SqlFavoritesDialogTest.emptyLibraryInputsKeepTheirGuidanceVisibleInBothThemesAndFocusStates()"
+      ],
+      "xmlDirectory": "discovery-prompt-red-xml",
+      "xmlManifestSha256": "D8CC44CB07DB2DCDB399C1F448F61CC13AC1ED8522F9FF6F64901B93575F2BB8"
+    },
+    {
+      "name": "discovery-prompt-green",
+      "head": "e03d493243e6da60fedec63d5e0f924383992c75",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.SqlFavoritesDialogTest",
+        "--tests",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest",
+        "g8DesktopClasspath",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\desktop.gradle",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T08:49:45.4986601+08:00",
+      "exitCode": 0,
+      "log": "discovery-prompt-green.log",
+      "logSha256": "CED57131054FAAC0863CB4C80C815704BAE18A535E71092429B0887D771C3A16",
+      "actualTestTaskRan": true,
+      "suites": 2,
+      "tests": 16,
+      "passed": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "discovery-prompt-green-xml",
+      "xmlManifestSha256": "51265FFC8AAB8CD5F56F66F324B0483B9700121B97FFA9183BFC2E4FD0E64A52"
+    },
+    {
+      "name": "branch-image-candidate",
+      "head": "e03d493243e6da60fedec63d5e0f924383992c75",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-25T08:51:52.7356268+08:00",
+      "exitCode": 0,
+      "log": "branch-image-candidate.log",
+      "logSha256": "7B1A253499E1C8594FCA7423C4D741532259AFD97DE667F69054DA4ADF62BE9C",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "branch-final-full",
+      "head": "e03d493243e6da60fedec63d5e0f924383992c75",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T09:02:38.4783582+08:00",
+      "exitCode": 0,
+      "log": "branch-final-full.log",
+      "logSha256": "B8E73325ED58BD0210D64F5C4B139894F102C7E618D983E7B977222C36A3A31F",
+      "actualTestTaskRan": true,
+      "suites": 307,
+      "tests": 3818,
+      "passed": 3815,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "branch-final-full-xml",
+      "xmlManifestSha256": "96104B8C3E4316EC79395C12218966338508D27560AB40D9A80C7E7384B257AE"
+    },
+    {
+      "name": "branch-final-buildSrc",
+      "head": "e03d493243e6da60fedec63d5e0f924383992c75",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-g8-df85f6c35cf0457d9255e8714dd114a4\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-25T09:03:41.3237841+08:00",
+      "exitCode": 0,
+      "log": "branch-final-buildSrc.log",
+      "logSha256": "69A28754A437E4B48A48F3AC09B6B4091A32D58084DB461E73CAE58FD21B9171",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "branch-final-buildSrc-xml",
+      "xmlManifestSha256": "2EB6D26C2B7848F4F4E5FA2AF93D856E5F7F053AE6430302D856D6FB9D2B5B92"
+    },
+    {
+      "name": "branch-final-image",
+      "head": "e03d493243e6da60fedec63d5e0f924383992c75",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-25T09:04:37.6631371+08:00",
+      "exitCode": 0,
+      "log": "branch-final-image.log",
+      "logSha256": "CFC82CA6476E9007765F8560DDFD6E32FF61E9227A6400038A4F5A74B8646FDE",
+      "actualTestTaskRan": false
+    }
+  ],
+  "branchRuntime": {
+    "name": "branch-final-runtime",
+    "head": "e03d493243e6da60fedec63d5e0f924383992c75",
+    "completedAt": "2026-09-25T09:04:55.8249264+08:00",
+    "testClassLeaks": 0,
+    "testConfigLeaks": 0,
+    "driverExit": 0,
+    "driverOutput": "oracle=oracle.jdbc.OracleDriver\r\npostgres=org.postgresql.Driver\r\nconnectCalls=0; no credentials or user profile loaded\r\n",
+    "driverLogSha256": "1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82",
+    "artifacts": [
+      {
+        "path": "DataCube.exe",
+        "bytes": 595968,
+        "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+      },
+      {
+        "path": "app/DataCube.cfg",
+        "bytes": 369,
+        "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+      },
+      {
+        "path": "runtime/lib/modules",
+        "bytes": 102364050,
+        "sha256": "B058EAEDEC19FCC1DB78F40A487FB85099A062C200B8F6A8F28CCA9E04E3ED22"
+      }
+    ]
+  },
+  "sourceManifest": {
+    "sha256": "D2C6CFE74938216C7245CC3CF08281B54A16FD50F330656302A381400CE19A3F",
+    "files": 781,
+    "path": "evidence/g8/source-manifest.json"
+  },
+  "desktopManifest": {
+    "screenshots": 50,
+    "sha256": "ADF49E8CF1AE6CBF31AC993B29E0818F5BDBA3DD080E8D5ABEAE03407C775EDC",
+    "path": "evidence/g8/desktop-manifest.json"
+  },
+  "delivery": {
+    "status": "branch_validated_awaiting_local_merge",
+    "published": false
+  },
+  "unverified": [
+    "Native metadata query and result actions: UIA unavailable twice, stopped",
+    "Full keyboard traversal and find-strip extreme layout",
+    "OS scale switching and multiple displays",
+    "Real PostgreSQL/Oracle/Redis permissions transactions cancellation migration validation",
+    "Formal DataCube.exe startup, update check, signed install/upgrade/rollback",
+    "Remote same-SHA CI and 3-5 real user tasks"
+  ]
+}

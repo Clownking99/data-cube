@@ -13,6 +13,35 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SchemaMetadataSearchDialogTest {
+    @Test void emptyQueryGuidanceRemainsVisibleInBothThemesAndFocusStatesWithoutReading() throws Exception {
+        try (var runner = new FxTaskRunner()) {
+            var calls = new AtomicInteger();
+            var d = FxUiTestSupport.call(() -> {
+                var picker = new SchemaMetadataSearchDialog(target(), "s", null, runner,
+                        (r,c) -> { calls.incrementAndGet(); return result(); }, () -> true);
+                picker.dialog().show(); return picker;
+            });
+            try {
+                FxUiTestSupport.call(() -> {
+                    var root = d.dialog().getDialogPane(); var input = text(d);
+                    for (String theme : List.of("dark", "light")) {
+                        root.getScene().getStylesheets().setAll(ThemeManager.class.getResource("theme-base.css").toExternalForm(),
+                                ThemeManager.class.getResource("theme-" + theme + ".css").toExternalForm());
+                        for (boolean focused : List.of(false, true)) {
+                            input.pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("focused"), focused);
+                            root.applyCss(); root.layout();
+                            var prompt = input.lookupAll(".text").stream().filter(javafx.scene.text.Text.class::isInstance)
+                                    .map(javafx.scene.text.Text.class::cast).filter(t -> input.getPromptText().equals(t.getText())).findFirst().orElseThrow();
+                            assertTrue(prompt.isVisible());
+                            assertEquals(javafx.scene.paint.Color.web(theme.equals("dark") ? "#A8A8B8" : "#555555"), prompt.getFill());
+                        }
+                    }
+                    assertEquals(0, calls.get(), "theme and focus changes must not start metadata reads");
+                    return null;
+                });
+            } finally { FxUiTestSupport.call(() -> { d.close(); return null; }); }
+        }
+    }
     private ConnConfig target() { return new ConnConfig("synthetic", "synthetic", DbType.POSTGRESQL,"invalid.example",1,"db","u","",Map.of()); }
     private Result result() { return new Result(List.of(new Hit(new TableInfo("s","orders",TableInfo.Kind.TABLE,null),Mode.COLUMN_NAME,"customer_id","customer_id")),false); }
     @Test void typingNeverReadsAndEachExplicitResultActionKeepsIdentity() throws Exception {
