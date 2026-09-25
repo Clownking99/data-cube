@@ -164,6 +164,9 @@ class SqlNewScriptTabsTest {
                 var pane = SqlEditorPane.openSqlFile(context, probe.manager, new ObjectTreeService(probe.manager),
                         new AppSettings(directory.resolve("settings")), (id, ref) -> fail("no designer"),
                         new SqlHistoryStore(directory.resolve("history")), new ShortcutSettings(directory.resolve("shortcuts")), runner);
+                // Draft binding assertions run before the tab is attached to its scene.
+                var setupScene = new Scene((javafx.scene.Parent) pane.getNode());
+                pane.getNode().applyCss(); setupScene.setRoot(new javafx.scene.Group());
                 created.add(pane); return pane;
             }, () -> { choiceReads.incrementAndGet(); return List.copyOf(choices); }, new SqlScriptFileStore(),
                     new RecentSqlFiles(directory.resolve("recent")), new AppShell.SqlFileDraftLifecycle() {

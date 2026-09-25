@@ -248,6 +248,9 @@ class SqlHistoryTabsTest {
                         new ObjectTreeService(probe.manager), new AppSettings(directory.resolve("settings")),
                         (id, ref) -> fail("no designer"), schema, history,
                         new ShortcutSettings(directory.resolve("shortcuts")), runner);
+                // Create control skins before inspecting an off-scene tab's controls.
+                var setupScene = new Scene((javafx.scene.Parent) pane.getNode());
+                pane.getNode().applyCss(); setupScene.setRoot(new javafx.scene.Group());
                 created.add(pane); return pane;
             }, () -> List.copyOf(choices), new SqlScriptFileStore(), new RecentSqlFiles(directory.resolve("recent")),
                     new AppShell.SqlFileDraftLifecycle() {

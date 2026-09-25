@@ -37,7 +37,8 @@ class SqlEditorMoveLinesIntegrationTest {
             var value = SqlEditorPane.openSqlFile(new SessionContext(), probe.manager, new ObjectTreeService(probe.manager),
                     new AppSettings(directory.resolve("settings")), (id, table) -> fail("unexpected navigation"),
                     new SqlHistoryStore(directory.resolve("history")), new ShortcutSettings(directory.resolve("shortcuts")), runner);
-            new Scene((javafx.scene.Parent) value.getNode()); return value;
+            new Scene((javafx.scene.Parent) value.getNode());
+            value.getNode().applyCss(); return value;
         });
         try {
             FxUiTestSupport.call(() -> {

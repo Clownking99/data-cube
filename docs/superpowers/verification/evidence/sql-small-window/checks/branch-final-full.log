@@ -1,0 +1,196 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :clean
+> Task :compileJava
+> Task :generateBrandIcons
+> Task :generateVersionProperties
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+注: 某些输入文件使用了未经检查或不安全的操作。
+注: 有关详细信息, 请使用 -Xlint:unchecked 重新编译。
+
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+> Task :test
+
+SqlEditorMoveLinesIntegrationTest > toolbarOffersBothDirectionsWithoutConnecting() FAILED
+    java.lang.AssertionError: Missing menu action sql-move-lines-up
+        at com.datacube.fx.SqlMenuTestSupport.find(SqlMenuTestSupport.java:9)
+        at com.datacube.fx.SqlEditorMoveLinesIntegrationTest.lambda$toolbarOffersBothDirectionsWithoutConnecting$2(SqlEditorMoveLinesIntegrationTest.java:44)
+
+SqlFavoriteTabsTest > favoriteIsAnIndependentManagedOfflineScriptWithExplicitConnectionAndDraftLifecycle() FAILED
+    java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke "javafx.scene.Node.isDisabled()" because the return value of "javafx.scene.Node.lookup(String)" is null
+        at java.base/java.util.concurrent.FutureTask.report(FutureTask.java:124)
+        at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:207)
+        at com.datacube.fx.FxUiTestSupport.call(FxUiTestSupport.java:32)
+        at com.datacube.fx.SqlFavoriteTabsTest.favoriteIsAnIndependentManagedOfflineScriptWithExplicitConnectionAndDraftLifecycle(SqlFavoriteTabsTest.java:26)
+
+        Caused by:
+        java.lang.NullPointerException: Cannot invoke "javafx.scene.Node.isDisabled()" because the return value of "javafx.scene.Node.lookup(String)" is null
+            at com.datacube.fx.SqlFavoriteTabsTest.lambda$favoriteIsAnIndependentManagedOfflineScriptWithExplicitConnectionAndDraftLifecycle$0(SqlFavoriteTabsTest.java:41)
+
+SqlHistoryTabsTest > explicitChoiceUsesStableIdentityAndStaysOfflineWithoutChangingHistory(DbType) > [1] POSTGRESQL FAILED
+    java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke "javafx.scene.control.Button.fire()" because the return value of "com.datacube.fx.SqlHistoryTabsTest.chooser(com.datacube.fx.SqlEditorPane)" is null
+        at java.base/java.util.concurrent.FutureTask.report(FutureTask.java:124)
+        at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:207)
+        at com.datacube.fx.FxUiTestSupport.call(FxUiTestSupport.java:32)
+        at com.datacube.fx.SqlHistoryTabsTest.explicitChoiceUsesStableIdentityAndStaysOfflineWithoutChangingHistory(SqlHistoryTabsTest.java:70)
+
+        Caused by:
+        java.lang.NullPointerException: Cannot invoke "javafx.scene.control.Button.fire()" because the return value of "com.datacube.fx.SqlHistoryTabsTest.chooser(com.datacube.fx.SqlEditorPane)" is null
+            at com.datacube.fx.SqlHistoryTabsTest.lambda$explicitChoiceUsesStableIdentityAndStaysOfflineWithoutChangingHistory$1(SqlHistoryTabsTest.java:73)
+            at com.datacube.fx.SqlDraftManagerTest.respondToDialog(SqlDraftManagerTest.java:420)
+            at com.datacube.fx.SqlHistoryTabsTest.lambda$explicitChoiceUsesStableIdentityAndStaysOfflineWithoutChangingHistory$0(SqlHistoryTabsTest.java:73)
+
+SqlHistoryTabsTest > explicitChoiceUsesStableIdentityAndStaysOfflineWithoutChangingHistory(DbType) > [2] ORACLE FAILED
+    java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke "javafx.scene.control.Button.fire()" because the return value of "com.datacube.fx.SqlHistoryTabsTest.chooser(com.datacube.fx.SqlEditorPane)" is null
+        at java.base/java.util.concurrent.FutureTask.report(FutureTask.java:124)
+        at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:207)
+        at com.datacube.fx.FxUiTestSupport.call(FxUiTestSupport.java:32)
+        at com.datacube.fx.SqlHistoryTabsTest.explicitChoiceUsesStableIdentityAndStaysOfflineWithoutChangingHistory(SqlHistoryTabsTest.java:70)
+
+        Caused by:
+        java.lang.NullPointerException: Cannot invoke "javafx.scene.control.Button.fire()" because the return value of "com.datacube.fx.SqlHistoryTabsTest.chooser(com.datacube.fx.SqlEditorPane)" is null
+            at com.datacube.fx.SqlHistoryTabsTest.lambda$explicitChoiceUsesStableIdentityAndStaysOfflineWithoutChangingHistory$1(SqlHistoryTabsTest.java:73)
+            at com.datacube.fx.SqlDraftManagerTest.respondToDialog(SqlDraftManagerTest.java:420)
+            at com.datacube.fx.SqlHistoryTabsTest.lambda$explicitChoiceUsesStableIdentityAndStaysOfflineWithoutChangingHistory$0(SqlHistoryTabsTest.java:73)
+
+SqlHistoryTabsTest > closingDuringSelectionRejectsTheLateConfirmedTarget() FAILED
+    java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke "javafx.scene.control.Button.fire()" because the return value of "com.datacube.fx.SqlHistoryTabsTest.chooser(com.datacube.fx.SqlEditorPane)" is null
+        at java.base/java.util.concurrent.FutureTask.report(FutureTask.java:124)
+        at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:207)
+        at com.datacube.fx.FxUiTestSupport.call(FxUiTestSupport.java:32)
+        at com.datacube.fx.SqlHistoryTabsTest.closingDuringSelectionRejectsTheLateConfirmedTarget(SqlHistoryTabsTest.java:149)
+
+        Caused by:
+        java.lang.NullPointerException: Cannot invoke "javafx.scene.control.Button.fire()" because the return value of "com.datacube.fx.SqlHistoryTabsTest.chooser(com.datacube.fx.SqlEditorPane)" is null
+            at com.datacube.fx.SqlHistoryTabsTest.lambda$closingDuringSelectionRejectsTheLateConfirmedTarget$1(SqlHistoryTabsTest.java:151)
+            at com.datacube.fx.SqlDraftManagerTest.respondToDialog(SqlDraftManagerTest.java:420)
+            at com.datacube.fx.SqlHistoryTabsTest.lambda$closingDuringSelectionRejectsTheLateConfirmedTarget$0(SqlHistoryTabsTest.java:151)
+
+SqlHistoryTabsTest > emptyChoicesAndCancelledReplacementKeepTextSchemaAndTarget() FAILED
+    java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke "javafx.scene.control.Button.fire()" because the return value of "com.datacube.fx.SqlHistoryTabsTest.chooser(com.datacube.fx.SqlEditorPane)" is null
+        at java.base/java.util.concurrent.FutureTask.report(FutureTask.java:124)
+        at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:207)
+        at com.datacube.fx.FxUiTestSupport.call(FxUiTestSupport.java:32)
+        at com.datacube.fx.SqlHistoryTabsTest.emptyChoicesAndCancelledReplacementKeepTextSchemaAndTarget(SqlHistoryTabsTest.java:103)
+
+        Caused by:
+        java.lang.NullPointerException: Cannot invoke "javafx.scene.control.Button.fire()" because the return value of "com.datacube.fx.SqlHistoryTabsTest.chooser(com.datacube.fx.SqlEditorPane)" is null
+            at com.datacube.fx.SqlHistoryTabsTest.lambda$emptyChoicesAndCancelledReplacementKeepTextSchemaAndTarget$1(SqlHistoryTabsTest.java:105)
+            at com.datacube.fx.SqlDraftManagerTest.respondToDialog(SqlDraftManagerTest.java:420)
+            at com.datacube.fx.SqlHistoryTabsTest.lambda$emptyChoicesAndCancelledReplacementKeepTextSchemaAndTarget$0(SqlHistoryTabsTest.java:105)
+
+SqlHistoryTabsTest > historyTabOffersAnExplicitConnectionEntry() FAILED
+    org.opentest4j.AssertionFailedError: isolated history tabs need an explicit connection entry to continue working ==> expected: not <null>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:152)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertNotNull.failNull(AssertNotNull.java:49)
+        at app//org.junit.jupiter.api.AssertNotNull.assertNotNull(AssertNotNull.java:35)
+        at app//org.junit.jupiter.api.Assertions.assertNotNull(Assertions.java:312)
+        at app//com.datacube.fx.SqlHistoryTabsTest.lambda$historyTabOffersAnExplicitConnectionEntry$0(SqlHistoryTabsTest.java:46)
+
+SqlNewScriptTabsTest > explicitSelectionAndCancelledReplacementKeepTheNewScriptOffline(DbType) > [1] POSTGRESQL FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.SqlNewScriptTabsTest.lambda$explicitSelectionAndCancelledReplacementKeepTheNewScriptOffline$0(SqlNewScriptTabsTest.java:62)
+
+SqlNewScriptTabsTest > explicitSelectionAndCancelledReplacementKeepTheNewScriptOffline(DbType) > [2] ORACLE FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.SqlNewScriptTabsTest.lambda$explicitSelectionAndCancelledReplacementKeepTheNewScriptOffline$0(SqlNewScriptTabsTest.java:62)
+
+SqlNewScriptTabsTest > anotherNewScriptKeepsExistingEditsAndTheirDraftIdentity() FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.SqlNewScriptTabsTest.lambda$anotherNewScriptKeepsExistingEditsAndTheirDraftIdentity$0(SqlNewScriptTabsTest.java:93)
+
+SqlNewScriptTabsTest > cancelCloseKeepsUnsavedTextAndAllowsFurtherEditing() FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.SqlNewScriptTabsTest.lambda$cancelCloseKeepsUnsavedTextAndAllowsFurtherEditing$0(SqlNewScriptTabsTest.java:121)
+
+SqlNewScriptTabsTest > newScriptIsBlankCleanAndNeverUsesTheAmbientConnection(DbType) > [1] null FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.SqlNewScriptTabsTest.lambda$newScriptIsBlankCleanAndNeverUsesTheAmbientConnection$0(SqlNewScriptTabsTest.java:38)
+
+SqlNewScriptTabsTest > newScriptIsBlankCleanAndNeverUsesTheAmbientConnection(DbType) > [2] POSTGRESQL FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.SqlNewScriptTabsTest.lambda$newScriptIsBlankCleanAndNeverUsesTheAmbientConnection$0(SqlNewScriptTabsTest.java:38)
+
+SqlNewScriptTabsTest > newScriptIsBlankCleanAndNeverUsesTheAmbientConnection(DbType) > [3] ORACLE FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.SqlNewScriptTabsTest.lambda$newScriptIsBlankCleanAndNeverUsesTheAmbientConnection$0(SqlNewScriptTabsTest.java:38)
+
+SqlNewScriptTabsTest > newScriptIsBlankCleanAndNeverUsesTheAmbientConnection(DbType) > [4] REDIS FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.SqlNewScriptTabsTest.lambda$newScriptIsBlankCleanAndNeverUsesTheAmbientConnection$0(SqlNewScriptTabsTest.java:38)
+
+3825 tests completed, 15 failed, 3 skipped
+
+> Task :test FAILED
+
+[Incubating] Problems report is available at: file:///C:/Users/hetia/.codex/worktrees/datacube-editor-small-window/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///C:/Users/hetia/.codex/worktrees/datacube-editor-small-window/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to generate a Build Scan (powered by Develocity).
+
+BUILD FAILED in 3m 16s
+9 actionable tasks: 7 executed, 2 up-to-date

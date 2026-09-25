@@ -132,6 +132,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private final Label completionNotice = new Label();
 
     private final VBox root = new VBox(8);
+    private final VBox workspaceContent = new VBox(8);
     private CodeArea editorArea;
     private SqlFindBar findBar;
     private SqlPanelLayout panelLayout;
@@ -222,7 +223,7 @@ public final class SqlEditorPane implements AutoCloseable {
                                 recoveredUneditedSql == null ? editorArea.getText() : recoveredUneditedSql);
                     }
                 }, detached);
-        try { root.getChildren().add(draftBinding.getNode()); }
+        try { workspaceContent.getChildren().add(draftBinding.getNode()); }
         catch (RuntimeException failure) { draftBinding.close(); throw failure; }
         return draftBinding;
     }
@@ -496,7 +497,7 @@ public final class SqlEditorPane implements AutoCloseable {
                     showAlert("所选连接已不可用，请重新选择。草稿内容未改变。");
             });
         });
-        root.getChildren().add(1, recoveryConnectionButton);
+        workspaceContent.getChildren().add(1, recoveryConnectionButton);
         renderConnectionGuidance();
     }
 
@@ -534,7 +535,7 @@ public final class SqlEditorPane implements AutoCloseable {
                         }
                     });
         });
-        root.getChildren().add(1, fileConnectionButton);
+        workspaceContent.getChildren().add(1, fileConnectionButton);
         renderConnectionGuidance();
     }
 
@@ -1005,15 +1006,26 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private void build() {
-        root.setPadding(new Insets(10));
+        workspaceContent.setPadding(new Insets(10));
+        workspaceContent.setMinWidth(0);
         root.setStyle("-fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif; -fx-font-size: 13px;");
         panelLayout = new SqlPanelLayout(editor(), resultContainer(),
                 () -> !draftEditingBlocked() && !admission.closing() && !resourcesClosing.get()
                         && !tasks.isClosed() && !uiFinalized.get() && !root.isDisabled()
                         && (fileController == null || !fileController.isBusy()),
                 () -> { autoComplete.hide(); goToLineBar.hide(false); findBar.hide(false); });
-        root.getChildren().addAll(toolbar(), panelLayout.node(), statusBar());
+        workspaceContent.getChildren().addAll(toolbar(), panelLayout.node(), statusBar());
         VBox.setVgrow(panelLayout.node(), Priority.ALWAYS);
+        // Keep minimum editor/result sizes; short windows can scroll to every control.
+        ScrollPane viewport = new ScrollPane(workspaceContent);
+        viewport.setId("sql-workspace-scroll");
+        viewport.setFitToWidth(true);
+        viewport.setFitToHeight(true);
+        viewport.setMinSize(0, 0);
+        viewport.setFocusTraversable(false);
+        viewport.setStyle("-fx-background-color: transparent; -fx-padding: 0;");
+        root.getChildren().add(viewport);
+        VBox.setVgrow(viewport, Priority.ALWAYS);
     }
 
     private Node toolbar() {
