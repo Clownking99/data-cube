@@ -165,15 +165,19 @@ public final class DataGridPane implements AutoCloseable {
     }
 
     private Node toolbar() {
-        HBox box = new HBox(8);
+        FlowPane box = new FlowPane(8, 6);
         box.setAlignment(Pos.CENTER_LEFT);
 
         Label title = new Label(table.qualified());
         title.setStyle("-fx-font-weight: bold;");
+        title.setMaxWidth(280);
+        title.setTooltip(new Tooltip(table.qualified()));
 
         Label connLabel = new Label();
         connLabel.setStyle("-fx-text-fill: -brand-fg-muted;");
         if (connName != null && !connName.isEmpty()) connLabel.setText("🔗 " + connName);
+        connLabel.setMaxWidth(220);
+        connLabel.setTooltip(new Tooltip(connLabel.getText()));
 
         filterField = new TextField();
         filterField.setPromptText("WHERE 过滤（不含 WHERE，如 id > 100）");
@@ -198,10 +202,7 @@ public final class DataGridPane implements AutoCloseable {
         deleteBtn.setStyle("-fx-text-fill: -status-error;");
         deleteBtn.setOnAction(e -> deleteSelectedRows());
 
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        box.getChildren().addAll(title, connLabel, filterField, reloadBtn, prevBtn, nextBtn, spacer, addBtn, deleteBtn);
+        box.getChildren().addAll(title, connLabel, filterField, reloadBtn, prevBtn, nextBtn, addBtn, deleteBtn);
         return box;
     }
 

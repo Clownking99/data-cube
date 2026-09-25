@@ -10,6 +10,30 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SqlFavoritesDialogTest {
+    @Test void emptyLibraryInputsKeepTheirGuidanceVisibleInBothThemesAndFocusStates() throws Exception {
+        try (var f = new Fixture(new Repository(), "")) {
+            f.idle();
+            FxUiTestSupport.call(() -> {
+                var root = f.view.dialog().getDialogPane();
+                for (String theme : List.of("dark", "light")) {
+                    root.getScene().getStylesheets().setAll(ThemeManager.class.getResource("theme-base.css").toExternalForm(),
+                            ThemeManager.class.getResource("theme-" + theme + ".css").toExternalForm());
+                    for (TextInputControl input : List.of(f.text("filter"), f.text("name"), f.text("group"), f.sql())) {
+                        for (boolean focused : List.of(false, true)) {
+                            input.pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("focused"), focused);
+                            root.applyCss(); root.layout();
+                            var prompt = input.lookupAll(".text").stream().filter(javafx.scene.text.Text.class::isInstance)
+                                    .map(javafx.scene.text.Text.class::cast).filter(t -> input.getPromptText().equals(t.getText())).findFirst().orElseThrow();
+                            assertTrue(prompt.isVisible(), input.getId());
+                            assertEquals(javafx.scene.paint.Color.web(theme.equals("dark") ? "#A8A8B8" : "#555555"),
+                                    prompt.getFill(), input.getId() + " / " + theme + " / focused=" + focused);
+                        }
+                    }
+                }
+                return null;
+            });
+        }
+    }
     @Test void localRepositoryWorksBeforeAnyOtherFeatureCreatesTheProfileDirectory(@org.junit.jupiter.api.io.TempDir java.nio.file.Path temp) throws Exception {
         var directory=temp.resolve("fresh-profile/.datacube/sql-favorites");
         java.nio.file.Files.createDirectory(temp.resolve("fresh-profile"));
