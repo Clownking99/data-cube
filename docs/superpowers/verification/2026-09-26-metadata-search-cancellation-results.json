@@ -1,0 +1,240 @@
+{
+  "scope": "Local metadata search cancellation completion and explicit retry only",
+  "baseline": "83a87f5d9f3ab0448629586f5a9500874e1f2192",
+  "phase": "branch-verified-awaiting-commit",
+  "implementationCommit": "",
+  "mainMergeCommit": "",
+  "recordedAt": "2026-09-26T08:09:58.3612955+08:00",
+  "sourceEvidence": "evidence/metadata-search-cancellation/branch-source-manifest.json",
+  "codeStateNotes": [
+    "cancellation-red precedes the product change: 8 cancellation completion failures and 2 closed/invalidated passes",
+    "cancellation-green accidentally used the wrong package for SqlExecutionControlTest: only 2 suites ran",
+    "targeted-final corrected the package, ran 3 suites and uses the final code source manifest",
+    "Before the implementation commit, run HEAD denotes baseline plus uncommitted changes"
+  ],
+  "nativeAttempt": "evidence/metadata-search-cancellation/desktop/desktop-attempt.json",
+  "nativeResult": "unverified; activation and capture failed; no native screenshots or inputs",
+  "externalAcceptance": "not performed; no real database, credentials, installation, signing, CI or release",
+  "records": [
+    {
+      "name": "cancellation-red",
+      "head": "83a87f5d9f3ab0448629586f5a9500874e1f2192",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.cancelledReadBecomesRetryableOnlyAfterBothTasksFinish",
+        "--tests",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.closedOrInvalidatedSearchDoesNotPublishCancellationCompletion",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-search-cancellation-05e0bc18eae54c4d8db91efe078348f0\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-26T07:59:01.0958129+08:00",
+      "exitCode": 1,
+      "log": "cancellation-red.log",
+      "logSha256": "33EFD0B26E6AB7C6B4066F9A1B3DAE871A783620729B11A05F5E3B204D249D6B",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 10,
+      "passed": 2,
+      "failures": 8,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.[1] cancel, read, false",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.[2] cancel, driver, false",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.[3] timeout, read, true",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.[4] timeout, driver, false",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.[5] change, read, false",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.[6] change, driver, true",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.[7] clear, read, false",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest.[8] clear, driver, false"
+      ],
+      "xmlDirectory": "cancellation-red-xml",
+      "xmlManifestSha256": "14104436828CEA796E8C52C7DF1984C48BE04849F87FA48091E2B95887D04275"
+    },
+    {
+      "name": "cancellation-green",
+      "head": "83a87f5d9f3ab0448629586f5a9500874e1f2192",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest",
+        "--tests",
+        "com.datacube.service.SchemaMetadataSearchTest",
+        "--tests",
+        "com.datacube.service.SqlExecutionControlTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-search-cancellation-05e0bc18eae54c4d8db91efe078348f0\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-26T08:00:04.5391944+08:00",
+      "exitCode": 0,
+      "log": "cancellation-green.log",
+      "logSha256": "8AB9794742D2A428F5B88F8C77B41B70D8B057DBDDDB016DAA6A37F4AFDD5359",
+      "actualTestTaskRan": true,
+      "suites": 2,
+      "tests": 22,
+      "passed": 22,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "cancellation-green-xml",
+      "xmlManifestSha256": "7F7D1B0695A99167034E673CF1F7E8F0FB10FAE573E26CA36B4987C42A8A45B6"
+    },
+    {
+      "name": "targeted-final",
+      "head": "83a87f5d9f3ab0448629586f5a9500874e1f2192",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest",
+        "--tests",
+        "com.datacube.service.SchemaMetadataSearchTest",
+        "--tests",
+        "com.datacube.spi.SqlExecutionControlTest",
+        "g8DesktopClasspath",
+        "--init-script",
+        "C:/Users/hetia/AppData/Local/Temp/datacube-search-cancellation-05e0bc18eae54c4d8db91efe078348f0/desktop.gradle",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-search-cancellation-05e0bc18eae54c4d8db91efe078348f0\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-26T08:01:47.2608833+08:00",
+      "exitCode": 0,
+      "log": "targeted-final.log",
+      "logSha256": "C102C8584CB8FD5F357FB0696B3D6FB552D744CAB094D86F43400177B29E2FCC",
+      "actualTestTaskRan": true,
+      "suites": 3,
+      "tests": 33,
+      "passed": 33,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "targeted-final-xml",
+      "xmlManifestSha256": "63957D4D97C6A20835FB53AADA82D2425FE976DB1F9240A77F481C959E973CAC"
+    },
+    {
+      "name": "branch-full",
+      "head": "83a87f5d9f3ab0448629586f5a9500874e1f2192",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-search-cancellation-05e0bc18eae54c4d8db91efe078348f0\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-26T08:07:35.0753337+08:00",
+      "exitCode": 0,
+      "log": "branch-full.log",
+      "logSha256": "FD9E07020178EEBC3B812C1E3144823F8E1D5B9F4C21EB99E4E61B38257F7B31",
+      "actualTestTaskRan": true,
+      "suites": 307,
+      "tests": 3835,
+      "passed": 3832,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "branch-full-xml",
+      "xmlManifestSha256": "3E6EF39730EF71E3AAF3D66BBD69077968D7D58012C5DB3CE8EEE294C6212CD7"
+    },
+    {
+      "name": "branch-buildSrc",
+      "head": "83a87f5d9f3ab0448629586f5a9500874e1f2192",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-search-cancellation-05e0bc18eae54c4d8db91efe078348f0\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-26T08:08:06.2617427+08:00",
+      "exitCode": 0,
+      "log": "branch-buildSrc.log",
+      "logSha256": "69A28754A437E4B48A48F3AC09B6B4091A32D58084DB461E73CAE58FD21B9171",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "branch-buildSrc-xml",
+      "xmlManifestSha256": "D4B8EFA3545E9024A157B6F81CE000F3560B20576EB379ED351C40145E708D49"
+    },
+    {
+      "name": "branch-image",
+      "head": "83a87f5d9f3ab0448629586f5a9500874e1f2192",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-26T08:09:01.1202167+08:00",
+      "exitCode": 0,
+      "log": "branch-image.log",
+      "logSha256": "0F084265D8A8DC2F8360F7CBDB8155855A4D685C2E45EF25B5958A85FA9AE7DC",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "branch-runtime",
+      "head": "83a87f5d9f3ab0448629586f5a9500874e1f2192",
+      "completedAt": "2026-09-26T08:09:58.2771557+08:00",
+      "testClassLeaks": 0,
+      "testConfigLeaks": 0,
+      "driverExit": 0,
+      "driverOutput": "oracle=oracle.jdbc.OracleDriver\r\npostgres=org.postgresql.Driver\r\nconnectCalls=0; no credentials or user profile loaded\r\n",
+      "driverLogSha256": "1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82",
+      "artifacts": [
+        {
+          "path": "DataCube.exe",
+          "bytes": 595968,
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+        },
+        {
+          "path": "app/DataCube.cfg",
+          "bytes": 369,
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+        },
+        {
+          "path": "runtime/lib/modules",
+          "bytes": 102365095,
+          "sha256": "5F55BC99EB3E90A49F339726313552FB99056E6DCE9507F01630D78C9C7F4BB2"
+        }
+      ]
+    }
+  ]
+}
