@@ -13,6 +13,148 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SchemaMetadataSearchDialogTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "cancel,read,false", "cancel,driver,false", "timeout,read,true", "timeout,driver,false",
+            "change,read,false", "change,driver,true", "clear,read,false", "clear,driver,false"})
+    void cancelledReadBecomesRetryableOnlyAfterBothTasksFinish(String cause, String first, boolean cancelFails) throws Exception {
+        try (var f = new CancelFixture(cancelFails)) {
+            f.abandon(cause);
+            f.complete(first);
+            FxUiTestSupport.call(() -> {
+                assertTrue(button(f.view,"submit").isDisabled(), "one unfinished task must still block new reads");
+                assertTrue(status(f.view).contains("等待"));
+                button(f.view,"submit").fire(); assertEquals(1,f.calls.get());
+                assertTrue(list(f.view).getItems().isEmpty()); return null;
+            });
+            f.complete(first.equals("read") ? "driver" : "read");
+            FxUiTestSupport.call(() -> {
+                assertTrue(status(f.view).contains("读取已结束"), status(f.view));
+                assertFalse(status(f.view).contains("等待"), status(f.view));
+                assertTrue(status(f.view).contains(switch(cause) {
+                    case "cancel" -> "已取消"; case "timeout" -> "超时"; default -> "旧结果已失效";
+                }), status(f.view));
+                assertEquals(cause.equals("clear"), button(f.view,"submit").isDisabled());
+                assertTrue(button(f.view,"cancel-read").isDisabled());
+                assertTrue(list(f.view).getItems().isEmpty()); assertTrue(button(f.view,"data").isDisabled());
+                assertEquals("", ((TextArea)f.view.dialog().getDialogPane().lookup("#metadata-search-preview")).getText());
+                assertNull(f.view.dialog().getResult());
+                text(f.view).setText("retry term");
+                @SuppressWarnings("unchecked") var modes=(ChoiceBox<Mode>)f.view.dialog().getDialogPane().lookup("#metadata-search-mode");
+                modes.setValue(Mode.COLUMN_COMMENT);
+                assertEquals(1,f.calls.get(), "condition changes never automatically retry");
+                button(f.view,"submit").fire(); return null;
+            });
+            f.awaitTask();
+            FxUiTestSupport.call(() -> {
+                assertEquals(2,f.calls.get());
+                Request request=f.requests.getLast();
+                assertEquals(target(),request.connection()); assertEquals("s",request.schema());
+                assertEquals("retry term",request.term()); assertEquals(Mode.COLUMN_COMMENT,request.mode());
+                assertEquals("retry term",list(f.view).getItems().getFirst().excerpt());
+                assertTrue(status(f.view).startsWith("已读取 1 条匹配"), "late cancellation must not overwrite retry results");
+                list(f.view).getSelectionModel().selectFirst();
+                assertFalse(button(f.view,"select").isDisabled()); return null;
+            });
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void closedOrInvalidatedSearchDoesNotPublishCancellationCompletion(boolean close) throws Exception {
+        try (var f=new CancelFixture(false)) {
+            f.abandon("cancel");
+            String before=FxUiTestSupport.call(() -> {
+                if(close) f.view.close(); else f.allowed.set(false);
+                return status(f.view);
+            });
+            f.complete("driver"); f.complete("read");
+            FxUiTestSupport.call(() -> {
+                assertEquals(before,status(f.view)); assertTrue(list(f.view).getItems().isEmpty());
+                assertTrue(button(f.view,"submit").isDisabled()); assertTrue(button(f.view,"select").isDisabled());
+                button(f.view,"submit").fire(); assertEquals(1,f.calls.get()); assertNull(f.view.dialog().getResult());
+                if(close) assertFalse(f.view.dialog().isShowing()); return null;
+            });
+        }
+    }
+
+    private static String status(SchemaMetadataSearchDialog d) {
+        return ((Label)d.dialog().getDialogPane().lookup("#metadata-search-status")).getText();
+    }
+
+    /** Task completion means its FX callback is already enqueued; no sleeps or timing guesses. */
+    private final class CancelFixture implements AutoCloseable {
+        final Semaphore completed=new Semaphore(0);
+        final Queue<Throwable> taskFailures=new ConcurrentLinkedQueue<>();
+        final CountDownLatch started=new CountDownLatch(1), cancelStarted=new CountDownLatch(1),
+                readRelease=new CountDownLatch(1), cancelRelease=new CountDownLatch(1);
+        final AtomicInteger calls=new AtomicInteger();
+        final AtomicBoolean allowed=new AtomicBoolean(true);
+        final List<Request> requests=new CopyOnWriteArrayList<>();
+        final FxTaskRunner runner;
+        final SchemaMetadataSearchDialog view;
+        CancelFixture(boolean cancelFails) throws Exception {
+            var executor=new ThreadPoolExecutor(0,Integer.MAX_VALUE,1,TimeUnit.SECONDS,
+                    new SynchronousQueue<>(),Thread.ofVirtual().factory()) {
+                @Override protected void afterExecute(Runnable task,Throwable error) {
+                    try { ((Future<?>)task).get(); }
+                    catch (Exception failure) { taskFailures.add(failure); }
+                    finally { completed.release(); }
+                }
+            };
+            var constructor=FxTaskRunner.class.getDeclaredConstructor(ExecutorService.class,java.time.Duration.class);
+            constructor.setAccessible(true); runner=constructor.newInstance(executor,java.time.Duration.ofSeconds(1));
+            view=FxUiTestSupport.call(() -> {
+                var d=new SchemaMetadataSearchDialog(target(),"s",null,runner,(request,control) -> {
+                    requests.add(request);
+                    if(calls.incrementAndGet()>1) return new Result(List.of(new Hit(
+                            new TableInfo("s","retry_table",TableInfo.Kind.TABLE,null),request.mode(),"note",request.term())),false);
+                    var statement=(java.sql.Statement)java.lang.reflect.Proxy.newProxyInstance(
+                            getClass().getClassLoader(),new Class<?>[]{java.sql.Statement.class},(proxy,method,args) -> {
+                                if(method.getName().equals("cancel")) {
+                                    cancelStarted.countDown(); assertTrue(cancelRelease.await(5,TimeUnit.SECONDS));
+                                    if(cancelFails) throw new java.sql.SQLException("synthetic cancellation failure");
+                                }
+                                return null;
+                            });
+                    var activation=control.activate(statement,0); started.countDown();
+                    try { assertTrue(readRelease.await(5,TimeUnit.SECONDS)); return result(); }
+                    finally { control.release(activation); }
+                },allowed::get);
+                d.dialog().show(); text(d).setText("customer"); button(d,"submit").fire(); return d;
+            });
+            assertTrue(started.await(5,TimeUnit.SECONDS));
+        }
+        void abandon(String cause) throws Exception {
+            FxUiTestSupport.call(() -> {
+                switch(cause) {
+                    case "cancel" -> button(view,"cancel-read").fire();
+                    case "change" -> text(view).setText("changed term");
+                    case "clear" -> text(view).clear();
+                    default -> {
+                        var field=SchemaMetadataSearchDialog.class.getDeclaredField("deadline"); field.setAccessible(true);
+                        ((javafx.animation.PauseTransition)field.get(view)).getOnFinished().handle(new javafx.event.ActionEvent());
+                    }
+                }
+                return null;
+            });
+            assertTrue(cancelStarted.await(5,TimeUnit.SECONDS));
+        }
+        void complete(String task) throws Exception {
+            if(task.equals("read")) readRelease.countDown(); else cancelRelease.countDown();
+            awaitTask();
+        }
+        void awaitTask() throws Exception {
+            assertTrue(completed.tryAcquire(5,TimeUnit.SECONDS));
+            assertTrue(taskFailures.isEmpty(), () -> "Background task failures: " + taskFailures);
+            FxUiTestSupport.call(() -> null);
+        }
+        @Override public void close() throws Exception {
+            readRelease.countDown(); cancelRelease.countDown();
+            FxUiTestSupport.call(() -> { view.close(); return null; }); runner.close();
+        }
+    }
+
     @Test void emptyQueryGuidanceRemainsVisibleInBothThemesAndFocusStatesWithoutReading() throws Exception {
         try (var runner = new FxTaskRunner()) {
             var calls = new AtomicInteger();

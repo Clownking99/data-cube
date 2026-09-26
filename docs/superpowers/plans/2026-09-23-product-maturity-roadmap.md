@@ -206,6 +206,8 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 
 同日维护者要求继续推进产品，跟进 G8 的 SQL 小窗口草稿控制裁切；实现与新回归见 [小窗口账本](../verification/2026-09-25-sql-small-window.md)。本轮原生取屏失败，布局/键盘 FX 证据不替代完整原生验收；本地工程已交付：实现 3440a50，main 产品代码 584699c，新 profile 全量 3822 passed / 3 live skipped、强制 buildSrc 8/8、镜像/零连接审计通过。
 
+2026-09-26 继续推进字段/注释检索的取消恢复：修复双任务已结束但提示仍等待的状态缺口，覆盖超时/条件变化/关闭和明确重试，见 [取消恢复账本](../verification/2026-09-26-metadata-search-cancellation.md)。当前分支验证中，main 复验待执行；原生工具再次失败仍单列待验。
+
 ### 本地工程门槛
 
 以下勾选仅记录 G1 的本地证据，不表示 M2–M7 或最终 M8 完成。实际命令、首次失败、跳过与 main SHA 见 [G1 账本](../verification/2026-09-23-datacube-g1-write-safety.md)。buildSrc 使用独立 `--rerun-tasks` 后执行 `clean test`，确保不是 UP-TO-DATE 复用。

@@ -1,0 +1,111 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes
+> Task :buildSrc:jar
+> Task :compileJava
+> Task :generateBrandIcons
+> Task :generateVersionProperties
+> Task :processResources
+> Task :classes
+
+注: 某些输入文件使用了未经检查或不安全的操作。
+注: 有关详细信息, 请使用 -Xlint:unchecked 重新编译。
+> Task :compileTestJava
+
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+SchemaMetadataSearchDialogTest > cancelledReadBecomesRetryableOnlyAfterBothTasksFinish(String, String, boolean) > [1] cancel, read, false FAILED
+    org.opentest4j.AssertionFailedError: 已请求取消；等待驱动释放读取资源。 ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//com.datacube.fx.SchemaMetadataSearchDialogTest.lambda$cancelledReadBecomesRetryableOnlyAfterBothTasksFinish$1(SchemaMetadataSearchDialogTest.java:32)
+
+SchemaMetadataSearchDialogTest > cancelledReadBecomesRetryableOnlyAfterBothTasksFinish(String, String, boolean) > [2] cancel, driver, false FAILED
+    org.opentest4j.AssertionFailedError: 已请求取消；等待驱动释放读取资源。 ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//com.datacube.fx.SchemaMetadataSearchDialogTest.lambda$cancelledReadBecomesRetryableOnlyAfterBothTasksFinish$1(SchemaMetadataSearchDialogTest.java:32)
+
+SchemaMetadataSearchDialogTest > cancelledReadBecomesRetryableOnlyAfterBothTasksFinish(String, String, boolean) > [3] timeout, read, true FAILED
+    org.opentest4j.AssertionFailedError: 读取超时；等待驱动释放资源后可重试。 ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//com.datacube.fx.SchemaMetadataSearchDialogTest.lambda$cancelledReadBecomesRetryableOnlyAfterBothTasksFinish$1(SchemaMetadataSearchDialogTest.java:32)
+
+SchemaMetadataSearchDialogTest > cancelledReadBecomesRetryableOnlyAfterBothTasksFinish(String, String, boolean) > [4] timeout, driver, false FAILED
+    org.opentest4j.AssertionFailedError: 读取超时；等待驱动释放资源后可重试。 ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//com.datacube.fx.SchemaMetadataSearchDialogTest.lambda$cancelledReadBecomesRetryableOnlyAfterBothTasksFinish$1(SchemaMetadataSearchDialogTest.java:32)
+
+SchemaMetadataSearchDialogTest > cancelledReadBecomesRetryableOnlyAfterBothTasksFinish(String, String, boolean) > [5] change, read, false FAILED
+    org.opentest4j.AssertionFailedError: 检索条件已变化，旧结果已失效；等待旧读取结束。 ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//com.datacube.fx.SchemaMetadataSearchDialogTest.lambda$cancelledReadBecomesRetryableOnlyAfterBothTasksFinish$1(SchemaMetadataSearchDialogTest.java:32)
+
+SchemaMetadataSearchDialogTest > cancelledReadBecomesRetryableOnlyAfterBothTasksFinish(String, String, boolean) > [6] change, driver, true FAILED
+    org.opentest4j.AssertionFailedError: 检索条件已变化，旧结果已失效；等待旧读取结束。 ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//com.datacube.fx.SchemaMetadataSearchDialogTest.lambda$cancelledReadBecomesRetryableOnlyAfterBothTasksFinish$1(SchemaMetadataSearchDialogTest.java:32)
+
+SchemaMetadataSearchDialogTest > cancelledReadBecomesRetryableOnlyAfterBothTasksFinish(String, String, boolean) > [7] clear, read, false FAILED
+    org.opentest4j.AssertionFailedError: 检索条件已变化，旧结果已失效；等待旧读取结束。 ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//com.datacube.fx.SchemaMetadataSearchDialogTest.lambda$cancelledReadBecomesRetryableOnlyAfterBothTasksFinish$1(SchemaMetadataSearchDialogTest.java:32)
+
+SchemaMetadataSearchDialogTest > cancelledReadBecomesRetryableOnlyAfterBothTasksFinish(String, String, boolean) > [8] clear, driver, false FAILED
+    org.opentest4j.AssertionFailedError: 检索条件已变化，旧结果已失效；等待旧读取结束。 ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//com.datacube.fx.SchemaMetadataSearchDialogTest.lambda$cancelledReadBecomesRetryableOnlyAfterBothTasksFinish$1(SchemaMetadataSearchDialogTest.java:32)
+
+
+10 tests completed, 8 failed
+> Task :test FAILED
+
+[Incubating] Problems report is available at: file:///C:/Users/hetia/.codex/worktrees/metadata-search-cancellation/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///C:/Users/hetia/.codex/worktrees/metadata-search-cancellation/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to generate a Build Scan (powered by Develocity).
+
+BUILD FAILED in 37s
+8 actionable tasks: 8 executed

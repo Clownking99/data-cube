@@ -56,7 +56,8 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
         mode.setId("metadata-search-mode"); mode.getItems().setAll(Mode.values()); mode.setValue(Mode.COLUMN_NAME);
         mode.setAccessibleText("匹配来源：字段名、对象注释、字段注释");
         search.setId("metadata-search-submit"); search.setOnAction(event -> submit());
-        cancelRead.setId("metadata-search-cancel-read"); cancelRead.setOnAction(event -> abandon("已请求取消；等待驱动释放读取资源。"));
+        cancelRead.setId("metadata-search-cancel-read"); cancelRead.setOnAction(event -> abandon(
+                "已请求取消；等待驱动释放读取资源。", "读取已结束，未采用已取消请求的结果；可重新查找。"));
         FlowPane controls = new FlowPane(8,6,new Label("匹配来源："),mode,search,cancelRead);
         list.setId("metadata-search-results"); list.setPrefHeight(200);
         list.setPlaceholder(new Label("未读取匹配；不会扫描其他 Schema 或连接"));
@@ -112,7 +113,8 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
     }
     private void changed() {
         published=null; list.getItems().clear(); preview.clear();
-        if (active!=null) abandon("检索条件已变化，旧结果已失效；等待旧读取结束。");
+        if (active!=null) abandon("检索条件已变化，旧结果已失效；等待旧读取结束。",
+                "旧读取已结束，旧结果已失效；请按当前条件重新查找。");
         else status.setText("检索条件已变化，请点击查找。");
         buttons();
     }
@@ -122,7 +124,8 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
         Pending pending=new Pending(request); active=pending; published=null; list.getItems().clear(); preview.clear();
         if (closed.get()) { pending.control.requestCancellation(); active=null; return; }
         status.setText("正在读取当前 Schema 的" + request.mode() + "匹配…"); buttons();
-        deadline.setOnFinished(event -> { if (active==pending) abandon("读取超时；等待驱动释放资源后可重试。"); }); deadline.playFromStart();
+        deadline.setOnFinished(event -> { if (active==pending) abandon(
+                "读取超时；等待驱动释放资源后可重试。", "读取已结束，未采用超时请求的结果；可重新查找。"); }); deadline.playFromStart();
         try { runner.submit(() -> {
             Result result=null; Exception failure=null;
             try { if (!pending.control.cancellationRequested()) result=loader.load(request,pending.control); }
@@ -133,21 +136,30 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
     }
     private void finish(Pending pending,Result result,Exception failure) {
         if (active!=pending) return;
-        active=null; deadline.stop();
-        if (!usable() || pending.abandoned) { buttons(); return; }
+        pending.readFinished=true; deadline.stop();
+        if (pending.abandoned) { settleAbandoned(pending); buttons(); return; }
+        active=null;
+        if (!usable()) { buttons(); return; }
         if (failure!=null || result==null) status.setText("读取失败或权限不足；未建立结果，请核对目标后重试。");
         else { published=pending.request; list.getItems().setAll(result.hits()); status.setText(result.notice()); }
         buttons();
     }
-    private void abandon(String message) {
+    private void abandon(String message,String settledNotice) {
         Pending pending=active; if (pending==null || pending.abandoned) return;
-        pending.abandoned=true; deadline.stop(); pending.control.requestCancellation(); status.setText(message); cancelDriver(pending); buttons();
+        pending.abandoned=true; pending.settledNotice=settledNotice;
+        deadline.stop(); pending.control.requestCancellation(); status.setText(message); cancelDriver(pending); buttons();
+    }
+    private void settleAbandoned(Pending pending) {
+        // FX-thread only: retain ownership until both the read and JDBC cancel have returned.
+        if (active!=pending || !pending.abandoned || !pending.readFinished || cancelling.get()) return;
+        active=null;
+        if (usable()) status.setText(pending.settledNotice);
     }
     private void cancelDriver(Pending pending) {
         if (!cancelling.compareAndSet(false,true)) return;
         try { runner.submit(() -> {
             try { pending.control.cancel(); } catch (Exception ignored) { }
-            finally { cancelling.set(false); Platform.runLater(this::buttons); }
+            finally { cancelling.set(false); Platform.runLater(() -> { settleAbandoned(pending); buttons(); }); }
         }); } catch (java.util.concurrent.RejectedExecutionException ignored) { cancelling.set(false); }
     }
     @Override public void close() {
@@ -157,7 +169,8 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
         if (Platform.isFxApplicationThread()) cleanup.run(); else Platform.runLater(cleanup);
     }
     private static final class Pending {
-        final Request request; final SqlExecutionControl control=new SqlExecutionControl(); boolean abandoned;
+        final Request request; final SqlExecutionControl control=new SqlExecutionControl();
+        boolean abandoned, readFinished; String settledNotice;
         Pending(Request request) { this.request=request; }
     }
 }
