@@ -2,6 +2,8 @@
 
 维护者要求“继续推进产品”。本轮从 main 83a87f5d9f3ab0448629586f5a9500874e1f2192 建独立 codex/metadata-search-cancellation，修复取消或超时后读取已结束、界面仍显示等待释放资源的状态缺口。沿用本地提交合并授权及原有安全边界，不扩展格式化、数据库、发布或安装范围。
 
+本地工程交付完成：实现 7856da2，main 产品代码 65ed18b；main 全量、强制 buildSrc、jpackageImage 与零连接运行时审计重新执行通过。原生与外部发布验收仍待验。
+
 ## 用户可见行为与设计
 
 明确取消、超时或改变条件时继续立即失效旧结果。在读取与 JDBC 取消任一任务尚未返回时，查找入口保持关闭；两者都返回后，提示明确说明读取结束及旧结果未采用。只有用户再次明确查找才提交新请求。清空文字后即使任务结束也不开放空查询。
@@ -30,7 +32,9 @@ JDK 25.0.1+8 / JavaFX 25 / Gradle 9.2.0，全部 offline；每轮独占合成 us
 | targeted-final | 修正包名后 3 suites / 33 passed / 0 failed/error/skipped；同时生成合成探针编译 classpath |
 | branch-full | clean test：307 suites / 3835 tests / 3832 passed / 0 failed/error / 3 live skipped，3m12s |
 | branch-buildSrc / image / runtime | --rerun-tasks：8/8，0 skipped；jpackageImage 成功，40s；零连接运行时审计见实际 JSON |
-| main-full / buildSrc / image / runtime | 待合并后新 profile 复验 |
+| main-full | 65ed18b 的新 profile clean test：307 suites / 3835 tests / 3832 passed / 0 failed/error / 3 live skipped，3m14s |
+| main-buildSrc | 65ed18b 的 --rerun-tasks：8/8 passed / 0 skipped，7s |
+| main-image / runtime | 65ed18b 的 jpackageImage 成功，31s；cfg/模块无测试参数或已知探针，Oracle/PG 驱动发现通过且 connectCalls=0 |
 
 完整参数、时间、exit code、实际 Test 任务执行、XML 计数/清单 SHA、日志 SHA 见 [结果 JSON](2026-09-26-metadata-search-cancellation-results.json)。[证据目录](evidence/metadata-search-cancellation/) 保存原始日志、目标 suite XML、合成探针与 helper；全部 XML 保存在独占临时目录。源文件清单绑定最终测试工作区，早期日志中的 baseline HEAD 不表示未修改的 main 已通过。
 
@@ -44,4 +48,8 @@ JDK 25.0.1+8 / JavaFX 25 / Gradle 9.2.0，全部 offline；每轮独占合成 us
 
 ## 审查与交付检查点
 
-分支提交前的历史检查点：过程见 [实施检查点](../plans/2026-09-26-metadata-search-cancellation.md)。本轮定向、全量、强制 buildSrc 与镜像均通过；原有 3 项 Redis/Oracle/PG live 测试缺少显式真库环境而跳过，不计为通过。两个改动源文件 SHA 固定并复核未变；审查双任务所有权、取消失败、重入、关闭/失效、旧结果和明确重试，未发现额外问题。原始证据在首次暂存前设 -text，避免换行转换。当前待提交合并及 main 新 profile 复验。
+分支提交前的历史检查点：过程见 [实施检查点](../plans/2026-09-26-metadata-search-cancellation.md)。本轮定向、全量、强制 buildSrc 与镜像均通过；原有 3 项 Redis/Oracle/PG live 测试缺少显式真库环境而跳过，不计为通过。两个改动源文件 SHA 固定并复核未变；审查双任务所有权、取消失败、重入、关闭/失效、旧结果和明确重试，未发现额外问题。原始证据在首次暂存前设 -text，避免换行转换；日志以精确路径暂存并比对原始 blob。
+
+交付复核：实现 7856da22ba1de7dc89626f946d41ddcbe19c1272，本地 main 产品合并 65ed18b234106c62615d399fc2181d763bf02bdd。合并前 main 仍为 83a87f5 且授权范围干净；合并后全部源码/测试/构建 Git 内容相同，两个改动文件原始 SHA 相同。main 新 profile 全量、强制 buildSrc、镜像/运行时审计均通过；分支/main 的 DataCube.exe、cfg、runtime modules 三项 SHA 完全相同。最终归档 11 个执行记录和 30 份原始证据文件，摘要校验通过。最后文档提交不改产品代码，不冒充另一套重新执行的测试。
+
+本轮没有依赖/文件格式/版本号变更。需要回退时可审查后 revert 实现 7856da2，不删除用户数据；这只是本地回退说明，未执行回退、推送、tag、PR、安装更新或发布。
