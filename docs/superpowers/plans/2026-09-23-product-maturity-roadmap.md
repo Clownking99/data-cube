@@ -208,6 +208,8 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 
 2026-09-26 继续推进字段/注释检索的取消恢复：修复双任务已结束但提示仍等待的状态缺口，覆盖超时/条件变化/关闭和明确重试，见 [取消恢复账本](../verification/2026-09-26-metadata-search-cancellation.md)。本地工程已交付：实现 7856da2，main 产品代码 65ed18b，新 profile 全量 3832 passed / 3 live skipped、强制 buildSrc 8/8、镜像/零连接审计通过；原生工具再次失败仍单列待验。
 
+2026-09-27 原生工具恢复后，已用三个独立合成 profile 验证字段名/字段注释输入、超时/明确取消、双任务相反完成顺序、明确重试/结果预览、条件变化失效、Ctrl+F/Enter、明暗和正常/在途关闭，见 [原生补证账本](../verification/2026-09-27-discovery-native-acceptance.md)。本轮产品源码未改；新全量 3832 passed / 3 live skipped、buildSrc 8/8、镜像/零连接审计通过。仅对话框局部流程，不代表完整 AppShell 下游动作、真实驱动取消、OS 缩放或发布验收。
+
 ### 本地工程门槛
 
 以下勾选仅记录 G1 的本地证据，不表示 M2–M7 或最终 M8 完成。实际命令、首次失败、跳过与 main SHA 见 [G1 账本](../verification/2026-09-23-datacube-g1-write-safety.md)。buildSrc 使用独立 `--rerun-tasks` 后执行 `clean test`，确保不是 UP-TO-DATE 复用。
@@ -254,7 +256,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 | M5 | 本地工程完成 | 实现 76dd221、修正 c62e86c；main 最终合并 0e7ca79；[G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)，main 全量 3724 passed/3 live skips、fresh buildSrc 8、镜像通过 | G5 交付；原生桌面/真库及明确降级单列 |
 | M6 | 本地工程完成 | 实现 d4b02de；main 合并 c182128；[G6 账本](../verification/2026-09-24-datacube-g6-discovery-library.md)，main 全量 3753 passed/3 live skips、fresh buildSrc 8、镜像及 14 张合成桌面截图 | G6 交付；原生模态输入/完整壳流程、真库等单列待验 |
 | M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | G8 已补合成迁移原生预检查/确认/取消/在途关闭；真库事务/权限/一致性与发布仍待验 |
-| M8 | 待外部验收 | [G8 账本](../verification/2026-09-25-datacube-g8-local-acceptance.md) 保留原生范围；[小窗口](../verification/2026-09-25-sql-small-window.md) 和 [检索取消恢复](../verification/2026-09-26-metadata-search-cancellation.md) 已本地交付；最新代码 65ed18b 复验 3832 passed/3 live skipped、buildSrc 8、镜像/零连接审计通过 | 原生工具仍失败；字段检索/取消/极限布局/完整键盘、OS 多屏、真库、正式启动器/安装升级/签名/CI/真实用户任务仍待验，不称已发布 |
+| M8 | 待外部验收 | [G8](../verification/2026-09-25-datacube-g8-local-acceptance.md)、[小窗口](../verification/2026-09-25-sql-small-window.md)、[检索取消恢复](../verification/2026-09-26-metadata-search-cancellation.md) 保留各轮证据；[9 月 27 日原生补证](../verification/2026-09-27-discovery-native-acceptance.md) 新增字段/注释对话框输入、取消/超时、重试/条件失效/关闭证据，源码不变；新全量 3832 passed/3 live skipped、buildSrc 8、镜像/零连接审计通过 | 完整 AppShell 检索动作、SQL 极限布局/完整键盘、OS 多屏、真库、正式启动器/安装升级/签名/CI/真实用户任务仍待验，不称已发布 |
 
 ## 16. 参考与历史记录
 
