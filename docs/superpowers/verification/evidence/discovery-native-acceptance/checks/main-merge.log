@@ -1,0 +1,240 @@
+Merge made by the 'ort' strategy.
+ .../2026-09-23-product-maturity-goal-handoff.md    |    2 +
+ .../plans/2026-09-23-product-maturity-roadmap.md   |    4 +-
+ .../2026-09-27-discovery-native-acceptance.md      |   45 +
+ ...-09-27-discovery-native-acceptance-results.json |  142 +++
+ .../2026-09-27-discovery-native-acceptance.md      |   42 +
+ .../discovery-native-acceptance/.gitattributes     |    4 +
+ .../MetadataCancellationDesktopProbe.java          |   66 ++
+ .../discovery-native-acceptance/audit-image.ps1    |   27 +
+ ...ildSrc-TEST-datacube.build.IcoGeneratorTest.xml |   14 +
+ .../checks/branch-buildSrc-xml-manifest.json       |    4 +
+ .../checks/branch-buildSrc.json                    |   28 +
+ .../checks/branch-buildSrc.log                     |   16 +
+ ....datacube.fx.SchemaMetadataSearchDialogTest.xml |   23 +
+ ...m.datacube.service.SchemaMetadataSearchTest.xml |   11 +
+ ...ST-com.datacube.spi.SqlExecutionControlTest.xml |   17 +
+ .../checks/branch-full-xml-manifest.json           | 1230 ++++++++++++++++++++
+ .../checks/branch-full.json                        |   41 +
+ .../checks/branch-full.log                         |   27 +
+ .../checks/branch-image.json                       |   15 +
+ .../checks/branch-image.log                        |   27 +
+ .../checks/branch-runtime-driver.log               |    3 +
+ .../checks/branch-runtime.json                     |   27 +
+ .../checks/desktop-build.log                       |   20 +
+ .../checks/desktop-compile.log                     |    0
+ .../collect-evidence.ps1                           |   41 +
+ .../discovery-native-acceptance/desktop.gradle     |    8 +
+ .../desktop/01-empty-dark-0.png                    |  Bin 0 -> 25470 bytes
+ .../desktop/01-empty-dark.json                     |   23 +
+ .../desktop/02-typed-before-search-0.png           |  Bin 0 -> 23605 bytes
+ .../desktop/02-typed-before-search.json            |   23 +
+ .../desktop/03-reading-0.png                       |  Bin 0 -> 22633 bytes
+ .../desktop/03-reading.json                        |   23 +
+ .../desktop/04-read-state-0.png                    |  Bin 0 -> 22718 bytes
+ .../desktop/04-read-state.json                     |   23 +
+ .../desktop/05-cancel-request-0.png                |  Bin 0 -> 23859 bytes
+ .../desktop/05-cancel-request.json                 |   23 +
+ .../desktop/06-read-finished-cancel-pending-0.png  |  Bin 0 -> 22524 bytes
+ .../desktop/06-read-finished-cancel-pending.json   |   23 +
+ .../desktop/07-waiting-for-driver-only-0.png       |  Bin 0 -> 22300 bytes
+ .../desktop/07-waiting-for-driver-only.json        |   23 +
+ .../desktop/08-cancel-completion-action-0.png      |  Bin 0 -> 22549 bytes
+ .../desktop/08-cancel-completion-action.json       |   23 +
+ .../desktop/09-retry-ready-light-0.png             |  Bin 0 -> 22596 bytes
+ .../desktop/09-retry-ready-light.json              |   23 +
+ .../desktop/10-explicit-retry-0.png                |  Bin 0 -> 25243 bytes
+ .../desktop/10-explicit-retry.json                 |   23 +
+ .../desktop/11-new-results-0.png                   |  Bin 0 -> 25233 bytes
+ .../desktop/11-new-results.json                    |   23 +
+ .../desktop/12-selected-result-0.png               |  Bin 0 -> 28696 bytes
+ .../desktop/12-selected-result.json                |   23 +
+ .../desktop/13-ctrl-f-0.png                        |  Bin 0 -> 28883 bytes
+ .../desktop/13-ctrl-f.json                         |   24 +
+ .../desktop/14-query-invalidates-selection-0.png   |  Bin 0 -> 22991 bytes
+ .../desktop/14-query-invalidates-selection.json    |   23 +
+ .../desktop/15-mode-menu-0.png                     |  Bin 0 -> 22871 bytes
+ .../desktop/15-mode-menu-1.png                     |  Bin 0 -> 2409 bytes
+ .../desktop/15-mode-menu.json                      |   31 +
+ .../desktop/16-column-comment-menu-0.png           |  Bin 0 -> 22757 bytes
+ .../desktop/16-column-comment-menu-1.png           |  Bin 0 -> 2317 bytes
+ .../desktop/16-column-comment-menu.json            |   31 +
+ .../desktop/17-column-comment-selected-0.png       |  Bin 0 -> 22281 bytes
+ .../desktop/17-column-comment-selected.json        |   23 +
+ .../desktop/18-new-mode-before-enter-0.png         |  Bin 0 -> 23069 bytes
+ .../desktop/18-new-mode-before-enter.json          |   24 +
+ .../desktop/19-enter-search-0.png                  |  Bin 0 -> 25519 bytes
+ .../desktop/19-enter-search.json                   |   24 +
+ .../desktop/20-comment-result-0.png                |  Bin 0 -> 25519 bytes
+ .../desktop/20-comment-result.json                 |   24 +
+ .../desktop/21-selected-comment-0.png              |  Bin 0 -> 28792 bytes
+ .../desktop/21-selected-comment.json               |   23 +
+ .../desktop/22-comment-actions-ready-0.png         |  Bin 0 -> 28964 bytes
+ .../desktop/22-comment-actions-ready.json          |   23 +
+ .../desktop/23-after-selection-close.json          |    4 +
+ .../desktop/24-new-150-dark-0.png                  |  Bin 0 -> 43548 bytes
+ .../desktop/24-new-150-dark.json                   |   23 +
+ .../desktop/25-cancel-query-0.png                  |  Bin 0 -> 39872 bytes
+ .../desktop/25-cancel-query.json                   |   23 +
+ .../desktop/26-cancel-case-reading-0.png           |  Bin 0 -> 40642 bytes
+ .../desktop/26-cancel-case-reading.json            |   23 +
+ .../desktop/27-explicit-cancel-0.png               |  Bin 0 -> 39718 bytes
+ .../desktop/27-explicit-cancel.json                |   23 +
+ .../desktop/28-cancel-waiting-0.png                |  Bin 0 -> 39600 bytes
+ .../desktop/28-cancel-waiting.json                 |   23 +
+ .../desktop/29-driver-first-0.png                  |  Bin 0 -> 37418 bytes
+ .../desktop/29-driver-first.json                   |   23 +
+ .../desktop/30-read-still-pending-0.png            |  Bin 0 -> 37218 bytes
+ .../desktop/30-read-still-pending.json             |   23 +
+ .../desktop/31-both-completed-0.png                |  Bin 0 -> 37543 bytes
+ .../desktop/31-both-completed.json                 |   23 +
+ .../desktop/32-cancel-retry-ready-0.png            |  Bin 0 -> 37621 bytes
+ .../desktop/32-cancel-retry-ready.json             |   23 +
+ .../desktop/33-cancel-ready-light-150-0.png        |  Bin 0 -> 38317 bytes
+ .../desktop/33-cancel-ready-light-150.json         |   23 +
+ .../desktop/34-after-escape.json                   |    4 +
+ .../desktop/35-close-probe-ready-0.png             |  Bin 0 -> 43171 bytes
+ .../desktop/35-close-probe-ready.json              |   23 +
+ .../desktop/36-close-query-0.png                   |  Bin 0 -> 39769 bytes
+ .../desktop/36-close-query.json                    |   23 +
+ .../desktop/37-close-case-reading-0.png            |  Bin 0 -> 40536 bytes
+ .../desktop/37-close-case-reading.json             |   23 +
+ .../desktop/38-after-inflight-close.json           |   10 +
+ .../desktop/39-inflight-close-confirmed.json       |    4 +
+ .../evidence-manifest.json                         |  572 +++++++++
+ .../isolated-tests.gradle                          |    7 +
+ .../launches/cancel-150/desktop-exit.json          |    5 +
+ .../launches/cancel-150/desktop-launch.json        |    6 +
+ .../launches/cancel-150/desktop.args               |    1 +
+ .../launches/cancel-150/desktop.stderr.log         |    2 +
+ .../launches/cancel-150/desktop.stdout.log         |    6 +
+ .../launches/close-inflight/desktop-exit.json      |    5 +
+ .../launches/close-inflight/desktop-launch.json    |    6 +
+ .../launches/close-inflight/desktop.args           |    1 +
+ .../launches/close-inflight/desktop.stderr.log     |    2 +
+ .../launches/close-inflight/desktop.stdout.log     |    6 +
+ .../launches/timeout-100/desktop-exit.json         |    5 +
+ .../launches/timeout-100/desktop-launch.json       |    6 +
+ .../launches/timeout-100/desktop.args              |    1 +
+ .../launches/timeout-100/desktop.stderr.log        |    2 +
+ .../launches/timeout-100/desktop.stdout.log        |    8 +
+ .../discovery-native-acceptance/run-check.ps1      |   42 +
+ 120 files changed, 3413 insertions(+), 1 deletion(-)
+ create mode 100644 docs/superpowers/plans/2026-09-27-discovery-native-acceptance.md
+ create mode 100644 docs/superpowers/verification/2026-09-27-discovery-native-acceptance-results.json
+ create mode 100644 docs/superpowers/verification/2026-09-27-discovery-native-acceptance.md
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/.gitattributes
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/MetadataCancellationDesktopProbe.java
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/audit-image.ps1
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-buildSrc-TEST-datacube.build.IcoGeneratorTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-buildSrc-xml-manifest.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-buildSrc.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-buildSrc.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-full-TEST-com.datacube.fx.SchemaMetadataSearchDialogTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-full-TEST-com.datacube.service.SchemaMetadataSearchTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-full-TEST-com.datacube.spi.SqlExecutionControlTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-full-xml-manifest.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-full.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-full.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-image.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-image.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-runtime-driver.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/branch-runtime.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/desktop-build.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/checks/desktop-compile.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/collect-evidence.ps1
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop.gradle
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/01-empty-dark-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/01-empty-dark.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/02-typed-before-search-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/02-typed-before-search.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/03-reading-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/03-reading.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/04-read-state-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/04-read-state.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/05-cancel-request-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/05-cancel-request.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/06-read-finished-cancel-pending-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/06-read-finished-cancel-pending.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/07-waiting-for-driver-only-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/07-waiting-for-driver-only.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/08-cancel-completion-action-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/08-cancel-completion-action.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/09-retry-ready-light-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/09-retry-ready-light.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/10-explicit-retry-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/10-explicit-retry.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/11-new-results-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/11-new-results.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/12-selected-result-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/12-selected-result.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/13-ctrl-f-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/13-ctrl-f.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/14-query-invalidates-selection-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/14-query-invalidates-selection.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/15-mode-menu-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/15-mode-menu-1.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/15-mode-menu.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/16-column-comment-menu-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/16-column-comment-menu-1.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/16-column-comment-menu.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/17-column-comment-selected-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/17-column-comment-selected.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/18-new-mode-before-enter-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/18-new-mode-before-enter.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/19-enter-search-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/19-enter-search.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/20-comment-result-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/20-comment-result.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/21-selected-comment-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/21-selected-comment.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/22-comment-actions-ready-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/22-comment-actions-ready.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/23-after-selection-close.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/24-new-150-dark-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/24-new-150-dark.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/25-cancel-query-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/25-cancel-query.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/26-cancel-case-reading-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/26-cancel-case-reading.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/27-explicit-cancel-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/27-explicit-cancel.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/28-cancel-waiting-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/28-cancel-waiting.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/29-driver-first-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/29-driver-first.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/30-read-still-pending-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/30-read-still-pending.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/31-both-completed-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/31-both-completed.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/32-cancel-retry-ready-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/32-cancel-retry-ready.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/33-cancel-ready-light-150-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/33-cancel-ready-light-150.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/34-after-escape.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/35-close-probe-ready-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/35-close-probe-ready.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/36-close-query-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/36-close-query.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/37-close-case-reading-0.png
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/37-close-case-reading.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/38-after-inflight-close.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/desktop/39-inflight-close-confirmed.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/evidence-manifest.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/isolated-tests.gradle
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/cancel-150/desktop-exit.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/cancel-150/desktop-launch.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/cancel-150/desktop.args
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/cancel-150/desktop.stderr.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/cancel-150/desktop.stdout.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/close-inflight/desktop-exit.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/close-inflight/desktop-launch.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/close-inflight/desktop.args
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/close-inflight/desktop.stderr.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/close-inflight/desktop.stdout.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/timeout-100/desktop-exit.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/timeout-100/desktop-launch.json
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/timeout-100/desktop.args
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/timeout-100/desktop.stderr.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/launches/timeout-100/desktop.stdout.log
+ create mode 100644 docs/superpowers/verification/evidence/discovery-native-acceptance/run-check.ps1

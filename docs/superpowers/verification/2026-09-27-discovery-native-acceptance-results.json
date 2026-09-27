@@ -2,7 +2,7 @@
   "baseline": "a4dc88717ee6617e8d0e00e2721729e360483a24",
   "branch": "codex/discovery-native-acceptance",
   "productSourceChanged": false,
-  "generatedAt": "2026-09-27T18:08:02.5679467+08:00",
+  "generatedAt": "2026-09-27T18:18:21.3692701+08:00",
   "scratch": "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-discovery-acceptance-d3484e336ea74a8c889da1e47137ac8b",
   "records": [
     {
@@ -115,6 +115,150 @@
           "sha256": "5F55BC99EB3E90A49F339726313552FB99056E6DCE9507F01630D78C9C7F4BB2"
         }
       ]
+    },
+    {
+      "name": "main-targeted",
+      "head": "79923f00bf899dccb7dd1de74606264c26e36631",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest",
+        "--tests",
+        "com.datacube.service.SchemaMetadataSearchTest",
+        "--tests",
+        "com.datacube.spi.SqlExecutionControlTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-discovery-acceptance-d3484e336ea74a8c889da1e47137ac8b\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-27T18:08:39.3709151+08:00",
+      "exitCode": 0,
+      "log": "main-targeted.log",
+      "logSha256": "DAA55E29CC37D218F45CC8B526DD55B128558E419D45D3678E4382F4FB238276",
+      "actualTestTaskRan": true,
+      "suites": 3,
+      "tests": 33,
+      "passed": 33,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "main-targeted-xml",
+      "xmlManifestSha256": "B523E35693CDCF14AB5674D0FE42D96E648BC572EDD5827BE1ACEFD46AD12E96"
+    },
+    {
+      "name": "main-full",
+      "head": "79923f00bf899dccb7dd1de74606264c26e36631",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-discovery-acceptance-d3484e336ea74a8c889da1e47137ac8b\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-27T18:16:20.0804225+08:00",
+      "exitCode": 0,
+      "log": "main-full.log",
+      "logSha256": "BCFA7F8A3569AC0A24CE27D3F0D8E11BB4A05F1A507A7B0BDD8C411AFB827DCB",
+      "actualTestTaskRan": true,
+      "suites": 307,
+      "tests": 3835,
+      "passed": 3832,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "main-full-xml",
+      "xmlManifestSha256": "42A744A19EC642E4147A3963E08E230C1E5026FD9FE92A126418770F35AC85B8"
+    },
+    {
+      "name": "main-buildSrc",
+      "head": "79923f00bf899dccb7dd1de74606264c26e36631",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-discovery-acceptance-d3484e336ea74a8c889da1e47137ac8b\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-27T18:16:56.5752409+08:00",
+      "exitCode": 0,
+      "log": "main-buildSrc.log",
+      "logSha256": "FA9459D9E0AF747896662CBFE526907BF0577E841309AC83EB89A69FE54D8D6B",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "main-buildSrc-xml",
+      "xmlManifestSha256": "3B346DC54006BF592DA53B9F2DC6290E592BFCA3F70433E031E3CA969861D33C"
+    },
+    {
+      "name": "main-image",
+      "head": "79923f00bf899dccb7dd1de74606264c26e36631",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-27T18:17:53.0061351+08:00",
+      "exitCode": 0,
+      "log": "main-image.log",
+      "logSha256": "FCCC96D7816306D63507B952C4A51F95387D1880B6E2ACC3943D8D35E205B5BA",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "main-runtime",
+      "head": "79923f00bf899dccb7dd1de74606264c26e36631",
+      "completedAt": "2026-09-27T18:18:20.7360671+08:00",
+      "testClassLeaks": 0,
+      "testConfigLeaks": 0,
+      "driverExit": 0,
+      "driverOutput": "oracle=oracle.jdbc.OracleDriver\r\npostgres=org.postgresql.Driver\r\nconnectCalls=0; no credentials or user profile loaded\r\n",
+      "driverLogSha256": "1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82",
+      "artifacts": [
+        {
+          "path": "DataCube.exe",
+          "bytes": 595968,
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+        },
+        {
+          "path": "app/DataCube.cfg",
+          "bytes": 369,
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+        },
+        {
+          "path": "runtime/lib/modules",
+          "bytes": 102365095,
+          "sha256": "5F55BC99EB3E90A49F339726313552FB99056E6DCE9507F01630D78C9C7F4BB2"
+        }
+      ]
     }
   ],
   "desktop": {
@@ -137,6 +281,6 @@
       "Process scale only; no OS setting change"
     ]
   },
-  "evidenceFiles": 114,
+  "evidenceFiles": 138,
   "externalAcceptance": "pending"
 }

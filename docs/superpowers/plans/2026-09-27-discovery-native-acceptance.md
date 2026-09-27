@@ -43,3 +43,11 @@ Ctrl+F 选中查询词，输入 order_note 后旧结果与动作失效；选择�
 首次暂存差异检查将保留 CRLF 的原始 helper/manifest 行尾报告为尾空白；为该证据目录设置 cr-at-eol 后检查通过，没有重写日志、截图或测试结论。原始内容仍以清单摘要核对。没有放宽产品源码的空白检查。
 
 下一步：本地提交 docs-only 证据并合并 main；在 main 新 profile 执行定向、全量、强制 buildSrc 与镜像审计，补记实际结果。
+
+## CP4：main 复验与本地交付
+
+证据提交 d9c5179，main 验收合并 79923f00bf899dccb7dd1de74606264c26e36631。新 profile 定向 3 suites / 33 passed / 0 skipped；clean test 307 suites / 3835 tests / 3832 passed / 0 failures/errors / 3 live skipped；强制 buildSrc 8/8；jpackageImage 与运行时审计通过。DataCube.exe / cfg / runtime modules 的分支与 main 摘要相同。
+
+main 全量耗时 6m50s；一次只读测试 JVM 线程采样时 worker 在 JUnit 临时目录收尾，随后自然通过。未把这一采样当性能根因或修复证据，没有中断或删减用例。3 项 live skips 继续单列，不算通过。
+
+最终归档 9 个执行记录、138 份证据文件，原始摘要及暂存 blob 检查通过。最终跟进提交只补 main 结果与交付记录，产品代码与已测 79923f0 完全一致。本轮局部原生补证本地交付；下一步是完整 AppShell 检索下游动作、SQL 极限小窗口原生滚动/键盘，其余真库/OS 多屏/签名/安装升级/CI/真实用户任务仍待验，不扩展外部权限，不称完成 M8 发布验收。

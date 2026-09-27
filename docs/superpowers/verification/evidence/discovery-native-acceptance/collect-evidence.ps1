@@ -7,6 +7,9 @@ New-Item -ItemType Directory -Path $dest,($dest+'/desktop'),($dest+'/checks'),($
 Copy-Item -Path ($scratch+'/desktop/*') -Destination ($dest+'/desktop') -Force
 foreach($name in @('run-check.ps1','isolated-tests.gradle','audit-image.ps1','desktop.gradle','MetadataCancellationDesktopProbe.java','collect-evidence.ps1')) { Copy-Item -LiteralPath ($scratch+'/'+$name) -Destination $dest -Force }
 foreach($name in @('desktop-build.log','desktop-compile.log')) { Copy-Item -LiteralPath ($scratch+'/'+$name) -Destination ($dest+'/checks') -Force }
+foreach($name in @('integration.json','main-merge.log','staged-check.log','main-test-threads.log')) {
+ if(Test-Path -LiteralPath ($scratch+'/'+$name)) {Copy-Item -LiteralPath ($scratch+'/'+$name) -Destination ($dest+'/checks') -Force}
+}
 foreach($round in @('timeout-100','cancel-150','close-inflight')) {
  $source=if($round -eq 'timeout-100') {$scratch} else {$scratch+'/'+$round}
  New-Item -ItemType Directory -Path ($dest+'/launches/'+$round) -Force | Out-Null
