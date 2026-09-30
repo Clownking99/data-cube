@@ -1,0 +1,21 @@
+{
+  "name": "branch-review",
+  "head": "918d7198cb7ec07d509bbce024dd442972889f6b",
+  "completedAt": "2026-09-30T21:01:39.3429354+08:00",
+  "outcome": "reviewed",
+  "sourceSnapshot": "source-snapshot.json",
+  "checks": [
+    "Only local pending state changes; no global runner/scope/service/transaction or write-policy modifications",
+    "Atomic queued/running/returned claim prevents cancelled unstarted work entering loader; pending Future assigned after close is cancelled",
+    "Running cancellation does not release ownership until loader finally; read return and FX cleanup both required for disposal",
+    "Completion and menu properties mutate on FX only; background close does not wait for FX or JDBC",
+    "Nested metadata is disabled and guarded while name read runs; closed tree entries retain guards and reservations",
+    "Duplicate reload does not interrupt/supersede in-flight read; completed late callbacks still fail revision and source guards",
+    "Strict mock original target and 10001 name bound; retained existing metadata SQL/result/readonly/passive route checks"
+  ],
+  "findings": [],
+  "unverified": [
+    "Native waiting/reopening and complete AppShell downstream",
+    "Real database name-query/cancel behavior and release acceptance"
+  ]
+}

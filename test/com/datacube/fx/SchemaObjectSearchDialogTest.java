@@ -79,13 +79,14 @@ class SchemaObjectSearchDialogTest {
         });
     }
 
-    @Test void reloadClearsOldCandidatesAndLateSuccessOrFailureCannotOverwriteNewSnapshot() throws Exception {
+    @Test void pendingReloadIsRejectedAndLateCompletedCallbackCannotOverwriteNewSnapshot() throws Exception {
         FxUiTestSupport.call(() -> {
             try (var f = new Fixture(seed())) {
                 f.load(); f.list().getSelectionModel().selectFirst();
                 f.picker.reload(); Job old = f.jobs.getLast();
                 assertTrue(f.list().getItems().isEmpty()); assertTrue(f.confirm().isDisabled()); assertEquals("", f.preview().getText());
-                f.picker.reload(); assertTrue(old.future.isCancelled());
+                f.picker.reload(); assertEquals(2,f.jobs.size()); assertFalse(old.future.isCancelled());
+                old.publish(); f.picker.reload();
                 f.jobs.getLast().success.accept(List.of(item("new", TableInfo.Kind.TABLE)));
                 old.success.accept(seed()); old.failure.accept(new IllegalStateException("SECRET HOST"));
                 assertEquals(List.of(item("new", TableInfo.Kind.TABLE)), List.copyOf(f.list().getItems()));
@@ -152,6 +153,7 @@ class SchemaObjectSearchDialogTest {
             try (var f = new Fixture(seed())) {
                 f.picker.reload(); Job queued = f.jobs.getLast(); f.picker.close();
                 assertTrue(queued.future.isCancelled());
+                assertTrue(f.picker.disposal().toCompletableFuture().isDone());
                 assertThrows(java.util.concurrent.CancellationException.class, queued.work::call);
                 assertEquals(0, f.loads); assertEquals(1, f.closedScopes);
             }
