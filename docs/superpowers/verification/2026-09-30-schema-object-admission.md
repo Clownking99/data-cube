@@ -1,6 +1,6 @@
 # 名称查找读取准入：本地验收账本
 
-日期：2026-09-30。限定本地增量，基线 main `918d7198cb7ec07d509bbce024dd442972889f6b`，独立分支 `codex/schema-object-admission`。分支定向/全量/buildSrc/镜像通过，本地集成与 main 复验待执行。M8 外部验收仍待验，不称发布验收。
+日期：2026-09-30。限定本地增量，基线 main `918d7198cb7ec07d509bbce024dd442972889f6b`，独立分支 `codex/schema-object-admission`。实现 `30556d03f5103483fec354b69a4c71bccf8d8fde`，main 合并代码 `50924650da51d0b17892bb89d23172180094a672`。分支和 main 新定向/全量/强制 buildSrc/jpackageImage/镜像审计全部通过，完成本地工程交付；M8 外部验收仍待验，不称发布验收。
 
 ## 行为和证据
 
@@ -34,15 +34,29 @@
 | branch-full | 309 suites / 3901 tests：3898 passed、3 live skipped | 新 profile、实际 cleanTest/test，0 failure/error |
 | branch-buildsrc | 8/8，0 skipped | --rerun-tasks，实际 buildSrc:test |
 | branch-image / branch-image-audit | jpackageImage 成功，类/配置泄漏 0，connectCalls=0 | PG/Oracle 驱动发现；没有载入用户 profile 或凭据 |
+| main-directed | 9 suites / 180 passed，0 skipped | 合并代码、新 profile、实际 test |
+| main-full | 309 suites / 3901 tests：3898 passed、3 live skipped | 合并代码、新 profile、实际 cleanTest/test，0 failure/error |
+| main-buildsrc | 8/8，0 skipped | --rerun-tasks，实际 buildSrc:test，0 failure/error |
+| main-image / main-image-audit | jpackageImage 成功，类/配置泄漏 0，connectCalls=0 | 新临时目录驱动探针，只发现 PG/Oracle 驱动，没有载入用户 profile 或凭据 |
+| image-comparison | 三项产物 bytes/SHA 与分支一致 | 已验证源码/测试/README/buildSrc/build.gradle 与实现提交无差异 |
+| main-evidence-audit / main-staged-evidence-audit | raw hashes、日志/XML清单、源码 canonical blob 和暂存原始字节匹配 | 最终归档 22 份记录、109 份 raw 文件；追加审计记录后用 -Staged -NoRecord 校核，避免自引用循环 |
 
 原强制 reload 替换未结束任务测试，与资源准入约束冲突；改为等旧任务结束后再发新请求，同时保留原 late-success/late-failure 拒绝断言。没有删除旧候选、参数、只读或资源平衡检查，没有把失败或跳过改为通过。
 
-全量 live 环境会从测试进程剔除，Redis 与 PG/Oracle Schema Diff 的跳过须单列，不计通过。历史 SchemaDiffServiceTest 偶发失败根因未证实关闭。没有本轮原生桌面证据，也没有重试此前失败的模态输入操作。
+两次全量均单列三项 live 跳过：RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle、SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas 和 postgresqlSafeDeploymentConvergesInDisposableSchemas。测试进程剔除 live 环境，缺少显式目标/凭据或完整环境及写授权，不能计通过。本轮最终定向与 buildSrc 无跳过。历史 SchemaDiffServiceTest 偶发失败根因未证实关闭。没有本轮原生桌面证据，也没有重试此前失败的模态输入操作。
+
+main-full 完成于 21:19:10，main-buildsrc 完成于 21:21:48，main-image 完成于 21:23:18，main-image-audit 完成于 21:28:06（均为本地 +08:00）。强制 buildSrc 已结束后才开始镜像构建。JavaFX/native access、unchecked 与 jlink JEP 493 警告保留在原始日志，不影响此次实际任务成功。
+
+| 分支/main 镜像产物 | bytes | SHA-256 |
+| --- | --- | --- |
+| DataCube.exe | 595968 | 6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F |
+| app/DataCube.cfg | 369 | E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D |
+| runtime/lib/modules | 102374856 | 7CA191D96F390A6B4F708826F380F8A0AAE3B24A9B07D888BA89DCE51364665D |
 
 ## 边界和集成
 
 仅 mock、合成 profile、固定名称/查询和独占临时目录；user.home 在创建 AppShell 存储前替换。禁止 .testagent、真实连接/凭据/SQL 历史/业务文件，未 push/fetch/PR/tag/发布/安装更新或联系外部。
 
-分支全量/buildSrc/jpackageImage、审查及原始/暂存证据校核后，本地提交与 main 合并；main 用新 profile 全部复验后追加实际 SHA/结果，不以旧通过替代。最终证据和交接提交只改文档，已验证产品/测试保持冻结。
+分支全量/buildSrc/jpackageImage、审查及原始/暂存证据校核后，已本地提交与 --no-ff 合并 main；合并时整树与实现分支一致。main 用新 profile 全部复验，归档实际 SHA/结果，不以旧通过替代。最终证据和交接提交只改文档，已验证产品/测试保持冻结；以限定路径暂存、校核并检查 main/worktree 授权范围干净。不执行任何外部操作。
 
 原生名称等待/重开及完整字段请求 → SELECT/只读数据/DDL、Oracle 桌面，实际数据库驱动中断/超时/取消/权限/事务，OS 缩放/多屏/全键盘，正式启动器/安装升级/签名/远端 CI/真实用户任务/发布仍待验。M8 不称完成，本轮交付不自动扩大范围。

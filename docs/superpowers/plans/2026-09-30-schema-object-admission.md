@@ -26,3 +26,19 @@
 - 验证：branch-directed 9 suites / 180 passed、0 skipped；branch-full 309 suites / 3901 tests：3898 passed、3 live skipped、0 failure/error；强制 branch-buildsrc 8/8；实际 branch-image jpackageImage 成功；branch-image-audit 类/配置泄漏 0，PG/Oracle 驱动发现，connectCalls=0。main 仍是基线且授权范围干净。本地审查检查排队 claim、未来 Future 赋值、实际返回/FX 清理、回调 revision、内嵌入口、原只读/事务/路由。
 - 失败/未验：只有已保留的四项实际红灯；三项 live 缺显式环境/写门禁且被测试进程剔除，不计通过。没有新原生/真库/外部发布证据，历史偶发测试根因未证实关闭；警告保留日志。
 - 下一步：校核 raw manifest、日志/XML清单、五项 source/index blob 后限定提交；main --no-ff 合并，重新定向/全量/buildSrc/镜像/产物对比，再更新实际 SHA 和待验项后交付。
+
+## C3 — 本地集成与 main 新验证
+
+- 当前目标：实际 main 代码重新通过全部工程门槛。
+- 改动：实现 30556d03f5103483fec354b69a4c71bccf8d8fde，main 本地 --no-ff 合并代码 50924650da51d0b17892bb89d23172180094a672；合并前仍在基线且授权范围干净。合并后只更新本检查点/证据文档，产品/测试冻结。
+- 验证：分支 raw/暂存校核 66 份文件、11 份记录、五项 source/index blob 一致；合并后整树与分支相同，postmerge-review 原始证据及 canonical 源/测试匹配，main raw SHA 另记以区分换行。main 新 profile 定向正在实际运行。
+- 失败/未验：main 全量/buildSrc/镜像尚未完成，不填写旧通过；原生/真库/外部发布仍待验。
+- 下一步：main 定向通过后 cleanTest/test、强制 buildSrc、jpackageImage/镜像/零连接与三项产物 SHA 比较；归档新记录、更新交接与路线图，限定文档提交及干净检查后交付。不自动扩大范围。
+
+## C4 — main 复验完成与本轮交付
+
+- 当前目标：完成本轮名称读取准入的本地交付，保留外部待验，不扩展范围。
+- 改动：产品/测试自实现提交 30556d0 冻结，main 合并代码 5092465；仅更新实际结果、raw archive、账本、路线图与交接。最终归档 22 份记录、109 份 raw 文件。
+- 验证：main 新定向 9 suites / 180 passed、0 skipped；新全量 309 suites / 3901 tests：3898 passed、3 live skipped、0 failure/error；强制 buildSrc 8/8、0 skipped；实际 jpackageImage 成功，镜像类/配置泄漏 0，PG/Oracle 驱动发现且 connectCalls=0。三项产物 bytes/SHA 与分支一致，源码/测试/README/buildSrc/build.gradle 与实现提交相同。main raw 校核 107 文件/20 记录，暂存校核 108 文件/21 记录均通过；追加审计记录后的最终清单使用 -Staged -NoRecord 校核，不递归生成自己的审计记录。
+- 失败/未验：实际红灯四项保留；三个 live 环境跳过不算通过，历史偶发测试根因未证实关闭；JavaFX/native access、unchecked、jlink 警告保留。没有本轮原生桌面、真库、正式启动器、安装升级、签名、CI、用户任务或发布证据，M8 仍待外部验收。
+- 下一步：限定文档提交并检查 main/worktree 授权范围干净、产品/测试冻结与 raw/index 字节一致，随后交付；外部待验仍需明确授权和目标，不自动扩大范围。
