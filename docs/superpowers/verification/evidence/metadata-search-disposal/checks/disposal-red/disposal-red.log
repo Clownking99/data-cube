@@ -1,0 +1,81 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :compileJava UP-TO-DATE
+> Task :generateBrandIcons UP-TO-DATE
+> Task :generateVersionProperties UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+
+> Task :compileTestJava FAILED
+C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\MetadataSearchShellRoutingTest.java:123: 错误: 找不到符号
+                assertTrue(f.menu("tree-find-schema-metadata").isDisabled());
+                                                              ^
+  符号:   方法 isDisabled()
+  位置: 类 MenuItem
+C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\MetadataSearchShellRoutingTest.java:124: 错误: 找不到符号
+                assertTrue(f.menu("tree-find-schema-objects").isDisabled());
+                                                             ^
+  符号:   方法 isDisabled()
+  位置: 类 MenuItem
+C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\MetadataSearchShellRoutingTest.java:131: 错误: 找不到符号
+                assertTrue(f.menu("tree-find-schema-metadata").isDisabled(), "one task still owns the reservation");
+                                                              ^
+  符号:   方法 isDisabled()
+  位置: 类 MenuItem
+C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\MetadataSearchShellRoutingTest.java:138: 错误: 找不到符号
+                f.menu("tree-find-schema-metadata").disabledProperty().addListener((o, before, disabled) -> {
+                                                   ^
+  符号:   方法 disabledProperty()
+  位置: 类 MenuItem
+C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\MetadataSearchShellRoutingTest.java:145: 错误: 找不到符号
+                assertFalse(f.menu("tree-find-schema-objects").isDisabled());
+                                                              ^
+  符号:   方法 isDisabled()
+  位置: 类 MenuItem
+5 个错误
+
+[Incubating] Problems report is available at: file:///C:/Users/hetia/.codex/worktrees/metadata-search-cancellation/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileTestJava'.
+> Compilation failed; see the compiler output below.
+  C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\MetadataSearchShellRoutingTest.java:123: 错误: 找不到符号
+                  assertTrue(f.menu("tree-find-schema-metadata").isDisabled());
+                                                                ^
+    符号:   方法 isDisabled()
+    位置: 类 MenuItem
+  C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\MetadataSearchShellRoutingTest.java:124: 错误: 找不到符号
+                  assertTrue(f.menu("tree-find-schema-objects").isDisabled());
+                                                               ^
+    符号:   方法 isDisabled()
+    位置: 类 MenuItem
+  C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\MetadataSearchShellRoutingTest.java:131: 错误: 找不到符号
+                  assertTrue(f.menu("tree-find-schema-metadata").isDisabled(), "one task still owns the reservation");
+                                                                ^
+    符号:   方法 isDisabled()
+    位置: 类 MenuItem
+  C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\MetadataSearchShellRoutingTest.java:138: 错误: 找不到符号
+                  f.menu("tree-find-schema-metadata").disabledProperty().addListener((o, before, disabled) -> {
+                                                     ^
+    符号:   方法 disabledProperty()
+    位置: 类 MenuItem
+  C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\MetadataSearchShellRoutingTest.java:145: 错误: 找不到符号
+                  assertFalse(f.menu("tree-find-schema-objects").isDisabled());
+                                                                ^
+    符号:   方法 isDisabled()
+    位置: 类 MenuItem
+  5 个错误
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to generate a Build Scan (powered by Develocity).
+
+BUILD FAILED in 6s
+7 actionable tasks: 1 executed, 6 up-to-date
