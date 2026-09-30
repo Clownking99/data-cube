@@ -1,0 +1,51 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :compileJava UP-TO-DATE
+> Task :generateBrandIcons UP-TO-DATE
+> Task :generateVersionProperties UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+
+> Task :compileTestJava FAILED
+C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\ConnectionTreeLazyLoadTest.java:45: 错误: 找不到符号
+                            if (item.getChildren().stream().anyMatch(child -> child.getValue().label().startsWith("加载失败：")))
+                                                                                              ^
+  符号:   方法 label()
+  位置: 类 NodeData
+C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\ConnectionTreeLazyLoadTest.java:58: 错误: 找不到符号
+                        assertTrue(status.label().contains("Synthetic metadata access rejected"));
+                                         ^
+  符号:   方法 label()
+  位置: 类型为NodeData的变量 status
+
+2 个错误
+[Incubating] Problems report is available at: file:///C:/Users/hetia/.codex/worktrees/metadata-search-cancellation/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileTestJava'.
+> Compilation failed; see the compiler output below.
+  C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\ConnectionTreeLazyLoadTest.java:45: 错误: 找不到符号
+                              if (item.getChildren().stream().anyMatch(child -> child.getValue().label().startsWith("加载失败：")))
+                                                                                                ^
+    符号:   方法 label()
+    位置: 类 NodeData
+  C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\ConnectionTreeLazyLoadTest.java:58: 错误: 找不到符号
+                          assertTrue(status.label().contains("Synthetic metadata access rejected"));
+                                           ^
+    符号:   方法 label()
+    位置: 类型为NodeData的变量 status
+  2 个错误
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to generate a Build Scan (powered by Develocity).
+
+BUILD FAILED in 6s
+7 actionable tasks: 1 executed, 6 up-to-date
