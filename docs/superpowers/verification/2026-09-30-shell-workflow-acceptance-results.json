@@ -1,4 +1,6 @@
 {
+  "baseline": "12e927af6fdc67bf039b3d4121d13fb5b21fc8c6",
+  "scratch": "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-shell-workflow-7e3c9d0a6c8840a5a18b151793569f29",
   "records": [
     {
       "name": "branch-regression-red",
@@ -234,8 +236,160 @@
           "sha256": "2108FFBDF544AFD2BEBA3AA466EBEB5EB5567BCB3D872F14411E9CD4926B5228"
         }
       ]
+    },
+    {
+      "name": "main-targeted",
+      "head": "8b890175712835b5b8c2ea0a57f3b069a717873c",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.ConnectionTreeLazyLoadTest",
+        "--tests",
+        "com.datacube.fx.ConnectionTreePaneLifecycleTest",
+        "--tests",
+        "com.datacube.fx.ConnectionTreePaneFindTest",
+        "--tests",
+        "com.datacube.fx.ConnectionTreeSelectSqlTest",
+        "--tests",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest",
+        "--tests",
+        "com.datacube.fx.TableSelectSqlTabsTest",
+        "--tests",
+        "com.datacube.fx.SqlPanelLayoutIntegrationTest",
+        "--tests",
+        "com.datacube.fx.SqlResultToolbarLayoutTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-shell-workflow-7e3c9d0a6c8840a5a18b151793569f29\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T09:53:56.3584465+08:00",
+      "exitCode": 0,
+      "log": "main-targeted.log",
+      "logSha256": "A515C01C2FB0C4B6FB4CC5A9B436D4194F599C6CF98871A61A8AE631FB791100",
+      "actualTestTaskRan": true,
+      "suites": 8,
+      "tests": 85,
+      "passed": 85,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "main-targeted-xml",
+      "xmlManifestSha256": "0C0236FAF6919FC61D9AA745349B9989C32FDCD2293FB607E483064356E8A78F"
+    },
+    {
+      "name": "main-full",
+      "head": "8b890175712835b5b8c2ea0a57f3b069a717873c",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-shell-workflow-7e3c9d0a6c8840a5a18b151793569f29\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T09:58:33.0406299+08:00",
+      "exitCode": 0,
+      "log": "main-full.log",
+      "logSha256": "C880F900F7CC046CA9849D233C72141C25DCDA541DE92DB8CA6936C3C3E3967A",
+      "actualTestTaskRan": true,
+      "suites": 308,
+      "tests": 3838,
+      "passed": 3835,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "main-full-xml",
+      "xmlManifestSha256": "2AD56CAC146567AE61E8EBBCB1D766E8DBACF01FFC2599C356EB8BD98460449F"
+    },
+    {
+      "name": "main-buildSrc",
+      "head": "8b890175712835b5b8c2ea0a57f3b069a717873c",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-shell-workflow-7e3c9d0a6c8840a5a18b151793569f29\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T09:59:03.4596806+08:00",
+      "exitCode": 0,
+      "log": "main-buildSrc.log",
+      "logSha256": "69A28754A437E4B48A48F3AC09B6B4091A32D58084DB461E73CAE58FD21B9171",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "main-buildSrc-xml",
+      "xmlManifestSha256": "A69FB6B35064B141A69FF59052DE648B69DFCFED73DE9509C45C350EAFD0FB98"
+    },
+    {
+      "name": "main-image",
+      "head": "8b890175712835b5b8c2ea0a57f3b069a717873c",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-30T09:59:51.9341864+08:00",
+      "exitCode": 0,
+      "log": "main-image.log",
+      "logSha256": "1C453B999D1E0F8B3E1B4E9C8A2E953D4BB959647695DD789A19D04A645B5F36",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "main-runtime",
+      "head": "8b890175712835b5b8c2ea0a57f3b069a717873c",
+      "completedAt": "2026-09-30T10:00:21.8032491+08:00",
+      "testClassLeaks": 0,
+      "testConfigLeaks": 0,
+      "driverExit": 0,
+      "driverOutput": "oracle=oracle.jdbc.OracleDriver\r\npostgres=org.postgresql.Driver\r\nconnectCalls=0; no credentials or user profile loaded\r\n",
+      "driverLogSha256": "1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82",
+      "artifacts": [
+        {
+          "path": "DataCube.exe",
+          "bytes": 595968,
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+        },
+        {
+          "path": "app/DataCube.cfg",
+          "bytes": 369,
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+        },
+        {
+          "path": "runtime/lib/modules",
+          "bytes": 102365364,
+          "sha256": "2108FFBDF544AFD2BEBA3AA466EBEB5EB5567BCB3D872F14411E9CD4926B5228"
+        }
+      ]
     }
-  ],
-  "scratch": "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-shell-workflow-7e3c9d0a6c8840a5a18b151793569f29",
-  "baseline": "12e927af6fdc67bf039b3d4121d13fb5b21fc8c6"
+  ]
 }

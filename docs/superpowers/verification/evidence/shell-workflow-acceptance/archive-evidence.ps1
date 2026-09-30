@@ -17,6 +17,9 @@ foreach($taskFile in @('shell.args','shell-launch.json','shell.stdout.log','shel
 foreach($taskFile in @('shell-first-failed.args','shell-first-failed.stderr.log','shell-compile.log','shell-loading-threads.log','desktop-build.log','desktop-classpath.txt')) {
  Copy-Item -LiteralPath (Join-Path $taskScratch $taskFile) -Destination (Join-Path $taskEvidence ('checks/'+$taskFile)) -Force
 }
+if(Test-Path -LiteralPath (Join-Path $taskScratch 'integration-binding.json')) {
+ Copy-Item -LiteralPath (Join-Path $taskScratch 'integration-binding.json') -Destination (Join-Path $taskEvidence 'checks/integration-binding.json') -Force
+}
 $taskRecords = @()
 foreach($taskName in @('branch-regression-red','branch-regression-red-runtime','branch-targeted','branch-layout','branch-full','branch-buildSrc','branch-image','branch-runtime','main-targeted','main-full','main-buildSrc','main-image','main-runtime')) {
  $taskJson=Join-Path $taskScratch ($taskName+'.json')

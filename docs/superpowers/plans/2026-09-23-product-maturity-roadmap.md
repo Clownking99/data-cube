@@ -1,6 +1,6 @@
 # DataCube 产品成熟度推进计划
 
-日期：2026-09-23；G1–G8 及本地跟进更新：2026-09-26。状态：M0、M1、M3、M4a–d、M5、M6、M7 本地工程完成，已合并 main 并复验；M2 部分完成（本地实现已合并 main 并复验，生产签名/真实升级待验）；M8 外部验收待授权。
+日期：2026-09-23；G1–G8 及本地跟进更新：2026-09-30。状态：M0、M1、M3、M4a–d、M5、M6、M7 本地工程完成，已合并 main 并复验；M2 部分完成（本地实现已合并 main 并复验，生产签名/真实升级待验）；M8 外部验收待授权。
 
 基线：`main` / `792600c59e49bce3b300a71ccf412ed53d2b42e9`。
 
@@ -256,7 +256,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 | M5 | 本地工程完成 | 实现 76dd221、修正 c62e86c；main 最终合并 0e7ca79；[G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)，main 全量 3724 passed/3 live skips、fresh buildSrc 8、镜像通过 | G5 交付；原生桌面/真库及明确降级单列 |
 | M6 | 本地工程完成 | 实现 d4b02de；main 合并 c182128；[G6 账本](../verification/2026-09-24-datacube-g6-discovery-library.md)，main 全量 3753 passed/3 live skips、fresh buildSrc 8、镜像及 14 张合成桌面截图 | G6 交付；原生模态输入/完整壳流程、真库等单列待验 |
 | M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | G8 已补合成迁移原生预检查/确认/取消/在途关闭；真库事务/权限/一致性与发布仍待验 |
-| M8 | 待外部验收 | [G8](../verification/2026-09-25-datacube-g8-local-acceptance.md)、[小窗口](../verification/2026-09-25-sql-small-window.md)、[检索取消恢复](../verification/2026-09-26-metadata-search-cancellation.md) 保留各轮证据；[9 月 27 日原生补证](../verification/2026-09-27-discovery-native-acceptance.md) 新增字段/注释对话框输入、取消/超时、重试/条件失效/关闭证据，源码不变；新全量 3832 passed/3 live skipped、buildSrc 8、镜像/零连接审计通过 | 完整 AppShell 检索动作、SQL 极限布局/完整键盘、OS 多屏、真库、正式启动器/安装升级/签名/CI/真实用户任务仍待验，不称已发布 |
+| M8 | 待外部验收 | [G8](../verification/2026-09-25-datacube-g8-local-acceptance.md)、[小窗口](../verification/2026-09-25-sql-small-window.md)、[检索取消恢复](../verification/2026-09-26-metadata-search-cancellation.md)、[9 月 27 日原生补证](../verification/2026-09-27-discovery-native-acceptance.md) 保留历史；[9 月 30 日](../verification/2026-09-30-shell-workflow-acceptance.md) 修复实际连接树加载回调丢弃，补 SQL 小窗口滚动/键盘及树展开/表节点 SELECT/DDL 原生证据；main 8b89017 新定向 85、全量 3835 passed/3 live skipped、buildSrc 8、镜像/零连接审计通过 | 嵌套模态原生输入工具受限，完整字段结果 → SELECT/只读数据/DDL 链路仍待验；完整键盘/OS 多屏、真库、正式启动器/安装升级/签名/CI/用户任务待验，不称已发布 |
 
 ## 16. 参考与历史记录
 
