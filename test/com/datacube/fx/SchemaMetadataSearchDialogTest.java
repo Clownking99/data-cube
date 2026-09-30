@@ -14,6 +14,89 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SchemaMetadataSearchDialogTest {
     @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"read,false", "driver,false", "read,true", "driver,true"})
+    void disposalWaitsForBothPhysicalTasksEvenWhenCancellationFails(String first, boolean cancelFails) throws Exception {
+        try (var f=new CancelFixture(cancelFails)) {
+            var disposed=f.view.disposal().toCompletableFuture();
+            var completedOnFx=new AtomicBoolean();
+            f.view.disposal().thenRun(() -> completedOnFx.set(javafx.application.Platform.isFxApplicationThread()));
+            FxUiTestSupport.call(() -> { f.view.close(); assertFalse(f.view.dialog().isShowing()); return null; });
+            assertTrue(f.cancelStarted.await(5,TimeUnit.SECONDS));
+            assertFalse(disposed.isDone(), "hiding must return before physical work finishes");
+            f.complete(first);
+            assertFalse(disposed.isDone(), "one unfinished task still owns the closed search");
+            f.complete(first.equals("read") ? "driver" : "read");
+            assertTrue(disposed.isDone()); assertTrue(completedOnFx.get());
+            FxUiTestSupport.call(() -> {
+                assertTrue(list(f.view).getItems().isEmpty()); assertNull(f.view.dialog().getResult());
+                button(f.view,"submit").fire(); assertEquals(1,f.calls.get()); return null;
+            });
+        }
+    }
+
+    @Test void idleCloseDisposesImmediatelyOnFxWithoutStartingWork() throws Exception {
+        try (var runner=new FxTaskRunner()) {
+            var calls=new AtomicInteger();
+            FxUiTestSupport.call(() -> {
+                var d=new SchemaMetadataSearchDialog(target(),"s",null,runner,(r,c) -> { calls.incrementAndGet(); return result(); },() -> true);
+                var disposed=d.disposal().toCompletableFuture();
+                assertFalse(disposed.isDone()); d.dialog().show(); d.close(); d.close();
+                assertTrue(disposed.isDone()); assertFalse(d.dialog().isShowing()); assertEquals(0,calls.get()); return null;
+            });
+        }
+    }
+
+    @Test void rejectedCancellationRetainsOwnershipUntilReadReturns() throws Exception {
+        try (var f=new CancelFixture(false)) {
+            f.rejectTasks.set(true);
+            var disposed=f.view.disposal().toCompletableFuture();
+            FxUiTestSupport.call(() -> { f.view.close(); assertFalse(f.view.dialog().isShowing()); return null; });
+            assertFalse(disposed.isDone()); assertEquals(1,f.cancelStarted.getCount(), "rejected cancel must not run");
+            f.complete("read"); assertTrue(disposed.isDone()); assertEquals(1,f.calls.get());
+            FxUiTestSupport.call(() -> { assertTrue(list(f.view).getItems().isEmpty()); return null; });
+        }
+    }
+
+    @Test void fatalReadFailureStillReleasesClosedSearchWithoutSwallowingError() throws Exception {
+        try (var f=new CancelFixture(false,true)) {
+            var disposed=f.view.disposal().toCompletableFuture();
+            FxUiTestSupport.call(() -> { f.view.close(); return null; });
+            assertTrue(f.cancelStarted.await(5,TimeUnit.SECONDS));
+            f.complete("driver"); assertFalse(disposed.isDone());
+            f.readRelease.countDown(); assertTrue(f.completed.tryAcquire(5,TimeUnit.SECONDS));
+            var failure=assertInstanceOf(ExecutionException.class,f.taskFailures.remove());
+            assertInstanceOf(AssertionError.class,failure.getCause()); assertTrue(f.taskFailures.isEmpty());
+            FxUiTestSupport.call(() -> {
+                assertTrue(disposed.isDone()); assertTrue(list(f.view).getItems().isEmpty());
+                assertNull(f.view.dialog().getResult()); return null;
+            });
+        }
+    }
+
+    @Test void backgroundIdleCloseDisposesOnlyAfterFxHidesWindow() throws Exception {
+        try (var runner=new FxTaskRunner()) {
+            var calls=new AtomicInteger(); var blocked=new CountDownLatch(1); var release=new CountDownLatch(1);
+            var d=FxUiTestSupport.call(() -> {
+                var view=new SchemaMetadataSearchDialog(target(),"s",null,runner,(r,c) -> { calls.incrementAndGet(); return result(); },() -> true);
+                view.dialog().show(); return view;
+            });
+            var disposed=d.disposal().toCompletableFuture();
+            try {
+                javafx.application.Platform.runLater(() -> {
+                    blocked.countDown();
+                    try { assertTrue(release.await(5,TimeUnit.SECONDS)); }
+                    catch (InterruptedException e) { throw new AssertionError(e); }
+                });
+                assertTrue(blocked.await(5,TimeUnit.SECONDS));
+                d.close(); assertFalse(disposed.isDone(), "close publication alone cannot release the FX reservation");
+            } finally { release.countDown(); FxUiTestSupport.call(() -> { d.close(); return null; }); }
+            FxUiTestSupport.call(() -> {
+                assertTrue(disposed.isDone()); assertFalse(d.dialog().isShowing()); assertEquals(0,calls.get()); return null;
+            });
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.CsvSource({
             "cancel,read,false", "cancel,driver,false", "timeout,read,true", "timeout,driver,false",
             "change,read,false", "change,driver,true", "clear,read,false", "clear,driver,false"})
@@ -75,6 +158,7 @@ class SchemaMetadataSearchDialogTest {
                 button(f.view,"submit").fire(); assertEquals(1,f.calls.get()); assertNull(f.view.dialog().getResult());
                 if(close) assertFalse(f.view.dialog().isShowing()); return null;
             });
+            assertEquals(close, f.view.disposal().toCompletableFuture().isDone());
         }
     }
 
@@ -90,12 +174,18 @@ class SchemaMetadataSearchDialogTest {
                 readRelease=new CountDownLatch(1), cancelRelease=new CountDownLatch(1);
         final AtomicInteger calls=new AtomicInteger();
         final AtomicBoolean allowed=new AtomicBoolean(true);
+        final AtomicBoolean rejectTasks=new AtomicBoolean();
         final List<Request> requests=new CopyOnWriteArrayList<>();
         final FxTaskRunner runner;
         final SchemaMetadataSearchDialog view;
-        CancelFixture(boolean cancelFails) throws Exception {
+        CancelFixture(boolean cancelFails) throws Exception { this(cancelFails,false); }
+        CancelFixture(boolean cancelFails, boolean readFails) throws Exception {
             var executor=new ThreadPoolExecutor(0,Integer.MAX_VALUE,1,TimeUnit.SECONDS,
                     new SynchronousQueue<>(),Thread.ofVirtual().factory()) {
+                @Override public void execute(Runnable task) {
+                    if (rejectTasks.get()) throw new RejectedExecutionException("synthetic closed runner");
+                    super.execute(task);
+                }
                 @Override protected void afterExecute(Runnable task,Throwable error) {
                     try { ((Future<?>)task).get(); }
                     catch (Exception failure) { taskFailures.add(failure); }
@@ -118,7 +208,11 @@ class SchemaMetadataSearchDialogTest {
                                 return null;
                             });
                     var activation=control.activate(statement,0); started.countDown();
-                    try { assertTrue(readRelease.await(5,TimeUnit.SECONDS)); return result(); }
+                    try {
+                        assertTrue(readRelease.await(5,TimeUnit.SECONDS));
+                        if (readFails) throw new AssertionError("synthetic fatal read failure");
+                        return result();
+                    }
                     finally { control.release(activation); }
                 },allowed::get);
                 d.dialog().show(); text(d).setText("customer"); button(d,"submit").fire(); return d;

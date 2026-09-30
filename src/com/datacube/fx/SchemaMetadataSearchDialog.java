@@ -7,6 +7,8 @@ import com.datacube.spi.SqlExecutionControl;
 import com.datacube.spi.model.ConnConfig;
 import com.datacube.spi.model.TableInfo;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import javafx.animation.PauseTransition;
@@ -38,8 +40,10 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
     private final Loader loader;
     private final BooleanSupplier allowed;
     private final AtomicBoolean closed = new AtomicBoolean(), cancelling = new AtomicBoolean();
+    private final CompletableFuture<Void> disposed = new CompletableFuture<>();
     private final PauseTransition deadline = new PauseTransition(Duration.seconds(SchemaMetadataSearch.TIMEOUT_SECONDS));
     private volatile Pending active;
+    private boolean closeCleaned;
     private Request published;
 
     SchemaMetadataSearchDialog(ConnConfig target, String schema, Window owner, FxTaskRunner runner, Loader loader, BooleanSupplier allowed) {
@@ -99,6 +103,11 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
     }
     Dialog<Selection> dialog() { return dialog; }
     Optional<Selection> showAndWait() { return dialog.showAndWait(); }
+    /** Completes on FX after close and physical read/cancel completion; never waits on FX. */
+    CompletionStage<Void> disposal() { return disposed.minimalCompletionStage(); }
+    private void completeDisposal() {
+        if (closeCleaned && active==null && !cancelling.get()) disposed.complete(null);
+    }
     private static String compact(String value) { String text=value.replaceAll("[\\r\\n\\t]"," "); return text.length()>96 ? text.substring(0,96)+"…" : text; }
     private boolean usable() { return !closed.get() && allowed.getAsBoolean() && !dialog.getDialogPane().isDisabled(); }
     private boolean candidateAllowed() {
@@ -122,7 +131,7 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
         if (!usable() || active!=null || cancelling.get() || query.getText().isBlank() || mode.getValue()==null) return;
         Request request=new Request(target,schema,mode.getValue(),query.getText().strip());
         Pending pending=new Pending(request); active=pending; published=null; list.getItems().clear(); preview.clear();
-        if (closed.get()) { pending.control.requestCancellation(); active=null; return; }
+        if (closed.get()) { pending.control.requestCancellation(); active=null; completeDisposal(); return; }
         status.setText("正在读取当前 Schema 的" + request.mode() + "匹配…"); buttons();
         deadline.setOnFinished(event -> { if (active==pending) abandon(
                 "读取超时；等待驱动释放资源后可重试。", "读取已结束，未采用超时请求的结果；可重新查找。"); }); deadline.playFromStart();
@@ -130,19 +139,23 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
             Result result=null; Exception failure=null;
             try { if (!pending.control.cancellationRequested()) result=loader.load(request,pending.control); }
             catch (Exception error) { failure=error; }
-            Result completed=result; Exception error=failure;
-            Platform.runLater(() -> finish(pending,completed,error));
+            finally {
+                Result completed=result; Exception error=failure;
+                Platform.runLater(() -> finish(pending,completed,error));
+            }
         }); } catch (java.util.concurrent.RejectedExecutionException rejected) { finish(pending,null,rejected); }
     }
     private void finish(Pending pending,Result result,Exception failure) {
-        if (active!=pending) return;
-        pending.readFinished=true; deadline.stop();
-        if (pending.abandoned) { settleAbandoned(pending); buttons(); return; }
-        active=null;
-        if (!usable()) { buttons(); return; }
-        if (failure!=null || result==null) status.setText("读取失败或权限不足；未建立结果，请核对目标后重试。");
-        else { published=pending.request; list.getItems().setAll(result.hits()); status.setText(result.notice()); }
-        buttons();
+        try {
+            if (active!=pending) return;
+            pending.readFinished=true; deadline.stop();
+            if (pending.abandoned) { settleAbandoned(pending); buttons(); return; }
+            active=null;
+            if (!usable()) { buttons(); return; }
+            if (failure!=null || result==null) status.setText("读取失败或权限不足；未建立结果，请核对目标后重试。");
+            else { published=pending.request; list.getItems().setAll(result.hits()); status.setText(result.notice()); }
+            buttons();
+        } finally { completeDisposal(); }
     }
     private void abandon(String message,String settledNotice) {
         Pending pending=active; if (pending==null || pending.abandoned) return;
@@ -159,13 +172,24 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
         if (!cancelling.compareAndSet(false,true)) return;
         try { runner.submit(() -> {
             try { pending.control.cancel(); } catch (Exception ignored) { }
-            finally { cancelling.set(false); Platform.runLater(() -> { settleAbandoned(pending); buttons(); }); }
-        }); } catch (java.util.concurrent.RejectedExecutionException ignored) { cancelling.set(false); }
+            finally { cancelling.set(false); Platform.runLater(() -> cancellationFinished(pending)); }
+        }); } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            cancelling.set(false);
+            if (Platform.isFxApplicationThread()) cancellationFinished(pending);
+            else Platform.runLater(() -> cancellationFinished(pending));
+        }
+    }
+    private void cancellationFinished(Pending pending) {
+        settleAbandoned(pending); buttons(); completeDisposal();
     }
     @Override public void close() {
         if (!closed.compareAndSet(false,true)) return;
         Pending pending=active; if (pending!=null) { pending.control.requestCancellation(); cancelDriver(pending); }
-        Runnable cleanup=() -> { deadline.stop(); published=null; list.getItems().clear(); preview.clear(); buttons(); dialog.close(); };
+        Runnable cleanup=() -> {
+            deadline.stop(); published=null; list.getItems().clear(); preview.clear(); buttons(); dialog.close();
+            // Background close must publish any cancel task before FX can release ownership.
+            closeCleaned=true; completeDisposal();
+        };
         if (Platform.isFxApplicationThread()) cleanup.run(); else Platform.runLater(cleanup);
     }
     private static final class Pending {
