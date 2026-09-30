@@ -1,0 +1,503 @@
+{
+  "base": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+  "archivedAt": "2026-09-30T14:39:09.5270133+08:00",
+  "checks": [
+    {
+      "name": "branch-audit",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "completedAt": "2026-09-30T14:39:08.5508299+08:00",
+      "testClassLeaks": 0,
+      "testConfigLeaks": 0,
+      "driverExit": 0,
+      "driverOutput": "oracle=oracle.jdbc.OracleDriver\r\npostgres=org.postgresql.Driver\r\nconnectCalls=0; no credentials or user profile loaded\r\n",
+      "driverLogSha256": "1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82",
+      "artifacts": [
+        {
+          "path": "DataCube.exe",
+          "bytes": 595968,
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+        },
+        {
+          "path": "app/DataCube.cfg",
+          "bytes": 369,
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+        },
+        {
+          "path": "runtime/lib/modules",
+          "bytes": 102365379,
+          "sha256": "40573CFFA4F74EBD2F953A88BCFFA5B30BCE376821EB807A3B60FBB642DC7FE3"
+        }
+      ]
+    },
+    {
+      "name": "branch-buildSrc",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:36:24.3865014+08:00",
+      "exitCode": 0,
+      "log": "branch-buildSrc.log",
+      "logSha256": "4D9F1E86B34203F09C5B919B7043A984A390540711FADFE0820A785DB76B57B6",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "branch-buildSrc-xml",
+      "xmlManifestSha256": "06BBE47C1EC4300B175E8B9513B19FE13D7DD7CEFB48DEBF66AC4D43BC84C9FC"
+    },
+    {
+      "name": "branch-full",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "clean",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:35:55.033714+08:00",
+      "exitCode": 0,
+      "log": "branch-full.log",
+      "logSha256": "4D1CF351878833DE5857E8763AAF16AB565203E5507E618AD62DF60418B37AA2",
+      "actualTestTaskRan": true,
+      "suites": 309,
+      "tests": 3846,
+      "passed": 3843,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "branch-full-xml",
+      "xmlManifestSha256": "8F040FD9BB5A8B17B61942632C55AB9C75BD802E7F54BE33E15179AEB12D8BC8"
+    },
+    {
+      "name": "branch-image",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-30T14:38:25.2415625+08:00",
+      "exitCode": 0,
+      "log": "branch-image.log",
+      "logSha256": "ACE43725DCA234F53BD2471AF821FE7F78129FFC2ECB7C782687FF243F105855",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "branch-targeted",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--tests",
+        "com.datacube.fx.SchemaObjectFindEntryTest",
+        "--tests",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest",
+        "--tests",
+        "com.datacube.fx.DataGridExplicitSaveTest",
+        "--tests",
+        "com.datacube.fx.DataGridSaveFlowTest",
+        "--tests",
+        "com.datacube.fx.AppShellTest",
+        "--tests",
+        "com.datacube.service.SchemaMetadataSearchTest",
+        "--tests",
+        "com.datacube.fx.ConnectionTreeLazyLoadTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:31:51.9610601+08:00",
+      "exitCode": 0,
+      "log": "branch-targeted.log",
+      "logSha256": "DD99036614E3A07318E1262DDE17E16CFA8B1EBD6EB6ACF05E183B7BCEC01F5B",
+      "actualTestTaskRan": true,
+      "suites": 8,
+      "tests": 70,
+      "passed": 70,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "branch-targeted-xml",
+      "xmlManifestSha256": "1629C7DFC1E46C2FDDB33B58793626BE9E75F3E8F81AEFFAAC771EB04AA78DAE"
+    },
+    {
+      "name": "routing-behavior-red",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:22:44.2026303+08:00",
+      "exitCode": 1,
+      "log": "routing-behavior-red.log",
+      "logSha256": "E5C77FD23AEF32168A07E4D864CE3E4DA1636197CA96BD6E020E3551BA472C1F",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 6,
+      "passed": 0,
+      "failures": 6,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[1] TABLE, SELECT",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[2] VIEW, SELECT",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[3] TABLE, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[4] VIEW, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[5] TABLE, DDL",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[6] VIEW, DDL"
+      ],
+      "xmlDirectory": "routing-behavior-red-xml",
+      "xmlManifestSha256": "F11D379F4915B8F4793EC65CA3FD997696704CA9B8D01307C17653211E167F60"
+    },
+    {
+      "name": "routing-diagnostic",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:20:30.1715899+08:00",
+      "exitCode": 1,
+      "log": "routing-diagnostic.log",
+      "logSha256": "02141CDFBB63FA9F32B2ED0076B8EA2A7AA9B9388DB4255F32664167041B7C75",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 6,
+      "passed": 0,
+      "failures": 6,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[1] TABLE, SELECT",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[2] VIEW, SELECT",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[3] TABLE, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[4] VIEW, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[5] TABLE, DDL",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[6] VIEW, DDL"
+      ],
+      "xmlDirectory": "routing-diagnostic-xml",
+      "xmlManifestSha256": "B7DFABB3DBF06AE3BA17F829DDE1528727689048F2CA252AAE5722DA7E8DAA43"
+    },
+    {
+      "name": "routing-green",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:29:38.717484+08:00",
+      "exitCode": 0,
+      "log": "routing-green.log",
+      "logSha256": "3C671054319C78D4B49178F0AECBA6E832C287C2339053B253C1E37725395738",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "routing-green-xml",
+      "xmlManifestSha256": "96977DA8704C68FAF88D751B66B69DB6F50141F64EC83C5B2DA7BC132CF8EEF7"
+    },
+    {
+      "name": "routing-hint-red",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:28:00.6171112+08:00",
+      "exitCode": 1,
+      "log": "routing-hint-red.log",
+      "logSha256": "89782386AF2DCE1EAAAE34C1173881214449C4F94E9275DDA6A891C2E345F345",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 6,
+      "passed": 4,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[3] TABLE, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[4] VIEW, DATA"
+      ],
+      "xmlDirectory": "routing-hint-red-xml",
+      "xmlManifestSha256": "8DE32421708CBF8FD525D4DB637E6E856459E9D7B3F540E709F46ED0057A1A71"
+    },
+    {
+      "name": "routing-product-red",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:23:20.9072356+08:00",
+      "exitCode": 1,
+      "log": "routing-product-red.log",
+      "logSha256": "24582CEB481DD7E2BA8F66C7E3846DD67AF56620603682CBABB99275C8D67C7B",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 6,
+      "passed": 3,
+      "failures": 3,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[1] TABLE, SELECT",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[3] TABLE, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[4] VIEW, DATA"
+      ],
+      "xmlDirectory": "routing-product-red-xml",
+      "xmlManifestSha256": "90FBCC4B69EE2D67CF4125DBA4BFDACAB2FD763452AE1CB3C803958D86924FE8"
+    },
+    {
+      "name": "routing-reason-red",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:26:56.1235475+08:00",
+      "exitCode": 1,
+      "log": "routing-reason-red.log",
+      "logSha256": "74FC500BF32BE903E768440CCDEE6E7F0FA4926599CC813A717210AB6717B01F",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 6,
+      "passed": 4,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[3] TABLE, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[4] VIEW, DATA"
+      ],
+      "xmlDirectory": "routing-reason-red-xml",
+      "xmlManifestSha256": "B7F3FAE4FAEF1167C9A8B7FBAE38E584FF3CB787E1F357919C49AB63F0876F98"
+    },
+    {
+      "name": "routing-red-confirmed",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:25:23.4330639+08:00",
+      "exitCode": 1,
+      "log": "routing-red-confirmed.log",
+      "logSha256": "37F9E01FD7E2E812B84FCE23026568A428ECC13A2CA93D36FFE967E49834324F",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 6,
+      "passed": 4,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[3] TABLE, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[4] VIEW, DATA"
+      ],
+      "xmlDirectory": "routing-red-confirmed-xml",
+      "xmlManifestSha256": "7DD11A530B64F3CA13C949BCBD58C2BEA1002E311A31F6E906402C0BBA3B027A"
+    },
+    {
+      "name": "routing-red-corrected",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:18:32.8736583+08:00",
+      "exitCode": 1,
+      "log": "routing-red-corrected.log",
+      "logSha256": "ECC981EABFF1010D68993954272D2BAFA5DCCB4C510B8B2332DDB853AD258E9F",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 6,
+      "passed": 0,
+      "failures": 6,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[1] TABLE, SELECT",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[2] VIEW, SELECT",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[3] TABLE, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[4] VIEW, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[5] TABLE, DDL",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[6] VIEW, DDL"
+      ],
+      "xmlDirectory": "routing-red-corrected-xml",
+      "xmlManifestSha256": "92035CE73EDC777272E5616E0A9E0824ADC74E67D36FFAA7A146D8AE9C9700AD"
+    },
+    {
+      "name": "routing-red-final",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:24:17.3922401+08:00",
+      "exitCode": 1,
+      "log": "routing-red-final.log",
+      "logSha256": "8D8B50EC7DDEB9B8CA668FAC1AEB466CCB4A6166231F9403492F2FF19CC5B662",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 6,
+      "passed": 3,
+      "failures": 3,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[1] TABLE, SELECT",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[3] TABLE, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[4] VIEW, DATA"
+      ],
+      "xmlDirectory": "routing-red-final-xml",
+      "xmlManifestSha256": "D6B936B0B72F7D2E63388B07700CB7A7A634F58111F72A81D3A217224B89BD6E"
+    },
+    {
+      "name": "routing-red",
+      "head": "a28eb79d8dbdf29530ea564b24c2294a7c9224fc",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-shell-56f4a5af0b504a59a3753d82a14ec28c\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T14:16:40.8111787+08:00",
+      "exitCode": 1,
+      "log": "routing-red.log",
+      "logSha256": "81165B76E030D34C7187E8EBA1F3DF1453A4F2513D76194605B828F17A52668E",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 6,
+      "passed": 0,
+      "failures": 6,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[1] TABLE, SELECT",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[2] VIEW, SELECT",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[3] TABLE, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[4] VIEW, DATA",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[5] TABLE, DDL",
+        "com.datacube.fx.MetadataSearchShellRoutingTest.[6] VIEW, DDL"
+      ],
+      "xmlDirectory": "routing-red-xml",
+      "xmlManifestSha256": "6AFB1A3C36F1106EF8E5C3A9D9830000D6E0B0DD8E5571223124B0B61950EF7F"
+    }
+  ],
+  "boundary": "Offline JDK 25; synthetic profiles, fixed catalog SQL and strict mocks; no real profiles, credentials, histories or business files; no external mutations",
+  "evidenceLevel": "Programmatic FX integration through actual AppShell handlers; no new native desktop acceptance",
+  "unverified": [
+    "Complete native metadata result to SELECT/read-only DATA/DDL workflow",
+    "Oracle route and real PostgreSQL/Oracle/Redis permissions, transaction and cancellation",
+    "OS scaling/multi-monitor and full keyboard traversal",
+    "Formal launcher/install/upgrade/signing/remote CI/user tasks/release"
+  ]
+}
