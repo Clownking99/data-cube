@@ -1,0 +1,18 @@
+{
+  "name": "branch-review",
+  "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+  "completedAt": "2026-09-30T22:12:07.8991759+08:00",
+  "outcome": "reviewed",
+  "findings": [],
+  "checks": [
+    "Only failure classification changes; explicit cancellation precedes timeout exception class in Oracle/PG/shared prepared paths",
+    "Genuine SQLTimeoutException without cancellation remains TIMEOUT; existing sanitized prepared diagnostics and PG position behavior preserved",
+    "No changes to Statement activation/release, connection lifecycle, transaction, admission, row writes or SQL text",
+    "18 new controlled cases reproduced 9 cancelled-timeout failures and passed all after fix; 114 directed tests passed",
+    "Live acceptance avoids deleting existing objects; retained own fixture; credentials supplied through transient process environment and encrypted only in memory"
+  ],
+  "unverified": [
+    "Oracle real-driver post-fix and native UI pending",
+    "PG/Redis live, OS multi-monitor and external release not authorized"
+  ]
+}

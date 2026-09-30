@@ -81,8 +81,9 @@ public final class OracleSqlRunner implements SqlRunner {
             long elapsed = System.currentTimeMillis() - t0;
             if (userExecute) executionMillis = (System.nanoTime() - executionStarted) / 1_000_000;
             if (fetchStarted >= 0) fetchMillis = (System.nanoTime() - fetchStarted) / 1_000_000;
-            QueryResult result = e instanceof SQLTimeoutException ? QueryResult.timeout(e.getMessage(), elapsed)
-                    : options.control().cancellationRequested() ? QueryResult.cancelled(e.getMessage(), elapsed)
+            // Oracle can report explicit Statement.cancel as SQLTimeoutException too.
+            QueryResult result = options.control().cancellationRequested() ? QueryResult.cancelled(e.getMessage(), elapsed)
+                    : e instanceof SQLTimeoutException ? QueryResult.timeout(e.getMessage(), elapsed)
                     : QueryResult.error(e.getMessage(), elapsed);
             return result.withExecutionDetails(0, executionMillis, fetchMillis);
         }
@@ -95,13 +96,11 @@ public final class OracleSqlRunner implements SqlRunner {
         try {
             applySchema(conn, schema, options);
             return JdbcPreparedQueryExecutor.execute(conn, strip(sql), parameters, options);
-        } catch (SQLTimeoutException timeout) {
-            return QueryResult.timeout(
-                    JdbcDiagnostics.timeout(timeout), System.currentTimeMillis() - startedAt);
         } catch (SQLException failure) {
             long elapsed = System.currentTimeMillis() - startedAt;
             return options.control().cancellationRequested()
                     ? QueryResult.cancelled(JdbcDiagnostics.cancelled(failure), elapsed)
+                    : failure instanceof SQLTimeoutException ? QueryResult.timeout(JdbcDiagnostics.timeout(failure), elapsed)
                     : QueryResult.error(JdbcDiagnostics.sqlFailure(failure), elapsed);
         }
     }
@@ -163,8 +162,6 @@ public final class OracleSqlRunner implements SqlRunner {
                         "SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY())",
                         null, options);
             }
-        } catch (SQLTimeoutException e) {
-            return QueryResult.timeout(e.getMessage(), System.currentTimeMillis() - t0);
         } catch (SQLException e) {
             return failure(e, t0, options);
         }
@@ -189,6 +186,7 @@ public final class OracleSqlRunner implements SqlRunner {
         long elapsed = System.currentTimeMillis() - startedAt;
         return options.control().cancellationRequested()
                 ? QueryResult.cancelled(error.getMessage(), elapsed)
+                : error instanceof SQLTimeoutException ? QueryResult.timeout(error.getMessage(), elapsed)
                 : QueryResult.error(error.getMessage(), elapsed);
     }
 
