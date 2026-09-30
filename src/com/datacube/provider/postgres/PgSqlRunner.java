@@ -75,8 +75,8 @@ public final class PgSqlRunner implements SqlRunner {
             long elapsed = System.currentTimeMillis() - t0;
             if (userExecute) executionMillis = (System.nanoTime() - executionStarted) / 1_000_000;
             if (fetchStarted >= 0) fetchMillis = (System.nanoTime() - fetchStarted) / 1_000_000;
-            QueryResult result = e instanceof SQLTimeoutException ? QueryResult.timeout(e.getMessage(), elapsed)
-                    : options.control().cancellationRequested() ? QueryResult.cancelled(e.getMessage(), elapsed)
+            QueryResult result = options.control().cancellationRequested() ? QueryResult.cancelled(e.getMessage(), elapsed)
+                    : e instanceof SQLTimeoutException ? QueryResult.timeout(e.getMessage(), elapsed)
                     : QueryResult.error(e.getMessage(), elapsed);
             int position = result.failureKind == QueryResult.FailureKind.SQL_ERROR ? (userExecute ? PgErrorPosition.originalPosition(e, conn, sql) : 0) : 0;
             return result.withExecutionDetails(position, executionMillis, fetchMillis);
@@ -90,13 +90,11 @@ public final class PgSqlRunner implements SqlRunner {
         try {
             applySchema(conn, schema, options);
             return JdbcPreparedQueryExecutor.execute(conn, sql, parameters, options);
-        } catch (SQLTimeoutException timeout) {
-            return QueryResult.timeout(
-                    JdbcDiagnostics.timeout(timeout), System.currentTimeMillis() - startedAt);
         } catch (SQLException failure) {
             long elapsed = System.currentTimeMillis() - startedAt;
             return options.control().cancellationRequested()
                     ? QueryResult.cancelled(JdbcDiagnostics.cancelled(failure), elapsed)
+                    : failure instanceof SQLTimeoutException ? QueryResult.timeout(JdbcDiagnostics.timeout(failure), elapsed)
                     : QueryResult.error(JdbcDiagnostics.sqlFailure(failure), elapsed);
         }
     }

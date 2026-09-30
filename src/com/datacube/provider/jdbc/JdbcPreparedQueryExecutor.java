@@ -36,13 +36,11 @@ public final class JdbcPreparedQueryExecutor {
             } finally {
                 options.control().release(activation);
             }
-        } catch (SQLTimeoutException timeout) {
-            return QueryResult.timeout(
-                    JdbcDiagnostics.timeout(timeout), System.currentTimeMillis() - started);
         } catch (SQLException failure) {
             long elapsed = System.currentTimeMillis() - started;
             return options.control().cancellationRequested()
                     ? QueryResult.cancelled(JdbcDiagnostics.cancelled(failure), elapsed)
+                    : failure instanceof SQLTimeoutException ? QueryResult.timeout(JdbcDiagnostics.timeout(failure), elapsed)
                     : QueryResult.error(JdbcDiagnostics.sqlFailure(failure), elapsed);
         }
     }

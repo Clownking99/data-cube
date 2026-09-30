@@ -1,0 +1,621 @@
+{
+  "base": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+  "archivedAt": "2026-09-30T22:50:09.7884671+08:00",
+  "checks": [
+    {
+      "name": "acceptance",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "startedAt": "2026-09-30T21:58:38.2168526+08:00",
+      "completedAt": "2026-09-30T21:58:57.2198384+08:00",
+      "exitCode": 1,
+      "fixture": "DCA_D161141EA4BB43_T",
+      "profileIsolated": true,
+      "log": "acceptance.log",
+      "logSha256": "5C0E917239766B35F2D496AA1D66E2FEDEC30BEE150DFEAF46CA14846E9D7088",
+      "checks": [
+        {
+          "check": "connect_identity",
+          "result": "passed",
+          "milliseconds": 401
+        },
+        {
+          "check": "create_unique_fixture",
+          "result": "passed",
+          "milliseconds": 119
+        },
+        {
+          "check": "real_insert_update_and_conflict",
+          "result": "passed",
+          "milliseconds": 2298
+        },
+        {
+          "check": "readonly_rejects_sql_insert_and_data_update_before_resources",
+          "result": "passed",
+          "milliseconds": 7
+        },
+        {
+          "check": "production_confirmation_bound_to_request_and_config",
+          "result": "passed",
+          "milliseconds": 103
+        },
+        {
+          "check": "manual_rollback_visibility",
+          "result": "passed",
+          "milliseconds": 136
+        },
+        {
+          "check": "manual_commit_visibility",
+          "result": "passed",
+          "milliseconds": 128
+        },
+        {
+          "check": "pending_close_rolls_back",
+          "result": "passed",
+          "milliseconds": 128
+        },
+        {
+          "check": "schema_name_catalog",
+          "result": "passed",
+          "milliseconds": 162
+        },
+        {
+          "check": "metadata_column_name",
+          "result": "passed",
+          "milliseconds": 328
+        },
+        {
+          "check": "metadata_object_comment",
+          "result": "passed",
+          "milliseconds": 201
+        },
+        {
+          "check": "metadata_column_comment",
+          "result": "passed",
+          "milliseconds": 115
+        },
+        {
+          "check": "readonly_data_page_and_oracle_empty_string",
+          "result": "passed",
+          "milliseconds": 53
+        },
+        {
+          "check": "ddl_preview_only",
+          "result": "passed",
+          "milliseconds": 1523
+        },
+        {
+          "check": "real_driver_cancel_lock_wait_and_recover",
+          "result": "failed",
+          "type": "AssertionError",
+          "sqlCode": 0
+        },
+        {
+          "check": "real_driver_timeout_lock_wait_and_recover",
+          "result": "passed",
+          "milliseconds": 9265
+        },
+        {
+          "check": "connections_closed_and_fixture_retained",
+          "result": "passed",
+          "milliseconds": 238
+        }
+      ],
+      "summary": {
+        "summary": true,
+        "passed": 16,
+        "failed": 1,
+        "opened": 32,
+        "closed": 32,
+        "executed": 51,
+        "mutations": 14,
+        "deletionStatementsExecuted": 0,
+        "fixture": "DCA_D161141EA4BB43_T",
+        "retained": true
+      },
+      "runtimeModulesSha256": "7CA191D96F390A6B4F708826F380F8A0AAE3B24A9B07D888BA89DCE51364665D",
+      "boundary": "User authorized Oracle target only; new unique table; INSERT/UPDATE only; no DELETE/TRUNCATE/DROP or existing business row queries; credentials supplied through transient process environment only"
+    },
+    {
+      "name": "archive-redaction-review",
+      "completedAt": "2026-09-30T22:46:57.8538244+08:00",
+      "outcome": "target_accessibility_text_redacted_before_staging",
+      "initialArchiveScan": "failed",
+      "redactions": [
+        {
+          "file": "02-readonly-data-loaded.txt",
+          "originalSha256": "722396A3EEBBB74C7F334BB8A746D4051A6CC44934CF512ADF15F35036537C2D",
+          "archivedSha256": "7A1235F4A76F76454A5A5F40040758FB3BF8022B1626D8ED8FD6BD28F21360DD",
+          "targetLiterals": 2,
+          "credentialLiterals": 0
+        },
+        {
+          "file": "03-schema-direct-entry.txt",
+          "originalSha256": "722396A3EEBBB74C7F334BB8A746D4051A6CC44934CF512ADF15F35036537C2D",
+          "archivedSha256": "7A1235F4A76F76454A5A5F40040758FB3BF8022B1626D8ED8FD6BD28F21360DD",
+          "targetLiterals": 2,
+          "credentialLiterals": 0
+        },
+        {
+          "file": "04-native-field-input.txt",
+          "originalSha256": "2702A664E93E4A2A014020ADB97BFD44375A5C8CDC6F432AACA5FC1FC9C19601",
+          "archivedSha256": "8AEFB8BAAA60400E40CCAD9B1F4971706C39A3F4A12FD25292CDA985878C87FE",
+          "targetLiterals": 2,
+          "credentialLiterals": 0
+        },
+        {
+          "file": "05-field-real-hit.txt",
+          "originalSha256": "B2F2B79413ED319ACE03EA4C6A252DBE61A8DD26677F977E7E2995CF697D9C88",
+          "archivedSha256": "9856EDD5824534D0125825B4E9E3099C4DFEA9EB20264467ABC9C571CDAB0BEE",
+          "targetLiterals": 2,
+          "credentialLiterals": 0
+        },
+        {
+          "file": "06-selected-field-three-actions.txt",
+          "originalSha256": "B2F2B79413ED319ACE03EA4C6A252DBE61A8DD26677F977E7E2995CF697D9C88",
+          "archivedSha256": "9856EDD5824534D0125825B4E9E3099C4DFEA9EB20264467ABC9C571CDAB0BEE",
+          "targetLiterals": 2,
+          "credentialLiterals": 0
+        }
+      ],
+      "credentialLiterals": 0,
+      "next": "Rebuild manifest, verify raw and staged bytes; no sensitive target literal may remain",
+      "firstStagedDiffCheck": "failed_raw_CRLF_treated_as_trailing_whitespace"
+    },
+    {
+      "name": "branch-buildsrc",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "arguments": [
+        ":buildSrc:cleanTest",
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-oracle-acceptance-d161141ea4bb43a19021a0bf9e825600\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T22:16:41.0693976+08:00",
+      "exitCode": 0,
+      "log": "branch-buildsrc.log",
+      "logSha256": "5C7F9A2F88E69C92729D2946ACD4C8AF6479F89386BF8F0540E2C418101D0E0F",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "branch-buildsrc-xml",
+      "xmlManifestSha256": "45CF94447E03B40E737C6B4419035D175D90B53C7B2A9FD58DDB738E69651851"
+    },
+    {
+      "name": "branch-directed",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest",
+        "--tests",
+        "com.datacube.provider.oracle.OracleSqlRunnerExecutionControlTest",
+        "--tests",
+        "com.datacube.provider.postgres.PgSqlRunnerExecutionControlTest",
+        "--tests",
+        "com.datacube.provider.jdbc.JdbcPreparedQueryExecutorTest",
+        "--tests",
+        "com.datacube.spi.SqlExecutionControlTest",
+        "--tests",
+        "com.datacube.service.JdbcEditorSessionTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-oracle-acceptance-d161141ea4bb43a19021a0bf9e825600\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T22:07:18.8911313+08:00",
+      "exitCode": 0,
+      "log": "branch-directed.log",
+      "logSha256": "D4212CA60C9FD6720E8CA460BDAD789BDB37976FE0B775986DF5C0E50F26ED84",
+      "actualTestTaskRan": true,
+      "suites": 6,
+      "tests": 114,
+      "passed": 114,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "branch-directed-xml",
+      "xmlManifestSha256": "5347FFEEF02366553FE04CD8ED4D193A847955389546AD6E52571688653042F6"
+    },
+    {
+      "name": "branch-full",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "arguments": [
+        "cleanTest",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-oracle-acceptance-d161141ea4bb43a19021a0bf9e825600\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T22:14:24.1206641+08:00",
+      "exitCode": 0,
+      "log": "branch-full.log",
+      "logSha256": "6E8989D48F37560159BEFD7D5D1DDD512B2367F0D982F560123716FA9E1EA92F",
+      "actualTestTaskRan": true,
+      "suites": 310,
+      "tests": 3919,
+      "passed": 3916,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "branch-full-xml",
+      "xmlManifestSha256": "6ACDE714DCA2918AFCFA338B2BB81A40F7DBD75A92B00CCFA013F4B7F2CC6D88"
+    },
+    {
+      "name": "branch-image-audit",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "completedAt": "2026-09-30T22:19:42.7609947+08:00",
+      "testClassLeaks": 0,
+      "testConfigLeaks": 0,
+      "driverExit": 0,
+      "driverOutput": "oracle=oracle.jdbc.OracleDriver\r\npostgres=org.postgresql.Driver\r\nconnectCalls=0; no credentials or user profile loaded\r\n",
+      "driverLogSha256": "1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82",
+      "artifacts": [
+        {
+          "path": "DataCube.exe",
+          "bytes": 595968,
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+        },
+        {
+          "path": "app/DataCube.cfg",
+          "bytes": 369,
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+        },
+        {
+          "path": "runtime/lib/modules",
+          "bytes": 102374706,
+          "sha256": "242CE98352FD2F1AE829C3F41CC3B078E05ECAD2AB43ED2B2F84C526AA28AD0E"
+        }
+      ]
+    },
+    {
+      "name": "branch-image",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-30T22:19:04.8323893+08:00",
+      "exitCode": 0,
+      "log": "branch-image.log",
+      "logSha256": "5CC6B575D2FD1E5559336FEF91BEFB08E7CD1D47DB3005D12B1009AD98E035EA",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "branch-live",
+      "mode": "acceptance",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "startedAt": "2026-09-30T22:19:43.5863074+08:00",
+      "completedAt": "2026-09-30T22:20:04.7586945+08:00",
+      "exitCode": 0,
+      "fixture": "DCA_D161141EA4BB44_T",
+      "profileIsolated": true,
+      "log": "branch-live.log",
+      "logSha256": "77F6D01DBB22FEBDD7C1FEC63ED2ED6DE76B194E2F03E5C7DAE20C7ED6C90E1F",
+      "checks": [
+        {
+          "check": "connect_identity",
+          "result": "passed",
+          "milliseconds": 397
+        },
+        {
+          "check": "create_unique_fixture",
+          "result": "passed",
+          "milliseconds": 91
+        },
+        {
+          "check": "real_insert_update_and_conflict",
+          "result": "passed",
+          "milliseconds": 371
+        },
+        {
+          "check": "readonly_rejects_sql_insert_and_data_update_before_resources",
+          "result": "passed",
+          "milliseconds": 6
+        },
+        {
+          "check": "production_confirmation_bound_to_request_and_config",
+          "result": "passed",
+          "milliseconds": 122
+        },
+        {
+          "check": "manual_rollback_visibility",
+          "result": "passed",
+          "milliseconds": 143
+        },
+        {
+          "check": "manual_commit_visibility",
+          "result": "passed",
+          "milliseconds": 146
+        },
+        {
+          "check": "pending_close_rolls_back",
+          "result": "passed",
+          "milliseconds": 151
+        },
+        {
+          "check": "schema_name_catalog",
+          "result": "passed",
+          "milliseconds": 127
+        },
+        {
+          "check": "metadata_column_name",
+          "result": "passed",
+          "milliseconds": 60
+        },
+        {
+          "check": "metadata_object_comment",
+          "result": "passed",
+          "milliseconds": 54
+        },
+        {
+          "check": "metadata_column_comment",
+          "result": "passed",
+          "milliseconds": 73
+        },
+        {
+          "check": "readonly_data_page_and_oracle_empty_string",
+          "result": "passed",
+          "milliseconds": 39
+        },
+        {
+          "check": "ddl_preview_only",
+          "result": "passed",
+          "milliseconds": 184
+        },
+        {
+          "check": "real_driver_cancel_lock_wait_and_recover",
+          "result": "passed",
+          "milliseconds": 9179
+        },
+        {
+          "check": "real_driver_timeout_lock_wait_and_recover",
+          "result": "passed",
+          "milliseconds": 9189
+        },
+        {
+          "check": "connections_closed_and_fixture_retained",
+          "result": "passed",
+          "milliseconds": 234
+        }
+      ],
+      "summary": {
+        "summary": true,
+        "passed": 17,
+        "failed": 0,
+        "opened": 33,
+        "closed": 33,
+        "executed": 55,
+        "mutations": 14,
+        "deletionStatementsExecuted": 0,
+        "fixture": "DCA_D161141EA4BB44_T",
+        "retained": true
+      },
+      "runtimeModulesSha256": "242CE98352FD2F1AE829C3F41CC3B078E05ECAD2AB43ED2B2F84C526AA28AD0E",
+      "boundary": "User authorized Oracle target only; new unique table; INSERT/UPDATE only; no DELETE/TRUNCATE/DROP or existing business row queries; credentials supplied through transient process environment only"
+    },
+    {
+      "name": "branch-review",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "completedAt": "2026-09-30T22:12:07.8991759+08:00",
+      "outcome": "reviewed",
+      "findings": [],
+      "checks": [
+        "Only failure classification changes; explicit cancellation precedes timeout exception class in Oracle/PG/shared prepared paths",
+        "Genuine SQLTimeoutException without cancellation remains TIMEOUT; existing sanitized prepared diagnostics and PG position behavior preserved",
+        "No changes to Statement activation/release, connection lifecycle, transaction, admission, row writes or SQL text",
+        "18 new controlled cases reproduced 9 cancelled-timeout failures and passed all after fix; 114 directed tests passed",
+        "Live acceptance avoids deleting existing objects; retained own fixture; credentials supplied through transient process environment and encrypted only in memory"
+      ],
+      "unverified": [
+        "Oracle real-driver post-fix and native UI pending",
+        "PG/Redis live, OS multi-monitor and external release not authorized"
+      ]
+    },
+    {
+      "name": "cancel-diagnostic",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "startedAt": "2026-09-30T22:01:39.9951225+08:00",
+      "completedAt": "2026-09-30T22:01:50.1333378+08:00",
+      "exitCode": 1,
+      "fixture": "DCA_D161141EA4BB43_T",
+      "profileIsolated": true,
+      "log": "cancel-diagnostic.log",
+      "logSha256": "38A35C9F202DBA27F8B87384A73E40679B5486C13D62F023A4FC5826131706C4",
+      "checks": [
+        {
+          "check": "connect_identity",
+          "result": "passed",
+          "milliseconds": 374
+        },
+        {
+          "check": "real_driver_cancel_diagnostic",
+          "result": "failed",
+          "type": "AssertionError",
+          "sqlCode": 0,
+          "assertion": "CANCEL_TIMEOUT_CLASSIFICATION"
+        }
+      ],
+      "summary": null,
+      "runtimeModulesSha256": "7CA191D96F390A6B4F708826F380F8A0AAE3B24A9B07D888BA89DCE51364665D",
+      "boundary": "User authorized Oracle target only; new unique table; INSERT/UPDATE only; no DELETE/TRUNCATE/DROP or existing business row queries; credentials supplied through transient process environment only"
+    },
+    {
+      "name": "cancellation-red",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-oracle-acceptance-d161141ea4bb43a19021a0bf9e825600\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T22:05:03.0026215+08:00",
+      "exitCode": 1,
+      "log": "cancellation-red.log",
+      "logSha256": "FEEFD8103B08ED75A496DEAEC49D12CF613628770E7DAD9F31C9F6EFACD073F2",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 18,
+      "passed": 9,
+      "failures": 9,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest.oracle-sql: cancellationRequested=true",
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest.oracle-prepared: cancellationRequested=true",
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest.oracle-explain: cancellationRequested=true",
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest.oracle-schema-sql: cancellationRequested=true",
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest.oracle-schema-prepared: cancellationRequested=true",
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest.oracle-schema-explain: cancellationRequested=true",
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest.postgres-sql: cancellationRequested=true",
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest.postgres-schema-prepared: cancellationRequested=true",
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest.jdbc-prepared: cancellationRequested=true"
+      ],
+      "xmlDirectory": "cancellation-red-xml",
+      "xmlManifestSha256": "ABED0D8AAD998D2869F932B7B21B1F59F9E6739CE22C620E528498A76064D94C"
+    },
+    {
+      "name": "native-launch",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "startedAt": "2026-09-30T22:20:59.0642045+08:00",
+      "pid": 33372,
+      "fixture": "DCA_D161141EA4BB44_T",
+      "profile": "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-oracle-acceptance-d161141ea4bb43a19021a0bf9e825600\\native-profile-89e69511bbe347e6a7723311b7c2292c",
+      "log": "native.log",
+      "credentialsPersisted": false,
+      "fixtureSetup": "Real packaged AppShell; fresh isolated profile; in-memory connection configurations; fixed own schema/table tree nodes; native input uses Computer Use only",
+      "runtimeModulesSha256": "242CE98352FD2F1AE829C3F41CC3B078E05ECAD2AB43ED2B2F84C526AA28AD0E",
+      "outcome": "failed_no_visible_window",
+      "completedAt": "2026-09-30T22:23:49.4585697+08:00",
+      "logSha256": "1CEB57F9C51E628A15592CAE755C086D80641D7F48F045EEC8396C6EE23CAD72",
+      "errorLog": "native-error.log"
+    },
+    {
+      "name": "native-visible",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "startedAt": "2026-09-30T22:23:50.0756853+08:00",
+      "pid": 27204,
+      "fixture": "DCA_D161141EA4BB44_T",
+      "profile": "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-oracle-acceptance-d161141ea4bb43a19021a0bf9e825600\\native-profile-8b2c79721ba64207a35d70d1be525dd2",
+      "log": "native-visible.log",
+      "credentialsPersisted": false,
+      "fixtureSetup": "Real packaged AppShell; fresh isolated profile; in-memory connection configurations; fixed own schema/table tree nodes; native input uses Computer Use only",
+      "runtimeModulesSha256": "242CE98352FD2F1AE829C3F41CC3B078E05ECAD2AB43ED2B2F84C526AA28AD0E",
+      "outcome": "partial_native_acceptance_completed",
+      "completedAt": "2026-09-30T22:45:21.023511+08:00",
+      "logSha256": "9E70A1B31ADC5EEE18BD36A4EC45922BB4B13A96F383CE18CBAC99E2BAD1E071",
+      "errorLog": "native-visible-error.log",
+      "shutdown": {
+        "nativeShutdown": "returned",
+        "opened": 3,
+        "closed": 3,
+        "executed": 7,
+        "mutations": 0,
+        "deletionStatementsExecuted": 0
+      },
+      "unverified": [
+        "field result to readonly data/DDL",
+        "native production confirmation/writes",
+        "full keyboard and in-flight close"
+      ],
+      "profileFileNames": [
+        ".datacube\\sql-history.txt",
+        ".datacube\\sql-drafts\\.writer.lock",
+        ".datacube\\sql-drafts\\a8688ac3-de40-4228-aab4-6108a4ba9c38.draft",
+        ".datacube\\sql-drafts\\workspace.bin",
+        ".openjfx\\cache\\25+29\\amd64\\.lock",
+        ".openjfx\\cache\\25+29\\amd64\\javafx_font.dll"
+      ]
+    },
+    {
+      "name": "preflight",
+      "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "startedAt": "2026-09-30T21:58:03.809429+08:00",
+      "completedAt": "2026-09-30T21:58:04.5906365+08:00",
+      "exitCode": 0,
+      "fixture": "DCA_D161141EA4BB43_T",
+      "profileIsolated": true,
+      "log": "preflight.log",
+      "logSha256": "0031C4F90DDB2B2AF7431D9F1DCDB3D014E2F4A1298AD1777E5A05A22D1178ED",
+      "checks": [
+        {
+          "check": "connect_identity",
+          "result": "passed",
+          "milliseconds": 422
+        }
+      ],
+      "summary": null,
+      "runtimeModulesSha256": "7CA191D96F390A6B4F708826F380F8A0AAE3B24A9B07D888BA89DCE51364665D",
+      "boundary": "User authorized Oracle target only; new unique table; INSERT/UPDATE only; no DELETE/TRUNCATE/DROP or existing business row queries; credentials supplied through transient process environment only"
+    }
+  ],
+  "sourceSnapshot": {
+    "head": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+    "capturedAt": "2026-09-30T22:09:26.4041176+08:00",
+    "files": [
+      {
+        "path": "src/com/datacube/provider/oracle/OracleSqlRunner.java",
+        "rawSha256": "399C0129AB0D119F864E3D09E3E6DC65F6D5CE57C1415C905A7A3FBA63977751",
+        "gitBlob": "e4e30e29792ae5a4ec59b0c9b3bc67161daae831"
+      },
+      {
+        "path": "src/com/datacube/provider/postgres/PgSqlRunner.java",
+        "rawSha256": "98E2D2E82E574D9EE2A38FDEA92581629B38C66B2329F7CC023A91D6D86583BD",
+        "gitBlob": "3d1f272e791440908f65737162347aa31274e52e"
+      },
+      {
+        "path": "src/com/datacube/provider/jdbc/JdbcPreparedQueryExecutor.java",
+        "rawSha256": "75D6627CAC93BC198EFC486B3EB7A496A439317E1C774E630575BFFAC7D613AE",
+        "gitBlob": "7994654983e0f4516d59d264ada7b88da0ae1fb0"
+      },
+      {
+        "path": "test/com/datacube/provider/jdbc/DriverCancellationClassificationTest.java",
+        "rawSha256": "419CD0860D227CF0FC9D9D0769271FE2F0C73549DD93C33822FE9EB393AA7D3F",
+        "gitBlob": "ec631a771f8c5ccef82cd72d3ce26a471d4b6421"
+      }
+    ]
+  },
+  "boundary": "Explicit user authorization for one Oracle target and unique acceptance tables; INSERT/UPDATE only; no DELETE/TRUNCATE/DROP, existing business rows, credential persistence, .testagent or external publishing",
+  "unverified": [
+    "Native field hit to data/DDL actions after second modal input failed",
+    "PG/Redis live and existing Schema Diff live cleanup requiring DROP USER",
+    "Complete native keyboard/window/OS multi-monitor",
+    "Formal launcher/install/upgrade/signing/remote CI/user tasks/release"
+  ]
+}
