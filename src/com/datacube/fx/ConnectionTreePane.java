@@ -482,11 +482,15 @@ public final class ConnectionTreePane implements AutoCloseable {
     }
 
     private boolean isCurrent(TreeItem<NodeData> item, long generation) {
-        if (item == null) return false;
+        return loadCallbackAllowed(item, tree.getRoot(), generation, treeGeneration);
+    }
+
+    static boolean loadCallbackAllowed(TreeItem<NodeData> item, TreeItem<NodeData> root,
+                                       long generation, long currentGeneration) {
+        if (item == null || item == root) return false;
         TreeItem<NodeData> top = item;
         while (top.getParent() != null) top = top.getParent();
-        return loadCallbackAllowed(generation, treeGeneration,
-                top.getParent() == null && tree.getRoot().getChildren().contains(top));
+        return loadCallbackAllowed(generation, currentGeneration, top == root);
     }
 
     static NodeData statusData(NodeData parent, String label) {

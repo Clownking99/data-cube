@@ -1,0 +1,8 @@
+allprojects {
+ plugins.withId('java') {
+  tasks.register('g8DesktopClasspath') {
+   dependsOn tasks.named('testClasses')
+   doLast { new File(System.getenv('DATACUBE_G8_SCRATCH'), 'desktop-classpath.txt').text = sourceSets.test.runtimeClasspath.asPath }
+  }
+ }
+}
