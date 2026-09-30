@@ -1,0 +1,173 @@
+import com.datacube.fx.*;
+import com.datacube.config.ConnectionStore;
+import com.datacube.service.ConnectionManager;
+import com.datacube.spi.*;
+import com.datacube.spi.model.*;
+import com.datacube.provider.postgres.PostgresProvider;
+import javafx.application.*;
+import javafx.scene.*;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.stage.*;
+import java.lang.reflect.*;
+import java.nio.file.*;
+import java.sql.*;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+
+/** Startup-only mock injection; all workflow actions are native UI input. Never uses DriverManager. */
+public final class SchemaMetadataEntryDesktopProbe extends Application {
+    static final AtomicInteger opens=new AtomicInteger(), closes=new AtomicInteger(), searches=new AtomicInteger(),
+            pages=new AtomicInteger(), ddls=new AtomicInteger(), writes=new AtomicInteger(), executions=new AtomicInteger();
+    static final ConnConfig TARGET=new ConnConfig("synthetic-shell", "合成检索连接", DbType.POSTGRESQL,
+            "example.invalid", 1, "synthetic", "synthetic", "", Map.of("readOnly","true"));
+    static void report() {
+        System.out.println("COUNTERS mockOpens="+opens+" mockCloses="+closes+" searches="+searches
+                +" pages="+pages+" ddls="+ddls+" writeAttempts="+writes+" executionAttempts="+executions);
+    }
+    public static final class Launcher {
+        public static void main(String[] args) { Application.launch(SchemaMetadataEntryDesktopProbe.class,args); }
+    }
+    static Object field(Object target,String name) throws Exception {
+        var f=target.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(target);
+    }
+    @SuppressWarnings("unchecked") static <T> T proxy(Class<T> type,InvocationHandler h) {
+        return (T)Proxy.newProxyInstance(type.getClassLoader(),new Class<?>[]{type}, (p,m,a)->{
+            if (m.getName().equals("toString")) return "Synthetic "+type.getSimpleName();
+            if (m.getName().equals("hashCode")) return System.identityHashCode(p);
+            if (m.getName().equals("equals")) return p==a[0];
+            return h.invoke(p,m,a);
+        });
+    }
+    static void table(Object value) {
+        if (!new TableRef("demo","orders").equals(value)) throw new AssertionError("Unexpected synthetic table");
+    }
+    static Connection connection() {
+        opens.incrementAndGet(); var closed=new java.util.concurrent.atomic.AtomicBoolean();
+        return proxy(Connection.class,(p,m,a)->switch(m.getName()){
+            case "close" -> { if(closed.compareAndSet(false,true)) closes.incrementAndGet(); report(); yield null; }
+            case "isClosed" -> closed.get();
+            case "isValid" -> !closed.get();
+            case "getAutoCommit" -> true;
+            case "prepareStatement" -> {
+                String sql=(String)a[0];
+                if(!sql.startsWith("SELECT t.table_name, t.table_type, ") || !sql.contains("FROM information_schema.tables t"))
+                    throw new SQLException("Only fixed metadata search is allowed");
+                yield statement(sql,(Connection)p);
+            }
+            default -> throw new SQLException("Unexpected mock connection method "+m.getName());
+        });
+    }
+    static PreparedStatement statement(String sql,Connection c) {
+        var bindings=new HashMap<Integer,String>();
+        return proxy(PreparedStatement.class,(p,m,a)->switch(m.getName()){
+            case "setString" -> { bindings.put((Integer)a[0],(String)a[1]); yield null; }
+            case "setQueryTimeout" -> { if((Integer)a[0]!=10) throw new AssertionError("Timeout"); yield null; }
+            case "setMaxRows" -> { if((Integer)a[0]!=201) throw new AssertionError("Rows"); yield null; }
+            case "executeQuery" -> {
+                if(!"demo".equals(bindings.get(1)) || !Set.of("customer","订单").contains(bindings.get(2)))
+                    throw new AssertionError("Unexpected search bindings");
+                searches.incrementAndGet();
+                System.out.println("SEARCH schema=demo term="+bindings.get(2)+" columnComment="+sql.contains("col_description"));
+                var cursor=new AtomicInteger();
+                yield proxy(ResultSet.class,(rp,rm,ra)->switch(rm.getName()){
+                    case "next" -> cursor.incrementAndGet()==1;
+                    case "getString" -> switch((Integer)ra[0]){
+                        case 1 -> "orders"; case 2 -> "BASE TABLE"; case 3 -> "customer_id"; case 4 -> "订单客户 合成注释";
+                        default -> throw new SQLException("Unexpected result column");
+                    };
+                    case "close" -> null;
+                    default -> throw new SQLException("Unexpected mock result method "+rm.getName());
+                });
+            }
+            case "close", "cancel" -> null;
+            case "getConnection" -> c;
+            default -> throw new SQLException("Unexpected mock statement method "+m.getName());
+        });
+    }
+    static DatabaseProvider provider() {
+        SqlDialect dialect=new PostgresProvider().dialect(); // Stateless formatting only.
+        var factory=new ConnectionFactory(){
+            public void ensureDriverLoaded(){}
+            public Connection open(ConnConfig cfg) {
+                if (!cfg.id().equals(TARGET.id()) || !cfg.host().equals("example.invalid")
+                        || cfg.port()!=1 || !cfg.encryptedPassword().isEmpty())
+                    throw new AssertionError("Unexpected connection target");
+                return connection();
+            }
+            public String test(ConnConfig cfg){throw new AssertionError("Connection testing forbidden");}
+        };
+        MetadataReader metadata=proxy(MetadataReader.class,(p,m,a)->switch(m.getName()){
+            case "schemas" -> { if(!"synthetic".equals(a[0])) throw new AssertionError(); yield List.of(new SchemaInfo("synthetic","demo")); }
+            case "tableAndViewNames","tables" -> {
+                if(!"demo".equals(a[0])) throw new AssertionError();
+                yield List.of(new TableInfo("demo","orders",TableInfo.Kind.TABLE,null));
+            }
+            case "columns" -> { table(a[0]); yield List.of(new ColumnInfo("customer_id","integer",false,null,1,false,"合成客户")); }
+            case "views","indexes","constraints","routines","packages","triggers","types","sequences" -> List.of();
+            default -> throw new AssertionError("Unexpected metadata method "+m.getName());
+        });
+        DataAccessor data=new DataAccessor(){
+            public PagedResult page(TableRef t,long offset,int limit,List<SortKey> sorts,String filter) {
+                table(t); if(offset!=0 || (filter!=null&&!filter.isBlank())) throw new AssertionError();
+                pages.incrementAndGet(); report();
+                return new PagedResult(List.of("customer_id"),List.of(List.of(101),List.of(202)),false);
+            }
+            public long count(TableRef t,String filter) {table(t); return 2;}
+        };
+        DdlGenerator ddl=proxy(DdlGenerator.class,(p,m,a)->{
+            if(!m.getName().equals("tableDdl")) throw new AssertionError("Unexpected DDL kind");
+            table(a[0]); ddls.incrementAndGet(); report();
+            return "CREATE TABLE \"demo\".\"orders\" (\n  \"customer_id\" integer NOT NULL\n);\n-- 合成 DDL，仅供本地验收";
+        });
+        SqlRunner runner=proxy(SqlRunner.class,(p,m,a)->{executions.incrementAndGet(); throw new AssertionError("SQL execution forbidden");});
+        DataEditor editor=proxy(DataEditor.class,(p,m,a)->{ if(m.getName().equals("columns")) { table(a[0]); return List.of(new ColumnInfo("customer_id","integer",false,null,1,false,"合成客户")); } writes.incrementAndGet(); throw new AssertionError("Data editing forbidden"); });
+        return proxy(DatabaseProvider.class,(p,m,a)->switch(m.getName()){
+            case "type" -> DbType.POSTGRESQL;
+            case "supports" -> false;
+            case "dialect" -> dialect;
+            case "connectionFactory" -> factory;
+            case "metadataReader" -> metadata;
+            case "dataAccessor" -> data;
+            case "ddlGenerator" -> ddl;
+            case "sqlRunner" -> runner;
+            case "dataEditor" -> editor;
+            case "schemaDiffCapability","resultFilterSqlRenderer" -> Optional.empty();
+            default -> throw new AssertionError("Unexpected provider capability "+m.getName());
+        });
+    }
+    @Override public void start(Stage stage) throws Exception {
+        Path profile=Path.of(System.getProperty("user.home"));
+        if (!profile.getFileName().toString().equals("schema-metadata-entry-desktop-profile") || Files.exists(profile.resolve(".datacube")))
+            throw new IllegalStateException("New exclusive synthetic profile required");
+        System.setOut(new java.io.PrintStream(Files.newOutputStream(profile.resolve("desktop-runtime.log"), StandardOpenOption.CREATE_NEW),true,java.nio.charset.StandardCharsets.UTF_8));
+        var shell=new AppShell();
+        var manager=(ConnectionManager)field(shell,"connMgr");
+        var f=ConnectionManager.class.getDeclaredField("providerResolver"); f.setAccessible(true);
+        DatabaseProvider mock=provider();
+        f.set(manager,(Function<DbType,DatabaseProvider>)type->{
+            if(type!=DbType.POSTGRESQL)throw new AssertionError("Unexpected database type"); return mock;
+        });
+        ((ConnectionStore)field(shell,"store")).saveAll(List.of(TARGET));
+        ((ConnectionTreePane)field(shell,"connectionTree")).refresh();
+        System.out.println("STARTUP_ONLY_MOCK_PROVIDER_INJECTED no DriverManager path");
+        Button theme=new Button("切换明暗"); theme.setOnAction(e->shell.getThemeManager().toggle());
+        VBox host=new VBox(4,new FlowPane(theme),shell.getRoot()); VBox.setVgrow(shell.getRoot(),Priority.ALWAYS);
+        var scene=new Scene(host,1100,720); shell.getThemeManager().register(scene); shell.getThemeManager().installWindowHook();
+        stage.setTitle("DataCube Schema 直接检索合成验收"); stage.setScene(scene); BrandLogo.applyIcons(stage);
+        stage.setOnShown(e->System.out.println("OUTPUT_SCALE="+stage.getOutputScaleX()));
+        stage.setOnCloseRequest(e->{
+            e.consume(); host.setDisable(true);
+            shell.shutdownAsync().whenComplete((outcome,error)->Platform.runLater(()->{
+                if(error!=null){error.printStackTrace();return;}
+                report();
+                if(outcome!=ShutdownOutcome.COMPLETED){host.setDisable(false);System.out.println("SHUTDOWN_"+outcome);return;}
+                if(opens.get()!=closes.get()||writes.get()!=0||executions.get()!=0)throw new AssertionError("Unsafe or leaked mock resources");
+                System.out.println("SHUTDOWN_COMPLETED");
+                stage.setOnCloseRequest(null);stage.close();
+            }));
+        }); stage.show();
+    }
+}
+

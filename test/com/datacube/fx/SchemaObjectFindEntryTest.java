@@ -24,6 +24,21 @@ import static org.junit.jupiter.api.Assertions.*;
 class SchemaObjectFindEntryTest {
     @TempDir Path directory;
 
+    @ParameterizedTest @ValueSource(strings = {"removed", "value", "connection", "root", "closed"})
+    void staleDirectMetadataMenuCannotOpenOrRead(String state) throws Exception {
+        try (var runner = new FxTaskRunner()) {
+            FxUiTestSupport.call(() -> {
+                try (var f = new Fixture(runner, DbType.POSTGRESQL)) {
+                    f.probe.manager.register(f.config);
+                    var menu = f.pane.schemaMetadataFindItem(f.schema);
+                    f.invalidate(state); menu.fire();
+                    assertTrue(f.calls.isEmpty());
+                    assertEquals(0, f.probe.providers.get() + f.probe.network.get());
+                } return null;
+            });
+        }
+    }
+
     @Test void schemaMenuOffersSearchWithoutReadingMetadataOnRender() throws Exception {
         try (var runner = new FxTaskRunner()) {
             FxUiTestSupport.call(() -> {
@@ -47,6 +62,8 @@ class SchemaObjectFindEntryTest {
                             .map(n -> (TreeCell<?>) n).findFirst().orElseThrow();
                     assertTrue(cell.getContextMenu().getItems().stream()
                             .anyMatch(m -> "tree-find-schema-objects".equals(m.getId())), "Schema needs an object search entry");
+                    assertTrue(cell.getContextMenu().getItems().stream()
+                            .anyMatch(m -> "tree-find-schema-metadata".equals(m.getId())), "Schema needs a direct field/comment entry");
                     assertEquals(0, probe.providers.get()); assertEquals(0, probe.network.get());
                 }
                 return null;

@@ -1,0 +1,101 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :compileJava
+> Task :generateBrandIcons UP-TO-DATE
+> Task :generateVersionProperties UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes
+> Task :compileTestJava
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+MetadataSearchShellRoutingTest > cancelledOrChangedTargetCannotOpenDownstreamShellTab(String) > [2] change FAILED
+    java.lang.AssertionError: Dialog driver failed
+        at com.datacube.fx.MetadataSearchShellRoutingTest$Fixture.searchAndChoose(MetadataSearchShellRoutingTest.java:187)
+        at com.datacube.fx.MetadataSearchShellRoutingTest.cancelledOrChangedTargetCannotOpenDownstreamShellTab(MetadataSearchShellRoutingTest.java:76)
+
+        Caused by:
+        org.opentest4j.AssertionFailedError: stale selection is rejected before closing/routing ==> expected: <true> but was: <false>
+            at app//com.datacube.fx.MetadataSearchShellRoutingTest$Fixture.lambda$driveDialog$2(MetadataSearchShellRoutingTest.java:217)
+            at app//com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+            at app//com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+            at app//com.sun.glass.ui.win.WinApplication._enterNestedEventLoopImpl(Native Method)
+            at app//com.sun.glass.ui.win.WinApplication._enterNestedEventLoop(WinApplication.java:195)
+            at app//com.sun.glass.ui.Application.enterNestedEventLoop(Application.java:510)
+            at app//com.sun.glass.ui.EventLoop.enter(EventLoop.java:107)
+            at app//com.sun.javafx.tk.quantum.QuantumToolkit.enterNestedEventLoop(QuantumToolkit.java:661)
+            at app//javafx.stage.Stage.showAndWait(Stage.java:454)
+            at app//javafx.scene.control.HeavyweightDialog.showAndWait(HeavyweightDialog.java:162)
+            at app//javafx.scene.control.Dialog.showAndWait(Dialog.java:347)
+            at app//com.datacube.fx.SchemaMetadataSearchDialog.showAndWait(SchemaMetadataSearchDialog.java:101)
+            at app//com.datacube.fx.ConnectionTreePane.showSchemaMetadata(ConnectionTreePane.java:715)
+            at app//com.datacube.fx.ConnectionTreePane.lambda$chooseSchemaObject$2(ConnectionTreePane.java:670)
+            at app//com.datacube.fx.SchemaObjectSearchDialog.lambda$installMetadataSearch$0(SchemaObjectSearchDialog.java:194)
+            at app//com.sun.javafx.event.CompositeEventHandler.dispatchBubblingEvent(CompositeEventHandler.java:86)
+            at app//com.sun.javafx.event.EventHandlerManager.dispatchBubblingEvent(EventHandlerManager.java:232)
+            at app//com.sun.javafx.event.EventHandlerManager.dispatchBubblingEvent(EventHandlerManager.java:189)
+            at app//com.sun.javafx.event.CompositeEventDispatcher.dispatchBubblingEvent(CompositeEventDispatcher.java:59)
+            at app//com.sun.javafx.event.BasicEventDispatcher.dispatchEvent(BasicEventDispatcher.java:58)
+            at app//com.sun.javafx.event.EventDispatchChainImpl.dispatchEvent(EventDispatchChainImpl.java:114)
+            at app//com.sun.javafx.event.BasicEventDispatcher.dispatchEvent(BasicEventDispatcher.java:56)
+            at app//com.sun.javafx.event.EventDispatchChainImpl.dispatchEvent(EventDispatchChainImpl.java:114)
+            at app//com.sun.javafx.event.BasicEventDispatcher.dispatchEvent(BasicEventDispatcher.java:56)
+            at app//com.sun.javafx.event.EventDispatchChainImpl.dispatchEvent(EventDispatchChainImpl.java:114)
+            at app//com.sun.javafx.event.BasicEventDispatcher.dispatchEvent(BasicEventDispatcher.java:56)
+            at app//com.sun.javafx.event.EventDispatchChainImpl.dispatchEvent(EventDispatchChainImpl.java:114)
+            at app//com.sun.javafx.event.EventUtil.fireEventImpl(EventUtil.java:74)
+            at app//com.sun.javafx.event.EventUtil.fireEvent(EventUtil.java:49)
+            at app//javafx.event.Event.fireEvent(Event.java:199)
+            at app//javafx.scene.Node.fireEvent(Node.java:9026)
+            at app//javafx.scene.control.Button.fire(Button.java:203)
+            at app//com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+            at app//com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+            at app//com.sun.glass.ui.win.WinApplication._enterNestedEventLoopImpl(Native Method)
+            at app//com.sun.glass.ui.win.WinApplication._enterNestedEventLoop(WinApplication.java:195)
+            at app//com.sun.glass.ui.Application.enterNestedEventLoop(Application.java:510)
+            at app//com.sun.glass.ui.EventLoop.enter(EventLoop.java:107)
+            at app//com.sun.javafx.tk.quantum.QuantumToolkit.enterNestedEventLoop(QuantumToolkit.java:661)
+            at app//javafx.stage.Stage.showAndWait(Stage.java:454)
+            at app//javafx.scene.control.HeavyweightDialog.showAndWait(HeavyweightDialog.java:162)
+            at app//javafx.scene.control.Dialog.showAndWait(Dialog.java:347)
+            at app//com.datacube.fx.SchemaObjectSearchDialog.showAndWait(SchemaObjectSearchDialog.java:190)
+            at app//com.datacube.fx.ConnectionTreePane.chooseSchemaObject(ConnectionTreePane.java:679)
+            at app//com.datacube.fx.ConnectionTreePane.lambda$schemaObjectFindItem$0(ConnectionTreePane.java:629)
+            at app//com.sun.javafx.event.CompositeEventHandler.dispatchBubblingEvent(CompositeEventHandler.java:86)
+            at app//com.sun.javafx.event.EventHandlerManager.dispatchBubblingEvent(EventHandlerManager.java:232)
+            at app//com.sun.javafx.event.EventHandlerManager.dispatchBubblingEvent(EventHandlerManager.java:189)
+            at app//com.sun.javafx.event.BasicEventDispatcher.dispatchEvent(BasicEventDispatcher.java:58)
+            at app//com.sun.javafx.event.EventDispatchChainImpl.dispatchEvent(EventDispatchChainImpl.java:114)
+            at app//com.sun.javafx.event.EventUtil.fireEventImpl(EventUtil.java:74)
+            at app//com.sun.javafx.event.EventUtil.fireEvent(EventUtil.java:54)
+            at app//javafx.event.Event.fireEvent(Event.java:199)
+            at app//javafx.scene.control.MenuItem.fire(MenuItem.java:459)
+            at app//com.datacube.fx.MetadataSearchShellRoutingTest$Fixture.lambda$searchAndChoose$6(MetadataSearchShellRoutingTest.java:174)
+            at app//com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+            at app//com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+            at app//com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+            at app//com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+            at java.base@25.0.1/java.lang.Thread.run(Thread.java:1474)
+
+> Task :test FAILED
+
+27 tests completed, 1 failed
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///C:/Users/hetia/.codex/worktrees/metadata-search-cancellation/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to generate a Build Scan (powered by Develocity).
+
+BUILD FAILED in 14s
+8 actionable tasks: 3 executed, 5 up-to-date

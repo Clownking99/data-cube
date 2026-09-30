@@ -106,6 +106,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     private ConnectionTreeFindBar findBar;
     private final ConnectionTreeClipboard objectClipboard;
     private volatile SchemaObjectSearchDialog objectSearch;
+    private volatile SchemaMetadataSearchDialog metadataSearch;
 
     // 快速检索：直接键入字母即在可见行内增量定位（不含 WHERE 那种搜索框）。
     private final Label searchHint = new Label();
@@ -147,6 +148,8 @@ public final class ConnectionTreePane implements AutoCloseable {
         tasks.close();
         var search = objectSearch;
         if (search != null) search.close();
+        var metadata = metadataSearch;
+        if (metadata != null) metadata.close();
         if (findBar != null) findBar.close();
     }
 
@@ -619,15 +622,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     MenuItem schemaObjectFindItem(TreeItem<NodeData> target, SchemaObjectChooser chooser) {
         NodeData expected = target == null ? null : target.getValue();
         ConnConfig connection = target == null ? null : connOf(target);
-        java.util.function.BooleanSupplier allowed = () -> {
-            if (tasks.isClosed() || expected == null || expected.kind != Kind.SCHEMA || target.getValue() != expected
-                    || expected.schema == null || expected.schema.isEmpty() || expected.schema.length() > 1024
-                    || connection == null || (connection.type() != DbType.POSTGRESQL && connection.type() != DbType.ORACLE)
-                    || !java.util.Objects.equals(connection.id(), expected.connId) || !connection.equals(connOf(target))) return false;
-            TreeItem<NodeData> ancestor = target;
-            while (ancestor.getParent() != null) ancestor = ancestor.getParent();
-            return ancestor == tree.getRoot();
-        };
+        var allowed = schemaSearchAllowed(target, expected, connection);
         MenuItem item = new MenuItem("查找表/视图…"); item.setId("tree-find-schema-objects");
         item.setOnAction(event -> {
             if (!allowed.getAsBoolean()) return;
@@ -639,30 +634,42 @@ public final class ConnectionTreePane implements AutoCloseable {
         return item;
     }
 
+    private java.util.function.BooleanSupplier schemaSearchAllowed(TreeItem<NodeData> target,
+                                                                  NodeData expected, ConnConfig connection) {
+        return () -> {
+            if (tasks.isClosed() || expected == null || expected.kind != Kind.SCHEMA || target.getValue() != expected
+                    || expected.schema == null || expected.schema.isEmpty() || expected.schema.length() > 1024
+                    || connection == null || (connection.type() != DbType.POSTGRESQL && connection.type() != DbType.ORACLE)
+                    || !java.util.Objects.equals(connection.id(), expected.connId) || !connection.equals(connOf(target))) return false;
+            TreeItem<NodeData> ancestor = target;
+            while (ancestor.getParent() != null) ancestor = ancestor.getParent();
+            return ancestor == tree.getRoot();
+        };
+    }
+
+    MenuItem schemaMetadataFindItem(TreeItem<NodeData> target) {
+        NodeData expected = target == null ? null : target.getValue();
+        ConnConfig connection = target == null ? null : connOf(target);
+        var allowed = schemaSearchAllowed(target, expected, connection);
+        MenuItem item = new MenuItem("按字段 / 注释查找…"); item.setId("tree-find-schema-metadata");
+        item.setOnAction(event -> {
+            if (objectSearch != null || !allowed.getAsBoolean()) return;
+            showSchemaMetadata(connection, expected.schema,
+                    root.getScene() == null ? null : root.getScene().getWindow(), allowed, () -> {});
+        });
+        return item;
+    }
+
     private java.util.Optional<TableRef> chooseSchemaObject(ConnConfig connection, String schema,
                                                            java.util.function.BooleanSupplier allowed) {
-        if (objectSearch != null) return java.util.Optional.empty();
+        if (objectSearch != null || metadataSearch != null) return java.util.Optional.empty();
         var picker = SchemaObjectSearchDialog.create(connection.name(), schema,
                 root.getScene() == null ? null : root.getScene().getWindow(),
                 () -> new SchemaObjectCatalog(connMgr).load(connection, schema), runner, allowed);
         picker.installCopyAction(ref -> objectClipboard.copyResult(connection, ref));
-        var metadata = new java.util.concurrent.atomic.AtomicReference<SchemaMetadataSearchDialog>();
-        java.util.function.BooleanSupplier metadataAllowed = () -> allowed.getAsBoolean()
-                && connection.equals(connMgr.config(connection.id()));
-        picker.installMetadataSearch(() -> {
-            if (metadata.get()!=null || !metadataAllowed.getAsBoolean()) return;
-            var search = new SchemaMetadataSearchDialog(connection,schema,picker.dialog().getDialogPane().getScene().getWindow(),runner,
-                    (request, control) -> {
-                        if (!connection.equals(connMgr.config(connection.id()))) throw new java.sql.SQLException("Catalog target changed");
-                        return com.datacube.service.SchemaMetadataSearch.search(request,connMgr::openDedicated,control);
-                    },metadataAllowed);
-            metadata.set(search);
-            try { search.showAndWait().ifPresent(selection -> {
-                if (!metadataAllowed.getAsBoolean() || !schema.equals(selection.hit().object().schema())) return;
-                picker.dialog().close();
-                openMetadataMatch(connection,schema,metadataAllowed,selection);
-            }); } finally { search.close(); metadata.set(null); }
-        },() -> { var search=metadata.get(); if (search!=null) search.close(); });
+        picker.installMetadataSearch(() -> showSchemaMetadata(connection, schema,
+                picker.dialog().getDialogPane().getScene().getWindow(), allowed, picker.dialog()::close),
+                () -> { var search = metadataSearch; if (search != null) search.close(); });
         objectSearch = picker;
         TreeItem<NodeData> sourceRoot = tree.getRoot();
         javafx.event.EventHandler<TreeItem.TreeModificationEvent<NodeData>> changed = event -> picker.sourceChanged();
@@ -674,6 +681,48 @@ public final class ConnectionTreePane implements AutoCloseable {
             picker.close(); objectSearch = null;
             sourceRoot.removeEventHandler(TreeItem.treeNotificationEvent(), changed);
             tree.rootProperty().removeListener(replaced);
+        }
+    }
+
+    /** Both entries share one pinned dialog, query, invalidation and result routing lifecycle. */
+    private void showSchemaMetadata(ConnConfig connection, String schema, javafx.stage.Window owner,
+                                    java.util.function.BooleanSupplier sourceAllowed, Runnable beforeRoute) {
+        var invalidated = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.function.BooleanSupplier allowed = () -> !invalidated.get() && !tasks.isClosed()
+                && sourceAllowed.getAsBoolean() && connection.equals(connMgr.config(connection.id()));
+        if (metadataSearch != null || !allowed.getAsBoolean()) return;
+        var search = new SchemaMetadataSearchDialog(connection, schema, owner, runner,
+                (request, control) -> {
+                    if (invalidated.get() || tasks.isClosed() || !connection.equals(connMgr.config(connection.id())))
+                        throw new java.sql.SQLException("Catalog target changed");
+                    return com.datacube.service.SchemaMetadataSearch.search(request, connMgr::openDedicated, control);
+                }, allowed);
+        metadataSearch = search;
+        TreeItem<NodeData> sourceRoot = tree.getRoot();
+        Runnable invalidate = () -> { invalidated.set(true); search.close(); };
+        javafx.event.EventHandler<TreeItem.TreeModificationEvent<NodeData>> changed = event -> {
+            if (!allowed.getAsBoolean()) invalidate.run();
+        };
+        javafx.beans.value.ChangeListener<TreeItem<NodeData>> replaced = (obs, old, value) -> {
+            if (!allowed.getAsBoolean()) invalidate.run();
+        };
+        Runnable stopConfigWatch = () -> {};
+        try {
+            sourceRoot.addEventHandler(TreeItem.treeNotificationEvent(), changed);
+            tree.rootProperty().addListener(replaced);
+            // Subscribe to identity changes only: read-only connections may still search metadata.
+            stopConfigWatch = connMgr.writeTarget(connection.id()).whenChanged(invalidate);
+            if (!allowed.getAsBoolean()) return;
+            search.showAndWait().ifPresent(selection -> {
+                if (!allowed.getAsBoolean() || !schema.equals(selection.hit().object().schema())) return;
+                beforeRoute.run();
+                openMetadataMatch(connection, schema, allowed, selection);
+            });
+        } finally {
+            stopConfigWatch.run();
+            sourceRoot.removeEventHandler(TreeItem.treeNotificationEvent(), changed);
+            tree.rootProperty().removeListener(replaced);
+            search.close(); metadataSearch = null;
         }
     }
 
@@ -772,6 +821,7 @@ public final class ConnectionTreePane implements AutoCloseable {
                     schemaDiff.setOnAction(e -> actions.openSchemaDiff(connOf(getTreeItem()), d.schema));
                     menu.getItems().addAll(sql, schemaDiff);
                     menu.getItems().add(schemaObjectFindItem(getTreeItem(), ConnectionTreePane.this::chooseSchemaObject));
+                    menu.getItems().add(schemaMetadataFindItem(getTreeItem()));
                 }
                 case TABLES -> {
                     MenuItem create = new MenuItem("新建表");

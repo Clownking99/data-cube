@@ -2,6 +2,7 @@ package com.datacube.fx;
 
 import com.datacube.config.ConnectionStore;
 import com.datacube.provider.postgres.PostgresProvider;
+import com.datacube.provider.oracle.OracleProvider;
 import com.datacube.service.ConnectionManager;
 import com.datacube.service.SchemaMetadataSearch;
 import com.datacube.spi.*;
@@ -22,7 +23,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.fxmisc.richtext.CodeArea;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -38,10 +38,15 @@ class MetadataSearchShellRoutingTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"TABLE,SELECT", "VIEW,SELECT", "TABLE,DATA", "VIEW,DATA", "TABLE,DDL", "VIEW,DDL"})
-    void metadataResultOpensBoundPassiveOrReadOnlyShellTab(TableInfo.Kind kind,
-                                                         SchemaMetadataSearchDialog.Action action) throws Exception {
-        try (var f = new Fixture(directory, kind)) {
+    @CsvSource({"POSTGRESQL,TABLE,SELECT,nested", "POSTGRESQL,VIEW,SELECT,nested", "POSTGRESQL,TABLE,DATA,nested",
+            "POSTGRESQL,VIEW,DATA,nested", "POSTGRESQL,TABLE,DDL,nested", "POSTGRESQL,VIEW,DDL,nested",
+            "POSTGRESQL,TABLE,SELECT,direct", "POSTGRESQL,VIEW,SELECT,direct", "POSTGRESQL,TABLE,DATA,direct",
+            "POSTGRESQL,VIEW,DATA,direct", "POSTGRESQL,TABLE,DDL,direct", "POSTGRESQL,VIEW,DDL,direct",
+            "ORACLE,TABLE,SELECT,direct", "ORACLE,VIEW,SELECT,direct", "ORACLE,TABLE,DATA,direct",
+            "ORACLE,VIEW,DATA,direct", "ORACLE,TABLE,DDL,direct", "ORACLE,VIEW,DDL,direct"})
+    void metadataResultOpensBoundPassiveOrReadOnlyShellTab(DbType type, TableInfo.Kind kind,
+                                                         SchemaMetadataSearchDialog.Action action, String entry) throws Exception {
+        try (var f = new Fixture(directory, kind, type, entry)) {
             f.searchAndChoose(action);
             FxUiTestSupport.call(() -> {
                 f.shell.getRoot().applyCss(); f.shell.getRoot().layout();
@@ -54,7 +59,7 @@ class MetadataSearchShellRoutingTest {
                         assertNotNull(text);
                         assertEquals("SELECT *\nFROM \"demo\".\"orders\";", text.getText());
                         assertTrue(((Label) tab.getContent().lookup("#sql-connection")).getText().contains(f.target.name()));
-                        assertEquals(2, f.opens.get(), "SELECT generation adds no connection beyond catalog and search");
+                        assertEquals(f.catalogReads() + 1, f.opens.get(), "SELECT adds no connection beyond requested metadata");
                         assertEquals(0, f.pages.get() + f.ddls.get());
                     }
                     case DATA -> assertEquals("数据（只读）: orders", tab.getText(),
@@ -70,17 +75,36 @@ class MetadataSearchShellRoutingTest {
         }
     }
 
-    @ParameterizedTest @ValueSource(strings = {"cancel", "change"})
-    void cancelledOrChangedTargetCannotOpenDownstreamShellTab(String outcome) throws Exception {
-        try (var f = new Fixture(directory, TableInfo.Kind.TABLE)) {
+    @ParameterizedTest @CsvSource({"POSTGRESQL,nested,cancel", "POSTGRESQL,nested,change",
+            "POSTGRESQL,direct,cancel", "POSTGRESQL,direct,change", "POSTGRESQL,direct,aba", "POSTGRESQL,direct,remove",
+            "POSTGRESQL,direct,root", "POSTGRESQL,direct,close", "ORACLE,direct,cancel", "ORACLE,direct,change",
+            "ORACLE,direct,aba", "ORACLE,direct,remove", "ORACLE,direct,root", "ORACLE,direct,close"})
+    void cancelledOrChangedTargetCannotOpenDownstreamShellTab(DbType type, String entry, String outcome) throws Exception {
+        try (var f = new Fixture(directory, TableInfo.Kind.TABLE, type, entry)) {
             f.searchAndChoose(SchemaMetadataSearchDialog.Action.DATA, outcome);
             FxUiTestSupport.call(() -> {
                 assertTrue(f.tabs.getTabs().isEmpty());
                 assertTrue(f.ownedDialogs().isEmpty());
-                assertEquals(1, f.searches.get()); assertEquals(2, f.opens.get());
+                assertEquals(1, f.searches.get()); assertEquals(f.catalogReads() + 1, f.opens.get());
                 assertEquals(0, f.pages.get() + f.ddls.get() + f.writes.get() + f.executions.get());
                 return null;
             });
+        }
+    }
+
+    @ParameterizedTest @CsvSource({"POSTGRESQL,change", "POSTGRESQL,remove", "POSTGRESQL,close", "ORACLE,change"})
+    void directSearchInvalidationCancelsOwnedReadAndWaitsForPhysicalRelease(DbType type, String cause) throws Exception {
+        try (var f = new Fixture(directory, TableInfo.Kind.TABLE, type, "direct")) {
+            f.searchAndChoose(SchemaMetadataSearchDialog.Action.DATA, "inflight-" + cause);
+            assertTrue(f.readStarted.await(5, TimeUnit.SECONDS));
+            assertTrue(f.cancelDelivered.await(5, TimeUnit.SECONDS));
+            assertEquals(1, f.opens.get()); assertEquals(0, f.closes.get(), "JDBC still owns the pending read");
+            FxUiTestSupport.call(() -> {
+                assertTrue(f.ownedDialogs().isEmpty()); assertTrue(f.tabs.getTabs().isEmpty());
+                assertEquals(0, f.pages.get() + f.ddls.get() + f.writes.get() + f.executions.get()); return null;
+            });
+            f.releaseRead.countDown(); assertTrue(f.readClosed.await(5, TimeUnit.SECONDS));
+            assertEquals(1, f.closes.get()); assertEquals(1, f.cancels.get());
         }
     }
 
@@ -95,8 +119,8 @@ class MetadataSearchShellRoutingTest {
     private static final class Fixture implements AutoCloseable {
         final AtomicInteger opens = new AtomicInteger(), closes = new AtomicInteger(), searches = new AtomicInteger(),
                 pages = new AtomicInteger(), ddls = new AtomicInteger(), writes = new AtomicInteger(), executions = new AtomicInteger();
-        final ConnConfig target = new ConnConfig("synthetic-shell", "合成检索连接", DbType.POSTGRESQL,
-                "example.invalid", 1, "synthetic", "synthetic", "", Map.of());
+        final ConnConfig target;
+        final String entry;
         final TableInfo object;
         final AppShell shell;
         final Stage stage;
@@ -106,9 +130,17 @@ class MetadataSearchShellRoutingTest {
         final String originalHome;
         final AtomicReference<Throwable> callbackFailure = new AtomicReference<>();
         final CountDownLatch pageRead = new CountDownLatch(1), ddlRead = new CountDownLatch(1);
+        final CountDownLatch readStarted = new CountDownLatch(1), releaseRead = new CountDownLatch(1),
+                cancelDelivered = new CountDownLatch(1), readClosed = new CountDownLatch(1);
+        final AtomicInteger cancels = new AtomicInteger();
+        volatile String flightOutcome;
 
         @SuppressWarnings("unchecked")
-        Fixture(Path directory, TableInfo.Kind kind) throws Exception {
+        Fixture(Path directory, TableInfo.Kind kind, DbType type, String entry) throws Exception {
+            this.entry = entry;
+            target = new ConnConfig("synthetic-shell", "合成检索连接", type,
+                    "example.invalid", 1, "synthetic", "synthetic", "",
+                    entry.equals("direct") ? Map.of("readOnly", "true") : Map.of());
             object = new TableInfo("demo", "orders", kind, "合成订单");
             originalHome = System.getProperty("user.home");
             // The exclusive @TempDir replaces user.home BEFORE constructing any AppShell-owned stores.
@@ -118,8 +150,8 @@ class MetadataSearchShellRoutingTest {
                 var manager = (ConnectionManager) field(s, "connMgr");
                 var resolver = ConnectionManager.class.getDeclaredField("providerResolver"); resolver.setAccessible(true);
                 var provider = provider();
-                resolver.set(manager, (Function<DbType, DatabaseProvider>) type -> {
-                    assertEquals(DbType.POSTGRESQL, type); return provider;
+                resolver.set(manager, (Function<DbType, DatabaseProvider>) requestedType -> {
+                    assertEquals(target.type(), requestedType); return provider;
                 });
                 ((ConnectionStore) field(s, "store")).saveAll(List.of(target));
                 ((ConnectionTreePane) field(s, "connectionTree")).refresh();
@@ -158,6 +190,7 @@ class MetadataSearchShellRoutingTest {
             searchAndChoose(action, "choose");
         }
         void searchAndChoose(SchemaMetadataSearchDialog.Action action, String outcome) throws Exception {
+            flightOutcome = outcome.startsWith("inflight-") ? outcome.substring(9) : null;
             var done = new CompletableFuture<Void>();
             ListChangeListener<Window> windows = change -> {
                 while (change.next()) if (change.wasAdded()) for (Window window : change.getAddedSubList()) {
@@ -169,7 +202,8 @@ class MetadataSearchShellRoutingTest {
                 var cell = tree.lookupAll(".tree-cell").stream().filter(n -> n instanceof TreeCell<?> c && c.getTreeItem() == schema)
                         .map(n -> (TreeCell<?>) n).findFirst().orElseThrow();
                 var menu = cell.getContextMenu().getItems().stream()
-                        .filter(m -> "tree-find-schema-objects".equals(m.getId())).findFirst().orElseThrow();
+                        .filter(m -> (entry.equals("direct") ? "tree-find-schema-metadata" : "tree-find-schema-objects")
+                                .equals(m.getId())).findFirst().orElseThrow();
                 Platform.runLater(() -> {
                     try { menu.fire(); done.complete(null); } catch (Throwable failure) { done.completeExceptionally(failure); }
                 }); return null;
@@ -177,7 +211,7 @@ class MetadataSearchShellRoutingTest {
             try { done.get(12, TimeUnit.SECONDS); }
             finally { FxUiTestSupport.call(() -> {
                 Window.getWindows().removeListener(windows);
-                System.out.println("ROUTING " + object.kind() + " " + action + " " + outcome
+                System.out.println("ROUTING " + target.type() + " " + entry + " " + object.kind() + " " + action + " " + outcome
                         + " opens=" + opens + " closes=" + closes + " searches=" + searches);
                 for (var w : ownedDialogs()) System.out.println("DIALOG " + ((Stage) w).getTitle() + " "
                         + w.getScene().getRoot().lookupAll(".label").stream().filter(Label.class::isInstance)
@@ -200,6 +234,8 @@ class MetadataSearchShellRoutingTest {
                         if (!list.getItems().isEmpty()) Platform.runLater(button::fire);
                     }); else Platform.runLater(button::fire);
                 } else if (root.lookup("#metadata-search-query") instanceof TextField query) {
+                    assertEquals(entry.equals("direct") ? 1 : 2, ownedDialogs().size(), "direct entry uses just one dialog");
+                    assertEquals(catalogReads(), opens.get(), "opening a field search does not read metadata");
                     var list = (ListView<SchemaMetadataSearch.Hit>) root.lookup("#metadata-search-results");
                     list.getItems().addListener((ListChangeListener<SchemaMetadataSearch.Hit>) c -> {
                         if (!list.getItems().isEmpty()) Platform.runLater(() -> {
@@ -209,12 +245,17 @@ class MetadataSearchShellRoutingTest {
                                 list.getSelectionModel().selectFirst();
                                 var button = (Button) root.lookup("#metadata-search-" + action.name().toLowerCase(Locale.ROOT));
                                 assertFalse(button.isDisabled());
-                                if (outcome.equals("change")) {
+                                if (outcome.equals("change") || outcome.equals("aba")) {
                                     var manager = (ConnectionManager) field(shell, "connMgr");
                                     manager.register(new ConnConfig(target.id(), "changed synthetic target", target.type(), target.host(),
                                             target.port(), target.database(), target.username(), "", target.props()));
+                                    if (outcome.equals("aba")) manager.register(target);
+                                } else if (outcome.equals("remove")) tree.getRoot().getChildren().clear();
+                                else if (outcome.equals("root")) tree.setRoot(new TreeItem<>());
+                                else if (outcome.equals("close")) ((ConnectionTreePane) field(shell, "connectionTree")).close();
+                                if (!outcome.equals("choose") && !outcome.equals("cancel")) {
                                     button.fire();
-                                    assertTrue(window.isShowing(), "stale selection is rejected before closing/routing");
+                                    assertFalse(window.isShowing(), "configuration or source changes close the old search");
                                     assertTrue(tabs.getTabs().isEmpty());
                                 }
                                 if (outcome.equals("choose")) button.fire();
@@ -228,6 +269,7 @@ class MetadataSearchShellRoutingTest {
                 } else throw new AssertionError("Expected picker controls are missing: " + root.getClass());
             } catch (Throwable failure) { failDriver(failure); }
         }
+        int catalogReads() { return entry.equals("direct") ? 0 : 1; }
         void failDriver(Throwable failure) {
             callbackFailure.compareAndSet(null, failure);
             ownedDialogs().reversed().forEach(w -> ((Stage) w).close());
@@ -257,7 +299,8 @@ class MetadataSearchShellRoutingTest {
                     assertTrue(button.isDisabled(), label);
                 }
                 assertTrue(content.lookupAll(".label").stream().filter(Label.class::isInstance).map(Label.class::cast)
-                        .anyMatch(l -> l.getText().contains("当前数据页为只读")), "explain the page mode accurately");
+                        .anyMatch(l -> l.getText().contains(entry.equals("direct") ? "只读连接不允许写入" : "当前数据页为只读")),
+                        "explain the page or connection mode accurately");
                 assertEquals(1, pages.get()); assertEquals(0, writes.get() + executions.get()); return null;
             });
         }
@@ -287,7 +330,7 @@ class MetadataSearchShellRoutingTest {
                     return proxy(Connection.class, (p,m,a) -> switch (m.getName()) {
                         case "isClosed" -> closed.get();
                         case "isValid" -> !closed.get();
-                        case "close" -> { if (closed.compareAndSet(false, true)) closes.incrementAndGet(); yield null; }
+                        case "close" -> { if (closed.compareAndSet(false, true)) { closes.incrementAndGet(); readClosed.countDown(); } yield null; }
                         case "prepareStatement" -> statement((String) a[0]);
                         default -> throw new AssertionError("Unexpected connection operation " + m.getName());
                     });
@@ -313,8 +356,8 @@ class MetadataSearchShellRoutingTest {
             });
             var sql = proxy(SqlRunner.class, (p,m,a) -> { executions.incrementAndGet(); throw new AssertionError("Execution forbidden"); });
             return proxy(DatabaseProvider.class, (p,m,a) -> switch (m.getName()) {
-                case "type" -> DbType.POSTGRESQL;
-                case "dialect" -> new PostgresProvider().dialect();
+                case "type" -> target.type();
+                case "dialect" -> target.type() == DbType.ORACLE ? new OracleProvider().dialect() : new PostgresProvider().dialect();
                 case "connectionFactory" -> factory;
                 case "metadataReader" -> metadata;
                 case "dataEditor" -> editor;
@@ -326,15 +369,34 @@ class MetadataSearchShellRoutingTest {
             });
         }
         PreparedStatement statement(String sql) {
-            assertTrue(sql.startsWith("SELECT t.table_name, t.table_type, ") && sql.contains("FROM information_schema.tables t"));
+            if (target.type() == DbType.ORACLE) assertTrue(sql.startsWith("SELECT t.TABLE_NAME, t.TABLE_TYPE, ")
+                    && sql.contains("FROM ALL_TAB_COMMENTS t") && sql.contains("JOIN ALL_COL_COMMENTS c"));
+            else assertTrue(sql.startsWith("SELECT t.table_name, t.table_type, ") && sql.contains("FROM information_schema.tables t"));
             var parameters = new HashMap<Integer, String>();
             return proxy(PreparedStatement.class, (p,m,a) -> switch (m.getName()) {
                 case "setString" -> { parameters.put((Integer) a[0], (String) a[1]); yield null; }
                 case "setQueryTimeout" -> { assertEquals(10, a[0]); yield null; }
                 case "setMaxRows" -> { assertEquals(201, a[0]); yield null; }
-                case "close", "cancel" -> null;
+                case "close" -> null;
+                case "cancel" -> { cancels.incrementAndGet(); cancelDelivered.countDown(); yield null; }
                 case "executeQuery" -> {
                     assertEquals("demo", parameters.get(1)); assertEquals("customer", parameters.get(2)); searches.incrementAndGet();
+                    if (flightOutcome != null) {
+                        readStarted.countDown();
+                        Platform.runLater(() -> {
+                            try {
+                                switch (flightOutcome) {
+                                    case "change" -> ((ConnectionManager) field(shell, "connMgr")).register(
+                                            new ConnConfig(target.id(), "changed synthetic target", target.type(), target.host(), target.port(),
+                                                    target.database(), target.username(), "", target.props()));
+                                    case "remove" -> tree.getRoot().getChildren().clear();
+                                    case "close" -> ((ConnectionTreePane) field(shell, "connectionTree")).close();
+                                    default -> throw new AssertionError(flightOutcome);
+                                }
+                            } catch (Throwable failure) { failDriver(failure); }
+                        });
+                        if (!releaseRead.await(5, TimeUnit.SECONDS)) throw new SQLException("Synthetic read release timed out");
+                    }
                     var row = new AtomicInteger();
                     yield proxy(ResultSet.class, (rp,rm,ra) -> switch (rm.getName()) {
                         case "next" -> row.incrementAndGet() == 1;
@@ -350,12 +412,13 @@ class MetadataSearchShellRoutingTest {
             });
         }
         @Override public void close() throws Exception {
+            releaseRead.countDown();
             try {
                 var shutdown = FxUiTestSupport.call(() -> { ownedDialogs().reversed().forEach(w -> ((Stage) w).close()); return shell.shutdownAsync(); });
                 assertEquals(ShutdownOutcome.COMPLETED, shutdown.toCompletableFuture().get(10, TimeUnit.SECONDS));
                 assertEquals(opens.get(), closes.get(), "every dedicated and cached mock connection closes");
                 assertEquals(0, writes.get() + executions.get());
-                System.out.println("CLOSED " + object.kind() + " opens=" + opens + " closes=" + closes
+                System.out.println("CLOSED " + target.type() + " " + entry + " " + object.kind() + " opens=" + opens + " closes=" + closes
                         + " searches=" + searches + " pages=" + pages + " ddls=" + ddls + " writes=" + writes + " executions=" + executions);
             } finally {
                 FxUiTestSupport.call(() -> { stage.close(); System.setProperty("user.home", originalHome); return null; });
