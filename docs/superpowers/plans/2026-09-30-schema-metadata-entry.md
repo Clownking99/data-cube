@@ -35,3 +35,19 @@
 - 验证：branch-full 新 profile、cleanTest 后 309 suites / 3,879 tests，3,876 passed、3 live skipped、0 failure/error；branch-buildsrc 强制 rerun 8/8，0 跳过；branch-image jpackageImage 实际运行成功。main 再核为 4f53e35，授权范围干净。产品、测试和 README diff --check 通过。
 - 失败/未验：三项 live 保持跳过，不算通过；镜像审计测试类/配置泄漏均为 0，PG/Oracle 驱动发现成功且 connectCalls=0；不证明正式启动器或真库。完整原生检索/结果、真库及外部发布验收未验，既有 SchemaDiff 偶发测试的历史原因未解释，不宣称已消除。
 - 下一步：完成镜像泄漏/驱动零连接审计，核对归档内容和暂存字节，提交独立分支并合并 main；main 用新的定向/全量/buildSrc/镜像重新验证后更新交接和待验清单。
+
+## C4 — 本地集成与 main 新验证
+
+- 当前目标：确认 main 集成的是已验证源码，并独立复验。
+- 改动：实现提交 71430dcb2d72a54064e2b6c5aeeece2538ea47d3，本地 --no-ff 合并 main 7d5b0434677a2f62ec449e1cea7719dbb517e8bf；没有 push/PR/tag。本轮原始证据 114 个文件已检查 SHA 与暂存 Git blob 的原始字节对应。
+- 验证：合并前 main 是干净 4f53e35，合并后产品/测试/README 与分支一致，四个定向文件 canonical Git blob 与验证快照一致；main 新 profile 定向 84/84，0 failure/error/skipped。本轮源码/测试之外的后续改动只更新证据和交接。
+- 失败/未验：main 全量/buildSrc/镜像仍在本检查点后实际运行，不能提前计通过。分支的三项 live 跳过及原生/真库/发布待验保持；本地集成成功不放宽 M8。
+- 下一步：完成 main 全量、强制 buildSrc、jpackageImage 与审计，归档实际结果、更新当前交接与待验，文档证据提交后核对 main/工作区干净及产品源码未变化，再交付本增量。
+
+## C5 — main 复验与本轮交付
+
+- 当前目标：交付限定本地增量，实际证据和待验项一致。
+- 改动：归档 main 新记录和合并/源码/镜像一致性，更新实际结果、验收账本、路线图和交接。证据后续提交仅改 docs，不改产品/测试/构建。
+- 验证：main 7d5b043 新定向 84/84；新 profile cleanTest 后 309 suites / 3,879 tests，3,876 passed、3 live skipped、0 failure/error；强制 buildSrc 8/8，0 跳过；jpackageImage 通过。镜像泄漏为 0，PG/Oracle 驱动发现成功且 connectCalls=0；exe/cfg/modules 三项 SHA 与分支全部一致。原生入口/提示/取消/正常关闭的最终 fixture 和运行日志 SHA 对应，输入失败证据没有被升级成结果链通过。
+- 失败/未验：三项 live 跳过不计通过；完整原生字段请求与结果动作、Oracle 桌面、真库、OS 多屏/全键盘、正式启动器/签名/安装升级/远端 CI/真实用户任务/发布仍待验，M8 不称完成。历史失败及首轮无关闭计数的证据保留。
+- 下一步：完成最后的归档/暂存字节核对及文档证据提交，核对源码未变和两工作区授权范围干净，交付本轮；不自动扩展功能或外部范围，不设置预算或虚构 goal 状态。

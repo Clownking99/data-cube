@@ -1,6 +1,6 @@
 # Schema 直接字段/注释检索：本地验收账本
 
-日期：2026-09-30。维护者“继续推进产品”的限定本地增量；沿用原有安全和集成边界。基线 main `4f53e35d06b078f7c2563382a3907ff35c808dcd`，独立分支 `codex/schema-metadata-entry`。当前集成与 main 复验待下方更新；不称发布验收，M8 仍待外部验收。
+日期：2026-09-30。维护者“继续推进产品”的限定本地增量；沿用原有安全和集成边界。基线 main `4f53e35d06b078f7c2563382a3907ff35c808dcd`，独立分支 `codex/schema-metadata-entry`。实现 `71430dcb2d72a54064e2b6c5aeeece2538ea47d3`，main 合并代码 `7d5b0434677a2f62ec449e1cea7719dbb517e8bf`；main 新定向、全量、强制 buildSrc、jpackageImage 和审计通过，本轮本地工程交付。不称发布验收，M8 仍待外部验收。
 
 ## 改动和边界
 
@@ -37,7 +37,12 @@ Schema 菜单新增“按字段 / 注释查找…”，直接打开现有检索�
 | branch-directed-final | 84/84，0 skipped | 最终提示修正后的 5 个定向 suite |
 | branch-full | 309 suites，3,879 tests：3,876 passed / 3 skipped | cleanTest 后实际 test；0 failure/error，3 live 不计通过 |
 | branch-buildsrc | 8/8，0 skipped | --rerun-tasks，实际 buildSrc:test |
-| branch-image / branch-image-audit | BUILD SUCCESSFUL，泄漏 0，connectCalls=0 | 实际 jpackageImage；打包运行时发现 PG/Oracle 驱动；main 复验待更新 |
+| branch-image / branch-image-audit | BUILD SUCCESSFUL，泄漏 0，connectCalls=0 | 实际 jpackageImage；打包运行时发现 PG/Oracle 驱动 |
+| main-directed | 84/84，0 skipped | 合并代码的新 profile，实际 test |
+| main-full | 309 suites，3,879 tests：3,876 passed / 3 skipped | 新 profile、cleanTest；0 failure/error；不把 live 跳过计通过 |
+| main-buildsrc | 8/8，0 skipped | 新 profile、--rerun-tasks，实际 buildSrc:test |
+| main-image / main-image-audit | BUILD SUCCESSFUL，泄漏 0，connectCalls=0 | 合并代码重新构建；PG/Oracle 驱动发现，未载入凭据/用户 profile |
+| image-comparison | 三项 SHA 全部一致 | DataCube.exe、DataCube.cfg、runtime/lib/modules；不是正式启动器/安装验收 |
 
 保留的桌面失败：第一次 argfile 的 Windows 反斜杠被解释导致 JavaFX 类缺失；改为正斜杠。隐藏启动无可操作窗口，在任何读取前停止自有进程。第一次可见启动无控制台输出，只有入口/输入失败截图，关闭/资源计数未证实。随后最终 fixture 显式记录合成运行日志，原生打开/取消/正常退出计数通过。首份 fixture 按其记录 SHA 恢复存档，最终 fixture 与最终运行日志另存，不把失败记为成功。
 
@@ -45,6 +50,6 @@ Schema 菜单新增“按字段 / 注释查找…”，直接打开现有检索�
 
 ## 集成与待验
 
-本轮实现提交、main 合并和复验记录待实际完成更新。审查关注单窗口、身份快照、取消所有权、监听解除、只读/写安全、FX 线程边界和实际断言；没有新增事务/SQL 执行路径。
+实现和 main 合并已完成，合并前主工作区干净且仍在基线；源码与实现分支一致，四个定向产品/测试文件的 canonical Git blob 与分支验证快照逐个匹配。main 的 CRLF/LF 差异另记文件 SHA，不混同原始字节与内容等价。审查关注单窗口、身份快照、取消所有权、监听解除、只读/写安全、FX 线程边界和实际断言；没有新增事务/SQL 执行路径。后续证据/交接提交不修改产品源码或测试。
 
-下一步限定为完成本地集成和 main 复验后交付。完整原生字段请求 → SELECT/只读数据/DDL、Oracle 桌面、真 PostgreSQL/Oracle/Redis 权限/事务/取消、OS 缩放/多屏/全键盘、正式启动器/安装升级/生产签名/远端 CI/真实用户任务/发布仍待验。M8 不称完成，不自动开展外部操作或扩大范围。
+本轮限定增量交付，后续证据及交接提交不改产品源码/测试，main 和独立工作区按授权范围核对干净；不重复运行已通过检查，除非新增变更或失败。完整原生字段请求 → SELECT/只读数据/DDL、Oracle 桌面、真 PostgreSQL/Oracle/Redis 权限/事务/取消、OS 缩放/多屏/全键盘、正式启动器/安装升级/生产签名/远端 CI/真实用户任务/发布仍待验。M8 不称完成，不自动开展外部操作或扩大范围。

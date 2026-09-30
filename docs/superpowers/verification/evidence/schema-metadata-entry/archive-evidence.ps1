@@ -2,7 +2,7 @@ param([string]$Repository)
 $ErrorActionPreference='Stop'
 $destination32=Join-Path $Repository 'docs/superpowers/verification/evidence/schema-metadata-entry'
 New-Item -ItemType Directory -Path $destination32 -Force | Out-Null
-foreach($name32 in @('run-check.ps1','isolated-tests.gradle','audit-image.ps1','archive-evidence.ps1','source-snapshot.json','desktop.gradle','SchemaMetadataEntryDesktopProbe.java','desktop-first-source.java','desktop-compile.log','desktop-compile-final.log','desktop-stdout.log','desktop-stderr.log','desktop2-stdout.log','desktop2-stderr.log','desktop-args.txt','desktop-args2.txt','desktop-args3.txt','desktop-args4.txt','desktop-final-runtime.log')) {
+foreach($name32 in @('run-check.ps1','isolated-tests.gradle','audit-image.ps1','archive-evidence.ps1','source-snapshot.json','desktop.gradle','SchemaMetadataEntryDesktopProbe.java','desktop-first-source.java','desktop-compile.log','desktop-compile-final.log','desktop-stdout.log','desktop-stderr.log','desktop2-stdout.log','desktop2-stderr.log','desktop-args.txt','desktop-args2.txt','desktop-args3.txt','desktop-args4.txt','desktop-final-runtime.log','main-merge.log')) {
  Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name32) -Destination $destination32
 }
 Copy-Item -LiteralPath (Join-Path $Repository 'docs/superpowers/verification/evidence/g7/MigrationRuntimeDriverProbe.java') -Destination $destination32

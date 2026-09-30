@@ -1,0 +1,243 @@
+Merge made by the 'ort' strategy.
+ README.md                                          |   4 +-
+ .../plans/2026-09-30-schema-metadata-entry.md      |  37 ++
+ .../2026-09-30-schema-metadata-entry-results.json  | 422 +++++++++++++++
+ .../2026-09-30-schema-metadata-entry.md            |  50 ++
+ .../evidence/schema-metadata-entry/.gitattributes  |   1 +
+ .../MigrationRuntimeDriverProbe.java               |   9 +
+ .../SchemaMetadataEntryDesktopProbe.java           | 173 +++++++
+ .../schema-metadata-entry/archive-evidence.ps1     |  52 ++
+ .../evidence/schema-metadata-entry/audit-image.ps1 |  27 +
+ .../TEST-datacube.build.IcoGeneratorTest.xml       |  14 +
+ .../checks/branch-buildsrc/branch-buildsrc.json    |  28 +
+ .../checks/branch-buildsrc/branch-buildsrc.log     |  16 +
+ .../checks/branch-buildsrc/xml-manifest.txt        |   1 +
+ ....datacube.fx.MetadataSearchShellRoutingTest.xml | 116 +++++
+ ....datacube.fx.SchemaMetadataSearchDialogTest.xml |  23 +
+ ...T-com.datacube.fx.SchemaObjectFindEntryTest.xml |  30 ++
+ ...datacube.fx.SchemaObjectSearchLifecycleTest.xml |   8 +
+ ...m.datacube.service.SchemaMetadataSearchTest.xml |  11 +
+ .../branch-directed-final.json                     |  37 ++
+ .../branch-directed-final.log                      |  20 +
+ .../checks/branch-directed-final/xml-manifest.txt  |   5 +
+ ....datacube.fx.MetadataSearchShellRoutingTest.xml | 114 ++++
+ ....datacube.fx.SchemaMetadataSearchDialogTest.xml |  23 +
+ ...T-com.datacube.fx.SchemaObjectFindEntryTest.xml |  30 ++
+ ...datacube.fx.SchemaObjectSearchLifecycleTest.xml |   8 +
+ ...com.datacube.redis.RedisLiveIntegrationTest.xml |  16 +
+ ...be.schemadiff.SchemaDiffLiveIntegrationTest.xml |  32 ++
+ ...m.datacube.service.SchemaMetadataSearchTest.xml |  11 +
+ .../checks/branch-full/branch-full.json            |  41 ++
+ .../checks/branch-full/branch-full.log             |  21 +
+ .../checks/branch-full/xml-manifest.txt            | 309 +++++++++++
+ .../branch-image-audit-driver.log                  |   3 +
+ .../branch-image-audit/branch-image-audit.json     |  27 +
+ .../checks/branch-image/branch-image.json          |  15 +
+ .../checks/branch-image/branch-image.log           |  27 +
+ .../desktop-classpath/desktop-classpath.json       |  19 +
+ .../checks/desktop-classpath/desktop-classpath.log |  20 +
+ .../desktop-direct-entry-final.json                |  17 +
+ .../desktop-final-runtime.log                      |   5 +
+ .../desktop-direct-entry/desktop-direct-entry.json |  20 +
+ .../desktop-direct-entry/desktop3-console.log      |   0
+ .../desktop-hidden-launch.json                     |   9 +
+ .../desktop-launch-corrected.json                  |   8 +
+ .../checks/desktop-launch/desktop-launch.json      |  10 +
+ ....datacube.fx.MetadataSearchShellRoutingTest.xml | 142 +++++
+ ...T-com.datacube.fx.SchemaObjectFindEntryTest.xml |  27 +
+ .../checks/entry-green/entry-green.json            |  33 ++
+ .../checks/entry-green/entry-green.log             | 101 ++++
+ .../checks/entry-green/xml-manifest.txt            |   2 +
+ ....datacube.fx.MetadataSearchShellRoutingTest.xml | 116 +++++
+ ....datacube.fx.SchemaMetadataSearchDialogTest.xml |  23 +
+ ...T-com.datacube.fx.SchemaObjectFindEntryTest.xml |  30 ++
+ ...datacube.fx.SchemaObjectSearchLifecycleTest.xml |   8 +
+ .../checks/entry-lifecycle/entry-lifecycle.json    |  35 ++
+ .../checks/entry-lifecycle/entry-lifecycle.log     |  20 +
+ .../checks/entry-lifecycle/xml-manifest.txt        |   4 +
+ ...T-com.datacube.fx.SchemaObjectFindEntryTest.xml |  25 +
+ .../checks/entry-red/entry-red.json                |  31 ++
+ .../checks/entry-red/entry-red.log                 |  42 ++
+ .../checks/entry-red/xml-manifest.txt              |   1 +
+ ....datacube.fx.MetadataSearchShellRoutingTest.xml | 104 ++++
+ ...T-com.datacube.fx.SchemaObjectFindEntryTest.xml |  30 ++
+ .../entry-routing-corrected.json                   |  31 ++
+ .../entry-routing-corrected.log                    |  20 +
+ .../entry-routing-corrected/xml-manifest.txt       |   2 +
+ .../checks/entry-routing/entry-routing.json        |  21 +
+ .../checks/entry-routing/entry-routing.log         |  37 ++
+ .../schema-metadata-entry/desktop-args.txt         |   1 +
+ .../schema-metadata-entry/desktop-args2.txt        |   1 +
+ .../schema-metadata-entry/desktop-args3.txt        |   1 +
+ .../schema-metadata-entry/desktop-args4.txt        |   1 +
+ .../desktop-compile-final.log                      |   0
+ .../schema-metadata-entry/desktop-compile.log      |   0
+ .../desktop-final-runtime.log                      |   5 +
+ .../desktop-first-source.java                      | 172 ++++++
+ .../schema-metadata-entry/desktop-stderr.log       |  14 +
+ .../schema-metadata-entry/desktop-stdout.log       |   0
+ .../evidence/schema-metadata-entry/desktop.gradle  |   8 +
+ .../schema-metadata-entry/desktop2-stderr.log      |   7 +
+ .../schema-metadata-entry/desktop2-stdout.log      |   2 +
+ .../schema-metadata-entry/isolated-tests.gradle    |   7 +
+ .../evidence/schema-metadata-entry/manifest.json   | 575 +++++++++++++++++++++
+ .../schema-metadata-entry/native/01-start-0.png    | Bin 0 -> 52786 bytes
+ .../schema-metadata-entry/native/01-start.json     |  23 +
+ .../native/02-expand-connection-0.png              | Bin 0 -> 54602 bytes
+ .../native/02-expand-connection.json               |  23 +
+ .../native/03-schema-menu-0.png                    | Bin 0 -> 59449 bytes
+ .../native/03-schema-menu-1.png                    | Bin 0 -> 6348 bytes
+ .../native/03-schema-menu.json                     |  31 ++
+ .../native/04-direct-dialog-0.png                  | Bin 0 -> 61863 bytes
+ .../native/04-direct-dialog-1.png                  | Bin 0 -> 35536 bytes
+ .../native/04-direct-dialog.json                   |  31 ++
+ .../native/05-set-value-attempt-0.png              | Bin 0 -> 61508 bytes
+ .../native/05-set-value-attempt-1.png              | Bin 0 -> 35325 bytes
+ .../native/05-set-value-attempt.json               |  31 ++
+ .../native/06-query-focus-0.png                    | Bin 0 -> 61863 bytes
+ .../native/06-query-focus-1.png                    | Bin 0 -> 35475 bytes
+ .../native/06-query-focus.json                     |  31 ++
+ .../native/07-native-text-attempt-0.png            | Bin 0 -> 61125 bytes
+ .../native/07-native-text-attempt-1.png            | Bin 0 -> 33322 bytes
+ .../native/07-native-text-attempt.json             |  31 ++
+ .../native/08-cancel-direct-0.png                  | Bin 0 -> 55164 bytes
+ .../native/08-cancel-direct.json                   |  23 +
+ .../native/09-returned-shell.json                  |  14 +
+ .../native/10-final-start-0.png                    | Bin 0 -> 52926 bytes
+ .../native/10-final-start.json                     |  23 +
+ .../native/11-final-schema-menu-0.png              | Bin 0 -> 59447 bytes
+ .../native/11-final-schema-menu-1.png              | Bin 0 -> 6351 bytes
+ .../native/11-final-schema-menu.json               |  31 ++
+ .../native/12-final-direct-dialog-0.png            | Bin 0 -> 64559 bytes
+ .../native/12-final-direct-dialog-1.png            | Bin 0 -> 36771 bytes
+ .../native/12-final-direct-dialog.json             |  31 ++
+ .../native/13-final-modal-confirmed-0.png          | Bin 0 -> 63275 bytes
+ .../native/13-final-modal-confirmed-1.png          | Bin 0 -> 36798 bytes
+ .../native/13-final-modal-confirmed.json           |  31 ++
+ .../native/14-final-cancelled-0.png                | Bin 0 -> 55641 bytes
+ .../native/14-final-cancelled.json                 |  23 +
+ .../evidence/schema-metadata-entry/run-check.ps1   |  42 ++
+ .../schema-metadata-entry/source-snapshot.json     |  26 +
+ src/com/datacube/fx/ConnectionTreePane.java        | 100 +++-
+ .../datacube/fx/SchemaMetadataSearchDialog.java    |   2 +-
+ .../fx/MetadataSearchShellRoutingTest.java         | 115 ++++-
+ .../com/datacube/fx/SchemaObjectFindEntryTest.java |  17 +
+ 123 files changed, 4174 insertions(+), 53 deletions(-)
+ create mode 100644 docs/superpowers/plans/2026-09-30-schema-metadata-entry.md
+ create mode 100644 docs/superpowers/verification/2026-09-30-schema-metadata-entry-results.json
+ create mode 100644 docs/superpowers/verification/2026-09-30-schema-metadata-entry.md
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/.gitattributes
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/MigrationRuntimeDriverProbe.java
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/SchemaMetadataEntryDesktopProbe.java
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/archive-evidence.ps1
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/audit-image.ps1
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-buildsrc/TEST-datacube.build.IcoGeneratorTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-buildsrc/branch-buildsrc.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-buildsrc/branch-buildsrc.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-buildsrc/xml-manifest.txt
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-directed-final/TEST-com.datacube.fx.MetadataSearchShellRoutingTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-directed-final/TEST-com.datacube.fx.SchemaMetadataSearchDialogTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-directed-final/TEST-com.datacube.fx.SchemaObjectFindEntryTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-directed-final/TEST-com.datacube.fx.SchemaObjectSearchLifecycleTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-directed-final/TEST-com.datacube.service.SchemaMetadataSearchTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-directed-final/branch-directed-final.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-directed-final/branch-directed-final.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-directed-final/xml-manifest.txt
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-full/TEST-com.datacube.fx.MetadataSearchShellRoutingTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-full/TEST-com.datacube.fx.SchemaMetadataSearchDialogTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-full/TEST-com.datacube.fx.SchemaObjectFindEntryTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-full/TEST-com.datacube.fx.SchemaObjectSearchLifecycleTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-full/TEST-com.datacube.redis.RedisLiveIntegrationTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-full/TEST-com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-full/TEST-com.datacube.service.SchemaMetadataSearchTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-full/branch-full.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-full/branch-full.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-full/xml-manifest.txt
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-image-audit/branch-image-audit-driver.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-image-audit/branch-image-audit.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-image/branch-image.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/branch-image/branch-image.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/desktop-classpath/desktop-classpath.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/desktop-classpath/desktop-classpath.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/desktop-direct-entry-final/desktop-direct-entry-final.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/desktop-direct-entry-final/desktop-final-runtime.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/desktop-direct-entry/desktop-direct-entry.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/desktop-direct-entry/desktop3-console.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/desktop-hidden-launch/desktop-hidden-launch.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/desktop-launch-corrected/desktop-launch-corrected.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/desktop-launch/desktop-launch.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-green/TEST-com.datacube.fx.MetadataSearchShellRoutingTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-green/TEST-com.datacube.fx.SchemaObjectFindEntryTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-green/entry-green.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-green/entry-green.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-green/xml-manifest.txt
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-lifecycle/TEST-com.datacube.fx.MetadataSearchShellRoutingTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-lifecycle/TEST-com.datacube.fx.SchemaMetadataSearchDialogTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-lifecycle/TEST-com.datacube.fx.SchemaObjectFindEntryTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-lifecycle/TEST-com.datacube.fx.SchemaObjectSearchLifecycleTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-lifecycle/entry-lifecycle.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-lifecycle/entry-lifecycle.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-lifecycle/xml-manifest.txt
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-red/TEST-com.datacube.fx.SchemaObjectFindEntryTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-red/entry-red.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-red/entry-red.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-red/xml-manifest.txt
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-routing-corrected/TEST-com.datacube.fx.MetadataSearchShellRoutingTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-routing-corrected/TEST-com.datacube.fx.SchemaObjectFindEntryTest.xml
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-routing-corrected/entry-routing-corrected.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-routing-corrected/entry-routing-corrected.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-routing-corrected/xml-manifest.txt
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-routing/entry-routing.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/checks/entry-routing/entry-routing.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop-args.txt
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop-args2.txt
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop-args3.txt
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop-args4.txt
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop-compile-final.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop-compile.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop-final-runtime.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop-first-source.java
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop-stderr.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop-stdout.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop.gradle
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop2-stderr.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/desktop2-stdout.log
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/isolated-tests.gradle
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/manifest.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/01-start-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/01-start.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/02-expand-connection-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/02-expand-connection.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/03-schema-menu-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/03-schema-menu-1.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/03-schema-menu.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/04-direct-dialog-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/04-direct-dialog-1.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/04-direct-dialog.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/05-set-value-attempt-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/05-set-value-attempt-1.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/05-set-value-attempt.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/06-query-focus-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/06-query-focus-1.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/06-query-focus.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/07-native-text-attempt-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/07-native-text-attempt-1.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/07-native-text-attempt.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/08-cancel-direct-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/08-cancel-direct.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/09-returned-shell.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/10-final-start-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/10-final-start.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/11-final-schema-menu-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/11-final-schema-menu-1.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/11-final-schema-menu.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/12-final-direct-dialog-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/12-final-direct-dialog-1.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/12-final-direct-dialog.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/13-final-modal-confirmed-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/13-final-modal-confirmed-1.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/13-final-modal-confirmed.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/14-final-cancelled-0.png
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/native/14-final-cancelled.json
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/run-check.ps1
+ create mode 100644 docs/superpowers/verification/evidence/schema-metadata-entry/source-snapshot.json
