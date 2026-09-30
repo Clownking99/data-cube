@@ -2,6 +2,8 @@
 
 维护者继续推进产品，沿用本地和合成数据边界。本增量从 main a28eb79d8dbdf29530ea564b24c2294a7c9224fc，在 codex/metadata-shell-routing 独立工作区实现。字段检索可以对表打开只读数据页，原来的 AppShell 标题与强制只读提示却把只读一概叫作“视图”。现在分别显示“数据（只读）”与“当前数据页为只读”。产品源码仅两行文字修改，没有改变对象身份、查询、写门禁、事务、取消、关闭或配置格式。
 
+本增量本地工程完成：实现与分支证据提交 5083a147f35f0369c49ef0722c74c478b234bbee，main 合并 b4d5e2450dfafad6f637d0aeac8306bade6a095e，随后使用新 profile 重新通过定向/全量/buildSrc/镜像与审计。最后的跟进只记录实际结果与待验项，产品内容与复验的合并 SHA 相同。完整原生链路及发布验收仍未完成。
+
 ## 实际 FX 链路证据
 
 新增 MetadataSearchShellRoutingTest 从真实 schema 菜单进入对象查找，再打开字段检索；真实 SchemaObjectCatalog 与 SchemaMetadataSearch 使用严格 mock provider/固定 JDBC 查询，真实结果按钮通过 ConnectionTreePane 路由至 AppShell 的 SQL、DataGrid 与 DDL 标签处理器。合成连接固定 example.invalid:1、空凭据，工厂没有 DriverManager 路径；未知操作拒绝。每例在全新 @TempDir 中构造 AppShell 所有存储，退出等待 shutdown COMPLETED 后恢复 worker profile。原生字体在隔离 worker profile 提前初始化，避免 Windows DLL 被 per-case 清理误当泄漏。
@@ -27,7 +29,17 @@
 - routing-red-confirmed：6 例、4 passed、2 DATA 标题失败。只修标题后 routing-reason-red 由于 mock 缺少 isValid 而未加载数据；补齐后 routing-hint-red 才确认为只读提示失败。所有失败都归档，不以夹具失败代替产品红灯。
 - routing-green：新增 8/8。随后加强实际行值与 DDL 只读断言，branch-targeted 实际 8 suites / 70 passed / 0 skipped；branch-full clean test 309 suites / 3846 tests / 3843 passed / 0 failures/errors / 3 live skipped，3m16s；强制 buildSrc 8/8，7s。
 
-分支 jpackageImage 34s 成功；正式镜像无已知测试类或测试参数泄漏，PG/Oracle 驱动发现 connectCalls=0。按两行文案、目标快照保护、测试隔离和关闭平衡完成差异审查；15 个执行记录与 76 个归档清单项（不含清单自身）。main 集成复验待执行，当前不宣称交付结束。Redis live 及 Oracle/PG Schema Diff live 共三项缺少外部授权/环境而跳过，均不算通过。已有 JavaFX unnamed-module、unchecked、JEP493 等提示按原始日志保留；旧 SchemaDiff 偶发失败原因未明，不称本轮修复。
+分支 jpackageImage 34s 成功；正式镜像无已知测试类或测试参数泄漏，PG/Oracle 驱动发现 connectCalls=0。按两行文案、目标快照保护、测试隔离和关闭平衡完成差异审查；提交前 76 份 raw SHA/暂存字节及三份源码/测试 blob 已逐项核对。
+
+| main 合并后新验证 | 实际结果 |
+| --- | --- |
+| 8 类定向 | 70/70 passed、0 skip，17s；包括新增 8 例 |
+| clean test | 309 suites / 3846 tests / 3843 passed / 0 fail/error / 3 live skips，3m36s |
+| 强制 buildSrc | 8/8，8s；确实运行 test，未用 UP-TO-DATE 当证据 |
+| jpackageImage | 33s；无测试 init/profile 参数 |
+| 镜像审计 | 已知测试类/参数泄漏 0，打包 PG/Oracle 驱动发现 connectCalls=0；exe/cfg/modules 与分支三项摘要相同 |
+
+最终 20 份执行记录、104 份归档清单项（不含清单自身）；全量保留全部 309 份 XML 的文件摘要并归档与本增量有关及跳过项的 XML，其余原始 XML 在本轮独占临时目录。Redis live 及 Oracle/PG Schema Diff live 共三项缺少外部授权/环境而跳过，均不算通过。已有 JavaFX unnamed-module、unchecked、JEP493 等提示按原始日志保留；旧 SchemaDiff 偶发失败原因未明，不称本轮修复。
 
 ## 单列待验
 
