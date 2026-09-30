@@ -111,6 +111,7 @@ public final class ConnectionTreePane implements AutoCloseable {
     private volatile SchemaObjectSearchDialog objectSearch;
     private volatile SchemaMetadataSearchDialog metadataSearch;
     private final BooleanProperty metadataSearchReserved = new SimpleBooleanProperty();
+    private final BooleanProperty objectSearchReserved = new SimpleBooleanProperty();
 
     // 快速检索：直接键入字母即在可见行内增量定位（不含 WHERE 那种搜索框）。
     private final Label searchHint = new Label();
@@ -628,9 +629,11 @@ public final class ConnectionTreePane implements AutoCloseable {
         ConnConfig connection = target == null ? null : connOf(target);
         var allowed = schemaSearchAllowed(target, expected, connection);
         MenuItem item = new MenuItem("查找表/视图…"); item.setId("tree-find-schema-objects");
-        item.disableProperty().bind(metadataSearchReserved);
+        item.disableProperty().bind(metadataSearchReserved.or(objectSearchReserved));
+        item.textProperty().bind(Bindings.when(metadataSearchReserved.or(objectSearchReserved))
+                .then("查找表/视图…（等待读取结束）").otherwise("查找表/视图…"));
         item.setOnAction(event -> {
-            if (metadataSearch != null || !allowed.getAsBoolean()) return;
+            if (objectSearch != null || metadataSearch != null || !allowed.getAsBoolean()) return;
             chooser.choose(connection, expected.schema, allowed).ifPresent(ref -> {
                 if (allowed.getAsBoolean() && java.util.Objects.equals(expected.schema, ref.schema())
                         && ref.name() != null && !ref.name().isEmpty()) actions.openSelectSql(connection, ref);
@@ -657,8 +660,8 @@ public final class ConnectionTreePane implements AutoCloseable {
         ConnConfig connection = target == null ? null : connOf(target);
         var allowed = schemaSearchAllowed(target, expected, connection);
         MenuItem item = new MenuItem("按字段 / 注释查找…"); item.setId("tree-find-schema-metadata");
-        item.disableProperty().bind(metadataSearchReserved);
-        item.textProperty().bind(Bindings.when(metadataSearchReserved)
+        item.disableProperty().bind(metadataSearchReserved.or(objectSearchReserved));
+        item.textProperty().bind(Bindings.when(metadataSearchReserved.or(objectSearchReserved))
                 .then("按字段 / 注释查找…（等待读取结束）").otherwise("按字段 / 注释查找…"));
         item.setOnAction(event -> {
             if (objectSearch != null || !allowed.getAsBoolean()) return;
@@ -679,6 +682,7 @@ public final class ConnectionTreePane implements AutoCloseable {
                 picker.dialog().getDialogPane().getScene().getWindow(), allowed, picker.dialog()::close),
                 () -> { var search = metadataSearch; if (search != null) search.close(); });
         objectSearch = picker;
+        objectSearchReserved.set(true);
         TreeItem<NodeData> sourceRoot = tree.getRoot();
         javafx.event.EventHandler<TreeItem.TreeModificationEvent<NodeData>> changed = event -> picker.sourceChanged();
         javafx.beans.value.ChangeListener<TreeItem<NodeData>> replaced = (obs, old, value) -> picker.sourceChanged();
@@ -686,7 +690,10 @@ public final class ConnectionTreePane implements AutoCloseable {
         tree.rootProperty().addListener(replaced);
         try { return picker.showAndWait(); }
         finally {
-            picker.close(); objectSearch = null;
+            picker.close();
+            picker.disposal().thenRun(() -> {
+                if(objectSearch==picker) { objectSearch=null; objectSearchReserved.set(false); }
+            });
             sourceRoot.removeEventHandler(TreeItem.treeNotificationEvent(), changed);
             tree.rootProperty().removeListener(replaced);
         }

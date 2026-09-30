@@ -9,12 +9,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javafx.event.ActionEvent;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
@@ -60,7 +64,9 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     private final Runnable closeScope;
     private final BooleanSupplier allowed;
     private final AtomicBoolean closed = new AtomicBoolean();
-    private volatile Future<?> active;
+    private volatile Pending active;
+    private final CompletableFuture<Void> disposed = new CompletableFuture<>();
+    private boolean closeCleaned;
     private List<Entry> all = List.of();
     private long revision;
     private boolean loaded;
@@ -188,10 +194,15 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
 
     Dialog<TableRef> dialog() { return dialog; }
     Optional<TableRef> showAndWait() { return dialog.showAndWait(); }
+    /** FX completion after hiding and physical work return, including cancellation before start. */
+    CompletionStage<Void> disposal() { return disposed.minimalCompletionStage(); }
+    private static void onFx(Runnable action) { if(Platform.isFxApplicationThread()) action.run(); else Platform.runLater(action); }
+    private void completeDisposal() { if(closeCleaned && active==null) disposed.complete(null); }
 
     void installMetadataSearch(Runnable open, Runnable close) {
         closeMetadata=close; metadataSearch.setVisible(true); metadataSearch.setManaged(true);
-        metadataSearch.setOnAction(event -> { if (usable()) open.run(); });
+        metadataSearch.setOnAction(event -> { if (usable() && active==null) open.run(); });
+        updateConfirm();
     }
 
     private boolean usable() { return !closed.get() && allowed.getAsBoolean() && !dialog.getDialogPane().isDisabled(); }
@@ -201,6 +212,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     private void updateConfirm() {
         boolean selectable = candidateAllowed();
         confirm.setDisable(!selectable); copy.setDisable(!selectable || copyAction == null);
+        metadataSearch.setDisable(!usable() || active!=null);
     }
 
     void installCopyAction(Function<TableRef, ConnectionTreeClipboard.CopyResult> action) {
@@ -225,20 +237,28 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
 
     void reload() {
         if (!usable()) { sourceChanged(); return; }
+        if (active!=null) return;
         long expected = ++revision;
-        cancelActive(); all = List.of(); loaded = false; list.getItems().clear(); preview.clear(); clearCopyStatus();
+        Pending pending=new Pending(); active=pending;
+        all = List.of(); loaded = false; list.getItems().clear(); preview.clear(); clearCopyStatus();
         retry.setDisable(true); updateConfirm();
         status.setText("正在读取当前 Schema 的表/视图名称…"); placeholder.setText("读取中，可取消");
         try {
-            active = submitter.submit(() -> {
-                if (closed.get()) throw new java.util.concurrent.CancellationException();
-                return SchemaObjectCatalog.validate(schema, loader.call());
+            pending.future = submitter.submit(() -> {
+                if (!pending.phase.compareAndSet(0,1)) throw new java.util.concurrent.CancellationException();
+                try {
+                    if (closed.get()) throw new java.util.concurrent.CancellationException();
+                    return SchemaObjectCatalog.validate(schema, loader.call());
+                } catch (Exception | Error failure) { pending.failure=failure; throw failure; }
+                finally { pending.phase.set(2); onFx(() -> finishRead(pending)); }
             }, names -> {
+                returned(pending);
                 if (!current(expected)) return;
                 all = names.stream().map(n -> new Entry(n, n.name().toLowerCase(Locale.ROOT))).toList();
                 loaded = true; query.setDisable(false); retry.setDisable(false); filter();
                 // Do not steal focus from Cancel or the preview when metadata arrives.
             }, failure -> {
+                returned(pending);
                 if (!current(expected)) return;
                 retry.setDisable(false);
                 status.setText(failure instanceof SchemaObjectCatalog.TooManyObjectsException
@@ -246,13 +266,28 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
                         : "无法读取表/视图名称，请检查连接与权限后重新读取。");
                 placeholder.setText("未加载对象");
             });
-            if (closed.get()) cancelActive();
+            if (closed.get()) cancelRead(pending);
         } catch (RuntimeException rejected) {
+            returned(pending);
             if (current(expected)) {
                 retry.setDisable(false); placeholder.setText("未加载对象");
                 status.setText("读取暂不可用，请稍后重新读取。");
             }
         }
+    }
+
+    /** Submitter callbacks mean work has returned; the wrapper also signals cancelled scopes. */
+    private void returned(Pending pending) {
+        pending.phase.compareAndSet(0,2); finishRead(pending);
+    }
+    private void finishRead(Pending pending) {
+        if (active==pending && pending.phase.get()==2) {
+            active=null; retry.setDisable(!usable()); updateConfirm();
+            if (usable() && pending.failure instanceof Error) {
+                status.setText("读取失败，未建立对象列表；请重新读取。"); placeholder.setText("未加载对象");
+            }
+        }
+        completeDisposal();
     }
 
     private boolean current(long expected) {
@@ -292,10 +327,22 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     private static boolean modified(KeyEvent event) {
         return event.isControlDown() || event.isAltDown() || event.isMetaDown() || event.isShiftDown();
     }
-    private void cancelActive() { Future<?> task = active; if (task != null) task.cancel(true); }
+    private void cancelActive() {
+        Pending pending=active; if(pending==null) return;
+        cancelRead(pending);
+    }
+    private void cancelRead(Pending pending) {
+        Future<?> task=pending.future; if(task!=null) task.cancel(true);
+        // Future.cancel/done may precede JDBC return. Only an unstarted callable can release now.
+        if(pending.phase.compareAndSet(0,2)) onFx(() -> finishRead(pending));
+    }
     @Override public void close() {
         if (!closed.compareAndSet(false, true)) return;
-        closeMetadata.run();
-        cancelActive(); closeScope.run();
+        try { cancelActive(); closeScope.run(); }
+        finally { onFx(() -> { closeMetadata.run(); dialog.close(); closeCleaned=true; completeDisposal(); }); }
+    }
+    private static final class Pending {
+        final AtomicInteger phase=new AtomicInteger(); // queued=0, running=1, physically returned=2
+        volatile Future<?> future; volatile Throwable failure;
     }
 }
