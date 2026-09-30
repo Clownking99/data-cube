@@ -723,7 +723,7 @@ public final class AppShell {
         @Override
         public void openDataGrid(String connId, TableRef table, boolean readOnly) {
             String connName = connMgr.config(connId).name();
-            String prefix = readOnly ? "视图: " : "数据: ";
+            String prefix = readOnly ? "数据（只读）: " : "数据: ";
             contentTabs.openManagedTab(prefix + table.name(), binding -> {
                 DataGridPane pane = new DataGridPane(
                         browseSvc, editSvc, connId, connName, table, settings, readOnly, tasks);

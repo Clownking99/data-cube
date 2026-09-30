@@ -1,0 +1,107 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :compileJava UP-TO-DATE
+> Task :generateBrandIcons UP-TO-DATE
+> Task :generateVersionProperties UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :compileTestJava
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+MetadataSearchShellRoutingTest > metadataResultOpensBoundPassiveOrReadOnlyShellTab(Kind, Action) > [1] TABLE, SELECT FAILED
+    org.junit.platform.commons.JUnitException: Failed to close extension context
+        at java.base@25.0.1/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:197)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+        at java.base@25.0.1/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+        at java.base@25.0.1/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+        at java.base@25.0.1/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline$Head.forEach(ReferencePipeline.java:803)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+        at java.base@25.0.1/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+        at java.base@25.0.1/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+        at java.base@25.0.1/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+        at java.base@25.0.1/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+        at java.base@25.0.1/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+        at java.base@25.0.1/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+        at java.base@25.0.1/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+        at java.base@25.0.1/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+        at java.base@25.0.1/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+        at java.base@25.0.1/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+        at java.base@25.0.1/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+        at java.base@25.0.1/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+        at java.base@25.0.1/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+        at java.base@25.0.1/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+        at java.base@25.0.1/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+        at java.base@25.0.1/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+        at java.base@25.0.1/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+        at java.base@25.0.1/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+        at java.base@25.0.1/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+        at java.base@25.0.1/java.util.ArrayList.forEach(ArrayList.java:1604)
+        at java.base@25.0.1/java.util.ArrayList.forEach(ArrayList.java:1604)
+
+        Caused by:
+        java.io.IOException: Failed to delete temp directory C:\Users\hetia\AppData\Local\Temp\junit-2547478312939032633. The following paths could not be deleted (see suppressed exceptions for details): <root>, .openjfx, .openjfx\cache, .openjfx\cache\25+29, .openjfx\cache\25+29\amd64, .openjfx\cache\25+29\amd64\javafx_font.dll
+            at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+            at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+            at java.base/java.util.stream.SortedOps$RefSortingSink.end(SortedOps.java:395)
+            at java.base/java.util.stream.Sink$ChainedReference.end(Sink.java:261)
+            at java.base/java.util.stream.Sink$ChainedReference.end(Sink.java:261)
+            at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:571)
+            at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+            at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+            at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+            at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+            at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+            ... 38 more
+
+MetadataSearchShellRoutingTest > metadataResultOpensBoundPassiveOrReadOnlyShellTab(Kind, Action) > [3] TABLE, DATA FAILED
+    org.opentest4j.AssertionFailedError: read-only is a page mode and must not relabel a table as a view ==> expected: <数据（只读）: orders> but was: <视图: orders>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:182)
+        at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1156)
+        at app//com.datacube.fx.MetadataSearchShellRoutingTest.lambda$metadataResultOpensBoundPassiveOrReadOnlyShellTab$0(MetadataSearchShellRoutingTest.java:52)
+
+MetadataSearchShellRoutingTest > metadataResultOpensBoundPassiveOrReadOnlyShellTab(Kind, Action) > [4] VIEW, DATA FAILED
+    org.opentest4j.AssertionFailedError: read-only is a page mode and must not relabel a table as a view ==> expected: <数据（只读）: orders> but was: <视图: orders>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:182)
+        at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1156)
+        at app//com.datacube.fx.MetadataSearchShellRoutingTest.lambda$metadataResultOpensBoundPassiveOrReadOnlyShellTab$0(MetadataSearchShellRoutingTest.java:52)
+
+
+6 tests completed, 3 failed
+> Task :test FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///C:/Users/hetia/.codex/worktrees/metadata-search-cancellation/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to generate a Build Scan (powered by Develocity).
+
+BUILD FAILED in 11s
+8 actionable tasks: 2 executed, 6 up-to-date

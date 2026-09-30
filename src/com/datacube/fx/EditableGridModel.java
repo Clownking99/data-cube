@@ -143,7 +143,7 @@ public final class EditableGridModel {
         }
         if (forceReadOnly) {
             this.canLocate = false;
-            this.readOnlyReason = "视图为只读对象，仅支持查看数据，不支持编辑";
+            this.readOnlyReason = "当前数据页为只读，仅支持查看数据，不支持编辑";
         } else {
             this.canLocate = !keyColumns.isEmpty();
             this.readOnlyReason = canLocate ? null
