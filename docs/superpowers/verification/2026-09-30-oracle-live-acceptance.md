@@ -44,6 +44,11 @@ Oracle 返回版本 23.26；指定用户和服务身份先比对，再创建表�
 | branch-buildsrc | 强制 --rerun-tasks，实际 buildSrc:test 8/8，0 skipped |
 | branch-image / branch-image-audit | 新 jpackageImage；0 测试类/配置泄漏，PG/Oracle 零连接驱动发现通过 |
 | branch-live | 修复镜像真实 17/17，33/33 连接，55 次执行、14 次专用对象变更、0 删除语句 |
+| main-directed | 合并后新 profile：6 suites /114 passed，0 skipped |
+| main-full | 合并后新 profile：310 suites /3919 tests，3916 passed /3 live skipped，0 failure/error |
+| main-buildsrc | 合并后强制 --rerun-tasks：8/8，0 skipped |
+| main-image / main-image-audit / main-image-comparison | 新镜像及零连接审计通过，0 测试类/配置泄漏；三项产物 SHA/字节数与分支相同 |
+| main-live | 合并后新镜像、新表：真实 17/17，33/33 连接、55 执行、14 次专用对象变更、0 删除语句 |
 
 全量测试进程剔除 live 环境；三项旧 live 跳过仍是 Redis、PG 与 Oracle Schema Diff，不计通过。本次新 Oracle 真库探针与这些跳过是不同场景，不能宣传原 Schema Diff 真库 smoke 通过。历史 SchemaDiffServiceTest 偶发失败根因未证实关闭。
 
@@ -59,6 +64,10 @@ Oracle 返回版本 23.26；指定用户和服务身份先比对，再创建表�
 
 归档首次敏感字面扫描阻止暂存：五份 accessibility 文本含 10 处目标 host/service，口令命中 0；已替换为固定标记，记录原始与脱敏 SHA。第一轮 diff --check 的原字节 CRLF 误判亦保留；归档属性声明 cr-at-eol 后重查，不改写真实日志/XML。这些审查失败不算通过。
 
-本地集成和 main 新工程/镜像/真库复验仍待执行。没有旧通过替代本次证据。
+本地实现提交 101f90aaace4b117bad0bcdcb6b4f4d0ff82c643，main 合并 fbe6e30de20e7ae332e6cd8c6956de0b5e6cfcb2，全树相同。main 新工程/镜像/真库复验已全部实际执行，结果见上表及实际 JSON。三项产物与分支相同；产品/测试 canonical blob 与冻结快照相同，没有旧通过替代本次证据。脱敏后扫描及原始/暂存 manifest 字节复核通过；日志仅豁免格式空白，不豁免 SHA/字节检查。最后仅文档/证据提交，不改变已验产品。
+
+三张专用表均保留于 SCMTEST：DCA_D161141EA4BB43_T（首轮红灯）、DCA_D161141EA4BB44_T（修复分支）、DCA_D161141EA4BB45_T（main 复验），各 3 行 ID 1、2、12；无 DELETE/TRUNCATE/DROP。main 取消约 3190ms、超时 9187ms（含恢复），分类与未提交修改/后继恢复通过。不能把分支约 9 秒和 main 约 3 秒当作固定响应保证。
+
+最终 [实际结果](2026-09-30-oracle-live-acceptance-results.json) 共 23 份记录，[证据 manifest](evidence/oracle-live-acceptance/manifest.json) 共 122 份文件。包含首轮红灯/诊断、mock 红绿、分支/main 新测试原日志/XML 摘要及关键 XML、新镜像/零连接审计、真实矩阵、正常关闭、原生图/accessibility 与工具失败、脱敏原始摘要、原归档格式失败、合并和冻结源码。最后本地提交只更新这些证据与交接/路线图；Git 中精确 SHA 和授权范围清洁状态由交付时核验。
 
 取消约 9 秒返回的观察保留；分类成功不能承诺立即响应或所有网络/驱动版本可中断。尚未验真实数据库账号权限收紧、故障网络或多用户压力，也未验证 Oracle 视图/全部对象设计/Schema Diff/迁移等全功能矩阵。PG/Redis 真库、完整原生/键盘/OS 多屏、正式启动器/安装升级/签名/远端 CI/真实用户任务/发布仍待验，M8 不称完成。

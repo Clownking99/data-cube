@@ -1,6 +1,6 @@
 # DataCube 产品成熟度推进计划
 
-日期：2026-09-23；G1–G8 及本地跟进更新：2026-09-30。状态：M0、M1、M3、M4a–d、M5、M6、M7 本地工程完成，已合并 main 并复验；M2 部分完成（本地实现已合并 main 并复验，生产签名/真实升级待验）；M8 外部验收待授权。
+日期：2026-09-23；G1–G8 及本地跟进更新：2026-09-30。状态：M0、M1、M3、M4a–d、M5、M6、M7 本地工程完成，已合并 main 并复验；M2 部分完成（本地实现已合并 main 并复验，生产签名/真实升级待验）；M8 部分取得原生及指定 Oracle 真库证据，完整发布验收待验，其他外部目标须明确授权。
 
 基线：`main` / `792600c59e49bce3b300a71ccf412ed53d2b42e9`。
 
@@ -202,6 +202,8 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 
 ## 13. M8：贯穿每阶段的验收与发布门槛
 
+2026-09-30 新授权 Oracle 验收已实际执行，详见 [授权真库账本](../verification/2026-09-30-oracle-live-acceptance.md) 与 [实际结果](../verification/2026-09-30-oracle-live-acceptance-results.json)。仅指定 scmtest 服务、唯一专用表及 INSERT/UPDATE，绝不 DELETE/TRUNCATE/DROP；三张专用表和各 3 行合成数据保留。首轮 16/17 发现取消错标超时，修复实现 101f90a，main 代码 fbe6e30；分支与 main 新镜像真实 17/17，各 33/33 连接且 0 删除。main 新定向 114/114、全量 3916 passed/3 live skipped、强制 buildSrc 8/8、jpackageImage/镜像零连接审计通过，三产物 SHA 相同。Oracle 原生已取得只读数据页、字段真实命中 → SELECT 未执行/显式执行、表菜单 DDL、正常关闭；字段结果转数据/DDL、原生写确认/全键盘/在途关闭仍未验，取消实测约 3–9 秒不保证立即返回。原有 Schema Diff live 含 DROP USER，不能启用或算通过；PG/Redis/其他真库、正式启动器/安装升级/签名/CI/用户任务/发布仍待验，M8 不称完成。以下较早段落的“无真库/Oracle 原生”仅为当轮历史，不覆盖新证据。
+
 2026-09-25 维护者明确授权 G8 本地验收。实际原生桌面范围、两处修复、失败限制和新自动化证据见 [G8 账本](../verification/2026-09-25-datacube-g8-local-acceptance.md)；本地交付已完成（实现 b1135d9，main 产品代码 4885c40，证据集成 e65edb3；main 全量 3815 passed / 3 live skipped，buildSrc 8/8，镜像/零连接探针通过）。总体 M8 仍为待外部验收，以下完整桌面/真库/发布条目不因局部证据自动全部勾选。
 
 同日维护者要求继续推进产品，跟进 G8 的 SQL 小窗口草稿控制裁切；实现与新回归见 [小窗口账本](../verification/2026-09-25-sql-small-window.md)。本轮原生取屏失败，布局/键盘 FX 证据不替代完整原生验收；本地工程已交付：实现 3440a50，main 产品代码 584699c，新 profile 全量 3822 passed / 3 live skipped、强制 buildSrc 8/8、镜像/零连接审计通过。
@@ -262,7 +264,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 | M5 | 本地工程完成 | 实现 76dd221、修正 c62e86c；main 最终合并 0e7ca79；[G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)，main 全量 3724 passed/3 live skips、fresh buildSrc 8、镜像通过 | G5 交付；原生桌面/真库及明确降级单列 |
 | M6 | 本地工程完成 | 实现 d4b02de；main 合并 c182128；[G6 账本](../verification/2026-09-24-datacube-g6-discovery-library.md)，main 全量 3753 passed/3 live skips、fresh buildSrc 8、镜像及 14 张合成桌面截图 | G6 交付；原生模态输入/完整壳流程、真库等单列待验 |
 | M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | G8 已补合成迁移原生预检查/确认/取消/在途关闭；真库事务/权限/一致性与发布仍待验 |
-| M8 | 待外部验收 | [G8](../verification/2026-09-25-datacube-g8-local-acceptance.md)、[小窗口](../verification/2026-09-25-sql-small-window.md)、[9 月 27 日原生补证](../verification/2026-09-27-discovery-native-acceptance.md)、[9 月 30 日连接树与原生](../verification/2026-09-30-shell-workflow-acceptance.md)、[只读标签/下游 FX](../verification/2026-09-30-metadata-shell-routing.md)、[Schema 直接入口](../verification/2026-09-30-schema-metadata-entry.md) 与 [字段关闭后准入](../verification/2026-09-30-metadata-search-disposal.md) 保留分层历史；最新[名称读取准入](../verification/2026-09-30-schema-object-admission.md) 修复 PG/Oracle 合成重开名称/字段入口的读取重叠，实际返回及 FX 关闭清理前保留占用，拒绝重复读取/内嵌字段入口、明确等待且不自动重试。main 5092465 新定向 180、全量 3898 passed/3 live skipped、buildSrc 8、镜像/零连接审计通过，三项 SHA 与分支一致 | 本轮没有新原生或真库证据；原生等待/重开、完整字段请求/结果 → SELECT/只读数据/DDL、Oracle 桌面、全键盘/OS 多屏、真库、正式启动器/安装升级/签名/CI/用户任务/发布待验，M8 不称完成；本增量交付不自动扩展范围 |
+| M8 | 部分原生/指定 Oracle 真库已验；完整发布待验 | 各轮历史见上方账本；最新[Oracle 授权验收](../verification/2026-09-30-oracle-live-acceptance.md) 首轮红灯复现并修复取消分类。main fbe6e30 新定向 114、全量 3916 passed/3 live skipped、buildSrc 8、镜像审计通过，三产物与分支一致；分支及 main 真库均 17/17、33/33 连接、0 删除。原生只读数据/字段命中 → SELECT 未执行/显式执行、表菜单 DDL、正常关闭通过 | 三张专用表各 3 行保留，禁止删除；字段结果转数据/DDL、原生生产写确认/在途关闭/全键盘/OS 多屏、PG/Redis 和原 Schema Diff live、正式启动器/安装升级/签名/CI/用户任务/发布待验，M8 不称完成；取消约 3–9 秒不保证立即返回；其他外部目标仍须明确授权 |
 
 ## 16. 参考与历史记录
 

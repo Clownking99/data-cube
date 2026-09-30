@@ -1,6 +1,6 @@
 {
   "base": "4fa68014bab0ba3d4874d02bb31db874da66033e",
-  "archivedAt": "2026-09-30T22:50:09.7884671+08:00",
+  "archivedAt": "2026-09-30T23:03:23.9721319+08:00",
   "checks": [
     {
       "name": "acceptance",
@@ -509,6 +509,329 @@
       ],
       "xmlDirectory": "cancellation-red-xml",
       "xmlManifestSha256": "ABED0D8AAD998D2869F932B7B21B1F59F9E6739CE22C620E528498A76064D94C"
+    },
+    {
+      "name": "main-buildsrc",
+      "head": "fbe6e30de20e7ae332e6cd8c6956de0b5e6cfcb2",
+      "arguments": [
+        ":buildSrc:cleanTest",
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-oracle-acceptance-d161141ea4bb43a19021a0bf9e825600\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T22:56:16.4324511+08:00",
+      "exitCode": 0,
+      "log": "main-buildsrc.log",
+      "logSha256": "5C7F9A2F88E69C92729D2946ACD4C8AF6479F89386BF8F0540E2C418101D0E0F",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "main-buildsrc-xml",
+      "xmlManifestSha256": "7E4813071C356FD34EECC86B29D1D820591E4DCC2067983F45954532ACE9EB08"
+    },
+    {
+      "name": "main-directed",
+      "head": "fbe6e30de20e7ae332e6cd8c6956de0b5e6cfcb2",
+      "arguments": [
+        "cleanTest",
+        "test",
+        "--tests",
+        "com.datacube.provider.jdbc.DriverCancellationClassificationTest",
+        "--tests",
+        "com.datacube.provider.oracle.OracleSqlRunnerExecutionControlTest",
+        "--tests",
+        "com.datacube.provider.postgres.PgSqlRunnerExecutionControlTest",
+        "--tests",
+        "com.datacube.provider.jdbc.JdbcPreparedQueryExecutorTest",
+        "--tests",
+        "com.datacube.spi.SqlExecutionControlTest",
+        "--tests",
+        "com.datacube.service.JdbcEditorSessionTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-oracle-acceptance-d161141ea4bb43a19021a0bf9e825600\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T22:51:11.567379+08:00",
+      "exitCode": 0,
+      "log": "main-directed.log",
+      "logSha256": "758EC2B0066BDEAD1570E4FBE2B46932122A2C522332450B42AA2AE9E763C82D",
+      "actualTestTaskRan": true,
+      "suites": 6,
+      "tests": 114,
+      "passed": 114,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "main-directed-xml",
+      "xmlManifestSha256": "D97D90775D43236B5064078E7C200236373B9549E7F171C1F1C8D05C0D1D53FD"
+    },
+    {
+      "name": "main-final-review",
+      "head": "fbe6e30de20e7ae332e6cd8c6956de0b5e6cfcb2",
+      "implementation": "101f90aaace4b117bad0bcdcb6b4f4d0ff82c643",
+      "completedAt": "2026-09-30T23:03:22.9600285+08:00",
+      "outcome": "reviewed",
+      "sourceBlobsUnchanged": true,
+      "newMainChecksRequired": [
+        "main-directed",
+        "main-full",
+        "main-buildsrc",
+        "main-image",
+        "main-live"
+      ],
+      "findings": [],
+      "boundary": "No DELETE/TRUNCATE/DROP, business row reads, persisted credentials, .testagent changes, push/tag/PR/release/install/update or external messaging",
+      "remaining": [
+        "Native field hit to data/DDL",
+        "Native production write confirmation/full keyboard/in-flight close/OS multi-monitor",
+        "PG/Redis and original Schema Diff live",
+        "Network failure/load/full Oracle objects",
+        "Formal launcher/install/upgrade/signing/remote CI/user tasks/release"
+      ]
+    },
+    {
+      "name": "main-full",
+      "head": "fbe6e30de20e7ae332e6cd8c6956de0b5e6cfcb2",
+      "arguments": [
+        "cleanTest",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-oracle-acceptance-d161141ea4bb43a19021a0bf9e825600\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T22:55:46.9631023+08:00",
+      "exitCode": 0,
+      "log": "main-full.log",
+      "logSha256": "99FAB015F60D70A65BE3D97D86D7310F9ACD59DB62314CF66188E4D8DB0583CE",
+      "actualTestTaskRan": true,
+      "suites": 310,
+      "tests": 3919,
+      "passed": 3916,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "main-full-xml",
+      "xmlManifestSha256": "977A1257D733DD726F1AA7B11320BF255CD4ECD94474F70D38616AEC91388B5B"
+    },
+    {
+      "name": "main-image-audit",
+      "head": "fbe6e30de20e7ae332e6cd8c6956de0b5e6cfcb2",
+      "completedAt": "2026-09-30T22:57:29.500333+08:00",
+      "testClassLeaks": 0,
+      "testConfigLeaks": 0,
+      "driverExit": 0,
+      "driverOutput": "oracle=oracle.jdbc.OracleDriver\r\npostgres=org.postgresql.Driver\r\nconnectCalls=0; no credentials or user profile loaded\r\n",
+      "driverLogSha256": "1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82",
+      "artifacts": [
+        {
+          "path": "DataCube.exe",
+          "bytes": 595968,
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+        },
+        {
+          "path": "app/DataCube.cfg",
+          "bytes": 369,
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+        },
+        {
+          "path": "runtime/lib/modules",
+          "bytes": 102374706,
+          "sha256": "242CE98352FD2F1AE829C3F41CC3B078E05ECAD2AB43ED2B2F84C526AA28AD0E"
+        }
+      ]
+    },
+    {
+      "name": "main-image-comparison",
+      "head": "fbe6e30de20e7ae332e6cd8c6956de0b5e6cfcb2",
+      "completedAt": "2026-09-30T22:57:29.5538745+08:00",
+      "outcome": "three_artifacts_identical",
+      "artifacts": [
+        {
+          "path": "DataCube.exe",
+          "bytes": 595968,
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+        },
+        {
+          "path": "app/DataCube.cfg",
+          "bytes": 369,
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+        },
+        {
+          "path": "runtime/lib/modules",
+          "bytes": 102374706,
+          "sha256": "242CE98352FD2F1AE829C3F41CC3B078E05ECAD2AB43ED2B2F84C526AA28AD0E"
+        }
+      ]
+    },
+    {
+      "name": "main-image",
+      "head": "fbe6e30de20e7ae332e6cd8c6956de0b5e6cfcb2",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-30T22:57:03.6624903+08:00",
+      "exitCode": 0,
+      "log": "main-image.log",
+      "logSha256": "00944735E7E423B9A190A2EDE1CD3CAACA3F44BDC7E4C9A459B96D33710F0CE9",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "main-live",
+      "mode": "acceptance",
+      "head": "fbe6e30de20e7ae332e6cd8c6956de0b5e6cfcb2",
+      "startedAt": "2026-09-30T22:57:49.3623366+08:00",
+      "completedAt": "2026-09-30T22:58:04.6608205+08:00",
+      "exitCode": 0,
+      "fixture": "DCA_D161141EA4BB45_T",
+      "profileIsolated": true,
+      "log": "main-live.log",
+      "logSha256": "14AF24A629021A78604062B7FD8945E8A8BCBF73D9D0AC226A40235A2CCF7AE5",
+      "checks": [
+        {
+          "check": "connect_identity",
+          "result": "passed",
+          "milliseconds": 367
+        },
+        {
+          "check": "create_unique_fixture",
+          "result": "passed",
+          "milliseconds": 70
+        },
+        {
+          "check": "real_insert_update_and_conflict",
+          "result": "passed",
+          "milliseconds": 361
+        },
+        {
+          "check": "readonly_rejects_sql_insert_and_data_update_before_resources",
+          "result": "passed",
+          "milliseconds": 11
+        },
+        {
+          "check": "production_confirmation_bound_to_request_and_config",
+          "result": "passed",
+          "milliseconds": 138
+        },
+        {
+          "check": "manual_rollback_visibility",
+          "result": "passed",
+          "milliseconds": 196
+        },
+        {
+          "check": "manual_commit_visibility",
+          "result": "passed",
+          "milliseconds": 195
+        },
+        {
+          "check": "pending_close_rolls_back",
+          "result": "passed",
+          "milliseconds": 177
+        },
+        {
+          "check": "schema_name_catalog",
+          "result": "passed",
+          "milliseconds": 150
+        },
+        {
+          "check": "metadata_column_name",
+          "result": "passed",
+          "milliseconds": 66
+        },
+        {
+          "check": "metadata_object_comment",
+          "result": "passed",
+          "milliseconds": 74
+        },
+        {
+          "check": "metadata_column_comment",
+          "result": "passed",
+          "milliseconds": 68
+        },
+        {
+          "check": "readonly_data_page_and_oracle_empty_string",
+          "result": "passed",
+          "milliseconds": 62
+        },
+        {
+          "check": "ddl_preview_only",
+          "result": "passed",
+          "milliseconds": 186
+        },
+        {
+          "check": "real_driver_cancel_lock_wait_and_recover",
+          "result": "passed",
+          "milliseconds": 3190
+        },
+        {
+          "check": "real_driver_timeout_lock_wait_and_recover",
+          "result": "passed",
+          "milliseconds": 9187
+        },
+        {
+          "check": "connections_closed_and_fixture_retained",
+          "result": "passed",
+          "milliseconds": 214
+        }
+      ],
+      "summary": {
+        "summary": true,
+        "passed": 17,
+        "failed": 0,
+        "opened": 33,
+        "closed": 33,
+        "executed": 55,
+        "mutations": 14,
+        "deletionStatementsExecuted": 0,
+        "fixture": "DCA_D161141EA4BB45_T",
+        "retained": true
+      },
+      "runtimeModulesSha256": "242CE98352FD2F1AE829C3F41CC3B078E05ECAD2AB43ED2B2F84C526AA28AD0E",
+      "boundary": "User authorized Oracle target only; new unique table; INSERT/UPDATE only; no DELETE/TRUNCATE/DROP or existing business row queries; credentials supplied through transient process environment only"
+    },
+    {
+      "name": "main-merge",
+      "base": "4fa68014bab0ba3d4874d02bb31db874da66033e",
+      "implementation": "101f90aaace4b117bad0bcdcb6b4f4d0ff82c643",
+      "head": "fbe6e30de20e7ae332e6cd8c6956de0b5e6cfcb2",
+      "completedAt": "2026-09-30T22:51:01.3033617+08:00",
+      "outcome": "merged_locally",
+      "treeIdentical": true,
+      "log": "main-merge.log",
+      "logSha256": "0B12A0EEAB9F118A27A13B2C51F930F41D98F3CEA0CB20B35DDA38DD522CF185"
     },
     {
       "name": "native-launch",
