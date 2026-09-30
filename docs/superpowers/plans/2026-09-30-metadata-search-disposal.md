@@ -36,3 +36,19 @@
 - 下一步：hash/暂存审计后限定提交；main 仍为基线且授权范围干净，再合并、逐项新 profile 复验和更新实际 SHA。只记录本轮本地工程交付，不宣称 M8 或发布验收。
 
 集成前补记：首轮 staged 校核发现 *.log 被仓库 .gitignore 排除，未提交并记为审计失败；限定 -f 暂存本轮 evidence/metadata-search-disposal 后，75 份原始文件、14 份记录和四个源/暂存 blob 全部一致。随后将此次失败/修正记录与审计结果一并归档，重新校核，未放宽 hash 验收。
+
+## C4 — 本地合并与 main 复验
+
+- 当前目标：以实际 main 代码取得新证据，不能沿用分支通过作为 main 验收。
+- 改动：实现提交 219d3c2d66c7fd29708f6acd2a181ee7bb7389ef，本地 main --no-ff 合并代码 2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e；合并前 main 仍为基线、授权范围干净，未 push/fetch/PR/tag。合并后的本检查点为文档更新，不改产品/测试。
+- 验证：最终分支暂存校核 76 份文件 / 15 份记录通过；main 合并内容与分支整体一致，postmerge-review 源文件 canonical blob 和 raw archive hash 均通过（main 原始源文件换行可能不同，另记 raw SHA）。main 定向正在新 profile 实际执行。
+- 失败/未验：main 全量、强制 buildSrc、jpackageImage/镜像对比尚未执行，不填写旧通过；原生/真库/外部发布仍待验。
+- 下一步：定向完成后 main cleanTest/test、强制 buildSrc、镜像/零连接审计与三项 SHA 对比；归档新记录并更新交接/路线图；限定文档证据提交及干净检查后交付。
+
+## C5 — main 新证据与本轮交付
+
+- 当前目标：完成本轮关闭后资源准入修复的限定本地交付。
+- 改动：实现与 main 合并同 C4；产品/测试自分支最终快照未变。更新实际结果、原始 archive、账本、交接与路线图，后续仅文档证据提交。
+- 验证：main-directed 96/96；main-full 309 suites / 3891 tests：3888 passed、3 live skipped、0 failure/error；main-buildsrc 强制重跑 8/8；main-image 实际 jpackageImage 成功；main-image-audit 类/配置泄漏 0、connectCalls=0。DataCube.exe、DataCube.cfg、runtime/lib/modules 三项 SHA 与分支逐一一致；main canonical 源/测试与最终快照一致。
+- 失败/未验：保留测试编译错误、四项实际红灯及 ignore 导致的暂存审计失败。3 live skipped 不算通过；没有本轮新原生关闭/等待/重开或完整下游证据。真库、OS 缩放/多屏/全键盘、正式启动器/安装升级/签名/远端 CI/用户任务/发布仍待验，M8 不称完成。
+- 下一步：归档与限定文档暂存复核、文档提交及授权范围干净检查后交付。此前通过不再重复运行，除非产品再变或出现新失败；本轮结束，不自动扩展目标或外部操作。

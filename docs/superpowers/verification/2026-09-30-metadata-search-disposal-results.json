@@ -1,6 +1,6 @@
 {
   "base": "97b04f82891f4e5e95dfc95c7c598d76ccccf7a9",
-  "archivedAt": "2026-09-30T16:42:16.9381210+08:00",
+  "archivedAt": "2026-09-30T16:56:14.9236422+08:00",
   "checks": [
     {
       "name": "branch-buildsrc",
@@ -112,6 +112,38 @@
       "checks": 12,
       "rawHashesMatch": true,
       "stagedRawBytesMatch": false,
+      "sourceBlobsMatch": true,
+      "sources": [
+        {
+          "path": "src/com/datacube/fx/ConnectionTreePane.java",
+          "gitBlob": "2c4d571a9d8ce3423a149bc9be8eb52cc589d7dd",
+          "rawSha256": "A44991A6A62DCD187B321CE87C3A4049566023F0AE1B97C8F45F7B8E83E80A21"
+        },
+        {
+          "path": "src/com/datacube/fx/SchemaMetadataSearchDialog.java",
+          "gitBlob": "b92cf535e1c06ae212e9b41e0692f20191141778",
+          "rawSha256": "EF93030BCA6360A5800AF41D20BD9D47E0D731923CC3C7CD8B1147E432C11FA8"
+        },
+        {
+          "path": "test/com/datacube/fx/MetadataSearchShellRoutingTest.java",
+          "gitBlob": "3e49ebd5ef412b0e41ed2afa22a82f89fd659540",
+          "rawSha256": "AD142BE81BACF7B3B2C3E57993EEECF7E9387946D7E9DD1CB7C6910CD503A0C8"
+        },
+        {
+          "path": "test/com/datacube/fx/SchemaMetadataSearchDialogTest.java",
+          "gitBlob": "c1427c892716c48c3482037432a50a823125754e",
+          "rawSha256": "C8A9C8D747F24123B64874DA09C3BFC5DB44EC9DC10F15134BE852CE695AB195"
+        }
+      ]
+    },
+    {
+      "name": "branch-final-staged-proof",
+      "head": "97b04f82891f4e5e95dfc95c7c598d76ccccf7a9",
+      "completedAt": "2026-09-30T16:42:24.6014047+08:00",
+      "archiveFiles": 76,
+      "checks": 15,
+      "rawHashesMatch": true,
+      "stagedRawBytesMatch": true,
       "sourceBlobsMatch": true,
       "sources": [
         {
@@ -438,6 +470,321 @@
       "log": "disposal-red.log",
       "logSha256": "BE6819E42B24125729130B6828DEA12DBD6084D9F58EBDDB34CBA0DB637EB5B4",
       "actualTestTaskRan": false
+    },
+    {
+      "name": "image-comparison",
+      "head": "2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e",
+      "completedAt": "2026-09-30T16:50:43.8021186+08:00",
+      "sourceMatchesBranch": true,
+      "artifacts": [
+        {
+          "path": "DataCube.exe",
+          "bytes": 595968,
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F",
+          "match": true
+        },
+        {
+          "path": "app/DataCube.cfg",
+          "bytes": 369,
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D",
+          "match": true
+        },
+        {
+          "path": "runtime/lib/modules",
+          "bytes": 102371032,
+          "sha256": "827BE8946A9E80111B0A936A108BF781B5564A2F353C34489FD7673BFE4688E3",
+          "match": true
+        }
+      ],
+      "result": "all 3 packaged artifact SHA256 match; no launcher/install acceptance implied"
+    },
+    {
+      "name": "integration",
+      "completedAt": "2026-09-30T16:43:21.6626123+08:00",
+      "base": "97b04f82891f4e5e95dfc95c7c598d76ccccf7a9",
+      "implementation": "219d3c2d66c7fd29708f6acd2a181ee7bb7389ef",
+      "mainCode": "2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e",
+      "log": "main-merge.log",
+      "logSha256": "5629A928710D998F649B9CB7A672E6E8300C0302A67B116F0A37B58D4E95D3CB",
+      "mainScopeCleanBeforeMerge": true,
+      "mergedTreeMatchesBranch": true,
+      "externalOperations": 0
+    },
+    {
+      "name": "main-buildsrc",
+      "head": "2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e",
+      "arguments": [
+        ":buildSrc:test",
+        "--rerun-tasks",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-search-disposal-b2c647a2773f4185abff99681e335f85\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T16:49:19.9847039+08:00",
+      "exitCode": 0,
+      "log": "main-buildsrc.log",
+      "logSha256": "69A28754A437E4B48A48F3AC09B6B4091A32D58084DB461E73CAE58FD21B9171",
+      "actualTestTaskRan": true,
+      "suites": 1,
+      "tests": 8,
+      "passed": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "main-buildsrc-xml",
+      "xmlManifestSha256": "BB0435629A2F285A7861C6C48AE8C276B1EE01A6A3D0483240539684C9383C17"
+    },
+    {
+      "name": "main-directed",
+      "head": "2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e",
+      "arguments": [
+        "test",
+        "--tests",
+        "com.datacube.fx.MetadataSearchShellRoutingTest",
+        "--tests",
+        "com.datacube.fx.SchemaMetadataSearchDialogTest",
+        "--tests",
+        "com.datacube.fx.SchemaObjectFindEntryTest",
+        "--tests",
+        "com.datacube.fx.SchemaObjectSearchLifecycleTest",
+        "--tests",
+        "com.datacube.service.SchemaMetadataSearchTest",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-search-disposal-b2c647a2773f4185abff99681e335f85\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T16:43:45.6708072+08:00",
+      "exitCode": 0,
+      "log": "main-directed.log",
+      "logSha256": "43D0088A35BD40A2DF378FB6B61EB6A72180089740AAD67F93D013D0DF985D1C",
+      "actualTestTaskRan": true,
+      "suites": 5,
+      "tests": 96,
+      "passed": 96,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "skipDetails": [],
+      "failedTests": [],
+      "xmlDirectory": "main-directed-xml",
+      "xmlManifestSha256": "0FEAF5BD46EB829AB1D06D69D076D1E8843807AE80543FD99D557557215A7666"
+    },
+    {
+      "name": "main-evidence-audit",
+      "head": "2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e",
+      "completedAt": "2026-09-30T16:53:41.1276022+08:00",
+      "archiveFiles": 109,
+      "checks": 25,
+      "rawHashesMatch": true,
+      "stagedRawBytesMatch": false,
+      "sourceBlobsMatch": true,
+      "sources": [
+        {
+          "path": "src/com/datacube/fx/ConnectionTreePane.java",
+          "gitBlob": "2c4d571a9d8ce3423a149bc9be8eb52cc589d7dd",
+          "rawSha256": "A44991A6A62DCD187B321CE87C3A4049566023F0AE1B97C8F45F7B8E83E80A21"
+        },
+        {
+          "path": "src/com/datacube/fx/SchemaMetadataSearchDialog.java",
+          "gitBlob": "b92cf535e1c06ae212e9b41e0692f20191141778",
+          "rawSha256": "EF93030BCA6360A5800AF41D20BD9D47E0D731923CC3C7CD8B1147E432C11FA8"
+        },
+        {
+          "path": "test/com/datacube/fx/MetadataSearchShellRoutingTest.java",
+          "gitBlob": "3e49ebd5ef412b0e41ed2afa22a82f89fd659540",
+          "rawSha256": "3E2741D34845E80E1244FF189111F0772E4E0C410A117DF108F603755A8369E1"
+        },
+        {
+          "path": "test/com/datacube/fx/SchemaMetadataSearchDialogTest.java",
+          "gitBlob": "c1427c892716c48c3482037432a50a823125754e",
+          "rawSha256": "C8A9C8D747F24123B64874DA09C3BFC5DB44EC9DC10F15134BE852CE695AB195"
+        }
+      ]
+    },
+    {
+      "name": "main-full",
+      "head": "2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e",
+      "arguments": [
+        "cleanTest",
+        "test",
+        "--offline",
+        "--no-daemon",
+        "--console=plain",
+        "--init-script",
+        "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-metadata-search-disposal-b2c647a2773f4185abff99681e335f85\\isolated-tests.gradle"
+      ],
+      "completedAt": "2026-09-30T16:47:49.1920877+08:00",
+      "exitCode": 0,
+      "log": "main-full.log",
+      "logSha256": "D8951E623708FC0D3294D6E5F1C5661C785B4F8093CFE780CB0F4371BD8D01D9",
+      "actualTestTaskRan": true,
+      "suites": 309,
+      "tests": 3891,
+      "passed": 3888,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "skipDetails": [
+        {
+          "test": "com.datacube.redis.RedisLiveIntegrationTest.standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "test": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest.postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "failedTests": [],
+      "xmlDirectory": "main-full-xml",
+      "xmlManifestSha256": "FA87CB75795D35C3030CB469DCFE7CF4785474094B8F4B63D5D91F884023B202"
+    },
+    {
+      "name": "main-image-audit",
+      "head": "2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e",
+      "completedAt": "2026-09-30T16:50:43.7153113+08:00",
+      "testClassLeaks": 0,
+      "testConfigLeaks": 0,
+      "driverExit": 0,
+      "driverOutput": "oracle=oracle.jdbc.OracleDriver\r\npostgres=org.postgresql.Driver\r\nconnectCalls=0; no credentials or user profile loaded\r\n",
+      "driverLogSha256": "1B86DDF6FB8CAA668E49D5409CA56808F64F3248B48B0F20EBF70C358F0AAD82",
+      "artifacts": [
+        {
+          "path": "DataCube.exe",
+          "bytes": 595968,
+          "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+        },
+        {
+          "path": "app/DataCube.cfg",
+          "bytes": 369,
+          "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+        },
+        {
+          "path": "runtime/lib/modules",
+          "bytes": 102371032,
+          "sha256": "827BE8946A9E80111B0A936A108BF781B5564A2F353C34489FD7673BFE4688E3"
+        }
+      ]
+    },
+    {
+      "name": "main-image",
+      "head": "2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e",
+      "arguments": [
+        "jpackageImage",
+        "--offline",
+        "--no-daemon",
+        "--console=plain"
+      ],
+      "completedAt": "2026-09-30T16:50:09.6293282+08:00",
+      "exitCode": 0,
+      "log": "main-image.log",
+      "logSha256": "E47878C969391F32518B0989490E3AD398B54342F6F6AB673F85EF20BA119747",
+      "actualTestTaskRan": false
+    },
+    {
+      "name": "main-prepack-evidence-audit",
+      "head": "2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e",
+      "completedAt": "2026-09-30T16:45:09.9513605+08:00",
+      "archiveFiles": 89,
+      "checks": 19,
+      "rawHashesMatch": true,
+      "stagedRawBytesMatch": false,
+      "sourceBlobsMatch": true,
+      "sources": [
+        {
+          "path": "src/com/datacube/fx/ConnectionTreePane.java",
+          "gitBlob": "2c4d571a9d8ce3423a149bc9be8eb52cc589d7dd",
+          "rawSha256": "A44991A6A62DCD187B321CE87C3A4049566023F0AE1B97C8F45F7B8E83E80A21"
+        },
+        {
+          "path": "src/com/datacube/fx/SchemaMetadataSearchDialog.java",
+          "gitBlob": "b92cf535e1c06ae212e9b41e0692f20191141778",
+          "rawSha256": "EF93030BCA6360A5800AF41D20BD9D47E0D731923CC3C7CD8B1147E432C11FA8"
+        },
+        {
+          "path": "test/com/datacube/fx/MetadataSearchShellRoutingTest.java",
+          "gitBlob": "3e49ebd5ef412b0e41ed2afa22a82f89fd659540",
+          "rawSha256": "3E2741D34845E80E1244FF189111F0772E4E0C410A117DF108F603755A8369E1"
+        },
+        {
+          "path": "test/com/datacube/fx/SchemaMetadataSearchDialogTest.java",
+          "gitBlob": "c1427c892716c48c3482037432a50a823125754e",
+          "rawSha256": "C8A9C8D747F24123B64874DA09C3BFC5DB44EC9DC10F15134BE852CE695AB195"
+        }
+      ]
+    },
+    {
+      "name": "main-staged-evidence-audit",
+      "head": "2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e",
+      "completedAt": "2026-09-30T16:54:41.013445+08:00",
+      "archiveFiles": 110,
+      "checks": 26,
+      "rawHashesMatch": true,
+      "stagedRawBytesMatch": true,
+      "sourceBlobsMatch": true,
+      "sources": [
+        {
+          "path": "src/com/datacube/fx/ConnectionTreePane.java",
+          "gitBlob": "2c4d571a9d8ce3423a149bc9be8eb52cc589d7dd",
+          "rawSha256": "A44991A6A62DCD187B321CE87C3A4049566023F0AE1B97C8F45F7B8E83E80A21"
+        },
+        {
+          "path": "src/com/datacube/fx/SchemaMetadataSearchDialog.java",
+          "gitBlob": "b92cf535e1c06ae212e9b41e0692f20191141778",
+          "rawSha256": "EF93030BCA6360A5800AF41D20BD9D47E0D731923CC3C7CD8B1147E432C11FA8"
+        },
+        {
+          "path": "test/com/datacube/fx/MetadataSearchShellRoutingTest.java",
+          "gitBlob": "3e49ebd5ef412b0e41ed2afa22a82f89fd659540",
+          "rawSha256": "3E2741D34845E80E1244FF189111F0772E4E0C410A117DF108F603755A8369E1"
+        },
+        {
+          "path": "test/com/datacube/fx/SchemaMetadataSearchDialogTest.java",
+          "gitBlob": "c1427c892716c48c3482037432a50a823125754e",
+          "rawSha256": "C8A9C8D747F24123B64874DA09C3BFC5DB44EC9DC10F15134BE852CE695AB195"
+        }
+      ]
+    },
+    {
+      "name": "postmerge-review",
+      "head": "2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e",
+      "completedAt": "2026-09-30T16:43:22.0959461+08:00",
+      "archiveFiles": 76,
+      "checks": 15,
+      "rawHashesMatch": true,
+      "stagedRawBytesMatch": false,
+      "sourceBlobsMatch": true,
+      "sources": [
+        {
+          "path": "src/com/datacube/fx/ConnectionTreePane.java",
+          "gitBlob": "2c4d571a9d8ce3423a149bc9be8eb52cc589d7dd",
+          "rawSha256": "A44991A6A62DCD187B321CE87C3A4049566023F0AE1B97C8F45F7B8E83E80A21"
+        },
+        {
+          "path": "src/com/datacube/fx/SchemaMetadataSearchDialog.java",
+          "gitBlob": "b92cf535e1c06ae212e9b41e0692f20191141778",
+          "rawSha256": "EF93030BCA6360A5800AF41D20BD9D47E0D731923CC3C7CD8B1147E432C11FA8"
+        },
+        {
+          "path": "test/com/datacube/fx/MetadataSearchShellRoutingTest.java",
+          "gitBlob": "3e49ebd5ef412b0e41ed2afa22a82f89fd659540",
+          "rawSha256": "3E2741D34845E80E1244FF189111F0772E4E0C410A117DF108F603755A8369E1"
+        },
+        {
+          "path": "test/com/datacube/fx/SchemaMetadataSearchDialogTest.java",
+          "gitBlob": "c1427c892716c48c3482037432a50a823125754e",
+          "rawSha256": "C8A9C8D747F24123B64874DA09C3BFC5DB44EC9DC10F15134BE852CE695AB195"
+        }
+      ]
     }
   ],
   "sourceSnapshot": {

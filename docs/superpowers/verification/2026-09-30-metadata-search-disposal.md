@@ -1,6 +1,6 @@
 # 字段检索关闭后的资源准入：本地验收账本
 
-日期：2026-09-30。维护者“继续推进产品”的限定本地增量。基线 main `97b04f82891f4e5e95dfc95c7c598d76ccccf7a9`，独立分支 `codex/metadata-search-disposal`。分支定向/全量/buildSrc/镜像检查已完成，本地提交/合并及 main 复验仍待执行；下表只列实际记录。M8 外部验收仍待授权，不称发布验收。
+日期：2026-09-30。维护者“继续推进产品”的限定本地增量。基线 main `97b04f82891f4e5e95dfc95c7c598d76ccccf7a9`，独立分支 `codex/metadata-search-disposal`。实现 `219d3c2d66c7fd29708f6acd2a181ee7bb7389ef`，main 合并代码 `2f27e2ba1d73cd8c6a2a41b26040cf05fad2cd6e`；分支及 main 的新定向/全量/buildSrc/镜像检查均通过，本轮已本地工程交付。M8 外部验收仍待授权，不称发布验收。
 
 ## 改动和行为证据
 
@@ -38,11 +38,17 @@
 | branch-image / branch-image-audit | 实际 jpackageImage 成功，类/配置泄漏 0，connectCalls=0 | 打包运行时发现 PG/Oracle 驱动，无凭据或用户 profile |
 | branch-staged-evidence-first | 审计失败 | *.log 被仓库 ignore，原始日志未进 index；提交前拦截，随后仅强制暂存本轮专用证据目录 |
 | branch-staged-evidence-audit | 全部匹配 | raw archive/hash、日志/XML manifest 与 canonical source/staged blob 逐项一致 |
+| main-directed | 96/96，0 skipped | 合并后新合成 profile，实际 test |
+| main-full | 309 suites / 3891 tests：3888 passed、3 live skipped | 新 profile、实际 cleanTest/test，0 failure/error |
+| main-buildsrc | 8/8，0 skipped | 新 profile、--rerun-tasks，实际 buildSrc:test |
+| main-image / main-image-audit | 实际 jpackageImage 成功，类/配置泄漏 0，connectCalls=0 | 合并代码重新构建，打包运行时发现 PG/Oracle 驱动 |
+| image-comparison | 三项 SHA 全部一致 | DataCube.exe、app/DataCube.cfg、runtime/lib/modules；不代表正式启动器/安装验收 |
+| main-evidence-audit / main-staged-evidence-audit | 全部匹配 | 合并后新证据、源文件 canonical blob 与最终暂存 raw bytes 校核；产品/测试自验证后未变 |
 
 初版与审查后的两次定向日志 SHA 恰好相同（Gradle 文本输出一致），XML manifest 和测试数分别独立记录，不能按日志 SHA 合并两次运行。全部实际失败保留，不修改为成功；历史偶发 SchemaDiffServiceTest 原因不明仍未宣称已解决。
 
 ## 集成与待验
 
-分支最终验证已通过，正在校核原始证据 hash、源码快照与 staged blob；随后本地提交/合并 main，使用新 profile 重新定向/全量/buildSrc/镜像。集成完成后在此追加实际 SHA 与结果，不用旧通过填充待执行记录。三项 live 跳过是 Redis 缺显式环境及 PG/Oracle Schema Diff 缺完整环境/写门禁；环境已在测试进程剔除。日志中的 JavaFX unnamed-module/native-access、unchecked、jlink JEP 493 警告保留。
+合并前 main 仍为基线且授权范围干净；本地 --no-ff 合并后的整树内容与实现分支一致。合并后全部验证在新 profile 实际执行。四个源/测试 canonical Git blob 与最终快照一致；main 的 raw SHA 另记，区分 CRLF/LF 与内容等价。原始证据及 staged bytes 逐项校核，首轮漏掉的日志已在提交前纠正。交接与证据提交只改文档，不改已验证产品/测试。三项 live 跳过是 Redis 缺显式环境及 PG/Oracle Schema Diff 缺完整环境/写门禁；环境已在测试进程剔除。日志中的 JavaFX unnamed-module/native-access、unchecked、jlink JEP 493 警告保留。
 
 本轮没有新增原生桌面证据。原生关闭后等待提示/重开、完整字段请求 → SELECT/只读数据/DDL、Oracle 桌面，真 PostgreSQL/Oracle/Redis 权限/事务/取消，OS 缩放/多屏/全键盘，正式启动器/安装升级/生产签名/远端 CI/真实用户任务/发布仍待验。M8 不称完成，本地增量交付不自动扩大范围。

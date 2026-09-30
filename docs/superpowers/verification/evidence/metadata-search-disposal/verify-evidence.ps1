@@ -1,4 +1,4 @@
-param([string]$Repository,[string]$Name,[switch]$Staged)
+param([string]$Repository,[string]$Name,[switch]$Staged,[switch]$NoRecord)
 $ErrorActionPreference='Stop'
 Set-Location -LiteralPath $Repository
 $evidenceRelative33='docs/superpowers/verification/evidence/metadata-search-disposal'
@@ -35,5 +35,7 @@ $sources33=@(foreach($source33 in $result33.sourceSnapshot.files) {
  if($Staged -and (git rev-parse (':'+$source33.path)) -ne $source33.gitBlob){throw 'Staged source mismatch'}
  [ordered]@{path=$source33.path;gitBlob=$blob33;rawSha256=(Get-FileHash -LiteralPath $source33.path).Hash}
 })
-[ordered]@{name=$Name;head=(git rev-parse HEAD);completedAt=(Get-Date).ToString('o');archiveFiles=$manifest33.files.Count;checks=$result33.checks.Count;rawHashesMatch=$true;stagedRawBytesMatch=[bool]$Staged;sourceBlobsMatch=$true;sources=$sources33} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $PSScriptRoot ($Name+'.json')) -Encoding utf8
+if(!$NoRecord) {
+ [ordered]@{name=$Name;head=(git rev-parse HEAD);completedAt=(Get-Date).ToString('o');archiveFiles=$manifest33.files.Count;checks=$result33.checks.Count;rawHashesMatch=$true;stagedRawBytesMatch=[bool]$Staged;sourceBlobsMatch=$true;sources=$sources33} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $PSScriptRoot ($Name+'.json')) -Encoding utf8
+}
 Write-Output ('Verified archiveFiles='+$manifest33.files.Count+' checks='+$result33.checks.Count+' staged='+[bool]$Staged)
