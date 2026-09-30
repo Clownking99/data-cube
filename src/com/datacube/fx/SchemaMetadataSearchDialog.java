@@ -29,7 +29,7 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
     private final ChoiceBox<Mode> mode = new ChoiceBox<>();
     private final ListView<Hit> list = new ListView<>();
     private final TextArea preview = new TextArea();
-    private final Label status = new Label("选择匹配来源并输入文字，再点击查找。对象名检索仍使用上一级入口。");
+    private final Label status = new Label("选择匹配来源并输入文字，再点击查找。对象名检索请使用 Schema 菜单中的“查找表/视图”。");
     private final Button search = new Button("查找"), cancelRead = new Button("取消读取");
     private final List<Button> actions = new ArrayList<>();
     private final ConnConfig target;
