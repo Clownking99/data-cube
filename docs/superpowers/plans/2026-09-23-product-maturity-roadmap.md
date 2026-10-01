@@ -1,6 +1,6 @@
 # DataCube 产品成熟度推进计划
 
-日期：2026-09-23；G1–G8 及本地跟进更新：2026-09-30。状态：M0、M1、M3、M4a–d、M5、M6、M7 本地工程完成，已合并 main 并复验；M2 部分完成（本地实现已合并 main 并复验，生产签名/真实升级待验）；M8 部分取得原生及指定 Oracle 真库证据，完整发布验收待验，其他外部目标须明确授权。
+日期：2026-09-23；G1–G8 及本地跟进更新：2026-10-02。状态：M0、M1、M3、M4a–d、M5、M6、M7 本地工程完成，已合并 main 并复验；M2 部分完成（本地实现已合并 main 并复验，生产签名/真实升级待验）；M8 部分取得原生及指定 Oracle 真库证据，本轮新增限定 mock 桌面与独立 main 复验证据，完整发布验收待验，其他外部目标须明确授权。
 
 基线：`main` / `792600c59e49bce3b300a71ccf412ed53d2b42e9`。
 
@@ -264,7 +264,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 | M5 | 本地工程完成 | 实现 76dd221、修正 c62e86c；main 最终合并 0e7ca79；[G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)，main 全量 3724 passed/3 live skips、fresh buildSrc 8、镜像通过 | G5 交付；原生桌面/真库及明确降级单列 |
 | M6 | 本地工程完成 | 实现 d4b02de；main 合并 c182128；[G6 账本](../verification/2026-09-24-datacube-g6-discovery-library.md)，main 全量 3753 passed/3 live skips、fresh buildSrc 8、镜像及 14 张合成桌面截图 | G6 交付；原生模态输入/完整壳流程、真库等单列待验 |
 | M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | G8 已补合成迁移原生预检查/确认/取消/在途关闭；真库事务/权限/一致性与发布仍待验 |
-| M8 | 部分原生/指定 Oracle 真库已验；完整发布待验 | 各轮历史见上方账本；最新[Oracle 授权验收](../verification/2026-09-30-oracle-live-acceptance.md) 首轮红灯复现并修复取消分类。main fbe6e30 新定向 114、全量 3916 passed/3 live skipped、buildSrc 8、镜像审计通过，三产物与分支一致；分支及 main 真库均 17/17、33/33 连接、0 删除。原生只读数据/字段命中 → SELECT 未执行/显式执行、表菜单 DDL、正常关闭通过 | 三张专用表各 3 行保留，禁止删除；字段结果转数据/DDL、原生生产写确认/在途关闭/全键盘/OS 多屏、PG/Redis 和原 Schema Diff live、正式启动器/安装升级/签名/CI/用户任务/发布待验，M8 不称完成；取消约 3–9 秒不保证立即返回；其他外部目标仍须明确授权 |
+| M8 | 部分原生/指定 Oracle 真库已验；完整发布待验 | 2026-10-02 [开发账本](../verification/2026-10-02-sol-p0-p2-acceptance.md) a69f7db 经独立 [P3 审查与 main 复验](../verification/2026-10-02-sol-p3-main-acceptance.md)，main 验收合并 669ee53；产品未改。新 main 定向 75、全量 3916 passed /3 live skipped、buildSrc 8、新镜像/零连接审计通过，三项 SHA 与开发一致。新 PG mock 原生字段结果转只读数据/DDL、生产取消/批准、部分提交/剩余行重试、在途交互关闭拒绝、夹具调用实际 mandatory guard 和 DDL 局部键盘已验。历史 [Oracle 授权验收](../verification/2026-09-30-oracle-live-acceptance.md) 的分支/main 真库 17/17、33/33 连接、0 删除仍保留，不作本轮新结果 | 本轮无真库/main 新原生运行；三张 Oracle 专用表保留，禁止删除。完整字段输入/键盘/结果导航、原生 Oracle/view/SELECT/配置失效、完整 AppShell 在途退出/超时恢复、缩小窗口/OS 多屏、PG/Redis/原 SchemaDiff live、正式启动器/安装升级/签名/CI/用户任务/发布仍待验；SchemaDiff 首轮间歇失败根因未定，旧失效截图/误报/FAILED_PARTIAL 不计通过。P3 本地交付后暂停跟进，不扩展下一轮；M8 不称完成，其他外部目标须明确授权 |
 
 ## 16. 参考与历史记录
 

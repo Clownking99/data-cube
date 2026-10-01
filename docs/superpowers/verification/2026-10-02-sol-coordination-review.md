@@ -1,6 +1,6 @@
 # GPT-6.1-sol 开发：协调线程审查记录
 
-客户端日期：2026-10-02。计划见 [开发与审查计划](../plans/2026-10-02-sol-development-coordination.md)。本记录仅为开发进行中的预审，不能替代最终 P3 或本轮验收交付。
+客户端日期：2026-10-02。计划见 [开发与审查计划](../plans/2026-10-02-sol-development-coordination.md)。R0–R2 保留进行中的预审快照，R3 记录提交审查，R4 为本轮 P3 main 集成与新验证；最终证据见 [P3 账本](2026-10-02-sol-p3-main-acceptance.md)。
 
 ## R0 — 首次 heartbeat 预审
 
@@ -48,3 +48,15 @@
 - 未验保留：字段原生输入/完整键盘/结果方向键，Oracle/view/SELECT 原生本轮重跑、原生配置收紧/迟到批准、完整 AppShell 在途退出/超时恢复、缩小窗口/OS 缩放/多屏、正式启动器/安装升级/签名/CI/用户任务、PG/Redis/原 SchemaDiff live、本轮 Oracle 复验均未完成；SchemaDiff 首轮间歇失败根因未定。M8/发布不称完成。3 项 live skip 的原始 assumption 原因已核对，未计通过。
 - 协调与工具失败：交付后再次 list_threads 仍无正式 id，不能调用 wait_threads/send_message；没有绕过工具限制或创建线程。当前改用已提交 worktree/原始证据审核，任务链接信息请求仍待答；因本次审核不需返工，该工具缺口不妨碍已授权本地集成。另一次按推测包路径读取两份 live XML 失败，已用 rg --files 定位 com.datacube.redis / com.datacube.schemadiff 的真实 XML并完成读取，不影响测试结果。
 - 下一步：在协调隔离分支合并精确开发提交，再 fast-forward main；单 Gradle 顺序、离线、清除 live/JVM 注入环境、独占临时 profile 执行新定向/全量/buildSrc/jpackageImage 和零连接镜像审计。保留首次失败，更新交接/路线图及 P3 实际结果后交付并暂停本 heartbeat，不扩展下一轮。
+
+## R4 — P3 main 集成与本地复验
+
+- 当前目标：交付本轮已授权 P3，不启动后续功能或更多线程。
+- 集成：开发 a69f7db 经 R3 审查后，在协调隔离分支合并为 669ee536e8d5babba145f1a881d9b6d1a7c0ed99，再 fast-forward main。没有产品源码/测试/构建改动；没有需要返工的剩余问题，不伪报消息已下发。线程工具正式 id 缺口仍记录，已用提交和原始文件独立完成本地审核。
+- 改动：本轮 P3 外置验证/审计脚本、原日志/全部 XML/结果/字节清单及五份账本/计划/交接/路线图更新；没有操作开发桌面、读取 .testagent/原 profile/凭据/SQL 历史/业务文件或访问真库。
+- main 新验证：独占 datacube-sol-p3 UUID 临时根、每轮新 profile，单 Gradle 离线顺序执行。定向 75/75、全量 310 suites /3919 总数（3916 passed /3 live skipped）、强制 buildSrc 8/8、新 jpackageImage 全通过；8/8/4/14 个 task 实际执行。183 文件镜像审计无测试/探针/profile/选项泄漏；三项 SHA 与开发镜像相同；新 profile 零连接 driverFor 发现 Oracle/PG 驱动，connectCalls=0。原始依据见 P3 账本和 evidence/sol-p3-main/results.json，不使用历史通过。
+- 首次失败与核验：P3 首版审计将跨 worktree 的 211 份 Java LF/CRLF raw SHA 差异视为源码变化，首次脚本/log/JSON 全保留。逐份严格 UTF-8 证明仅物理换行不同，Git 源码树一致、两边源码清洁；修外置审计后另冻结 main 774 份原字节，源码实质变化 0，镜像哈希一致。没有修改用户源码换行或为误报重跑已通过测试。开发首轮 SchemaDiffServiceTest 根因仍未定，不称已修复。
+- 交付字节：已集成开发 Git 对象不变；main 磁盘原始证据 1181 份不变，目录外账本 Markdown checkout 为 CRLF 的差异明确记录且原 Git blob 匹配 manifest。P3 的 raw manifest /实际暂存字节及提交对象单独审计；不改写旧失败或清单。
+- 暂存首次失败：本轮编辑的交接 Markdown 因 Git 换行规范化与 raw 字节不同，被严格 blob 审计拒绝；异常及五份编辑文档 SHA 已保存。先证明规范化仅 CRLF→LF 后等于原已审阅 staged blob，再统一五份已编辑文档换行并重新核验；产品、旧证据和通用属性不改，首轮不计通过。
+- 未验：保持开发账本的精确待验矩阵；main 本轮无新原生输入、无真库运行，不能把新 FX/mock 验证提升证据等级。完整字段键盘/原生 Oracle/view/SELECT/配置失效、完整应用在途退出/超时恢复、窗口缩小/OS 多屏、正式启动器/安装升级/签名/CI/用户任务/发布未验，3 live skip 不计通过，M8 不称完成。
+- 下一步：本轮证据和交接审计后本地提交、fast-forward main，复核 source/test/build 无差异和授权工作区干净；完成交付后将 datacube heartbeat 设为 PAUSED，不自动启动下一轮。

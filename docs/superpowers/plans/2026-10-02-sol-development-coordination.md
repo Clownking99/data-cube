@@ -54,3 +54,11 @@ P0 / 计划下发准备：当前线程已核对 main 与授权工作区、复用
 - 已创建当前线程 heartbeat 跟进（automation id datacube，ACTIVE，每 15 分钟）；无变化保持安静，取得结果后审核/返工/集成，P3 交付后暂停该跟进，不自动开下一轮。
 - 协调工具失败记录：首次 heartbeat 缺少 destination/target，被工具拒绝；补齐后创建成功。一次 list_threads 超出参数范围返回错误，已使用有效范围；不据此创建重复线程或编造正式 id。
 - 下一步：解析正式开发线程 id，以 wait_threads 跟踪实际交付，按 P3 审核和修正。等待期间不并发操作同一桌面或运行该 worktree 的 Gradle。
+
+### P3 独立审核与本地交付
+
+- 开发 a69f7dbf7a0e0d567f174e7f6ed058ae01d61948 已完成 P0–P2 本地交付，仅外置夹具/证据，产品未改。协调线程审核源码、原始图像/日志/全部 XML、失败/待验、原始与实际 Git 字节；截图旧引用、失败关闭误计和镜像类筛选误报均由开发自行纠正，最终无剩余返工，不伪报曾下发修正。
+- 本地 main 集成 669ee536e8d5babba145f1a881d9b6d1a7c0ed99；main 新 profile 定向 75、全量 3916 passed /3 live skipped、强制 buildSrc 8、jpackageImage/镜像和零连接发现通过，三项产物 SHA 与开发一致。原始证据、协调首次换行误报及提交字节审计见 [P3 账本](../verification/2026-10-02-sol-p3-main-acceptance.md)，审查过程见 [R0–R4](../verification/2026-10-02-sol-coordination-review.md)。
+- 线程列表未返回正式 id，任务链接问题待答；不能调用 wait_threads/send_message，已通过提交/worktree 取得可独立核验交付，没有创建重复线程。当前 P3 不需要返工，此工具缺口未被伪报为消息送达或扩展权限。
+- 新证据只补 PG mock 字段结果转只读数据/DDL、生产确认/取消/部分提交重试、在途交互关闭拒绝、夹具调用实际强制关闭 guard 及局部 DDL 键盘。原生字段完整输入/键盘、Oracle/view/SELECT/配置失效、完整 shell 在途退出/超时恢复、OS 多屏、正式启动器/安装升级/签名/CI/用户任务/发布仍待验；本轮未访问真库，M8 不称完成。
+- 本轮证据最终本地提交/合并 main 后暂停 datacube heartbeat；不自动启动下一轮，也不清理既有专用表或扩大功能/外部操作范围。
