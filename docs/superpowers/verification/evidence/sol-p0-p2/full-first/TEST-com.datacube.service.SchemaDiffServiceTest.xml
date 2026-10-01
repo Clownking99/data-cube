@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.service.SchemaDiffServiceTest" tests="3" skipped="0" failures="1" errors="0" timestamp="2026-10-01T16:41:42.385Z" hostname="WAKEUPMAN" time="0.006">
+  <properties/>
+  <testcase name="providerAwareCompareReturnsOtherObjectsWhenOneRoutineRequiresManualReview()" classname="com.datacube.service.SchemaDiffServiceTest" time="0.003">
+    <failure message="java.util.concurrent.CompletionException: java.lang.IllegalStateException: Schema snapshot failed" type="java.util.concurrent.CompletionException">java.util.concurrent.CompletionException: java.lang.IllegalStateException: Schema snapshot failed
+	at java.base/java.util.concurrent.CompletableFuture.wrapInCompletionException(CompletableFuture.java:323)
+	at java.base/java.util.concurrent.CompletableFuture.reportJoin(CompletableFuture.java:457)
+	at java.base/java.util.concurrent.CompletableFuture.join(CompletableFuture.java:2139)
+	at com.datacube.service.SchemaDiffServiceTest.providerAwareCompareReturnsOtherObjectsWhenOneRoutineRequiresManualReview(SchemaDiffServiceTest.java:76)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+Caused by: java.lang.IllegalStateException: Schema snapshot failed
+	at com.datacube.service.SchemaDiffService.lambda$compare$1(SchemaDiffService.java:95)
+	at java.base/java.lang.VirtualThread.run(VirtualThread.java:456)
+</failure>
+  </testcase>
+  <testcase name="dedicatedOpenUsesOnlySuppliedSnapshotAndNeverRegistryReplacement()" classname="com.datacube.service.SchemaDiffServiceTest" time="0.002"/>
+  <testcase name="redisDifferentTypesAndMissingCapabilityFailBeforeAnyConnectionOpens()" classname="com.datacube.service.SchemaDiffServiceTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
