@@ -1,0 +1,9 @@
+allprojects {
+    tasks.withType(Test).configureEach {
+        def isolatedProfile = new File(System.getProperty('datacube.acceptance.root'), project.name + '-' + name + '-profile')
+        isolatedProfile.mkdirs()
+        systemProperty 'user.home', isolatedProfile.absolutePath
+        systemProperty 'java.awt.headless', 'false'
+        environment = environment.findAll { key, value -> !(key.toUpperCase().contains('LIVE') || key.toUpperCase().contains('ORACLE') || key.toUpperCase().startsWith('PG') || key.toUpperCase().contains('REDIS') || key in ['JAVA_TOOL_OPTIONS','JDK_JAVA_OPTIONS','_JAVA_OPTIONS']) }
+    }
+}

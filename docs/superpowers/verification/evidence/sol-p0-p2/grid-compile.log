@@ -1,0 +1,71 @@
+test\com\datacube\service\GridSaveProbe.java:1: 错误: 程序包已存在于另一个模块中: com.datacube
+package com.datacube.service;
+^
+test\com\datacube\provider\jdbc\RowJdbcProbe.java:1: 错误: 程序包已存在于另一个模块中: com.datacube
+package com.datacube.provider.jdbc;
+^
+docs\superpowers\verification\evidence\sol-p0-p2\SolGridDesktopProbe.java:16: 错误: 找不到符号
+    GridSaveProbe probe;
+    ^
+  符号:   类 GridSaveProbe
+  位置: 类 SolGridDesktopProbe
+test\com\datacube\service\GridSaveProbe.java:5: 错误: 找不到符号
+import com.datacube.provider.jdbc.RowJdbcProbe;
+                                 ^
+  符号:   类 RowJdbcProbe
+  位置: 程序包 com.datacube.provider.jdbc
+test\com\datacube\service\GridSaveProbe.java:15: 错误: 找不到符号
+    public final RowJdbcProbe jdbc = new RowJdbcProbe();
+                 ^
+  符号:   类 RowJdbcProbe
+  位置: 类 GridSaveProbe
+test\com\datacube\service\GridSaveProbe.java:17: 错误: 找不到符号
+    public final ConnectionManager manager;
+                 ^
+  符号:   类 ConnectionManager
+  位置: 类 GridSaveProbe
+test\com\datacube\service\GridSaveProbe.java:18: 错误: 找不到符号
+    public final DataEditService edit;
+                 ^
+  符号:   类 DataEditService
+  位置: 类 GridSaveProbe
+docs\superpowers\verification\evidence\sol-p0-p2\SolGridDesktopProbe.java:31: 错误: 找不到符号
+        probe=new GridSaveProbe(DbType.POSTGRESQL,false,"PRODUCTION");
+                  ^
+  符号:   类 GridSaveProbe
+  位置: 类 SolGridDesktopProbe
+docs\superpowers\verification\evidence\sol-p0-p2\SolGridDesktopProbe.java:32: 错误: 此处不应为 lambda 表达式
+        if(block)probe.jdbc.onExecute=()->{
+                                      ^
+docs\superpowers\verification\evidence\sol-p0-p2\SolGridDesktopProbe.java:46: 错误: setText(String)在Cell中不是公共的; 无法从外部程序包中对其进行访问
+                for(int i=0;i<2;i++){var row=b.get(i); row.cell(1).setText("synthetic-edit-"+i);model.reconcile(row);}
+                                                                  ^
+docs\superpowers\verification\evidence\sol-p0-p2\SolGridDesktopProbe.java:46: 错误: reconcile(Row)在EditableGridModel中不是公共的; 无法从外部程序包中对其进行访问
+                for(int i=0;i<2;i++){var row=b.get(i); row.cell(1).setText("synthetic-edit-"+i);model.reconcile(row);}
+                                                                                                     ^
+test\com\datacube\service\GridSaveProbe.java:15: 错误: 找不到符号
+    public final RowJdbcProbe jdbc = new RowJdbcProbe();
+                                         ^
+  符号:   类 RowJdbcProbe
+  位置: 类 GridSaveProbe
+test\com\datacube\service\GridSaveProbe.java:32: 错误: 找不到符号
+        DatabaseProvider provider = RowJdbcProbe.proxy(DatabaseProvider.class, (p, m, a) -> switch (m.getName()) {
+                                    ^
+  符号:   变量 RowJdbcProbe
+  位置: 类 GridSaveProbe
+test\com\datacube\service\GridSaveProbe.java:37: 错误: 找不到符号
+            case "dataAccessor" -> RowJdbcProbe.proxy(DataAccessor.class, (dp, dm, da) -> {
+                                   ^
+  符号:   变量 RowJdbcProbe
+  位置: 类 GridSaveProbe
+test\com\datacube\service\GridSaveProbe.java:46: 错误: 找不到符号
+        manager = new ConnectionManager(new CredentialCipher(), ignored -> { resolutions.incrementAndGet(); return provider; });
+                      ^
+  符号:   类 ConnectionManager
+  位置: 类 GridSaveProbe
+test\com\datacube\service\GridSaveProbe.java:48: 错误: 找不到符号
+        edit = new DataEditService(manager);
+                   ^
+  符号:   类 DataEditService
+  位置: 类 GridSaveProbe
+16 个错误

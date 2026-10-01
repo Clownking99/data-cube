@@ -1,0 +1,2 @@
+// Corrected archive: explicit snapshot; no input or programmatic UI actions.
+var saveSnapshot = async(name,snap)=>{await fs.writeFile(replayRoot+'/'+name+'.json', JSON.stringify({window:snap.window,accessibility:snap.accessibility,screenshots:snap.screenshots.map(({url,...m})=>m)},null,2));for(var [i,s] of snap.screenshots.entries())await fs.writeFile(replayRoot+'/'+name+'-'+i+'.png',Buffer.from(s.url.split(',')[1],'base64'));};
