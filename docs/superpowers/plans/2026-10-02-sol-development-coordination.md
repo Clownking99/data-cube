@@ -44,3 +44,13 @@
 ## 当前检查点
 
 P0 / 计划下发准备：当前线程已核对 main 与授权工作区、复用干净隔离 worktree 创建 codex/dev-coordination-plan；本计划是下一轮边界与验收依据。计划文档提交后创建 GPT-6.1-sol 独立开发线程，核对该线程实际基线与模型，随后跟踪进展和审核；没有创建运行目标或设置预算。
+
+### P0 下发与首次审查
+
+- 计划提交 6f4ad93e2f6226a00a8df72f31091fc7bcbc41eb，仅一份文档；本地 fast-forward main，产品与原已验快照相同，授权工作区干净。
+- 已通过 create_thread 指定 model=gpt-6.1-sol、项目 dataCube、从 main 创建独立 worktree，任务名“DataCube 桌面验收闭环开发”。返回创建标识 client-new-thread:9991bdbe-94ba-44c8-bb40-23c5af3c7bb6；不能将它传给需正式 threadId 的工具，注册完成后通过 list_threads 解析。
+- 实际开发工作树 C:/Users/hetia/.codex/worktrees/b07c/朝花夕拾，分支 codex/sol-p0-p2-acceptance，基线精确为 6f4ad93。已建立 docs/superpowers/verification/2026-10-02-sol-p0-p2-acceptance.md 和本轮证据目录。
+- 首次审查：P0 账本与矩阵涵盖本计划要求，区分 mock/FX/原生，不把历史通过或工具输入失败升级为本轮通过/产品故障；开发尚在执行，未审核 P1/P2 交付，不宣称新验收完成。
+- 已创建当前线程 heartbeat 跟进（automation id datacube，ACTIVE，每 15 分钟）；无变化保持安静，取得结果后审核/返工/集成，P3 交付后暂停该跟进，不自动开下一轮。
+- 协调工具失败记录：首次 heartbeat 缺少 destination/target，被工具拒绝；补齐后创建成功。一次 list_threads 超出参数范围返回错误，已使用有效范围；不据此创建重复线程或编造正式 id。
+- 下一步：解析正式开发线程 id，以 wait_threads 跟踪实际交付，按 P3 审核和修正。等待期间不并发操作同一桌面或运行该 worktree 的 Gradle。
