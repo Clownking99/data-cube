@@ -38,3 +38,13 @@
 - 镜像验证：final-image.log 的 jpackageImage /jlink 本轮实际执行，BUILD SUCCESSFUL /14 executed。独立 jimage 索引与 355 个当前测试源码类型逐项比对，未发现测试/探针/JUnit/Mockito/TestFX 类；DataCube.cfg 未带验收 profile/headless/sol/live 选项。modules SHA256 为 242CE98352FD2F1AE829C3F41CC3B078E05ECAD2AB43ED2B2F84C526AA28AD0E，cfg 为 E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D，exe 为 6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F，与开发 image-audit.json 相符。开发零连接驱动探针仅反射 driverFor，未调用 connect/open；本次未自行执行该探针。当前证据目录文本扫描未发现指定真实目标字面值；最终归档/暂存字节扫描仍待交付。
 - 审查工具误报：协调线程最初不区分大小写的 Test 子串匹配误报 10 个生产类（含 SqlFavoriteStore、ConnectionTestController）；已改为精确测试类型路径和区分大小写的依赖/探针路径，重新审计为 0，不是产品泄漏。开发独立审计也保留了同类首轮误报文件与说明，不删除失败历史。
 - 未验与下一步：开发账本仍停 P0/待执行，最终 manifest、动作/状态矩阵、提交 SHA 及停工交付尚未给出，不能把本预审替代 P2/P3 完成。list_threads 仍无正式 id，已有任务链接问题待答，不重复提问、不创建线程、不伪报修正已下发。待完整提交后审核最终字节和精确待验项，再本地集成 main、新 profile 复验、更新交接与路线图；P3 完成前 heartbeat 保持 ACTIVE。
+
+## R3 — 开发交付审查通过，准备 main 集成复验
+
+- 当前目标：审核已提交开发交付，按原 P3 范围本地合并并取得 main 新证据；尚未宣称 P3 完成。
+- 开发提交：a69f7dbf7a0e0d567f174e7f6ed058ae01d61948，codex/sol-p0-p2-acceptance，授权范围干净。共 1184 份本轮账本/证据/外置夹具文件；src/test/buildSrc/build.gradle/settings.gradle 与 6f4ad93 无差异，产品没有新修复或功能扩展。开发账本已更新完整矩阵、检查点、工具失败、精确未验和提交后停在 P3 审核的约定；R2 早期“账本停 P0”是当时快照，已被这次实际交付更新。
+- 原始字节核验：raw-byte-manifest 的 1182 个文件逐份 SHA256/长度匹配（共 36339036 字节，排除 manifest/audit 自引用）；独立 git cat-file --batch 对当时全部 1184 份实际暂存 blob 与磁盘原字节比对，0 差异。提交后核验开发 staged-byte-audit 的 1183 个 blob OID 均进入 HEAD，audit 自身无过滤 hash-object 也与 HEAD 相同；未修改开发索引/文件。证据局部 .gitattributes 的 -text 保留 XML/log/PNG 原始字节，不改变产品属性。
+- 行为与证据判定：R0–R2 所列截图、失败退出误计和镜像类筛选误报均已由开发修正，并在最终账本明确排除旧失败。新图/日志、现有实际 FX/mock 用例、最终工程执行及镜像审计互相对应；程序化查询词/两行草稿、夹具强制关闭按钮、真实服务 guard 与原生动作分开。未发现需要通过线程投递的剩余修正；不伪报曾下发返工。
+- 未验保留：字段原生输入/完整键盘/结果方向键，Oracle/view/SELECT 原生本轮重跑、原生配置收紧/迟到批准、完整 AppShell 在途退出/超时恢复、缩小窗口/OS 缩放/多屏、正式启动器/安装升级/签名/CI/用户任务、PG/Redis/原 SchemaDiff live、本轮 Oracle 复验均未完成；SchemaDiff 首轮间歇失败根因未定。M8/发布不称完成。3 项 live skip 的原始 assumption 原因已核对，未计通过。
+- 协调与工具失败：交付后再次 list_threads 仍无正式 id，不能调用 wait_threads/send_message；没有绕过工具限制或创建线程。当前改用已提交 worktree/原始证据审核，任务链接信息请求仍待答；因本次审核不需返工，该工具缺口不妨碍已授权本地集成。另一次按推测包路径读取两份 live XML 失败，已用 rg --files 定位 com.datacube.redis / com.datacube.schemadiff 的真实 XML并完成读取，不影响测试结果。
+- 下一步：在协调隔离分支合并精确开发提交，再 fast-forward main；单 Gradle 顺序、离线、清除 live/JVM 注入环境、独占临时 profile 执行新定向/全量/buildSrc/jpackageImage 和零连接镜像审计。保留首次失败，更新交接/路线图及 P3 实际结果后交付并暂停本 heartbeat，不扩展下一轮。
