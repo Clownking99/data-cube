@@ -1,8 +1,10 @@
 # DataCube 产品成熟度推进计划
 
-日期：2026-09-23；G1–G8 及本地跟进更新：2026-10-02。状态：M0、M1、M3、M4a–d、M5、M6、M7 本地工程完成，已合并 main 并复验；M2 部分完成（本地实现已合并 main 并复验，生产签名/真实升级待验）；M8 部分取得原生及指定 Oracle 真库证据，已取得限定 mock 桌面证据，最新补 SchemaDiff 夹具稳定性与独立 main 复验，完整发布验收待验，其他外部目标须明确授权。
+日期：2026-09-23；G1–G8 及本地跟进更新：2026-10-02。状态：M0、M1、M3、M4a–d、M5、M6、M7 本地工程完成，已合并 main 并复验；M2 部分完成（本地实现已合并 main 并复验，生产签名/真实升级待验）；M8 部分取得原生及指定 Oracle 真库证据，已取得限定 mock 桌面证据，最新字段原生键盘/小窗口有限尝试仍未完成，工程证据已本地合并并复验；完整发布验收待验，其他外部目标须明确授权。
 
-2026-10-02 最新本地交付：[SchemaDiff 夹具稳定性](../verification/2026-10-02-schema-diff-stability-coordination.md)，仅修并发记录和mock schema构造，产品未改；实现75ed0c6、main验收合并a353117，新定向9/9、全量3917 passed /3 live skipped、buildSrc8/8、新镜像/零连接发现通过，三项产物与分支相同。8192次真实mock完整记录/关闭、两线程unsafe越界与safe400000完整均有新原始证据。历史那一次异常缺cause，精确归因保留未知；本轮无新原生/真库，不提升M8证据等级。下方协作P3/Oracle等记录是其各轮历史，完整桌面/安装升级/签名/CI/用户任务/发布仍待验，既有跟进PAUSED。
+2026-10-02 最新本地证据交付：[字段原生键盘限定尝试与独立复验](../verification/2026-10-02-metadata-native-keyboard-coordination.md)。真实AppShell新合成profile/外置mock，21状态/39原JPEG，原生菜单/空框/取消/正常空闲退出可验证，mock1/1且检索/写/执行0；owner/modal输入递送失败，type_text两次空、Tab/Esc未到达、模式未变、缩小无尺寸变化。原生输入/键盘/多结果/条件失效/小窗口目标未完成，不以预填或程序化输入替代、不因工程通过提高M8等级。仅外置证据01c9cb0本地合并main03a552b，分支/main各新定向83/83、全量3917 passed /3 live skipped、buildSrc8/8、jpackageImage/镜像/零连接发现通过；产品未改，无新真库。首定向漏suite/profile拒绝/PNG计数错误保留，已准确纠正。本轮有限交付后停止，不再盲试，不自动恢复跟进或扩大功能/外部范围；datacube保持PAUSED。完整桌面/发布待验与下方历史原生/Oracle证据分开记录。
+
+2026-10-02 前轮本地交付：[SchemaDiff 夹具稳定性](../verification/2026-10-02-schema-diff-stability-coordination.md)，仅修并发记录和mock schema构造，产品未改；实现75ed0c6、main验收合并a353117，新定向9/9、全量3917 passed /3 live skipped、buildSrc8/8、新镜像/零连接发现通过，三项产物与分支相同。8192次真实mock完整记录/关闭、两线程unsafe越界与safe400000完整均有新原始证据。历史那一次异常缺cause，精确归因保留未知；本轮无新原生/真库，不提升M8证据等级。下方协作P3/Oracle等记录是其各轮历史，完整桌面/安装升级/签名/CI/用户任务/发布仍待验，既有跟进PAUSED。
 
 基线：`main` / `792600c59e49bce3b300a71ccf412ed53d2b42e9`。
 

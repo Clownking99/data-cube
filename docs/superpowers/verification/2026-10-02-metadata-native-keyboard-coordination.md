@@ -2,6 +2,8 @@
 
 本轮按[限定计划](../plans/2026-10-02-metadata-native-keyboard.md)，由已授权 GPT-6.1-sol 代理实施 N1，协调线程审核、必要修正、提交/合并和新复验。基线 main `7afbe280d92b68b0780333f3a7942157d4197234`，独立分支 `codex/metadata-native-keyboard`；两边授权范围干净。客户端日期 2026-10-02，日志保留实际 UTC。datacube heartbeat 保持 PAUSED。
 
+当前结论：仅外置夹具、有限尝试证据与工程复验完成本地交付；本轮原生输入/键盘/小窗口目标没有完成。没有产品改动、没有新真库操作，M8/发布验收仍未完成。main 验证提交 03a552b，后续只有证据和交接，最终提交以 Git 记录为准。
+
 ## N0 / R0：基线及源码独立初审
 
 - 当前目标：补齐实际 AppShell 的字段查找原生空框输入、键盘、多结果和实际小窗口证据；不扩大功能或外部目标。
@@ -35,6 +37,37 @@ N1 进行中独立审查外置 MetadataNativeKeyboardProbe.java：真实 AppShel
 R2 后续：分支 fresh 全量 310 suites /3920 total =3917 passed +3 live skipped、0 failure/error，8 tasks 全执行；buildSrc 8/8、0 skip，4 tasks 全执行，冻结 774 文件无漂移。三个 skip 分别为 Redis、Oracle SchemaDiff、PG SchemaDiff 的显式 live 门禁缺失，不算通过，也未为跑它们访问真库/创建或操作 schema。worker raw 四个日志将精确强制暂存；仅证据目录 .gitattributes 保留 raw 字节，不改变仓库一般换行策略。worker 原 manifest 保持不变，协调新增属性文件独立纳入最终字节审计。
 
 R2 完成：分支 jpackageImage 成功、14 tasks 全执行；镜像 183 文件，test/probe/profile/option 泄漏 0，774 冻结源码与工作区干净；镜像内 Oracle/PG driverFor 发现成功、connectCalls=0。独立 source/test/resources/build Git diff 与起始 main 为零。仅批准外置夹具、有限失败证据、复验脚本和交接的本地集成，绝非批准原生输入/键盘/小窗口验收通过。定向首轮不完整、profile拒绝、worker报告格式计数错误均保留。下一步精确暂存/字节审计，提交后 --no-ff 本地合并 main，fresh main 复验。
+
+## N2 / R3：本地合并与 main 复验（进行中）
+
+- 当前目标：审查后的外置证据集成与 main 新复验；原生目标仍未完成。
+- 改动：branch 01c9cb0891f3437346adfe3c0523b08e81633cc0 保存夹具/原始有限尝试/分支验证，415 份实际索引 blob 审计通过后，本地 --no-ff 合并为 main 03a552b70be908bfa3281144c67a963bd2137aea；merge 原始日志保留。没有产品或测试/build 改动。
+- 验证：合并前 main 仍为起始基线、授权工作区干净；branch 与起始 main 的 src/resources/test/build Git diff 为零；原始证据/日志全部按精确路径暂存并保留字节。
+- 失败/未验：native 输入/键盘/条件/多结果/小窗口仍未验；不能将已合并或工程通过等同本轮原生目标完成。main 本轮定向/全量/buildSrc/image 尚在执行。
+- 下一步：main 新结果、跨工作区源码与产物核验、最终 raw/实际Git字节审计，更新交接/路线图并本地交付；既有 heartbeat 保持 PAUSED。
+
+R3 后续：main 新定向五组 83/83、零 skip；fresh 全量 310 suites /3920 total =3917 passed +3 live skipped、0 failure/error；强制 buildSrc 8/8、零 skip。定向/全量 8 tasks、buildSrc 4 tasks 全执行，冻结 774 源码文件无变化；三 live skip 的具体 gate 理由见各自完整 XML/summary，未计通过。main 镜像与最后审计尚待。
+
+## N2 / R4：最终工程、证据与待验交接
+
+- 当前目标：交付审查后的限定证据与 fresh main 结果，保留原生阻断；不冒称本轮原生目标完成。
+- 改动：最终结果/跨工作区比较、raw manifest、交接与路线图；main 03a552b 后只证据/文档，不改变经过验证的产品/test/build。
+- 验证：main jpackageImage 14 tasks 全执行成功；镜像183文件、零测试/夹具/profile/选项泄漏，driverFor Oracle/PG 发现成功且连接次数0。三项 artifact SHA 与分支一致。Summarize.ps1 独立重算两阶段全部 XML/真实任务、skip门禁和镜像，engineeringPassed=true；nativeAcceptancePassed=false、requestedNativeGoalComplete=false。774源码树与Git匹配、两边raw稳定；213 Java仅LF/CRLF差异逐份严格证明，不将换行差异冒报为产品变化。
+- 失败/未验：全部有限工具输入/模式/键盘/resize失败、索引/窗口销毁错误、PNG首计数错误、首定向漏suite与profile拒绝均保存并准确限定。最终文档patch一次上下文匹配失败且未修改任何文件，按精确整行修正；属于编辑失败，不是产品或验证失败。历史原生或真库通过不作本轮新通过；三个live跳过不算通过。本轮不能认定模态输入/布局存在产品缺陷，故无产品修复/FX红绿。
+- 下一步：精确范围与实际Git/raw字节审计、仅文档证据最终本地提交/fast-forward main、源码无漂移与工作区复核后交付；不再重复无效原生尝试、不启动更多代理/功能/外部操作。再次推进需有能绑定owned dialog的输入通道或维护者手工证据才能补本轮缺口；不能靠预填/程序化事件或反复相同尝试放宽验收。datacube仍PAUSED。
+
+| 本轮新执行 | 分支 c175f45 | main 03a552b | 原始证据 |
+| --- | --- | --- | --- |
+| 定向5 suites | 83/83、0skip | 83/83、0skip | branch/main directed.log、execution.json、完整XML |
+| 全量310 suites | 3917 passed /3 live skipped | 3917 passed /3 live skipped | branch/main full.log、execution.json、完整XML/skipReasons |
+| buildSrc | 8/8、0skip | 8/8、0skip | branch/main buildsrc.log、execution.json、完整XML |
+| jpackageImage | 成功14tasks全执行 | 成功14tasks全执行 | branch/main image.log、execution.json |
+| 镜像/零连接发现 | 183文件、泄漏0、connect0 | 同左且三项SHA一致 | image-audit.json、driver-discovery.log |
+| 实际原生有限尝试 | 21状态/39JPEG、mock1/1、查询/写/执行0；输入/键盘/resize未通过 | 无重复桌面运行 | [worker账本](2026-10-02-metadata-native-keyboard-worker.md)、[raw目录](evidence/metadata-native-keyboard/)、worker-independent-audit.json |
+
+[机器可重算结果](evidence/metadata-native-keyboard-coordination/results.json)、[源码比较](evidence/metadata-native-keyboard-coordination/source-comparison.json)明确分开工程通过和原生未完成，raw/Git字节审计自项排除说明在各manifest/audit文件中。外部操作与真实发布仍待验。
+
+最终归档检查点：747份raw文件的SHA/长度和完整文件集合已由协调manifest重新核验；原始失败保留。最终提交仅本轮精确证据目录、两份账本/计划及既有交接/路线图，actual Git blob审计排除审计自身并单列源码LF/CRLF；最终main源码与已验03a552b保持一致，docs/evidence后续提交不重复工程测试。当前原生目标继续未完成，交付不改变这一事实。
 
 ## 仍待验
 
