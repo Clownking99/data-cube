@@ -31,3 +31,25 @@ PG/Oracle是合成provider类型，JdbcDataEditor为真实实现，但不等于�
 mock物理barrier35秒截止且finally release；FX/settled/cleanup调用均有界，不sleep/retry/扩大产品timeout。测试仅合成数据/UUID profile，SQL UPDATE仅mock，未访问原配置/凭据/历史/业务文件或.testagent。没有真实业务写入。
 
 新文件：test/com/datacube/fx/AppShellGridShutdownTest.java、ShellGridJdbcProbe.java；本账本；worker evidence下Run-Targeted.ps1、Verify-Evidence.ps1、tool-errors.json、manifest及三个run目录。raw.log受gitignore，根归档时仅精确force add这些worker raw路径。产品源码保持基线。
+
+## N1 追加检查点：全量首失败后的独立定位（起点 e7f55b7）
+- 根第一次full：312 suites、3934 tests、2failure/0errors/3skip；仅MetadataSearchShellRoutingTest两项在Fixture.close断言COMPLETED得到CANCELLED。实际grid六项通过。根原件已按字节归档于app-shell-grid-exit-coordination/branch-first-failed/full及full.log，本worker不覆盖。
+- 隔离审查：该Metadata Fixture每case在构造AppShell前把user.home设为独占JUnit TempDir，finally恢复；没有新grid跨profile污染证据。失败两项最终SELECT刚创建真实SQL pane即退出。SqlDraftCoordinator初始化为异步；INITIALIZING eligible.flush会拒绝，SqlDraftEditorBinding.prepareClose(true)正确返回REJECTED→CANCELLED。既有初始化语义测试源码支持这个保护约定，旧通过不作本轮新证据。
+- 外置诊断使用原private Metadata Fixture的真实菜单/SELECT、AppShell/SqlEditor/mandatory guard，仅控制actual draft runtime初始化writer；同步替换同一owner的workspace UI以绑定该受控runtime，原空runtime先正常shutdown。所有操作只在新合成profile。受控writer30秒截止/finally release，初始化事件与refresh barrier均有界；未换mandatory guard、未忽略workspace。
+- diagnostic-shell-routing-red：exit1，No tests found，build.gradle覆盖过早添加的外置sourceDir；actualTestsExecuted=false，无XML。projectsEvaluated再加外置sourceSet后恢复。原log/result保留并附provenance，非预期行为红。
+- diagnostic-initializing-red：实际1test/1failure，原Fixture.close:529同样COMPLETED→CANCELLED，日志mode=INITIALIZING、managementPending=true、flushFailure=INITIALIZING；有JUnit native DLL TempDir清理suppressed。diagnostic-released-green：主体同一fixture.close=COMPLETED，但native字体/effect DLL在TempDir，JUnit清理主失败exit1，因此不称完整通过。两run原件全部保留。
+- 给外置diagnostic加BeforeAll，仅在worker profile预热一个合成Label字体/effect；其内存snapshot不是桌面内容/截图，也无原生验收价值，不保存图像。
+- diagnostic-initializing-clean-red：exit1，1test/1failure、0skip/error；唯一原Fixture.close:529 CANCELLED，无TempDir清理污染。日志直接证明INITIALIZING/busy=true/flushFailure INITIALIZING，finally释放后barrier ENABLED/nonbusy、正常closeCOMPLETED。diagnostic-released-clean-green：相同源文件/实际guard，只提前release并await observe初始化→refresh成功barrier，exit0、1/1，无skip。该对照证明夹具缺少真实初始化前置条件；不是产品缺陷。
+- 历史归因限制：首次full原XML没有现场runtime.mode/flushFailure，不能百分百反查那两次的具体状态。新受控诊断确定复现同类原因，与快速SELECT后立即关闭的原失败位置一致；未把新cause伪写成旧现场。没有证据表明跨profile污染。
+- 最小修正仅MetadataSearchShellRoutingTest.Fixture.close：peek已创建owner；observe其真实初始化结束，严格断言ENABLED、managementPending=false；actual runtime.refresh成功且snapshot可写之后才按原mandatory shutdown。初始化失败直接失败，不吞异常。原COMPLETED/连接平衡/写0断言完整保留。无sleep/retry、无timeout扩大、无guard或product改动。
+- correction-focused使用新UUID profile，四suite为新grid、Metadata、AppShell恢复、DataGridSaveFlow；source-hashes包含修改Metadata文件。外置诊断init未加入此最终focused，不将历史诊断case误算常规tests。运行结束后原件审计仅写manifest-correction.json，已提交的原manifest及所有旧run字节不覆盖。
+- 重现脚本的适用版本：diagnostic红/绿基于修正前Metadata fixture，源commit e7f55b7与每run source-hashes可对账；修正后原Fixture.close会主动等待初始化，不能把再运行旧诊断的行为当成历史重现。外置源目录仅由diagnostic.init.gradle加入，不改变普通/full test sourceSet。
+## N1 追加交付：correction-focused 已结算
+
+最终命令：`& ./docs/superpowers/verification/evidence/app-shell-grid-exit-worker/Run-Targeted.ps1 -Run correction-focused`。实际参数保存在该 run 的 `parameters.json`：JDK 25.0.1+8、offline/no-daemon/max-workers=1/rerun-tasks，四个 suite 定向，独占 UUID profile `datacube-shell-grid-worker-91ccf026-86a0-41e5-8e2e-dcc1b9174049`。开始 UTC 10:23:39，结束 UTC 10:25:21，exit 0；fresh XML 实际为 Grid 6、Recovery 9、DataGridSaveFlow 10、MetadataSearchShellRouting 44，共 69/69，failure/error/skip 均 0。
+
+执行 `Verify-CorrectionEvidence.ps1`，exit 0，新写 `manifest-correction.json` 汇总六次增量运行；原 `manifest.json` 与提交 e7f55b7 保持一致（SHA-256 `653F7F3F17CDB4E00DD02B05B94A303CAE62A1A05268EF5852FF1BC953C394FF`）。七项源码哈希全部匹配；旧 XML 不计入发现失败。原首次 full、诊断失败及 native DLL 清理失败均保留。`git diff --check` 通过，按明确 src 路径与 e7f55b7 比较无产品修改。
+
+归因边界不变：受控真实 runtime 初始化证明同类 INITIALIZING → flush 拒绝 → actual mandatory close CANCELLED；历史两例未保存现场 mode，不能百分百确认历史状态。只为旧 Metadata fixture 补实际初始化/refresh 成功前置条件，未改产品保护或超时，未追加盲 retry。
+
+最终自有合成 profile Java 进程为 0，测试 JVM/Gradle 已退出，无独立桌面 fixture；桌面与 Gradle 执行权交还根线程。未执行全量/buildSrc/image/main 新复验，未暂存或提交。下一步由根线程做独立工程复验与精确归档。

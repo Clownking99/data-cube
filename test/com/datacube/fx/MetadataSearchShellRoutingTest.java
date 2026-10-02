@@ -1,6 +1,7 @@
 package com.datacube.fx;
 
 import com.datacube.config.ConnectionStore;
+import com.datacube.config.SqlDraftCoordinator;
 import com.datacube.provider.postgres.PostgresProvider;
 import com.datacube.provider.oracle.OracleProvider;
 import com.datacube.service.ConnectionManager;
@@ -522,9 +523,50 @@ class MetadataSearchShellRoutingTest {
                 default -> throw new AssertionError("Unexpected statement method " + m.getName());
             });
         }
+        @SuppressWarnings("unchecked")
+        private void awaitDraftInitialization() throws Exception {
+            var draftOwner = FxUiTestSupport.call(() ->
+                    ((LazyValue<SqlDraftUi>) field(shell, "sqlDrafts")).peek());
+            if (draftOwner.isEmpty()) return;
+            SqlDraftUi owner = draftOwner.orElseThrow();
+            var initialized = new CompletableFuture<Void>();
+            AutoCloseable observation = FxUiTestSupport.call(() -> {
+                Runnable check = () -> {
+                    try {
+                        if (owner.runtime().mode() != SqlDraftCoordinator.Mode.INITIALIZING)
+                            initialized.complete(null);
+                    } catch (Throwable failure) { initialized.completeExceptionally(failure); }
+                };
+                AutoCloseable registration = owner.observe(check);
+                check.run();
+                return registration;
+            });
+            try {
+                initialized.get(5, TimeUnit.SECONDS);
+                var refreshed = FxUiTestSupport.call(() -> {
+                    assertEquals(SqlDraftCoordinator.Mode.ENABLED, owner.runtime().mode(),
+                            "fixture must finish real draft initialization before mandatory close");
+                    assertFalse(owner.runtime().managementPending());
+                    return owner.runtime().refresh();
+                }).get(5, TimeUnit.SECONDS);
+                assertTrue(refreshed.succeeded(), "real draft writer barrier must succeed");
+                assertNotNull(refreshed.snapshot());
+                assertTrue(refreshed.snapshot().writable());
+                FxUiTestSupport.call(() -> {
+                    assertEquals(SqlDraftCoordinator.Mode.ENABLED, owner.runtime().mode());
+                    assertFalse(owner.runtime().managementPending());
+                    System.out.println("DRAFT_READY " + target.type() + " " + entry + " mode=ENABLED managementPending=false refresh=succeeded");
+                    return null;
+                });
+            } finally {
+                FxUiTestSupport.call(() -> { observation.close(); return null; });
+            }
+        }
+
         @Override public void close() throws Exception {
             releaseRead.countDown(); releaseCancel.countDown(); releaseNames.countDown();
             try {
+                awaitDraftInitialization();
                 var shutdown = FxUiTestSupport.call(() -> { ownedDialogs().reversed().forEach(w -> ((Stage) w).close()); return shell.shutdownAsync(); });
                 assertEquals(ShutdownOutcome.COMPLETED, shutdown.toCompletableFuture().get(10, TimeUnit.SECONDS));
                 assertEquals(opens.get(), closes.get(), "every dedicated and cached mock connection closes");
