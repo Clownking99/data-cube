@@ -1,0 +1,47 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes
+> Task :buildSrc:jar
+> Task :compileJava
+> Task :generateBrandIcons
+> Task :generateVersionProperties
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\AppShellShutdownRecoveryTest.java:240: 错误: 找不到符号
+        assertTrue(((FxTaskRunner) field(fixture.shell, "tasks")).isClosed());
+                                                                 ^
+  符号:   方法 isClosed()
+  位置: 类 FxTaskRunner
+注: 某些输入文件使用了未经检查或不安全的操作。
+注: 有关详细信息, 请使用 -Xlint:unchecked 重新编译。
+1 个错误
+
+> Task :compileTestJava FAILED
+
+[Incubating] Problems report is available at: file:///C:/Users/hetia/.codex/worktrees/metadata-search-cancellation/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileTestJava'.
+> Compilation failed; see the compiler output below.
+  注: 有关详细信息, 请使用 -Xlint:unchecked 重新编译。
+  注: 某些输入文件使用了未经检查或不安全的操作。
+  C:\Users\hetia\.codex\worktrees\metadata-search-cancellation\朝花夕拾\test\com\datacube\fx\AppShellShutdownRecoveryTest.java:240: 错误: 找不到符号
+          assertTrue(((FxTaskRunner) field(fixture.shell, "tasks")).isClosed());
+                                                                   ^
+    符号:   方法 isClosed()
+    位置: 类 FxTaskRunner
+  1 个错误
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to generate a Build Scan (powered by Develocity).
+
+BUILD FAILED in 18s
+7 actionable tasks: 7 executed

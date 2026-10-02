@@ -14,7 +14,7 @@ class AppShellTest {
     void shutdownUsesMandatoryCloseAllWhileSqlTabsKeepInteractiveClose() throws Exception {
         String source = Files.readString(Path.of("src/com/datacube/fx/AppShell.java"));
 
-        assertTrue(source.contains("contentTabs::closeAllManagedTabsMandatory"));
+        assertTrue(source.contains("contentTabs.closeAllManagedTabsMandatory()"));
         int sqlTabs = source.indexOf("private void openSqlTab");
         int backgroundTabs = source.indexOf("private void openBackgroundCleanupTab", sqlTabs);
         String sqlBody = source.substring(sqlTabs, backgroundTabs);
@@ -33,14 +33,5 @@ class AppShellTest {
         assertFalse(body.contains("requestMandatoryClose"));
     }
 
-    @Test
-    void shutdownClosesTheAppOwnedSqlFileRegistryBeforeManagedTabShutdown() throws Exception {
-        String source = Files.readString(Path.of("src/com/datacube/fx/AppShell.java"));
-        int shutdown = source.indexOf("public CompletionStage<ShutdownOutcome> shutdownAsync()");
-        int nextMethod = source.indexOf("\n    /**", shutdown + 1);
-        String body = source.substring(shutdown, nextMethod);
-
-        assertTrue(body.contains("sqlFileTabs.close()"));
-        assertTrue(body.indexOf("sqlFileTabs.close()") < body.indexOf("shutdown.shutdown()"));
-    }
+    // File ownership and shutdown ordering are verified by AppShellShutdownRecoveryTest's real shell.
 }
