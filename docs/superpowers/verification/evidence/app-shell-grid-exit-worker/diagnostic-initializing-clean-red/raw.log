@@ -1,0 +1,53 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes
+> Task :buildSrc:jar
+> Task :compileJava
+> Task :generateBrandIcons
+> Task :generateVersionProperties
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+注: 某些输入文件使用了未经检查或不安全的操作。
+注: 有关详细信息, 请使用 -Xlint:unchecked 重新编译。
+
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+MetadataDraftInitializationDiagnosticTest > originalFixtureRequiresCompletedInitializationBeforeMandatoryShutdown() FAILED
+    org.opentest4j.AssertionFailedError: expected: <COMPLETED> but was: <CANCELLED>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:182)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:177)
+        at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1145)
+        at app//com.datacube.fx.MetadataSearchShellRoutingTest$Fixture.close(MetadataSearchShellRoutingTest.java:529)
+        at java.base@25.0.1/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+        at java.base@25.0.1/java.lang.reflect.Method.invoke(Method.java:565)
+        at app//com.datacube.fx.MetadataDraftInitializationDiagnosticTest.invoke(MetadataDraftInitializationDiagnosticTest.java:87)
+        at app//com.datacube.fx.MetadataDraftInitializationDiagnosticTest.originalFixtureRequiresCompletedInitializationBeforeMandatoryShutdown(MetadataDraftInitializationDiagnosticTest.java:62)
+
+1 test completed, 1 failed
+
+> Task :test FAILED
+
+[Incubating] Problems report is available at: file:///C:/Users/hetia/.codex/worktrees/metadata-search-cancellation/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///C:/Users/hetia/.codex/worktrees/metadata-search-cancellation/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to generate a Build Scan (powered by Develocity).
+
+BUILD FAILED in 33s
+8 actionable tasks: 8 executed

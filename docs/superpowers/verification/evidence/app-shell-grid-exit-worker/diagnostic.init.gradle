@@ -1,0 +1,6 @@
+gradle.projectsEvaluated {
+ rootProject.sourceSets.test.java.srcDir(rootProject.file('docs/superpowers/verification/evidence/app-shell-grid-exit-worker/diagnostic-src'))
+ rootProject.tasks.withType(Test).configureEach {
+  systemProperty 'datacube.diagnostic.afterBarrier', rootProject.findProperty('diagnosticAfterBarrier') ?: 'false'
+ }
+}

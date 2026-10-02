@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.fx.AppShellGridShutdownTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-10-02T09:55:32.635Z" hostname="WAKEUPMAN" time="51.7">
+  <properties/>
+  <testcase name="POSTGRESQL blockedRow=1 physicalTimeout=false" classname="com.datacube.fx.AppShellGridShutdownTest" time="6.473"/>
+  <testcase name="ORACLE blockedRow=1 physicalTimeout=false" classname="com.datacube.fx.AppShellGridShutdownTest" time="5.047"/>
+  <testcase name="POSTGRESQL blockedRow=2 physicalTimeout=false" classname="com.datacube.fx.AppShellGridShutdownTest" time="5.04"/>
+  <testcase name="ORACLE blockedRow=2 physicalTimeout=false" classname="com.datacube.fx.AppShellGridShutdownTest" time="5.05"/>
+  <testcase name="POSTGRESQL blockedRow=1 physicalTimeout=true" classname="com.datacube.fx.AppShellGridShutdownTest" time="15.048"/>
+  <testcase name="ORACLE blockedRow=1 physicalTimeout=true" classname="com.datacube.fx.AppShellGridShutdownTest" time="15.038"/>
+  <system-out><![CDATA[SHELL_GRID type=POSTGRESQL blockedRow=1 timeout=false executed=[1] committed=[] rolledBack=[1] trace=[open:1, page, open:2, execute:1, interrupted, rollback:1, close:2:row=1, close:1:row=0]
+FIXTURE_CLEANUP physicalSettled=true allConnectionsClosedOnce=true
+SHELL_GRID type=ORACLE blockedRow=1 timeout=false executed=[1] committed=[] rolledBack=[1] trace=[open:1, page, open:2, execute:1, interrupted, rollback:1, close:2:row=1, close:1:row=0]
+FIXTURE_CLEANUP physicalSettled=true allConnectionsClosedOnce=true
+SHELL_GRID type=POSTGRESQL blockedRow=2 timeout=false executed=[1, 2] committed=[1] rolledBack=[2] trace=[open:1, page, open:2, execute:1, commit:1, close:2:row=1, open:3, execute:2, interrupted, rollback:2, close:3:row=2, close:1:row=0]
+FIXTURE_CLEANUP physicalSettled=true allConnectionsClosedOnce=true
+SHELL_GRID type=ORACLE blockedRow=2 timeout=false executed=[1, 2] committed=[1] rolledBack=[2] trace=[open:1, page, open:2, execute:1, commit:1, close:2:row=1, open:3, execute:2, interrupted, rollback:2, close:3:row=2, close:1:row=0]
+FIXTURE_CLEANUP physicalSettled=true allConnectionsClosedOnce=true
+PHYSICAL_WAIT type=POSTGRESQL millis=15004 result=FAILED_PARTIAL fixtureCleanupNotYetStarted=true
+SHELL_GRID type=POSTGRESQL blockedRow=1 timeout=true executed=[1] committed=[] rolledBack=[1] trace=[open:1, page, open:2, execute:1, interrupted, rollback:1, close:2:row=1]
+FIXTURE_CLEANUP physicalSettled=true allConnectionsClosedOnce=true
+PHYSICAL_WAIT type=ORACLE millis=15002 result=FAILED_PARTIAL fixtureCleanupNotYetStarted=true
+SHELL_GRID type=ORACLE blockedRow=1 timeout=true executed=[1] committed=[] rolledBack=[1] trace=[open:1, page, open:2, execute:1, interrupted, rollback:1, close:2:row=1]
+FIXTURE_CLEANUP physicalSettled=true allConnectionsClosedOnce=true
+]]></system-out>
+  <system-err><![CDATA[10月 02, 2026 5:55:32 下午 com.sun.javafx.application.PlatformImpl startup
+警告: Unsupported JavaFX configuration: classes were loaded from 'unnamed module @40cb8df7'
+[DataCube] tab close failure: java.util.concurrent.TimeoutException: tab close still running after PT5S
+java.util.concurrent.TimeoutException: tab close still running after PT5S
+	at com.datacube.fx.AsyncTabCloseCoordinator.timeOut(AsyncTabCloseCoordinator.java:216)
+	at com.datacube.fx.AsyncTabCloseCoordinator.lambda$start$0(AsyncTabCloseCoordinator.java:193)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:309)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+[DataCube] tab close failure: java.util.concurrent.TimeoutException: tab close still running after PT5S
+java.util.concurrent.TimeoutException: tab close still running after PT5S
+	at com.datacube.fx.AsyncTabCloseCoordinator.timeOut(AsyncTabCloseCoordinator.java:216)
+	at com.datacube.fx.AsyncTabCloseCoordinator.lambda$start$0(AsyncTabCloseCoordinator.java:193)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:309)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+[DataCube] tab close failure: java.util.concurrent.TimeoutException: tab close still running after PT5S
+java.util.concurrent.TimeoutException: tab close still running after PT5S
+	at com.datacube.fx.AsyncTabCloseCoordinator.timeOut(AsyncTabCloseCoordinator.java:216)
+	at com.datacube.fx.AsyncTabCloseCoordinator.lambda$start$0(AsyncTabCloseCoordinator.java:193)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:309)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+[DataCube] tab close failure: java.util.concurrent.TimeoutException: tab close still running after PT5S
+java.util.concurrent.TimeoutException: tab close still running after PT5S
+	at com.datacube.fx.AsyncTabCloseCoordinator.timeOut(AsyncTabCloseCoordinator.java:216)
+	at com.datacube.fx.AsyncTabCloseCoordinator.lambda$start$0(AsyncTabCloseCoordinator.java:193)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:309)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+[DataCube] tab close failure: java.util.concurrent.TimeoutException: tab close still running after PT5S
+java.util.concurrent.TimeoutException: tab close still running after PT5S
+	at com.datacube.fx.AsyncTabCloseCoordinator.timeOut(AsyncTabCloseCoordinator.java:216)
+	at com.datacube.fx.AsyncTabCloseCoordinator.lambda$start$0(AsyncTabCloseCoordinator.java:193)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:309)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+[DataCube] tab close failure: java.util.concurrent.TimeoutException: tab close still running after PT5S
+java.util.concurrent.TimeoutException: tab close still running after PT5S
+	at com.datacube.fx.AsyncTabCloseCoordinator.timeOut(AsyncTabCloseCoordinator.java:216)
+	at com.datacube.fx.AsyncTabCloseCoordinator.lambda$start$0(AsyncTabCloseCoordinator.java:193)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:309)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+]]></system-err>
+</testsuite>
