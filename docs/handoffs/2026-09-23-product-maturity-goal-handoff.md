@@ -2,6 +2,12 @@
 
 编写日期：2026-09-23。此文档旨在让新会话不依赖旧聊天全文即可接手。
 
+**2026-10-02 完整AppShell工作区退出决策（最新本地交付）：** 继续推进后复用现有GPT-6.1-sol，当前线程独立审核和具体返工。新增4项实际shell/原mandatory guard/真实workspace存储与production Alert合成FX用例：取消/重复取消保留旧工作区字节并继续真实文件准入、脏文本去重/save，明确新活动后发布新layout；重试相同冻结布局，忽略故障中的本次更新而保留旧字节，合成Dialog关闭按默认cancel。实际5条Alert，原标签在决策前已守卫结算/移除，不能称原标签全部保留；每例真实草稿成功原子写入，成功资源释放一次/存储锁释放，provider请求0，未用fixture失败fallback充当成功。
+
+产品源码未改，实现25b770a，独立证据e94f77a，本地main合并代码b57c6acd8e811854e7ace0102a4d5b7f3996e784。分支/main各新定向235/235、全量3935 passed/3 live skipped、buildSrc8/8、jpackageImage/183文件镜像隔离/零连接发现通过，778源稳定、217 Java差异仅换行、三项SHA一致。首夹具后缀计数4/2失败、口头Alert6次误计纠正为5、暂存换行字节审计拒绝与全部原件保留；不是产品红或自动权限拒绝。详见[限定计划](../superpowers/plans/2026-10-02-app-shell-workspace-exit.md)、[worker账本](../superpowers/verification/2026-10-02-app-shell-workspace-exit-worker.md)、[独立审查/main复验](../superpowers/verification/2026-10-02-app-shell-workspace-exit-coordination.md)、[实际结果](../superpowers/verification/evidence/app-shell-workspace-exit-coordination/results.json)。最终文档原件集成保持受验源码不变。
+
+真实workspace CANCEL已补合成FX证据，本轮无新原生/正式launcher/真库证据；原生workspace及完整shell退出、FAILED_PARTIAL后产品恢复、字段输入/全键盘/多结果/失效/小窗、OS多屏、其他真库、安装升级/签名/CI/用户任务/发布仍待验，M8不称完成。既有Oracle表未访问/清理，.testagent/原有凭据配置历史业务内容禁读改，无推送/外部联系等操作；datacube实查PAUSED并保持，本轮交付不自动下一轮。下方“当前/最新”按历史轮次解读，旧workspace合成CANCEL未验已由本轮限定证据补齐，不提升为原生或发布验收。
+
 **2026-10-02 完整AppShell DataGrid在途退出（最新本地交付）：** 复用既有GPT-6.1-sol实施、当前线程独立审查返工。新增PG/Oracle合成类型共6项实际treeActions.openDataGrid→DataGridPane/DataEditService/JdbcDataEditor关闭用例，未替换mandatory guard或15秒常数。首行回滚、第二行在途保留第一行提交/回滚第二行/不执行第三行、默认5秒提示仍pending、真实15秒FAILED_PARTIAL不提前teardown或释放仍在使用的资源、迟到UI不报成功均有新行为证据；失败后夹具清理不算产品恢复。
 
 实现e7f55b7；首次全量2项旧Metadata夹具关闭失败和333份原件保留，受控PG初始化红绿后仅修夹具等待真实draft初始化的前置条件d67bb37，产品未改，历史现场mode仍未知。独立证据911e5c5，本地main合并代码ecbc421a899a17ef04eac02582402f7473591d20；分支/main各新定向184/184、全量3931 passed/3 live skipped、buildSrc8/8、jpackageImage/183文件镜像隔离/零连接发现通过，777源文件稳定、216 Java差异仅换行、三项SHA一致。完整原始失败/诊断/参数/XML/字节审查及实际待验见[限定计划](../superpowers/plans/2026-10-02-app-shell-grid-exit.md)、[worker](../superpowers/verification/2026-10-02-app-shell-grid-exit-worker.md)、[独立审查及main复验](../superpowers/verification/2026-10-02-app-shell-grid-exit-coordination.md)、[实际结果](../superpowers/verification/evidence/app-shell-grid-exit-coordination/results.json)。最终文档/证据集成保持受验源码不变。

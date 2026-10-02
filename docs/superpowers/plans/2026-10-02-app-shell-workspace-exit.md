@@ -31,6 +31,10 @@
 
 本轮为程序化生产对话框的合成FX证据，非原生/正式launcher/真库。原生完整退出、字段输入/键盘/小窗、FAILED_PARTIAL后产品恢复、OS多屏、安装升级/签名/CI/用户任务/发布继续单列；M8不称完成。datacube保持PAUSED，本轮交付后不自动下轮。
 
-## 当前实际进度（分支通过，main复验待执行）
+## 最终本地交付
 
-实际生产workspace Alert四个新场景审查通过，最终worker44/44；新夹具后缀计数首红4/2与暂存字节首错误均保留。只新增测试/原件，不改产品；实现25b770a。分支新定向235/235、全量3935 passed/3 live skipped、buildSrc8/8、jpackageImage及183文件镜像隔离/零连接发现通过，778源冻结稳定。当前未合并main，随后全新main复验；原生/正式launcher/真库/完整M8发布未验范围不变，详见[协调账本](../verification/2026-10-02-app-shell-workspace-exit-coordination.md)。
+限定目标已完成。新增4项真实AppShell/原mandatory guard/实际workspace原子存储和production Alert的合成FX场景；取消/重复取消、明确新活动后真实文件准入/脏文本去重/save、重试相同冻结布局、忽略保留旧字节及合成dismiss已验。原标签在决策前已关闭，不声称全部标签仍保留。每例真实草稿成功atomic publish，provider请求0；成功资源释放/真实存储锁释放均验证，不使用fixture失败清理充当成功。
+
+实现25b770a，独立证据e94f77a，本地main合并代码b57c6acd8e811854e7ace0102a4d5b7f3996e784；产品源码未改。分支/main各新定向235/235、全量3935 passed/3 live skipped、buildSrc8/8、jpackageImage及183文件镜像/零连接审计通过，778源稳定、217 Java差异仅换行、三项SHA一致。首计数失败/口头统计更正/暂存字节拒绝和原件保留，见[独立账本](../verification/2026-10-02-app-shell-workspace-exit-coordination.md)和[实际结果](../verification/evidence/app-shell-workspace-exit-coordination/results.json)。最后证据集成不改受验源码。
+
+本轮是程序化生产对话框的合成FX，未新增原生/真库/正式launcher证据；原生workspace CANCEL/完整shell退出、FAILED_PARTIAL后产品恢复、字段输入/键盘/小窗、OS多屏、安装升级/签名/CI/用户任务/发布继续待验，M8不称完成。既有Oracle专用表保留且未访问/清理，datacube保持PAUSED，本轮交付不自动下一轮。

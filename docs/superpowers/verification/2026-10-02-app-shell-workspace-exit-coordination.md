@@ -34,3 +34,12 @@
 - 镜像审查：183文件，359测试类型隔离无class/file/option泄漏；Oracle/PG driverFor零连接发现connectCalls=0，无凭据/原profile。778源文件冻结稳定，三项产物SHA见branch/image-audit.json。
 - 失败/未验：本次工程门槛无失败；3 live跳过仍不算通过。首轮2项新夹具后缀计数失败、口头Alert误计和首暂存换行审计失败全部保留，均非产品红/权限审核拒绝。没有原生/真库/正式launcher/M8发布验收，取消前已移除标签不能称为原标签保留。
 - 下一步：提交独立分支原件，复核main基线后本地no-ff合并，再以实际main合并代码全新profile重跑全部门槛和审计，更新交接与待验。
+
+## N3b：main新复验与本轮交付
+
+- 当前目标：交付真实AppShell工作区最终保存失败的合成FX决策/恢复证据，本轮结束，不自动扩展功能或跟进。
+- 改动：实现25b770a517d6eda08559fd149ddc3b909ade2e6c、独立分支证据e94f77a1ab6fd6f2d4aa524b5b4217e37ef38a24，本地no-ff合并main代码b57c6acd8e811854e7ace0102a4d5b7f3996e784。只有新增测试和证据，产品未改；最终文档/原件集成保持受验src/test/resources/build树不变。
+- 实际验证：分支/main各新定向18 suites 235/235、全量313 suites 3935 passed/3 live skipped、buildSrc8/8，零失败/错误；定向/全量各8、buildSrc4 tasks均实际executed。jpackageImage14 tasks，183文件镜像/359测试类型隔离无泄漏，零连接driverFor发现通过；三项产物SHA与分支相同。778源文件稳定，217 Java checkout差异严格逐字确认仅LF/CRLF。[实际结果](evidence/app-shell-workspace-exit-coordination/results.json)、[源码比较](evidence/app-shell-workspace-exit-coordination/source-comparison.json)、[main复验记录](evidence/app-shell-workspace-exit-coordination/n3-main-revalidation.json)。
+- 新行为：main四个新例实际5条production Alert，owner/文案/三按钮/default cancel对应原实现；原标签已守卫结算/移除。取消两次旧workspace字节不变、global task继续/真实新文件读取脏文本去重/save保持，明确活动后发布新layout；retry发布相同checkpoint ids/位置/顺序/选中项的冻结bytes；ignore故障仍启用且旧字节保持；合成Dialog关闭按cancel。成功每例fileDispatcherClose1/runtime和registryCLOSED/global runner拒绝，实际store重新打开证明锁释放，provider请求0。main新例未使用fixture fallback，不把安全fallback当成功。
+- 失败/未验：首轮新夹具4项/2失败后缀误计、worker口头Alert6→实际5修正、首暂存换行审计失败及只读检索错误全部保留；均不是产品缺陷复现/自动权限审核拒绝。本次3 live跳过明确不计通过；没有原生操作/正式launcher/真库/发布证据。真实workspace CANCEL仅合成FX已验，原生workspace/完整shell退出、FAILED_PARTIAL后产品恢复、字段全键盘/输入/多结果/失效/小窗、OS多屏、其他真库、安装升级/签名/CI/用户任务/发布仍待验，M8不称完成。
+- 下一步：本轮限定目标完成，最后提交交接/路线图和原始哈希/暂存字节审计并本地集成；最终HEAD为受验main的文档证据后继，源码一致以只读复核确认，不拿旧执行假称新验证。datacube实查PAUSED，自有根验证namespace的Java进程0；既有Oracle表未访问/清理，无推送/外部操作，本轮交付后不自动下轮。
