@@ -29,3 +29,12 @@
 - 审计失败/修正：根线程首次独立 totals 使用 OrderedDictionary 的 Measure-Object 返回空值，审计拒绝，不是产品失败；复现并保留[转录](evidence/app-shell-shutdown-recovery-coordination/n2-audit-first-rejected.json)，用独立脚本显式累加后 28/28 准确核实。缺失 worker .gitattributes 的读取错误后只新增本轮 raw 目录字节保留规则，未改变任何原始证据。
 - 证据等级：没有本轮原生或真库运行；默认 5 秒证据只限实际 AppShell 管理的合成 blocked resource。真实工作区 Decision.CANCEL、实际 DataGrid 整体退出/物理 15 秒/事务、正式 DataCubeFx 启动器和既有发布待验保留。
 - 下一步：当前线程取得桌面/Gradle 执行权；本地提交复现驱动的修复，再运行分支相关定向/全量/buildSrc/jpackageImage，完成审查后合并 main 并重新验证。未完成或失败的验证不能标通过。
+
+## N3a：修复分支验证通过
+
+- 当前目标：验证独立审查通过的修复提交，再准备 main 本地集成。
+- 改动：本地实现提交 `404c3ebd597fe4eeeb4df5fd0d5bca621d608498`；58 个文件经 staged blob/raw 字节审计，全部原证据精确保留，源码只允许已证明的 LF/CRLF 差异。
+- 实际验证：新 UUID profile、JDK 25.0.1+8、offline/no-daemon/rerun-tasks；定向 12 suites 107/107，全量 311 suites、3928 total = 3925 passed + 3 live skipped，failure/error 均 0；buildSrc 8/8，jpackageImage exit 0。每次实际 test task/本次 XML 时间和所需 suite 完整性均核对，775 个源码文件冻结且执行前后不变。镜像 0 测试类型/文件/参数泄漏，外置 driverFor 发现 Oracle/PG 驱动且 connectCalls=0，不连接数据库。
+- 证据：[分支原始目录](evidence/app-shell-shutdown-recovery-coordination/branch/)，包含全部 XML、参数、退出码、源文件哈希、镜像文件/模块索引与驱动发现。
+- 失败/未验：3 live 跳过不计通过；本轮没有新原生或真库。main 尚未复验；工作区真实决策、完整 DataGrid 在途事务/15 秒、正式启动器、其他 M8/发布缺口继续待验。
+- 下一步：再次核对 main 起点/授权范围干净后本地合并，再用独占 profile 重跑定向/全量/buildSrc/镜像；不推送或发布。
