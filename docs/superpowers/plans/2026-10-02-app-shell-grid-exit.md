@@ -31,6 +31,11 @@
 禁止读取、修改、枚举、暂存、清理 .testagent；Git 状态/diff 显式排除。禁止原有凭据、配置、SQL 历史和业务文件；仅 mock、合成 profile、UUID 独占临时目录。无真库、push/fetch/tag/PR/发布/安装更新/外部联系。当前权限为受限 workspace-write：worktree 写、Git metadata 写和必要缓存写须使用已有本地授权对应的自动审批升级；不假定旧全盘权限。拒绝时记录实际动作/原因，完成未受影响工作。
 
 本轮证据为完整 AppShell 的合成 FX/JDBC；没有原生动作则明确记为未验，不能升级为正式启动器、真库或发布证据。工作区真实 CANCEL、字段原生输入/键盘/小窗、其他数据库、签名/安装升级/CI/用户任务继续单列。既有 datacube heartbeat 保持 PAUSED，不新增用户线程或自动启动下一轮。
-## 当前实际进度（分支门槛完成，main复验待执行）
 
-新增6项真实shell合成FX/JDBC关闭用例已审查；实现e7f55b7，最小旧夹具初始化修正d67bb37，未改产品源码。首次全量2失败、受控PG初始化红绿及工具失败均保留，不回填历史现场状态。修正分支新定向184/184、全量3931 passed/3 live skipped、buildSrc8/8、jpackageImage与183文件镜像隔离/零连接发现通过，777源文件稳定。独立审查和下一步集成见[协调账本](../verification/2026-10-02-app-shell-grid-exit-coordination.md)。当前未合并main；待新main复验后最终交付，M8/原生/正式launcher/发布缺口不降低。
+## 最终本地交付
+
+本轮限定目标已完成。新增两个provider类型共6项实际AppShell/openDataGrid/service/JdbcDataEditor合成FX关闭用例；首行/第二行事务、真实5秒提示、真实15秒FAILED_PARTIAL/资源所有权/迟到UI均取得新证据，夹具清理不算产品恢复。实现e7f55b7；首次全量两项旧路由夹具关闭失败保留，受控PG初始化红绿后仅修夹具前置条件d67bb37，产品未改，历史失败现场mode未知。
+
+分支证据911e5c5，本地main合并代码ecbc421a899a17ef04eac02582402f7473591d20。分支/main各新定向184/184、全量3931 passed/3 live skipped、buildSrc8/8、jpackageImage及183文件镜像隔离/零连接发现通过，777源文件稳定、216 Java差异仅换行、三项SHA一致。原始失败、XML/参数/审计见[协调账本](../verification/2026-10-02-app-shell-grid-exit-coordination.md)和[实际结果](../verification/evidence/app-shell-grid-exit-coordination/results.json)。最终文档/证据集成不改受验源码，datacube保持PAUSED，本轮结束，不自动启动下一轮。
+
+本轮没有原生/真库/正式launcher运行；真实工作区CANCEL、原生完整shell退出、FAILED_PARTIAL后产品恢复、字段输入/全键盘/多结果/失效/小窗、OS多屏、安装升级/签名/CI/用户任务/发布仍待验，M8不称完成。原有Oracle专用表保留且未访问/清理，安全边界全部延续。

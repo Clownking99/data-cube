@@ -2,6 +2,8 @@
 
 日期：2026-09-23；G1–G8 及本地跟进更新：2026-10-02。状态：M0、M1、M3、M4a–d、M5、M6、M7 本地工程完成，已合并 main 并复验；M2 部分完成（本地实现已合并 main 并复验，生产签名/真实升级待验）；M8 部分取得原生及指定 Oracle 真库证据，已取得限定 mock 桌面证据，最新字段原生键盘/小窗口有限尝试仍未完成，工程证据已本地合并并复验；完整发布验收待验，其他外部目标须明确授权。
 
+2026-10-02 最新本地验收：[完整AppShell DataGrid在途退出及main复验](../verification/2026-10-02-app-shell-grid-exit-coordination.md)。实际生产openDataGrid、真实pane/service/JdbcDataEditor与原mandatory guard，PG/Oracle合成类型共6项新用例证明首行回滚、第二行在途保留已提交首行/第三行不执行、默认5秒pending和真实15秒FAILED_PARTIAL资源隔离/迟到UI。实现e7f55b7；首全量2项旧Metadata夹具失败保留，受控PG初始化红绿后只修夹具前置条件d67bb37，产品未改、历史现场mode未知。独立证据911e5c5，main代码ecbc421a899a17ef04eac02582402f7473591d20；分支/main各新定向184/184、全量3931 passed/3 live skipped、buildSrc8/8、jpackageImage/183文件镜像隔离/零连接发现通过，777源稳定、216 Java仅换行、三项SHA一致。夹具失败后清理不算产品恢复；无新原生/真库/正式launcher运行，工作区真实CANCEL、原生完整shell/FAILED_PARTIAL后产品恢复、字段全链/键盘/小窗、OS多屏、安装升级/签名/CI/用户任务/发布仍待验，M8保持部分完成。datacube保持PAUSED，不自动下一轮；下方旧“DataGrid事务/物理15秒未验”只对应历史轮次。
+
 2026-10-02 最新本地修复：[AppShell 关闭恢复与独立复验](../verification/2026-10-02-app-shell-shutdown-recovery-coordination.md)。真实shell合成FX首红确认退出取消后SQL文件身份失效；修复暂停/代号/保留注册表、私有关闭结算、提交后失败隔离和best-effort释放。实现404c3eb，本地main合并代码523d234；两阶段各新定向107/107、全量3925 passed/3 live skipped、buildSrc8/8、jpackageImage/镜像隔离/零连接发现通过。新证据包括真实文件Save/SaveAs、旧回调抑制、默认5秒warning仍pending及受管合成资源释放1/finalizer1；不称完整DataGrid事务/物理15秒或原生/正式launcher已验。真实工作区CANCEL、原生退出、字段全链/键盘/小窗、其他真库、安装升级/签名/CI/用户任务/发布仍待验；M8继续部分完成。原始失败和陈旧XML排除保留，没有新真库，既有跟进PAUSED；下方各“最新/当前”都是对应历史，不自动扩展。
 
 2026-10-02 最新本地证据交付：[字段原生键盘限定尝试与独立复验](../verification/2026-10-02-metadata-native-keyboard-coordination.md)。真实AppShell新合成profile/外置mock，21状态/39原JPEG，原生菜单/空框/取消/正常空闲退出可验证，mock1/1且检索/写/执行0；owner/modal输入递送失败，type_text两次空、Tab/Esc未到达、模式未变、缩小无尺寸变化。原生输入/键盘/多结果/条件失效/小窗口目标未完成，不以预填或程序化输入替代、不因工程通过提高M8等级。仅外置证据01c9cb0本地合并main03a552b，分支/main各新定向83/83、全量3917 passed /3 live skipped、buildSrc8/8、jpackageImage/镜像/零连接发现通过；产品未改，无新真库。首定向漏suite/profile拒绝/PNG计数错误保留，已准确纠正。本轮有限交付后停止，不再盲试，不自动恢复跟进或扩大功能/外部范围；datacube保持PAUSED。完整桌面/发布待验与下方历史原生/Oracle证据分开记录。
@@ -189,7 +191,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 - [x] M6b：命名 SQL 收藏的最小版本：名称、正文、可选分组、查找、修改和显式删除；不保存密码字段或结果，不自动绑定同名连接，不代替历史/草稿/源文件。SQL 正文本身可能含敏感值，明确提示明文存储。
 - [x] 原子持久化、损坏恢复、容量和隐私提示纳入收藏设计，不默认云同步。
 - [x] M6c：依据当前截图和核心任务整理工具栏；保留常用执行/取消/事务/保存，低频文本操作进入分组菜单并保持快捷键。保留现有雾紫品牌与主题，不做整体换皮。
-- [ ] 完整桌面验收仍待补齐：已有实际 JavaFX 100%/150% 合成窗口、窄窗、明暗主题及 Schema→保存的原生 Tab 截图；搜索快捷键上下文通过 FX 行为测试。原生模态输入、完整 AppShell 流程、OS 缩放切换与多屏未验，不宣称消除了所有拥挤或可访问性问题。
+- [ ] 完整桌面验收仍待补齐：已有实际 JavaFX 100%/150% 合成窗口、窄窗、明暗主题及 Schema→保存的原生 Tab 截图；搜索快捷键上下文通过 FX 行为测试。原生模态输入、完整原生 AppShell 流程、OS 缩放切换与多屏未验，不宣称消除了所有拥挤或可访问性问题。
 
 退出：给定字段或注释能找到范围内对象；收藏可再次找到并离线打开；主要动作可发现，旧快捷键和安全规则不回退。跨 Schema 全局索引、连接分组/SSH/SSL 配置和完整脚本项目管理列为后续候选，不在本阶段自动扩展。
 
@@ -270,7 +272,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 | M5 | 本地工程完成 | 实现 76dd221、修正 c62e86c；main 最终合并 0e7ca79；[G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)，main 全量 3724 passed/3 live skips、fresh buildSrc 8、镜像通过 | G5 交付；原生桌面/真库及明确降级单列 |
 | M6 | 本地工程完成 | 实现 d4b02de；main 合并 c182128；[G6 账本](../verification/2026-09-24-datacube-g6-discovery-library.md)，main 全量 3753 passed/3 live skips、fresh buildSrc 8、镜像及 14 张合成桌面截图 | G6 交付；原生模态输入/完整壳流程、真库等单列待验 |
 | M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | G8 已补合成迁移原生预检查/确认/取消/在途关闭；真库事务/权限/一致性与发布仍待验 |
-| M8 | 部分原生/指定 Oracle 真库已验；完整发布待验 | 2026-10-02 [开发账本](../verification/2026-10-02-sol-p0-p2-acceptance.md) a69f7db 经独立 [P3 审查与 main 复验](../verification/2026-10-02-sol-p3-main-acceptance.md)，main 验收合并 669ee53；产品未改。新 main 定向 75、全量 3916 passed /3 live skipped、buildSrc 8、新镜像/零连接审计通过，三项 SHA 与开发一致。新 PG mock 原生字段结果转只读数据/DDL、生产取消/批准、部分提交/剩余行重试、在途交互关闭拒绝、夹具调用实际 mandatory guard 和 DDL 局部键盘已验。历史 [Oracle 授权验收](../verification/2026-09-30-oracle-live-acceptance.md) 的分支/main 真库 17/17、33/33 连接、0 删除仍保留，不作本轮新结果 | 本轮无真库/main 新原生运行；三张 Oracle 专用表保留，禁止删除。完整字段输入/键盘/结果导航、原生 Oracle/view/SELECT/配置失效、完整 AppShell 在途退出/超时恢复、缩小窗口/OS 多屏、PG/Redis/原 SchemaDiff live、正式启动器/安装升级/签名/CI/用户任务/发布仍待验；SchemaDiff 首轮间歇失败根因未定，旧失效截图/误报/FAILED_PARTIAL 不计通过。P3 本地交付后暂停跟进，不扩展下一轮；M8 不称完成，其他外部目标须明确授权 |
+| M8 | 部分原生/指定 Oracle 真库已验；完整发布待验 | 最新[完整AppShell DataGrid合成验收](../verification/2026-10-02-app-shell-grid-exit-coordination.md)：6项实际shell/JdbcDataEditor用例，5秒pending与真实15秒FAILED_PARTIAL、逐行提交/回滚及资源所有权已验；仅新增测试和修正旧Metadata夹具，产品未改。main代码ecbc421，新定向184/184、全量3931 passed/3 live skipped、buildSrc8/8、镜像隔离/零连接审计通过，三项SHA与分支一致。历史[协作P3](../verification/2026-10-02-sol-p3-main-acceptance.md)及[指定Oracle验收](../verification/2026-09-30-oracle-live-acceptance.md)证据保留，不算本轮新原生/真库结果 | 本轮无新原生/真库/正式launcher；三张Oracle专用表保留且未访问/清理。真实工作区CANCEL、完整字段原生输入/键盘/结果导航、Oracle/view/SELECT/配置失效、原生完整AppShell在途退出及FAILED_PARTIAL后产品恢复、小窗/OS多屏、其他真库/原SchemaDiff live、安装升级/签名/CI/用户任务/发布仍待验。首次失败和工具限制不计通过，SchemaDiff旧历史精确cause仍未知；datacube保持PAUSED，本轮交付不自动扩展，M8不称完成 |
 
 ## 16. 参考与历史记录
 
