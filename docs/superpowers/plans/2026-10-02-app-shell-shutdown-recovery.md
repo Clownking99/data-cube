@@ -33,3 +33,11 @@
 - 验证：当前 main/worktree HEAD 与授权范围干净；独立阅读 AppShell、SqlFileEntry、SqlFileTabRegistry、ContentTabPane、AsyncShutdownCoordinator、ShutdownQuarantine、AsyncTabCloseCoordinator、DataGrid 保存关闭及相关测试。
 - 失败/未验：源码候选问题尚未行为复现；完整 AppShell 在途/恢复、原生关闭和正式启动器均未获本轮证据。上轮字段模态输入工具失败仍待验。
 - 下一步：GPT-6.1-sol 建立复现、最小修复和新原始证据，当前线程独立审查后集成复验。
+
+## N1–N3 实际交付与验收边界
+
+依据[独立审查账本](../verification/2026-10-02-app-shell-shutdown-recovery-coordination.md)，首红确认取消后原注册表失效；最小修复 AppShell 暂停/恢复和代 token、保留文件身份、私有结算副本与提交后失败隔离。经具体审查返工，磁盘元数据写不持有 FX 门禁锁，永久 FX 释放属于实际销毁阶段且 best-effort。
+
+实现 `404c3eb`，本地 main 合并代码 `523d23456642f430b0528865055ca0ef867839a5`；分支/main 各新定向 107/107、全量 3925 passed/3 live skipped、buildSrc 8/8、jpackageImage/镜像隔离/零连接发现通过，775 源文件稳定，三项镜像 SHA 一致。所有首失败、两次编译失败及陈旧 XML 排除、审计工具错误保留，跳过不算通过。
+
+本轮产品修复与本地工程交付完成，证据范围为真实 AppShell 的合成 FX 工作流及可控资源：5 秒 warning 后保持 pending，释放后 exactly once。未完成计划中的完整 DataGrid 在途事务/物理 15 秒与本轮原生/正式启动器证据；真实工作区 CANCEL 也需补验，不能声称整个桌面关闭验收或 M8/发布已完成。这些与此前字段输入/键盘/小窗、其他真库、安装升级/签名/CI/用户任务继续单列。既有跟进保持 PAUSED，交付后不自动启动下轮。

@@ -38,3 +38,14 @@
 - 证据：[分支原始目录](evidence/app-shell-shutdown-recovery-coordination/branch/)，包含全部 XML、参数、退出码、源文件哈希、镜像文件/模块索引与驱动发现。
 - 失败/未验：3 live 跳过不计通过；本轮没有新原生或真库。main 尚未复验；工作区真实决策、完整 DataGrid 在途事务/15 秒、正式启动器、其他 M8/发布缺口继续待验。
 - 下一步：再次核对 main 起点/授权范围干净后本地合并，再用独占 profile 重跑定向/全量/buildSrc/镜像；不推送或发布。
+
+## N3b：main 复验与限定交付
+
+- 当前目标：完成本轮修复的本地交付，准确更新实际证据和未验项。
+- 改动：证据提交 `3f1ddb513eeef9c0a2b27e9a74b15c552998f18e`；再次核对原 main/授权范围干净，本地 no-ff 合并 `523d23456642f430b0528865055ca0ef867839a5`。待最终证据提交只更新 docs，不改已验证产品/测试/build 树。
+- 新实际验证：main 独占 profile 定向 107/107，全量 3925 passed/3 live skipped、buildSrc 8/8、jpackageImage 全部通过，failure/error 均 0。两个镜像各 183 个文件、14 个实际任务全部执行；测试类/夹具/文件/参数泄漏均 0，Oracle/PG driverFor discovery 各 connectCalls=0。三项产物 SHA（exe、cfg、runtime modules）两边一致。
+- 源码与证据：775 个源码/测试/build 文件执行前后稳定，Git 树一致；214 个 Java 文件的跨 checkout 差异严格证明仅 LF/CRLF。完整 [两阶段结果](evidence/app-shell-shutdown-recovery-coordination/results.json)、[源码对账](evidence/app-shell-shutdown-recovery-coordination/source-comparison.json)、[main raw](evidence/app-shell-shutdown-recovery-coordination/main/)、[本地集成](evidence/app-shell-shutdown-recovery-coordination/main-integration.json) 可审查。最终 raw manifest 和 staged 字节审计覆盖两阶段及首失败，不混用旧测试或把 skip 算通过。
+- 审计失败/修正：首次 summary 的相对路径被前一个 image 脚本 Set-Location 改到 main，而新证据在 worktree，路径检查失败；保留[工具输出转录](evidence/app-shell-shutdown-recovery-coordination/summary-first-path-error.json)，以绝对路径执行原脚本后完成汇总，没有重复/覆盖测试或镜像证据。
+- 当前结论：取消退出破坏 SQL 文件入口/身份的已复现缺陷完成本地修复；等待中的旧代读/error/排队 recent、公开副本 cancel、提交前异常恢复、提交后与清理失败隔离均有新行为验证。默认 5 秒提示仍 pending 的完整 AppShell 合成资源证据可用，释放后 cleanup/finalizer exactly once。
+- 失败/未验：3 live 测试仍跳过，不是通过；未新访问 Oracle/PG/Redis，既有 Oracle 表未触碰。未取得本轮原生退出、真实工作区 Decision.CANCEL、完整 AppShell DataGrid 在途事务/物理 15 秒、正式启动器证据；字段原生输入/键盘/多结果/失效/小窗、OS 多屏、安装升级/签名/CI/用户任务/发布仍待验。M8/发布不称完成，不能从本轮合成资源测试升级到这些证据。
+- 下一步：交付本轮修复和证据，既有 datacube heartbeat 实查为 PAUSED 且未修改。下轮由维护者指定继续的验收项；不自动扩大功能/外部范围或创建线程。
