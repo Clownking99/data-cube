@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.fx.AppShellShutdownRecoveryTest" tests="7" skipped="0" failures="1" errors="0" timestamp="2026-10-02T05:30:04.921Z" hostname="WAKEUPMAN" time="13.636">
+  <properties/>
+  <testcase name="defaultFiveSecondWarningRetainsActualShellManagedOwnership()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="7.72"/>
+  <testcase name="blockedAdmittedRecentWriteDoesNotBlockFxShutdown()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.548"/>
+  <testcase name="oldGenerationCallbacksAndPublicCancellationCannotReopenAdmissions()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.116"/>
+  <testcase name="partialFailureRemainsQuarantined()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.017"/>
+  <testcase name="workerStartFailureRecoversBeforePermanentFileCleanup()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="5.017">
+    <failure message="java.util.concurrent.TimeoutException" type="java.util.concurrent.TimeoutException">java.util.concurrent.TimeoutException
+	at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:206)
+	at com.datacube.fx.FxUiTestSupport.call(FxUiTestSupport.java:32)
+	at com.datacube.fx.AppShellShutdownRecoveryTest$Fixture.open(AppShellShutdownRecoveryTest.java:108)
+	at com.datacube.fx.AppShellShutdownRecoveryTest.workerStartFailureRecoversBeforePermanentFileCleanup(AppShellShutdownRecoveryTest.java:205)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+</failure>
+  </testcase>
+  <testcase name="queuedRecentWriteIsDiscardedAcrossCancelGeneration()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.04"/>
+  <testcase name="cancelledShutdownPreservesExistingFileIdentityAndNewAdmission()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.173"/>
+  <system-out><![CDATA[REAL_SHELL timer=defaultPT5S pending=true ownership=retained mockResourceClose=1 FXfinalizer=1 final=COMPLETED
+REAL_SHELL blockedAdmittedRecent=running FXshutdown=returned FXpulse=delivered cancel=CANCELLED
+REAL_SHELL staleRead=ignored staleError=ignored publicCancel=isolated repeatedCancel=retained
+REAL_SHELL cancelled=CANCELLED existingIdentity=retained duplicate=reused newFile=opened
+]]></system-out>
+  <system-err><![CDATA[10月 02, 2026 1:30:04 下午 com.sun.javafx.application.PlatformImpl startup
+警告: Unsupported JavaFX configuration: classes were loaded from 'unnamed module @6b8ca3c8'
+[DataCube] tab close failure: java.util.concurrent.TimeoutException: tab close still running after PT5S
+java.util.concurrent.TimeoutException: tab close still running after PT5S
+	at com.datacube.fx.AsyncTabCloseCoordinator.timeOut(AsyncTabCloseCoordinator.java:216)
+	at com.datacube.fx.AsyncTabCloseCoordinator.lambda$start$0(AsyncTabCloseCoordinator.java:193)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:309)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+[DataCube] shutdown failure: java.lang.IllegalStateException: synthetic worker start failure
+java.lang.IllegalStateException: synthetic worker start failure
+	at com.datacube.fx.AppShellShutdownRecoveryTest.lambda$workerStartFailureRecoversBeforePermanentFileCleanup$1(AppShellShutdownRecoveryTest.java:201)
+	at com.datacube.fx.AsyncShutdownCoordinator.tabsCompleted(AsyncShutdownCoordinator.java:69)
+	at com.datacube.fx.AsyncShutdownCoordinator.lambda$shutdown$0(AsyncShutdownCoordinator.java:41)
+	at java.base/java.util.concurrent.CompletableFuture.uniWhenComplete(CompletableFuture.java:884)
+	at java.base/java.util.concurrent.CompletableFuture.uniWhenCompleteStage(CompletableFuture.java:908)
+	at java.base/java.util.concurrent.CompletableFuture.whenComplete(CompletableFuture.java:2384)
+	at java.base/java.util.concurrent.CompletableFuture.whenComplete(CompletableFuture.java:144)
+	at com.datacube.fx.AsyncShutdownCoordinator.shutdown(AsyncShutdownCoordinator.java:41)
+	at com.datacube.fx.AppShell.shutdownAsync(AppShell.java:274)
+	at com.datacube.fx.FxUiTestSupport.lambda$call$0(FxUiTestSupport.java:29)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+	at com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+	at com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+	at com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+]]></system-err>
+</testsuite>

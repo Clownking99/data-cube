@@ -84,8 +84,14 @@ public final class AppShell {
             this::openLoadedSqlFile, ignored -> showSqlFileOpenFailure(), sqlFileTabs);
 
     private final ContentTabPane contentTabs = new ContentTabPane();
+    // FX-owned private settlement; callers receive cancellable copies only.
+    private java.util.concurrent.CompletableFuture<ShutdownOutcome> shutdownAttempt;
+    private volatile boolean shutdownTabsCommitted;
     private final AsyncShutdownCoordinator shutdown = new AsyncShutdownCoordinator(
-            contentTabs::closeAllManagedTabsMandatory,
+            () -> contentTabs.closeAllManagedTabsMandatory().thenApply(outcome -> {
+                if (outcome == TabCloseOutcome.COMPLETED) shutdownTabsCommitted = true;
+                return outcome;
+            }),
             task -> Thread.startVirtualThread(task),
             this::shutdownRemaining,
             AppShell::reportShutdownFailure);
@@ -257,9 +263,31 @@ public final class AppShell {
      * 异步释放全部资源。受守卫标签完成关闭后，其余潜在阻塞清理在虚拟线程执行。
      */
     public CompletionStage<ShutdownOutcome> shutdownAsync() {
-        sqlFileEntry.close();
-        sqlFileTabs.close();
-        return shutdown.shutdown();
+        if (!Platform.isFxApplicationThread()) {
+            var result = new java.util.concurrent.CompletableFuture<ShutdownOutcome>();
+            Platform.runLater(() -> shutdownAsync().whenComplete((outcome, failure) -> {
+                if (failure != null) result.completeExceptionally(failure);
+                else result.complete(outcome);
+            }));
+            return result;
+        }
+        if (shutdownAttempt != null) return shutdownAttempt.copy();
+        sqlFileEntry.suspend();
+        var attempt = new java.util.concurrent.CompletableFuture<ShutdownOutcome>();
+        shutdownAttempt = attempt;
+        shutdown.shutdown().whenComplete((outcome, failure) -> Platform.runLater(() -> {
+            if (failure != null && shutdownTabsCommitted) {
+                attempt.complete(ShutdownOutcome.FAILED_PARTIAL);
+                return;
+            }
+            if (failure != null || outcome == ShutdownOutcome.CANCELLED) {
+                sqlFileEntry.resume();
+                shutdownAttempt = null;
+            }
+            if (failure != null) attempt.completeExceptionally(failure);
+            else attempt.complete(outcome);
+        }));
+        return attempt.copy();
     }
 
     /** @deprecated 使用并等待 {@link #shutdownAsync()} 的显式结果。 */
@@ -270,12 +298,25 @@ public final class AppShell {
 
     private void shutdownRemaining() {
         BestEffortCloseSequence.run(
+                this::closeSqlFilesOnFx,
                 () -> sqlDrafts.ifInitialized(SqlDraftUi::closeFromBackground),
                 connectionTree::close,
                 () -> migrationPane.ifInitialized(MigrationPane::shutdown),
                 () -> updateService.ifInitialized(UpdateService::close),
                 tasks::close,
                 connMgr::closeAll);
+    }
+
+    private void closeSqlFilesOnFx() {
+        // Irreversible cleanup starts only inside destructive teardown; every owner gets a close attempt.
+        var filesClosed = new java.util.concurrent.CompletableFuture<Void>();
+        Platform.runLater(() -> {
+            try {
+                BestEffortCloseSequence.run(sqlFileEntry::close, sqlFileTabs::close);
+                filesClosed.complete(null);
+            } catch (Throwable failure) { filesClosed.completeExceptionally(failure); }
+        });
+        filesClosed.join();
     }
 
     private MenuButton sqlFilesMenu() {
@@ -485,6 +526,19 @@ public final class AppShell {
         private final Consumer<String> feedback;
         private final SqlFileTabRegistry registry;
         private final AtomicBoolean closed = new AtomicBoolean();
+        private final Object admissionLock = new Object();
+        private boolean suspended;
+        private long generation;
+
+        void suspend() {
+            synchronized (admissionLock) { if (!suspended) { suspended = true; generation++; } }
+        }
+
+        void resume() {
+            synchronized (admissionLock) { if (!closed.get()) suspended = false; }
+        }
+
+        private boolean current(long token) { return !closed.get() && !suspended && generation == token; }
 
         SqlFileEntry(SqlScriptFileStore store, RecentSqlFiles recentFiles, SqlFileTaskDispatcher tasks,
                 Supplier<SessionContext> fileSessionFactory, SqlFileTabOpener opener,
@@ -505,45 +559,55 @@ public final class AppShell {
         }
 
         void open(Path path) {
-            if (closed.get()) return;
-            if (path == null) { reportFailure(); return; }
-            RecentSqlFiles.RecordAdmission admission = recentFiles.recordAdmission();
-            try {
-                tasks.submit(() -> store.load(path), loaded -> loaded(loaded, admission),
-                        ignored -> reportFailure());
-            } catch (RuntimeException ignored) {
-                reportFailure();
+            synchronized (admissionLock) {
+                if (closed.get() || suspended) return;
+                long token = generation;
+                if (path == null) { reportFailure(token); return; }
+                RecentSqlFiles.RecordAdmission admission = recentFiles.recordAdmission();
+                try {
+                    tasks.submit(() -> store.load(path), loaded -> loaded(loaded, admission, token),
+                            ignored -> reportFailure(token));
+                } catch (RuntimeException ignored) {
+                    reportFailure(token);
+                }
             }
         }
 
         private void loaded(SqlScriptFileStore.Loaded loaded,
-                RecentSqlFiles.RecordAdmission admission) {
-            if (closed.get()) return;
-            if (registry != null && registry.select(loaded.path())) return;
-            final boolean opened;
-            try {
-                opened = opener.open(loaded, fileSessionFactory.get());
-            } catch (RuntimeException ignored) {
-                reportFailure();
-                return;
-            }
-            if (!opened || closed.get()) { if (!closed.get()) reportFailure(); return; }
-            try {
-                tasks.submit(() -> {
-                    if (!closed.get()) recentFiles.record(admission, loaded.path());
-                    return null;
-                }, ignored -> { }, ignored -> { });
-            } catch (RuntimeException ignored) {
-                // The opened editor remains usable when shutdown rejects recent-path persistence.
+                RecentSqlFiles.RecordAdmission admission, long token) {
+            synchronized (admissionLock) {
+                if (!current(token)) return;
+                if (registry != null && registry.select(loaded.path())) return;
+                final boolean opened;
+                try {
+                    opened = opener.open(loaded, fileSessionFactory.get());
+                } catch (RuntimeException ignored) {
+                    reportFailure(token);
+                    return;
+                }
+                if (!opened || !current(token)) { reportFailure(token); return; }
+                try {
+                    tasks.submit(() -> {
+                        boolean admitted;
+                        synchronized (admissionLock) { admitted = current(token); }
+                        // Already admitted writes may finish; disk I/O never holds the FX gate.
+                        if (admitted) recentFiles.record(admission, loaded.path());
+                        return null;
+                    }, ignored -> { }, ignored -> { });
+                } catch (RuntimeException ignored) {
+                    // The opened editor remains usable when shutdown rejects recent persistence.
+                }
             }
         }
 
-        private void reportFailure() {
-            if (!closed.get()) feedback.accept(SQL_FILE_OPEN_FAILURE);
+        private void reportFailure(long token) {
+            synchronized (admissionLock) { if (current(token)) feedback.accept(SQL_FILE_OPEN_FAILURE); }
         }
 
         @Override public void close() {
-            if (closed.compareAndSet(false, true)) tasks.close();
+            boolean dispose;
+            synchronized (admissionLock) { dispose = closed.compareAndSet(false, true); generation++; }
+            if (dispose) tasks.close();
         }
     }
 
