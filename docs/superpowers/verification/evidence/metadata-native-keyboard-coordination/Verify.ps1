@@ -25,7 +25,7 @@ if(!(Test-Path -LiteralPath $freezePath)){
     })
     [ordered]@{head=$ExpectedCommit;hostUtc=[DateTime]::UtcNow.ToString('o');files=$sources} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $freezePath -Encoding utf8
 }
-$profile=Join-Path $runRoot ($Phase+'/'+$Step)
+$profile=Join-Path $runRoot ($Phase+'/'+$Step+'-final')
 if(Test-Path -LiteralPath $profile){throw 'Validation profile is not fresh'}
 New-Item -ItemType Directory -Path $profile | Out-Null
 $env:JAVA_HOME=$baseline.jdk
@@ -64,6 +64,10 @@ if($Step -ne 'image'){
     Write-Output "$Phase/$Step suites=$($suites.Count) tests=$($totals.tests) failures=$($totals.failures) errors=$($totals.errors) skipped=$($totals.skipped)"
     if($suites.Count -eq 0 -and $exitCode -eq 0){throw 'No raw test XML: do not count success'}
     if(($totals.failures -ne 0 -or $totals.errors -ne 0) -and $exitCode -eq 0){throw 'XML failures contradict command exit'}
+    if($Step -eq 'directed'){
+        $missing=@($baseline.directedSuites | Where-Object {$_ -notin $suites.suite})
+        if($missing.Count -gt 0){throw ('Requested suites did not execute: '+($missing -join ', '))}
+    }
 }
 $freeze=Get-Content -LiteralPath $freezePath -Raw | ConvertFrom-Json
 foreach($entry in $freeze.files){$file=Get-Item -LiteralPath $entry.path;if($file.Length -ne $entry.bytes -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash -ne $entry.sha256){throw 'Frozen source bytes changed during verification'}}

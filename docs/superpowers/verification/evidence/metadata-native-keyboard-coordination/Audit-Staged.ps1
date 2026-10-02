@@ -4,7 +4,7 @@ $repo=(Resolve-Path (Join-Path $PSScriptRoot '../../../../..')).Path
 $developer='docs/superpowers/verification/evidence/metadata-native-keyboard'
 $coordination='docs/superpowers/verification/evidence/metadata-native-keyboard-coordination'
 $test='test/com/datacube/fx/SchemaMetadataSearchDialogTest.java'
-$documents=@('src/com/datacube/fx/SchemaMetadataSearchDialog.java','docs/superpowers/verification/2026-10-02-metadata-native-keyboard.md')
+$documents=@('src/com/datacube/fx/SchemaMetadataSearchDialog.java','docs/superpowers/verification/2026-10-02-metadata-native-keyboard-worker.md')
 $directories=@($developer)
 if($Scope -ne 'developer'){
     $documents+=@('docs/superpowers/verification/2026-10-02-metadata-native-keyboard-coordination.md','docs/superpowers/plans/2026-10-02-metadata-native-keyboard.md')
