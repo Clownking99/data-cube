@@ -23,3 +23,11 @@
 .testagent禁读/改/枚举/暂存/清理，Git广域状态显式排除。仅mock/合成profile/独占临时目录和自有SQL/workspace，禁原配置/凭据/连接/历史/业务内容。无真库、本轮不访问旧Oracle表；不push/fetch/tag/PR/发布/安装更新/外部联系，不启动正式DataCubeFx外部自检。必要worktree/Git/cache写按授权本地动作走自动审核升级；既有datacube保持PAUSED。
 
 本轮原生补充限实际AppShell+外置Stage hook/故障设施，正式launcher、完整在途关闭/FAILED_PARTIAL产品恢复、字段全键盘输入/多结果/失效、小窗/OS多屏、其他真库、安装升级/签名/CI/用户任务/完整M8发布仍单列待验，不以本轮替代。交付后停止，不自动下一轮。
+
+## 本轮实际状态：工程准备完成，原生目标待工具权限
+
+外置probe及启动器已审查/具体返工、真实javac编译通过；首编译/隐藏启动/根退出码误报/应用授权超时/暂存换行与空白元数据失败原件保留。main代码集成0a7ec1197f78916b3cb16221a38013efed4b0795，只docs外置夹具与证据，产品源码没有变化。两阶段新定向235/235、全量3935 passed/3 live skipped、buildSrc8/8、jpackageImage/镜像隔离/零连接发现通过，三产物SHA一致，778源稳定/217 Java差异仅换行。
+
+原生本轮0项通过、0截图，程序化READY/成功草稿写入及sky枚举目标不是原生行为证据。工具实际返回Computer Use app approval timed out，访问授权问题待维护者答复；所有生产按钮/default key/标题栏dismiss/取消后编辑保存/完成资源与锁断言尚未实际原生跑，不宣称目标或M8完成。自有进程均核实关闭，profile和全部原件不删，datacube保持PAUSED。
+
+详情见[协调/main复验](../verification/2026-10-02-workspace-native-exit-coordination.md)、[worker及编译](../verification/2026-10-02-workspace-native-exit-worker.md)、[实际工程结果](../verification/evidence/workspace-native-exit-coordination/results.json)、[精确待验矩阵](../verification/evidence/workspace-native-exit-coordination/native-acceptance-matrix.json)。获得工具访问许可后仅继续这份矩阵，不自动扩大功能/外部操作范围。

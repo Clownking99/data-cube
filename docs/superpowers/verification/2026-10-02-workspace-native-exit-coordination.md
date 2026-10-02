@@ -38,3 +38,13 @@
 - 字节审计387文件已通过，但随后git check发现保留CRLF的原始归档和复制脚本末空行被报空白；尚未commit/merge。原完整check日志、两份旧attrs及已通过字节audit原件另名保留。
 - 仅本轮两raw目录的自有属性改为显式cr-at-eol，logs/XML保留尾空格与EOF、ps1/cfg保留原始末空行；-text保持原字节。不改任何日志/XML/JSON/脚本，不修改产品空白规则。前一轮已采用同类raw属性，当前按实际check需求补齐；不是产品红或权限审核拒绝。
 - 下一步：重新精确stage、字节audit与check通过才提交和main复验；原生权限待答，不算通过。
+## N3：main实际复验与工程准备交付
+
+- 当前目标：交付已审查可重跑原生夹具与本轮新工程证据，明确原生目标未完成并等待工具应用权限，不自动扩大范围。
+- 改动：分支提交1dd1c0a3f51b6fbfaf9c0c64a130f8edda6363f0，main本地no-ff集成0a7ec1197f78916b3cb16221a38013efed4b0795。仅外置docs probe/启动器和证据，无src/test/resources/build改动；最初branch验证源5d5ce30与提交后的src/test/build完全相同，实际main新验证源0a7ec11。最终文档/原件集成只是受验main后继，不重写旧执行为新验证。
+- 实际验证：两阶段各新定向18 suites235/235、全量313 suites3935 passed/3 live skipped，零错误/失败；buildSrc8/8，各8/8/4 actual tasks；jpackageImage14 executed，183文件/359测试类和外置probe/选项无泄漏；Oracle/PG driverFor零连接发现。778源稳定，217 Java跨checkout差异严格仅LF/CRLF，三项产物SHA一致。results.json/source-comparison.json/n3-main-revalidation.json由本轮新XML/tasks独立核验，自有两fixture profile与工程namespace的Java进程0。
+- 原生证据：零已验证原生行为，零截图；native-acceptance-matrix.json逐项列出Cancel按钮/default Enter/Esc/标题栏dismiss/Retry/Ignore/继续编辑保存/成功关闭资源全部未验。首Hidden无目标后改明确可见交互开关，枚举到独占Stage，但Computer Use访问返回app approval timed out。程序化READY和原draft原子写入不是原生通过；仅停止核实的自有PID作安全收尾，不算COMPLETED。
+- 首失败/未验：首外置javac访问包内入口失败、首Hidden窗口未枚举、根LASTEXITCODE误报、工具应用权限超时、首Markdown混合换行byte audit失败、raw空白元数据check失败全部留原件/诊断/后继修正，未伪称产品缺陷或自动审批拒绝。live3仍跳过不计通过，没有新真库/正式launcher/发布证据；不访问清理旧Oracle专用表。
+- 下一步/依赖：工程准备本地交付；原生目标仍依赖工具实际应用访问授权，异步问题待维护者回复。得到许可后在新profile/刷新自有Window对象继续本限定矩阵，不重用陈旧句柄/坐标，不为工具问题更改产品。完整M8/在途失败产品恢复/正式launcher/安装升级/签名/CI/目标用户/发布继续待验。datacube实查保持PAUSED，无自动跟进/新线程/外部动作。
+
+文档编辑首检发现roadmap有两行M8（里程碑表与当前推进账本），唯一性guard拒绝且roadmap未写；改只作用Section15当前行，保留原里程碑表。n3-roadmap-anchor-correction.json保存该诊断，属于本地文档定位错误，非产品/权限失败。

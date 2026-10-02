@@ -1,6 +1,11 @@
 # DataCube 新会话交接：产品成熟度与首个目标
 
 编写日期：2026-09-23。此文档旨在让新会话不依赖旧聊天全文即可接手。
+**2026-10-02 工作区退出原生验收准备（最新工程交付，原生目标未完成）：** 继续推进后复用现有GPT-6.1-sol编写docs外置AppShell/真实guard/store/production Alert夹具，根独立审查返工：自有workspace.bin失败、冻结布局/重试字节/Ignore旧字节与故障/原草稿ID/checkpoint/真实quarantine与资源锁断言，不自动fire决策，不进入正式镜像。程序化twofile/READY和实际草稿写入已观察，可见自有Stage被sky枚举；访问窗口却返回 **Computer Use app approval timed out**，本轮没有任何已验证原生动作或截图，原生生产按钮/默认Enter/Esc/标题栏dismiss/取消后编辑保存/成功关闭资源仍未验，不能称本轮原生目标或M8已完成。工具实际应用权限问题已异步询问维护者，等待答复；安全停止只限本轮核实PID/profile/launcher，不冒充COMPLETED。
+
+分支1dd1c0a、main工程集成0a7ec1197f78916b3cb16221a38013efed4b0795；仅docs外置夹具/证据、产品未改。分支/main各新定向235/235、全量3935 passed/3 live skipped、buildSrc8/8、jpackageImage/183文件镜像隔离/零连接发现通过，778源稳定、217 Java差异仅换行、三项SHA一致。首外置编译包内访问失败、隐藏启动、根退出码误报、应用权限超时、暂存文档换行和raw空白元数据问题均保留首原件、独立修正；不是产品红或自动权限审核拒绝。[限定计划](../superpowers/plans/2026-10-02-workspace-native-exit.md)、[worker](../superpowers/verification/2026-10-02-workspace-native-exit-worker.md)、[独立审核/main复验](../superpowers/verification/2026-10-02-workspace-native-exit-coordination.md)、[工程结果](../superpowers/verification/evidence/workspace-native-exit-coordination/results.json)、[原生待验矩阵](../superpowers/verification/evidence/workspace-native-exit-coordination/native-acceptance-matrix.json)。最终文档/原件集成保持受验代码不变，已有原生/Oracle证据仅作历史，不充当本轮通过。
+
+本轮未访问真库或旧Oracle专用表，原有profile/凭据/连接/SQL历史/业务文件与.testagent禁读改，不推送/fetch/tag/PR/发布/更新/外部联系；datacube实查PAUSED并保持。待工具访问许可后仅继续本限定原生矩阵，正式launcher/完整在途退出与FAILED_PARTIAL产品恢复、字段输入键盘多结果失效、小窗/OS多屏、其他真库、安装升级/签名/CI/用户任务/完整发布仍待验。
 
 **2026-10-02 完整AppShell工作区退出决策（最新本地交付）：** 继续推进后复用现有GPT-6.1-sol，当前线程独立审核和具体返工。新增4项实际shell/原mandatory guard/真实workspace存储与production Alert合成FX用例：取消/重复取消保留旧工作区字节并继续真实文件准入、脏文本去重/save，明确新活动后发布新layout；重试相同冻结布局，忽略故障中的本次更新而保留旧字节，合成Dialog关闭按默认cancel。实际5条Alert，原标签在决策前已守卫结算/移除，不能称原标签全部保留；每例真实草稿成功原子写入，成功资源释放一次/存储锁释放，provider请求0，未用fixture失败fallback充当成功。
 
