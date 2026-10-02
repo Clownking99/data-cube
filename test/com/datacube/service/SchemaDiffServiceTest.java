@@ -26,6 +26,7 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -33,6 +34,11 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.time.Instant;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -41,14 +47,58 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 class SchemaDiffServiceTest {
 
     @Test
+    void concurrentFactoryRecordsEveryOpenAndPhysicalClose() throws Exception {
+        RecordingConnectionFactory factory = new RecordingConnectionFactory();
+        int workers = 32;
+        int opensPerWorker = 256;
+        CyclicBarrier start = new CyclicBarrier(workers);
+        List<java.util.concurrent.Future<?>> tasks = new ArrayList<>();
+        List<Throwable> failures = new ArrayList<>();
+        try (var executor = Executors.newFixedThreadPool(workers)) {
+            for (int worker = 0; worker < workers; worker++) {
+                int index = worker;
+                tasks.add(executor.submit(() -> {
+                    start.await(5, TimeUnit.SECONDS);
+                    for (int open = 0; open < opensPerWorker; open++) {
+                        ConnConfig config = new ConnConfig(index + "-" + open, "synthetic",
+                                DbType.POSTGRESQL, "synthetic-host", 5432, "database", "user",
+                                "", Map.of());
+                        try (Connection ignored = factory.open(config)) { }
+                    }
+                    return null;
+                }));
+            }
+            for (var task : tasks) {
+                try { task.get(10, TimeUnit.SECONDS); }
+                catch (java.util.concurrent.ExecutionException failure) {
+                    failures.add(failure.getCause());
+                    failure.getCause().printStackTrace(System.out);
+                }
+            }
+        }
+        int expected = workers * opensPerWorker;
+        System.out.println("recording diagnostic: expected=" + expected + ", recorded="
+                + factory.opened.size() + ", physicallyClosed=" + factory.closes.values().stream()
+                .mapToInt(AtomicInteger::get).sum() + ", workerFailures=" + failures.size());
+        assertEquals(List.of(), failures);
+        assertEquals(expected, factory.opened.size());
+        assertEquals(expected, factory.opened.stream().map(ConnConfig::id).distinct().count());
+        assertEquals(expected, factory.closes.size());
+        factory.closes.values().forEach(closes -> assertEquals(1, closes.get()));
+    }
+
+    @Test
     void providerAwareCompareReturnsOtherObjectsWhenOneRoutineRequiresManualReview() {
         CredentialCipher cipher = new CredentialCipher();
         RecordingConnectionFactory factory = new RecordingConnectionFactory();
         SchemaDiffCapability capability = new SchemaDiffCapability() {
             @Override
             public com.datacube.spi.schemadiff.SchemaSnapshotReader snapshotReader(Connection connection) {
-                return (connectionId, schema, options) -> partialSnapshot(connectionId,
-                        schema.original());
+                return (connectionId, schema, options) -> {
+                    String catalogSchema = connectionId + "_schema";
+                    assertEquals(name(catalogSchema), schema);
+                    return partialSnapshot(connectionId, catalogSchema);
+                };
             }
 
             @Override
@@ -74,6 +124,19 @@ class SchemaDiffServiceTest {
 
         SchemaDiffResult result = service.compare(request(source, target),
                 new SchemaDeploymentControl()).toCompletableFuture().join();
+
+        assertEquals("source", result.source().connectionId());
+        assertEquals("target", result.target().connectionId());
+        assertEquals(name("source_schema"), result.source().schema());
+        assertEquals(name("target_schema"), result.target().schema());
+        assertEquals(Set.of("source", "target"), factory.opened.stream()
+                .map(ConnConfig::id).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(2, factory.opened.size());
+        factory.opened.forEach(opened -> {
+            assertEquals(opened.id() + "-host", opened.host());
+            assertEquals(opened.id() + "-secret", opened.props().get("__plainPassword"));
+            assertEquals(1, factory.closes.get(opened.id()).get());
+        });
 
         assertEquals(DifferenceKind.MODIFIED, result.differences().stream()
                 .filter(difference -> difference.object().type() == ObjectType.FUNCTION)
@@ -197,7 +260,8 @@ class SchemaDiffServiceTest {
     }
 
     private static final class RecordingConnectionFactory implements ConnectionFactory {
-        private final List<ConnConfig> opened = new ArrayList<>();
+        private final List<ConnConfig> opened = Collections.synchronizedList(new ArrayList<>());
+        private final Map<String, AtomicInteger> closes = new ConcurrentHashMap<>();
 
         @Override
         public void ensureDriverLoaded() {
@@ -206,11 +270,13 @@ class SchemaDiffServiceTest {
         @Override
         public Connection open(ConnConfig config) {
             opened.add(config);
+            AtomicInteger closeCount = new AtomicInteger();
+            closes.put(config.id(), closeCount);
             return (Connection) Proxy.newProxyInstance(
                     getClass().getClassLoader(), new Class<?>[]{Connection.class},
                     (proxy, method, args) -> switch (method.getName()) {
-                        case "close" -> null;
-                        case "isClosed" -> false;
+                        case "close" -> { closeCount.incrementAndGet(); yield null; }
+                        case "isClosed" -> closeCount.get() > 0;
                         default -> defaultValue(method.getReturnType());
                     });
         }
