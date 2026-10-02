@@ -2,6 +2,8 @@
 
 客户端日期 2026-10-02。本轮按 [计划](../plans/2026-10-02-schema-diff-stability.md) 在独立分支执行；main 起点 055bda4a9d0f9d561cb9242971dbabb8e8f6c3e7。开发代理使用维护者指定的 GPT-6.1-sol，当前线程负责独立审查和本地集成。侧栏开发线程正式 id 仍不可取得，没有创建额外侧栏线程或伪报向它发消息；已实际通过代理工具下发限定开发与有界等待修正。
 
+本轮两处夹具缺陷已完成本地红绿、独立审查、提交和 main 合并/新复验。实现 75ed0c6，分支审核证据7e12468，main验收合并a35311769e80219341baa5eca86e9cec51d1a19f；最后的文档/证据提交以 Git 为准。仅测试夹具改变，产品源码未改。分支和 main 均新定向9/9、全量3917 passed /3 live skipped、buildSrc8/8、jpackageImage/镜像和零连接发现通过。历史那一次 cause 缺失的精确归因仍不能确认，完整 M8/发布不称完成。以下R0–R2是保留的过程检查点，最终证据见R3与 [实际结果](evidence/schema-diff-stability-coordination/results.json)。
+
 ## R0：基线、原始失败与诊断审查
 
 - 当前目标：定位前轮间歇失败的可证明原因；不能用后续通过补成历史根因。
@@ -33,3 +35,14 @@
 - 首次镜像审计失败：外置审计初版未限定 Reproducer 词，误命中java.base的四个sun/security/ssl TLS内部类型。首版脚本、首次JSON和tool exit元数据保留；所有源/文件/选项检查已通过。改为精确测试类型、已知探针简单类名和测试框架包前缀，最终审计和零连接发现通过。只修外置审计，不改产品或重跑已通过工程检查。
 - 失败/未验：原始新红灯、unsafe exit=1、归档CR误报及镜像误报均保留；3 live skip不算通过。历史那一次具体cause未知；完整桌面/真库/安装升级/签名/CI/发布仍未验。
 - 下一步：审计并提交协调记录和原始分支证据，本地合并精确提交到main；新main profile定向/全量/buildSrc/image及产物对照，更新交接与待验后交付。
+
+## R3：main 新复验与本轮交付
+
+- 当前目标：交付本轮已授权的夹具稳定性闭环，更新证据和待验，不扩大功能或外部操作。
+- 集成与改动：主工作区经基线/干净状态核对后，本地--no-ff合并精确7e12468为a35311769e80219341baa5eca86e9cec51d1a19f；源码/构建不改，仅一个测试文件变化。当前补最终结果、原始main证据、交接/路线图和本记录；不改开发旧清单/失败。既有 datacube 跟进继续 PAUSED，本轮没有新建/恢复自动任务。
+- main 新验证：310 suites /3920总数（3917 passed /3 live skipped /0 failure/error），定向9/9，buildSrc8/8，新jpackageImage、183文件镜像审计和driverFor发现通过，connectCalls=0；8/8/4/14任务全部实际执行。每步骤独占新profile，单Gradle离线；所有日志/XML和执行参数/exit在协调main/。结果由Summarize.ps1重新读取原始XML并独立统计，三项skip原assumption理由单列，不算通过。
+- 产物与源码：exe 6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F；cfg E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D；modules 242CE98352FD2F1AE829C3F41CC3B078E05ECAD2AB43ED2B2F84C526AA28AD0E，两边相同。各自774项源/测试/构建原字节冻结且全程不变；Git树与已审核75ed0c6一致。跨worktree213项Java字节不同逐一严格证明仅LF/CRLF，记录于source-comparison.json，没有把换行差异忽略成未经证明的源码一致。
+- 失败与恢复：首次main镜像审计通过后，外层调用用相对路径寻找尚只在协调worktree的Summarize.ps1，而审计改变工作目录为main，调用失败；summary-first-invocation-failure.json保留。改用绝对脚本路径，汇总成功，产品和已通过测试不变，未重复工程测试。其它首次红灯、unsafe异常、原始CR误报、JDK内部类型误报均保留。
+- 归档与范围：raw manifest排除自身及final audit自引用，实际Git blob逐份核对；原始证据禁止自动文本转换，测试源码默认提交规范化单独证明。仅本轮已编辑Markdown在暂存前统一LF，以保持证据字节检查，产品不改。旧原始证据、真实profile/凭据/历史/业务文件和.testagent未读/改；无真库、push/fetch/tag/PR/发布/更新安装/外部联系。既有Oracle专用表未访问或清理。
+- 失败/未验：已证明并修复记录竞态和mock schema双引用；历史那一次底层cause仍无法完全归因，不撤掉该限制。本轮无新原生/真库；完整字段键盘/结果导航、Oracle/view/SELECT/配置失效、完整AppShell在途退出与超时恢复、缩小窗口/OS多屏、正式启动器/安装升级/签名/CI/用户任务/发布继续待验，M8未完成。
+- 下一步：对当前文档和原始证据精确提交、fast-forward main，复核Git对象/原始清单、源码原字节不变和授权工作区干净后交付。本轮到此，不自动启动后续功能；后续优先继续原生输入/完整关闭流程等实际验收缺口。

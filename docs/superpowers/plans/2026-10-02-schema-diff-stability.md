@@ -29,3 +29,10 @@
 - 验证：main 与隔离 worktree 为精确 055bda4；授权范围干净；已读取原始首次失败 XML、服务与 mock 的调用。
 - 失败/未验：首次异常经过产品安全摘要后没有底层 cause，不能直接归因；开发侧栏正式 id 缺口仍存在。本轮尚无新测试通过。
 - 下一步：向 GPT-6.1-sol 开发代理下发限定诊断/修复任务，当前线程独立审核并完成本地交付。
+
+## S1 本轮本地交付
+
+- 目标与改动：已证明的mock记录竞态和schema双引用夹具修复；仅SchemaDiffServiceTest及证据/文档，产品未改。GPT-6.1-sol开发代理实际完成，协调线程下发有界等待要求并独立审核。
+- 验证与集成：实现75ed0c6、分支证据7e12468，main本地验收合并a353117；分支/main各新定向9、全量3917 passed /3 live skipped、buildSrc8、jpackageImage/183文件镜像及零连接发现通过，三项SHA一致。原始红灯、双线程越界异常、安全同参数通过和精确归因限制见 [开发账本](../verification/2026-10-02-schema-diff-stability.md)；最终 [独立审查/main复验](../verification/2026-10-02-schema-diff-stability-coordination.md) 与 [实际结果](../verification/evidence/schema-diff-stability-coordination/results.json) 可复核。
+- 失败/未验：记录红灯8192→6177/关闭8192；同步后8192完整。双线程unsafe同类ArrayList异常与safe完整400000均实际取得，旧历史那一次cause依然缺失，不能精确确认。归档CR、JDK内部类型误报和汇总相对路径失败全部保留，修复限外置工具。本轮无原生/真库、完整M8/发布未验。
+- 下一步：最终证据字节审计和文档提交/fast-forward main后交付；既有heartbeat继续PAUSED，没有恢复或新建自动任务，不自动扩大后续范围。
