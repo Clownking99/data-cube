@@ -21,3 +21,13 @@
 ## C2：审核与本地记录集成
 
 只读初审已核验旧746文件SHA/长度未变、产品/测试/构建未改、当前main三镜像SHA匹配、本次READY与初始workspace字节相符，原生输入/结果事件0。后续暂存字节与main集成后记录见新audit JSON；原生目标仍未完成，M8和正式launcher/完整在途恢复/安装升级/签名/CI/用户任务/其他真库及发布仍待验。datacube未恢复，既有安全边界全部沿用。
+
+## C2a：本地集成后的实际复核
+
+- 当前目标：本次技术阻碍记录可追溯且main保持原产品代码；不宣称原生目标完成。
+- 改动/集成：独立分支本地提交e8d854a5fcf071fd59bf5ed232fad4d15d0f333d，main no-ff合并79ad40e9da775ebfba615da4db124e04f0689fbb；仅docs外置夹具副本/新原件/待验更新。精确32份暂存文件逐一hash-object与index字节匹配；ignored原始logs显式纳入，不漏原件。
+- 实际复验：main上的postmerge-audit.json核验旧746原件和本次26冻结原件SHA/长度未变，产品/测试/构建对c4807无差异，当前main镜像三项SHA与新compile匹配，实际READY的旧workspaceSHA与保存的72字节原件匹配，日志原生输入/生产决策/关闭结算事件0。
+- 失败/未验：本轮javac新通过；没有新Gradle/full/buildSrc/jpackageImage运行，旧工程通过只作历史。GetCursorPos拒绝访问两次和首CIM沙箱失败保留；人类授权已满足、无自动审核拒绝，桌面锁定状态未确立。八项原生矩阵UNVERIFIED，安全停止不算COMPLETED。
+- 下一步：技术会话可交互后按同一矩阵新profile重新绑定。Computer Use技能引用的guidance要求窗口激活/状态失败刷新选择重试一次，失败则报告；本轮已执行，未换工具绕过。技能路径C:/Users/hetia/.codex/plugins/cache/openai-bundled/computer-use/26.930.21537/skills/computer-use/SKILL.md，相关原文“Refresh the app/window selection and retry once; report the exact error if recovery fails.” 位于../../docs/guidance.md。
+
+本段及main审计为合并后证据记录，后继文档提交不改变受验产品源码。自有进程已停止、profile保留、datacube未恢复，本目标未完成，M8未完成，不自动下一轮。
