@@ -1,5 +1,8 @@
 # DataCube 产品成熟度推进计划
 
+2026-10-05 最新限定原生状态：[工作区键盘续验](../verification/2026-10-05-workspace-native-key-acceptance.md)已7/8，真实Enter取消和main新profile原生Retry均已验证；只剩Esc实际按键，专用Alert已备，根停止输入。产品未改，无新Gradle声明，历史951原件不变；M8发布仍待验，后文旧6/8/main Retry待验均按历史轮次解读。
+
+
 日期：2026-09-23；G1–G8 及本地跟进更新：2026-10-02。状态：M0、M1、M3、M4a–d、M5、M6、M7 本地工程完成，已合并 main 并复验；M2 部分完成（本地实现已合并 main 并复验，生产签名/真实升级待验）；M8 部分取得原生及指定 Oracle 真库证据，已取得限定 mock 桌面证据，最新字段原生键盘/小窗口有限尝试仍未完成，工程证据已本地合并并复验；完整发布验收待验，其他外部目标须明确授权。
 2026-10-02 最新工程准备（原生目标未完成）：[工作区原生退出夹具与main复验](../verification/2026-10-02-workspace-native-exit-coordination.md)。外置真实AppShell/原guard/store/production Alert夹具已审查编译，只对专用workspace发布注入失败，程序化READY/草稿写入和可见Stage枚举已观察；Computer Use访问自有窗口却返回app approval timed out，没有新原生动作或截图，矩阵全部待实际跑。工具应用访问授权问题待维护者回复，不用编译/初始化或工程通过提升原生等级。main工程集成0a7ec1197f78916b3cb16221a38013efed4b0795，无产品改动；两阶段新定向235/235、全量3935 passed/3 live skipped、buildSrc8/8、jpackageImage/183文件镜像/零连接审计通过，778源稳定、217 Java仅换行、三SHA一致。首编译/隐藏启动/退出码误报/权限超时/字节及空白元数据失败保留；自有进程已安全核实停止，不算产品COMPLETED。[原生待验矩阵](../verification/evidence/workspace-native-exit-coordination/native-acceptance-matrix.json)、[实际工程结果](../verification/evidence/workspace-native-exit-coordination/results.json)。取得工具权限后仅继续本限定矩阵，datacube保持PAUSED，M8完整发布继续待验；下方各“最新”为历史轮次。
 
@@ -275,7 +278,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 | M5 | 本地工程完成 | 实现 76dd221、修正 c62e86c；main 最终合并 0e7ca79；[G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)，main 全量 3724 passed/3 live skips、fresh buildSrc 8、镜像通过 | G5 交付；原生桌面/真库及明确降级单列 |
 | M6 | 本地工程完成 | 实现 d4b02de；main 合并 c182128；[G6 账本](../verification/2026-09-24-datacube-g6-discovery-library.md)，main 全量 3753 passed/3 live skips、fresh buildSrc 8、镜像及 14 张合成桌面截图 | G6 交付；原生模态输入/完整壳流程、真库等单列待验 |
 | M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | G8 已补合成迁移原生预检查/确认/取消/在途关闭；真库事务/权限/一致性与发布仍待验 |
-| M8 | 部分原生/指定 Oracle 真库历史已验；完整发布待验 | 最新[工作区原生6/8](../verification/2026-10-04-workspace-native-acceptance.md)：新实际Cancel/标题栏取消、取消后真实编辑保存、Retry/Ignore及资源关闭/锁释放通过，独立workspace解码/75份存档截图/旧772原件审计通过；产品未改，无新Gradle声明。Enter/Escape投递未验，已备人工窗口；[矩阵](../verification/evidence/workspace-native-20261004/native-matrix.json)。历史工程/Oracle仍保留 | 当前原生目标未完成；只补人工Enter/Escape实际事件及main新profile Retry。正式launcher、完整在途恢复、字段键盘/多结果/失效、小窗/OS多屏、其他真库、安装升级/签名/CI/用户任务/发布仍待验；datacube未恢复，旧Oracle表未访问清理，不自动扩展 |
+| M8 | 部分原生/指定 Oracle 真库历史已验；完整发布待验 | 最新[工作区原生7/8](../verification/2026-10-05-workspace-native-key-acceptance.md)：人工Enter真实取消及main新profile原生Retry新通过；冻结字节、真实draft/位置/选择、资源关闭1/锁释放/provider0；历史951原件不变，新9状态/11截图/87冻结原件。产品未改，无新Gradle声明；旧六项原生/工程/Oracle历史保留 | 只补真实Esc取消，唯一专用Alert已备且根停止输入；main新profileRetry已完成。正式launcher、完整在途恢复、字段键盘/多结果/失效、小窗/OS多屏、其他真库、安装升级/签名/CI/用户任务/发布仍待验；datacube未恢复，不自动扩展 |
 
 ## 16. 参考与历史记录
 
