@@ -22,4 +22,11 @@ Computer Use技能[SKILL.md](C:/Users/hetia/.codex/plugins/cache/openai-bundled/
 
 ## 本地集成
 
-分支/main提交与实际复验在完成后追加；本轮受验产品保持6cf6788相同字节。
+已完成分支提交、main本地合并和main独立证据复验，见下方K3；受验产品保持6cf6788相同字节。
+## K3：实际提交、main复验与待验停点
+
+- 当前目标：已取得的7/8原生证据有本地main记录，Esc仍按真实事件等待。
+- 实际集成：独立分支提交0d70d3a89541d12d3ae150886d1479ea7dcfd5c3，main本地no-ff合并4636441fc530cce07d5f7c9421c15ef635041596。92份原件/文档先经精确白名单和磁盘/暂存字节检查，之后另加2份审计元数据共94文件提交；无源码/测试/构建变更。
+- 新复验：main执行[Verify-Evidence.ps1](evidence/workspace-native-20261005/Verify-Evidence.ps1)并生成[audit-main.json](evidence/workspace-native-20261005/audit-main.json)，历史951原件、新87冻结原件、9状态/11截图、实际Enter/正常退出/mainRetry事件与资源/存储、source/当前三镜像SHA均通过。没有新Gradle运行，历史测试不充当本轮新结果。
+- 失败/未验：最后[main检查点](evidence/workspace-native-20261005-integration/main-checkpoint.json)和事件快照仍0 Esc key/0 cancel，唯一专用进程核实在场、故障marker不存在。root不输入该窗，主目标和M8不标完成。
+- 下一步：维护者在小弹窗标题栏聚焦后只按Esc。根核实实际ESCAPE→CANCELLED、旧字节和资源/runner，然后完成该profile正常关闭并在新phase追加证据。本轮main新profileRetry已通过，不再重复列为待验。元数据后继提交不改变受验产品字节。
