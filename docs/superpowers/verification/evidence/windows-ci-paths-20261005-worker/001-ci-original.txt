@@ -1,0 +1,247 @@
+Run .\gradlew.bat clean :buildSrc:test test --no-daemon --console=plain
+Downloading https://services.gradle.org/distributions/gradle-9.2.0-bin.zip
+............10%.............20%.............30%.............40%.............50%.............60%.............70%.............80%.............90%.............100%
+
+Welcome to Gradle 9.2.0!
+
+Here are the highlights of this release:
+ - Windows ARM support
+ - Improved publishing APIs
+ - Better guidance for dependency verification failures
+
+For more details see https://docs.gradle.org/9.2.0/release-notes.html
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes
+> Task :buildSrc:jar
+> Task :clean UP-TO-DATE
+> Task :buildSrc:compileTestJava
+> Task :buildSrc:compileTestGroovy NO-SOURCE
+> Task :buildSrc:processTestResources NO-SOURCE
+> Task :buildSrc:testClasses
+> Task :buildSrc:test
+> Task :compileJava
+> Task :generateBrandIcons
+> Task :generateVersionProperties
+> Task :processResources
+> Task :classes
+Note: Some input files use unchecked or unsafe operations.
+
+Note: Recompile with -Xlint:unchecked for details.
+> Task :compileTestJava
+
+> Task :processTestResources NO-SOURCE
+        at app//com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+        at app//com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+        at app//com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+        at java.base@25.0.4.1/java.lang.Thread.run(Thread.java:1474)
+
+AppShellWorkspaceShutdownTest > retryProductionButtonRepublishesSameCheckpointedFrozenLayout() FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//com.datacube.fx.AppShellWorkspaceShutdownTest$Fixture.lambda$reopen$1(AppShellWorkspaceShutdownTest.java:197)
+        at app//com.datacube.fx.FxUiTestSupport.lambda$call$0(FxUiTestSupport.java:29)
+        at java.base@25.0.4.1/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+        at app//com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+        at app//com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+        at app//com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+        at app//com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+        at java.base@25.0.4.1/java.lang.Thread.run(Thread.java:1474)
+
+PortableArchiveTest > completeImageAtExactEntryAndByteLimitsExtractsOnlyUnderOwnedRoot() FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.PortableArchive.extract(PortableArchive.java:17)
+        at com.datacube.update.PortableArchiveTest.completeImageAtExactEntryAndByteLimitsExtractsOnlyUnderOwnedRoot(PortableArchiveTest.java:17)
+
+PortableArchiveTest > existingDestinationAndCancelledExtractionDoNotReplaceAnything() FAILED
+    org.opentest4j.AssertionFailedError: Unexpected exception type thrown, expected: <java.nio.file.FileAlreadyExistsException> but was: <java.io.IOException>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:67)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:35)
+        at app//org.junit.jupiter.api.Assertions.assertThrows(Assertions.java:3128)
+        at app//com.datacube.update.PortableArchiveTest.existingDestinationAndCancelledExtractionDoNotReplaceAnything(PortableArchiveTest.java:43)
+
+        Caused by:
+        java.io.IOException: 更新路径包含链接或重解析目录
+            at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+            at com.datacube.update.PortableArchive.extract(PortableArchive.java:17)
+            at com.datacube.update.PortableArchive.extract(PortableArchive.java:14)
+            at com.datacube.update.PortableArchiveTest.lambda$existingDestinationAndCancelledExtractionDoNotReplaceAnything$0(PortableArchiveTest.java:43)
+            at org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:53)
+            ... 3 more
+
+PortableArchiveTest > directoryEntryCannotHideUncountedExpandedData() FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.update.PortableArchiveTest.directoryEntryCannotHideUncountedExpandedData(PortableArchiveTest.java:55)
+
+PortableUpdateHelperTest > installedHandoffCannotClaimInstallerCompletionOrReplaceTheRunningImage() FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.PortableUpdateHelperTest.installedHandoffCannotClaimInstallerCompletionOrReplaceTheRunningImage(PortableUpdateHelperTest.java:82)
+
+PortableUpdateHelperTest > helperPreservesRecoverableImagesAcrossEveryHandoffPhase(String) > [1] success FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.PortableUpdateHelperTest.helperPreservesRecoverableImagesAcrossEveryHandoffPhase(PortableUpdateHelperTest.java:26)
+
+PortableUpdateHelperTest > helperPreservesRecoverableImagesAcrossEveryHandoffPhase(String) > [2] swap-failure FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.PortableUpdateHelperTest.helperPreservesRecoverableImagesAcrossEveryHandoffPhase(PortableUpdateHelperTest.java:26)
+
+PortableUpdateHelperTest > helperPreservesRecoverableImagesAcrossEveryHandoffPhase(String) > [3] new-start-failure FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.PortableUpdateHelperTest.helperPreservesRecoverableImagesAcrossEveryHandoffPhase(PortableUpdateHelperTest.java:26)
+
+PortableUpdateHelperTest > helperPreservesRecoverableImagesAcrossEveryHandoffPhase(String) > [4] new-exited FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.PortableUpdateHelperTest.helperPreservesRecoverableImagesAcrossEveryHandoffPhase(PortableUpdateHelperTest.java:26)
+
+PortableUpdateHelperTest > helperPreservesRecoverableImagesAcrossEveryHandoffPhase(String) > [5] unconfirmed FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.PortableUpdateHelperTest.helperPreservesRecoverableImagesAcrossEveryHandoffPhase(PortableUpdateHelperTest.java:26)
+
+PortableUpdateHelperTest > helperPreservesRecoverableImagesAcrossEveryHandoffPhase(String) > [6] old-still-running FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.PortableUpdateHelperTest.helperPreservesRecoverableImagesAcrossEveryHandoffPhase(PortableUpdateHelperTest.java:26)
+
+PortableUpdateHelperTest > helperPreservesRecoverableImagesAcrossEveryHandoffPhase(String) > [7] asset-mutated FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.PortableUpdateHelperTest.helperPreservesRecoverableImagesAcrossEveryHandoffPhase(PortableUpdateHelperTest.java:26)
+
+PortableUpdateHelperTest > helperPreservesRecoverableImagesAcrossEveryHandoffPhase(String) > [8] rollback-failure FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.PortableUpdateHelperTest.helperPreservesRecoverableImagesAcrossEveryHandoffPhase(PortableUpdateHelperTest.java:26)
+
+PortableUpdateHelperTest > helperPreservesRecoverableImagesAcrossEveryHandoffPhase(String) > [9] startup-check-failure FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.PortableUpdateHelperTest.helperPreservesRecoverableImagesAcrossEveryHandoffPhase(PortableUpdateHelperTest.java:26)
+
+PortableUpdateHelperTest > malformedOwnershipCannotMoveTheOriginalImageOrAnUnrelatedDirectory() FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.PortableUpdateHelperTest.malformedOwnershipCannotMoveTheOriginalImageOrAnUnrelatedDirectory(PortableUpdateHelperTest.java:96)
+
+UpdateApplierTest > changedDownloadedArtifactAndCancellationBeforeHandoffNeverLaunchOrTouchCurrentImage() FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.UpdateApplierTest.changedDownloadedArtifactAndCancellationBeforeHandoffNeverLaunchOrTouchCurrentImage(UpdateApplierTest.java:60)
+
+UpdateApplierTest > onlyExactAuthenticatedArtifactCanBeHandedOffOnce(InstallMode) > [1] INSTALLED FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.UpdateApplierTest.onlyExactAuthenticatedArtifactCanBeHandedOffOnce(UpdateApplierTest.java:36)
+
+UpdateApplierTest > onlyExactAuthenticatedArtifactCanBeHandedOffOnce(InstallMode) > [2] PORTABLE FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.UpdateApplierTest.onlyExactAuthenticatedArtifactCanBeHandedOffOnce(UpdateApplierTest.java:36)
+
+UpdateApplierTest > differentApplierCannotConsumePreparedHandoffAndStartFailureKeepsOldImage() FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.UpdateApplierTest.differentApplierCannotConsumePreparedHandoffAndStartFailureKeepsOldImage(UpdateApplierTest.java:75)
+
+UpdateServiceSafetyTest > cancellationOrCloseDuringBodyReadClosesStreamRejectsSecondRequestAndNeverLaunches(boolean) > [1] false FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.update.UpdateServiceSafetyTest.cancellationOrCloseDuringBodyReadClosesStreamRejectsSecondRequestAndNeverLaunches(UpdateServiceSafetyTest.java:70)
+
+UpdateServiceSafetyTest > cancellationOrCloseDuringBodyReadClosesStreamRejectsSecondRequestAndNeverLaunches(boolean) > [2] true FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.update.UpdateServiceSafetyTest.cancellationOrCloseDuringBodyReadClosesStreamRejectsSecondRequestAndNeverLaunches(UpdateServiceSafetyTest.java:70)
+
+UpdateServiceSafetyTest > authenticatedHappyPathReportsOnlyHandoffAndLauncherFailureNeverReportsReady() FAILED
+    org.opentest4j.AssertionFailedError: expected: <2> but was: <4>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:145)
+        at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:531)
+        at app//com.datacube.update.UpdateServiceSafetyTest.authenticatedHappyPathReportsOnlyHandoffAndLauncherFailureNeverReportsReady(UpdateServiceSafetyTest.java:85)
+
+UpdateStartupTest > onlyExactTargetVersionAndAttemptCanAcknowledgeStartupOnce() FAILED
+    java.io.IOException: 更新路径包含链接或重解析目录
+        at com.datacube.update.UpdatePaths.noLinks(UpdatePaths.java:13)
+        at com.datacube.update.UpdatePaths.image(UpdatePaths.java:19)
+        at com.datacube.update.UpdateApplier.prepare(UpdateApplier.java:34)
+        at com.datacube.update.UpdateStartupTest.onlyExactTargetVersionAndAttemptCanAcknowledgeStartupOnce(UpdateStartupTest.java:19)
+
+3938 tests completed, 28 failed, 3 skipped
+
+> Task :test FAILED
+gradle/actions: Writing build results to D:\a\_temp\.gradle-actions\build-results\__run-1791202352905.json
+
+
+[Incubating] Problems report is available at: file:///D:/a/data-cube/data-cube/build/reports/problems/problems-report.html
+FAILURE: Build failed with an exception.
+11 actionable tasks: 10 executed, 1 up-to-date
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///D:/a/data-cube/data-cube/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to generate a Build Scan (powered by Develocity).
+
+BUILD FAILED in 7m 13s
+Error: Process completed with exit code 1.
