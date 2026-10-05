@@ -2,6 +2,8 @@
 
 编写日期：2026-09-23。此文档旨在让新会话不依赖旧聊天全文即可接手。
 
+**2026-10-05 Windows CI 修复（最新）：** 维护者提供的 3938 tests / 28 failed / 3 skipped 已用真实 Windows 8.3 临时路径复现并修复。更新入口按逐级 NOFOLLOW 文件属性识别链接/重解析点，交接与启动回执使用先验证后规范化的目标；SQL 关闭/工作区夹具规范化自建根目录，生产 SQL registry 和更新脚本安全检查保持原契约。实现 d5dd127、main 集成 14875d749ec07ce54bbbeb7b490674ab4784d72f；分支/main 各新定向180、全量3938 passed / 3 live skipped、强制buildSrc8、jpackageImage及镜像隔离/驱动发现通过，738份分支原件独立审核。新modules SHA0860780E…与分支一致，旧原生证据仍只绑定旧镜像。托管Verify 37319792169的Windows单元测试/jlink、Linux、Redis、wrapper全部通过，完整CI与提交收尾见[独立审核账本](../superpowers/verification/2026-10-05-windows-ci-paths-review.md)。main已按现有授权使用命令级7897代理推送，既有acceptance tag不移动；无真库、真实升级/安装、原生桌面补验或发布，M8完整发布仍待验，datacube保持PAUSED。
+
 **2026-10-05 正式启动器续验：** 未改DataCube.exe/cfg/modules，在外置启动前home断言与回环拒绝更新代理下，原生完成两页中文离线SQL编辑、正常关闭、同profile显式恢复及再关闭，限定6/6通过。实际draft UUID/字节不变，workspace A/B顺序、首项和55编辑位置吻合；父launcher两次exit0，JVM shutdown且自有进程消失。根91原件/15状态/18截图、worker26原件、旧1087原件核对，独立复核与实际镜像3SHA通过；产品未改，无新Gradle/buildSrc/image声明。详见[启动器账本](../superpowers/verification/2026-10-05-formal-launcher-acceptance.md)。闪屏视觉、无Gate默认运行、安装升级/签名/CI结果/其他完整桌面与发布仍待验，M8不称完成。本轮fa0754b已合并main9a51384，main旧1087/worker26/根91原件、三实际镜像SHA和两轮草稿独立解码复验通过。既有datacube保持PAUSED；下方正式launcher未验描述属于历史，不覆盖本轮限定证据。
 **2026-10-05 最终限定原生验收（8/8完成）：** 维护者Esc已由真实ESCAPE→CANCELLED核实，取消后72字节workspace与前快照完全一致；根随后原生Retry保留相同冻结布局，COMPLETED资源关闭1/锁重开/provider0，无fallback，自有PID5808自然退出。旧1038原件、新49冻结原件/4状态/5截图独立审计通过，源与main镜像3SHA绑定；只证据/文档，无新产品改动或工程测试声明。详见[完成账本](../superpowers/verification/2026-10-05-workspace-native-escape-completion.md)。本限定矩阵和main新profileRetry均已完成，不再等待按键；完整M8/正式launcher/发布仍待验。datacube保持PAUSED，停止本轮、不自动启动其他范围。本轮分支41ea991已合并main641f046，main旧1038/新49原件、实际存储/事件/资源和三镜像SHA复验通过。下方7/8及等待Esc属于历史快照。
 
