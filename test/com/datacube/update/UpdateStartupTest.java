@@ -24,7 +24,7 @@ class UpdateStartupTest {
             assertFalse(Files.exists(ack));
             assertTrue(UpdateStartup.acknowledge(List.of(argument),VERSION,app));
             var data=(Map<?,?>)MiniJson.parse(Files.readString(ack));
-            assertEquals(VERSION,data.get("version"));assertEquals(app.toString(),data.get("appDir"));
+            assertEquals(VERSION,data.get("version"));assertEquals(app.toRealPath(LinkOption.NOFOLLOW_LINKS).toString(),data.get("appDir"));
             assertEquals(ProcessHandle.current().pid(),((Number)data.get("pid")).longValue());
             assertFalse(UpdateStartup.acknowledge(List.of(argument),VERSION,app));
         }

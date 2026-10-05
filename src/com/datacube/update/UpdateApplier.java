@@ -31,11 +31,12 @@ public final class UpdateApplier {
         byte[] bytes = downloads.bytes(base + "datacube-update.manifest", UpdateManifest.MAX_MANIFEST_BYTES, control);
         byte[] signature = downloads.bytes(base + "datacube-update.manifest.sig", 64, control);
         var verified = manifest.verify(info, currentVersion, bytes, signature);
-        Path target = UpdatePaths.image(appDir);
+        Path target = UpdatePaths.canonicalExisting(UpdatePaths.image(appDir));
         if (mode == InstallMode.UNKNOWN) throw UpdateManifest.rejected();
         Path workspace = mode == InstallMode.PORTABLE
                 ? Files.createTempDirectory(target.getParent(), ".datacube-update-")
                 : Files.createTempDirectory("datacube-update-");
+        workspace = UpdatePaths.canonicalExisting(workspace);
         String token = UUID.randomUUID().toString().replace("-", "");
         Files.writeString(workspace.resolve("owner"), token, StandardOpenOption.CREATE_NEW);
         Path packageFile = workspace.resolve(verified.asset(mode).name());

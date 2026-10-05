@@ -27,6 +27,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class AppShellShutdownRecoveryTest {
     @TempDir Path directory;
 
+    @org.junit.jupiter.api.BeforeEach
+    void canonicalFixtureDirectory() throws Exception {
+        // The registry contract uses the canonical identity returned by the SQL file store.
+        directory = directory.toRealPath();
+    }
+
     @Test void cancelledShutdownPreservesExistingFileIdentityAndNewAdmission() throws Exception {
         try (var fixture = new Fixture()) {
             Path existing = Files.writeString(directory.resolve("existing.sql"), "select 1;\n");

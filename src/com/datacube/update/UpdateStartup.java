@@ -15,7 +15,7 @@ public final class UpdateStartup {
             String encoded = values.getFirst().substring(PREFIX.length());
             if (encoded.length() > 8192) return false;
             Path planFile = Path.of(new String(Base64.getUrlDecoder().decode(encoded), StandardCharsets.UTF_8));
-            Path target = UpdatePaths.image(appDir);
+            Path target = UpdatePaths.canonicalExisting(UpdatePaths.image(appDir));
             Path workspace = UpdatePaths.noLinks(planFile).getParent();
             if (!planFile.getFileName().toString().equals("plan.json") || workspace == null
                     || !workspace.getFileName().toString().startsWith(".datacube-update-")

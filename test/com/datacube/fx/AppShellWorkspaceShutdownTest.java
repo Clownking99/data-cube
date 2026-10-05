@@ -115,7 +115,7 @@ class AppShellWorkspaceShutdownTest {
 
     static final class Fixture implements AutoCloseable {
         final String previousHome = System.getProperty("user.home");
-        final Path root = Files.createTempDirectory("datacube-workspace-shell-" + UUID.randomUUID());
+        final Path root = Files.createTempDirectory("datacube-workspace-shell-" + UUID.randomUUID()).toRealPath();
         final Path workspacePath = root.resolve(".datacube/sql-drafts/workspace.bin");
         final AppShell shell;
         final Stage stage;
