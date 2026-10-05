@@ -25,3 +25,11 @@ F3：worker准备提交f9e62c5、独立复核bb601b9；根91冻结原件、15原
 文档更新首次匹配到两条M8行，校验中止而未修改路线图；随后限定当前推进账本的精确旧状态行完成更新，未改其它M8条目。
 
 暂存复核首次将普通Markdown按原件字节比较，遇仓库既有CRLF归一化而中止；调整为原件精确字节、普通Markdown遵守既有Git文本规则后98文件通过。两份diff检查真实exit2保留于integration目录；除冻结末尾空行，javac原始输出的空JAVA_OPTIONS提示也带尾空格，不修改原输出压掉告警。
+
+## F4：main实际集成与交付
+
+- 本轮分支fa0754b7da33d06291771a4e98ad29fa5f0220ef，已本地no-ff合并main9a513846fc61653cddc704a46dcc903b874527ce。提交范围仅docs；普通文档遵守仓库换行规则，原始证据保持字节。
+- main重新执行[综合审计](evidence/formal-launcher-20261005-integration/audit-main.json)：旧1087、worker26、根91冻结原件全部匹配，15状态/18截图与实际三镜像SHA绑定一致。main再运行独立解码，核实两轮真实[第一组](evidence/formal-launcher-20261005-integration/decoded-main-first.json)/[第二组](evidence/formal-launcher-20261005-integration/decoded-main-second.json)草稿与工作区，不复用旧审计输出充当新结果。
+- 本轮6项限定流程通过，未发现产品缺陷；产品源码、测试、buildSrc、打包内容不变。外置Gate独立javac/class字节对照与原生操作是本轮新证据，未声称新全量/Gradle/buildSrc/image通过。
+- 精确失败/未验仍见前文。闪屏视觉与无Gate默认运行没有完成，M8/安装升级/签名/CI结果/发布保持待验；有原件才计通过。
+- 限定目标交付后停止，自有两个启动器及两个JVM均已退出，datacube保持PAUSED，无新目标/预算/后续功能。维护者此前“保持main最新”授权继续适用：只将最终交付main快进同步已核对origin，保留acceptance/workspace-exit-20261005及其原指向，不新建/移动tag，不发布。最终同步SHA由交付时远端复查确认。
