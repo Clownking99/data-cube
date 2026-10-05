@@ -1,5 +1,7 @@
 # DataCube 2026-10-05 工作区键盘续验
 
+后继已补齐Esc并完成限定8/8，见[完成账本](2026-10-05-workspace-native-escape-completion.md)。本文及其冻结原件保留7/8时点历史，不再表示当前等待状态。
+
 当前限定矩阵**7/8通过**：人工Enter已核实，main新profile原生Retry已复验；剩余Esc实际按键。未完成整个原生目标，更不代表M8发布验收。
 
 [检查点计划](../plans/2026-10-05-workspace-native-key-acceptance.md)、[本轮矩阵](evidence/workspace-native-20261005/native-matrix.json)、[独立审计](evidence/workspace-native-20261005/audit-branch.json)、[原件清单](evidence/workspace-native-20261005/raw-manifest.json)、[实际限制和纠正](evidence/workspace-native-20261005/limitations.json)。旧目录保持不可变。
