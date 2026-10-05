@@ -281,7 +281,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 | M5 | 本地工程完成 | 实现 76dd221、修正 c62e86c；main 最终合并 0e7ca79；[G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)，main 全量 3724 passed/3 live skips、fresh buildSrc 8、镜像通过 | G5 交付；原生桌面/真库及明确降级单列 |
 | M6 | 本地工程完成 | 实现 d4b02de；main 合并 c182128；[G6 账本](../verification/2026-09-24-datacube-g6-discovery-library.md)，main 全量 3753 passed/3 live skips、fresh buildSrc 8、镜像及 14 张合成桌面截图 | G6 交付；原生模态输入/完整壳流程、真库等单列待验 |
 | M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | G8 已补合成迁移原生预检查/确认/取消/在途关闭；真库事务/权限/一致性与发布仍待验 |
-| M8 | 工作区限定原生矩阵8/8完成；完整发布待验 | 最新[Esc收尾账本](../verification/2026-10-05-workspace-native-escape-completion.md)：真实Esc取消、实际旧字节不变、准入/runner恢复；同profile原生Retry冻结布局/资源关闭1/锁重开/provider0，进程自然退出；main新profileRetry已验。旧1038原件、新49冻结原件/4状态/5截图审计；产品未改，无新工程测试声明。其余原生/Oracle历史保留 | 本限定目标交付停止；正式launcher、完整在途恢复、字段键盘/多结果/失效、小窗/OS多屏、其他真库、安装升级/签名/CI/用户任务/发布仍待验。datacube保持PAUSED，不自动扩展 |
+| M8 | 正式启动器限定离线6/6、工作区退出原生8/8完成；完整发布待验 | 最新[启动器账本](../verification/2026-10-05-formal-launcher-acceptance.md)：原exe/cfg/modules加外置Gate，真实启动/两页中文离线输入/正常退出/同profile显式恢复；draft字节不变、工作区顺序/首项/位置一致。根91与worker26冻结原件、15状态/18截图及旧1087原件审计；产品未改，无新工程测试声明。以往原生/Oracle历史保留 | 闪屏视觉、无Gate默认运行、完整在途恢复/字段键盘/其他完整桌面与真库、安装升级/签名/CI结果/用户任务/发布仍待验。datacube保持PAUSED，本限定交付后不自动扩展 |
 
 ## 16. 参考与历史记录
 
