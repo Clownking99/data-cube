@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.config.ConnectionStoreTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-10-06T10:54:04.351Z" hostname="WAKEUPMAN" time="0.167">
+  <properties/>
+  <testcase name="writeFailurePreservesPrimaryAndCleansTemporaryFile()" classname="com.datacube.config.ConnectionStoreTest" time="0.015"/>
+  <testcase name="roundTripsUnicodeEscapesAndRedisConfiguration()" classname="com.datacube.config.ConnectionStoreTest" time="0.015"/>
+  <testcase name="savingOverCorruptPrimaryKeepsLastValidBackup()" classname="com.datacube.config.ConnectionStoreTest" time="0.035"/>
+  <testcase name="acceptsNonCanonicalTimeoutTextWithoutInvalidValueWarning()" classname="com.datacube.config.ConnectionStoreTest" time="0.012"/>
+  <testcase name="defaultsMissingAndInvalidSafetyValuesFromLegacyRelationalJson()" classname="com.datacube.config.ConnectionStoreTest" time="0.01"/>
+  <testcase name="fallsBackWhenAtomicMoveIsUnsupported()" classname="com.datacube.config.ConnectionStoreTest" time="0.01"/>
+  <testcase name="secondSaveCopiesPreviousValidSnapshotToBackup()" classname="com.datacube.config.ConnectionStoreTest" time="0.015"/>
+  <testcase name="replacementFailurePreservesPrimaryAndCleansTemporaryFile()" classname="com.datacube.config.ConnectionStoreTest" time="0.007"/>
+  <testcase name="persistsOnlyRelationalSafetyPropertiesAndKeepsRedisShape()" classname="com.datacube.config.ConnectionStoreTest" time="0.01"/>
+  <testcase name="roundTripsEmptyList()" classname="com.datacube.config.ConnectionStoreTest" time="0.01"/>
+  <testcase name="skipsMalformedEntryAndKeepsValidSibling()" classname="com.datacube.config.ConnectionStoreTest" time="0.009"/>
+  <testcase name="loadsBackupWhenPrimaryStructureIsCorruptWithoutOverwritingPrimary()" classname="com.datacube.config.ConnectionStoreTest" time="0.016"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[10月 06, 2026 6:54:04 下午 com.datacube.config.ConnectionStore isStructurallyValid
+警告: 旧连接配置损坏，不覆盖现有备份: 连接配置必须是完整 JSON 数组
+10月 06, 2026 6:54:04 下午 com.datacube.config.ConnectionStore warnInvalidSafetyValues
+警告: 连接安全环境值无效，已回退到 DEVELOPMENT
+10月 06, 2026 6:54:04 下午 com.datacube.config.ConnectionStore warnInvalidSafetyValues
+警告: 连接只读值无效，已回退到 false
+10月 06, 2026 6:54:04 下午 com.datacube.config.ConnectionStore warnInvalidSafetyValues
+警告: 连接查询超时值无效，已回退到 60 秒
+10月 06, 2026 6:54:04 下午 com.datacube.config.ConnectionStore load
+警告: 跳过损坏的连接条目: 缺少必填字段: id
+10月 06, 2026 6:54:04 下午 com.datacube.config.ConnectionStore loadAll
+警告: 读取主连接配置失败，尝试备份: 连接配置数组后存在多余内容
+]]></system-err>
+</testsuite>

@@ -2,6 +2,8 @@
 
 编写日期：2026-09-23。此文档旨在让新会话不依赖旧聊天全文即可接手。
 
+**2026-10-06 正式发布读回：** 维护者已明确授权推送、删除旧验收 tag 并以正式版本 tag 触发自动打包；v3.2.9 指向 main 0f6ba02656fcf3752b180514c72e79151a3320df，GitHub [Build and Release 37448530784](https://github.com/Clownking99/data-cube/actions/runs/37448530784) 成功，[Release](https://github.com/Clownking99/data-cube/releases/tag/v3.2.9) 已发布 ZIP 和 EXE。本轮只读再次核实两资产 uploaded、远端 main/tag 指向一致。下方“不推送/不打 tag/未发布”是各轮历史边界，已被维护者后续明确授权覆盖；自动打包发布成功不代替安装升级、生产签名或完整 M8 验收。
+
 **2026-10-05 Windows CI 修复（最新）：** 维护者提供的 3938 tests / 28 failed / 3 skipped 已用真实 Windows 8.3 临时路径复现并修复。更新入口按逐级 NOFOLLOW 文件属性识别链接/重解析点，交接与启动回执使用先验证后规范化的目标；SQL 关闭/工作区夹具规范化自建根目录，生产 SQL registry 和更新脚本安全检查保持原契约。实现 d5dd127、main 集成 14875d749ec07ce54bbbeb7b490674ab4784d72f；分支/main 各新定向180、全量3938 passed / 3 live skipped、强制buildSrc8、jpackageImage及镜像隔离/驱动发现通过，738份分支原件独立审核。新modules SHA0860780E…与分支一致，旧原生证据仍只绑定旧镜像。托管Verify 37319792169的Windows单元测试/jlink、Linux、Redis、wrapper全部通过，完整CI与提交收尾见[独立审核账本](../superpowers/verification/2026-10-05-windows-ci-paths-review.md)。main已按现有授权使用命令级7897代理推送，既有acceptance tag不移动；无真库、真实升级/安装、原生桌面补验或发布，M8完整发布仍待验，datacube保持PAUSED。
 
 **2026-10-05 正式启动器续验：** 未改DataCube.exe/cfg/modules，在外置启动前home断言与回环拒绝更新代理下，原生完成两页中文离线SQL编辑、正常关闭、同profile显式恢复及再关闭，限定6/6通过。实际draft UUID/字节不变，workspace A/B顺序、首项和55编辑位置吻合；父launcher两次exit0，JVM shutdown且自有进程消失。根91原件/15状态/18截图、worker26原件、旧1087原件核对，独立复核与实际镜像3SHA通过；产品未改，无新Gradle/buildSrc/image声明。详见[启动器账本](../superpowers/verification/2026-10-05-formal-launcher-acceptance.md)。闪屏视觉、无Gate默认运行、安装升级/签名/CI结果/其他完整桌面与发布仍待验，M8不称完成。本轮fa0754b已合并main9a51384，main旧1087/worker26/根91原件、三实际镜像SHA和两轮草稿独立解码复验通过。既有datacube保持PAUSED；下方正式launcher未验描述属于历史，不覆盖本轮限定证据。
