@@ -1,5 +1,7 @@
 # DataCube 产品成熟度推进计划
 
+**2026-10-06 正式发布读回：** 维护者已明确授权推送、删除旧验收 tag 并以正式版本 tag 触发自动打包；v3.2.9 指向 main 0f6ba02656fcf3752b180514c72e79151a3320df，GitHub [Build and Release 37448530784](https://github.com/Clownking99/data-cube/actions/runs/37448530784) 成功，[Release](https://github.com/Clownking99/data-cube/releases/tag/v3.2.9) 已发布 ZIP 和 EXE。本轮只读再次核实两资产 uploaded、远端 main/tag 指向一致。下方“不推送/不打 tag/未发布”是各轮历史边界，已被维护者后续明确授权覆盖；自动打包发布成功不代替安装升级、生产签名或完整 M8 验收。
+
 2026-10-05 最新工程修复：[Windows CI 短路径修复与独立复验](../verification/2026-10-05-windows-ci-paths-review.md)。28项托管Windows失败已通过真实8.3别名红绿定位，修正更新路径误判、规范交接及SQL夹具身份；真实junction仍拒绝。实现d5dd127，main代码14875d7；两阶段定向180、全量3938 passed / 3 live skipped、强制buildSrc8、jpackageImage/镜像隔离/仅驱动发现通过。托管Verify 37319792169的Windows单测/jlink、Linux、Redis、wrapper全部通过，完整CI与原件见账本。新runtime不复用旧原生证据；真库跳过仍未验，安装升级/签名/完整桌面及M8发布仍待验。按维护者现有授权推送main并保留既有tag指向，datacube保持PAUSED，无新功能范围。
 
 2026-10-05 最新交付：[工作区原生退出限定矩阵8/8完成](../verification/2026-10-05-workspace-native-escape-completion.md)。真实Esc取消后旧字节不变、准入/runner恢复；同profile原生Retry保持冻结布局并正常释放资源/锁；main新profileRetry亦已完成。仅证据/文档、无新工程测试声明；旧1038原件核验不变。M8完整发布仍待验，datacube保持PAUSED，不自动下一轮。下方7/8和待Esc为历史。

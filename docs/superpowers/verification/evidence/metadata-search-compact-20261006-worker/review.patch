@@ -1,0 +1,204 @@
+diff --git a/src/com/datacube/fx/SchemaMetadataSearchDialog.java b/src/com/datacube/fx/SchemaMetadataSearchDialog.java
+index b92cf53..5ae4186 100644
+--- a/src/com/datacube/fx/SchemaMetadataSearchDialog.java
++++ b/src/com/datacube/fx/SchemaMetadataSearchDialog.java
+@@ -44,6 +44,7 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
+     private final PauseTransition deadline = new PauseTransition(Duration.seconds(SchemaMetadataSearch.TIMEOUT_SECONDS));
+     private volatile Pending active;
+     private boolean closeCleaned;
++    private Runnable removeFocusListener = () -> {};
+     private Request published;
+ 
+     SchemaMetadataSearchDialog(ConnConfig target, String schema, Window owner, FxTaskRunner runner, Loader loader, BooleanSupplier allowed) {
+@@ -63,7 +64,7 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
+         cancelRead.setId("metadata-search-cancel-read"); cancelRead.setOnAction(event -> abandon(
+                 "已请求取消；等待驱动释放读取资源。", "读取已结束，未采用已取消请求的结果；可重新查找。"));
+         FlowPane controls = new FlowPane(8,6,new Label("匹配来源："),mode,search,cancelRead);
+-        list.setId("metadata-search-results"); list.setPrefHeight(200);
++        list.setId("metadata-search-results"); list.setPrefHeight(200); list.setMinHeight(120);
+         list.setPlaceholder(new Label("未读取匹配；不会扫描其他 Schema 或连接"));
+         list.setCellFactory(view -> new ListCell<>() {
+             @Override protected void updateItem(Hit item, boolean empty) {
+@@ -82,8 +83,25 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
+             actions.add(button); commands.getChildren().add(button);
+         }
+         VBox content = new VBox(8,identity,query,controls,list,preview,status,commands);
+-        content.setPadding(new Insets(12)); content.setPrefSize(660,560); VBox.setVgrow(list,Priority.ALWAYS);
+-        dialog.getDialogPane().setContent(content); dialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
++        content.setPadding(new Insets(12)); content.setPrefWidth(660); VBox.setVgrow(list,Priority.ALWAYS);
++        // Preserve a useful results area; overflowing guidance and commands remain reachable.
++        content.setMinHeight(Region.USE_PREF_SIZE);
++        ScrollPane scroll = new ScrollPane(content);
++        scroll.setId("metadata-search-scroll"); scroll.setFitToWidth(true); scroll.setFitToHeight(true);
++        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER); scroll.setPrefViewportWidth(660); scroll.setPrefViewportHeight(560);
++        dialog.getDialogPane().setContent(scroll); dialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
++        dialog.setOnShowing(event -> {
++            var scene=dialog.getDialogPane().getScene();
++            javafx.beans.value.ChangeListener<javafx.scene.Node> listener=(obs,before,focused) -> reveal(scroll,content,focused);
++            removeFocusListener.run(); scene.focusOwnerProperty().addListener(listener);
++            removeFocusListener=() -> scene.focusOwnerProperty().removeListener(listener);
++        });
++        scroll.viewportBoundsProperty().addListener((obs,before,after) -> {
++            if (before.getWidth()==after.getWidth() && before.getHeight()==after.getHeight()) return;
++            Platform.runLater(() -> {
++                if (!closed.get() && scroll.getScene()!=null) reveal(scroll,content,scroll.getScene().getFocusOwner());
++            });
++        });
+         dialog.setResultConverter(button -> null);
+         dialog.setOnHidden(event -> close()); dialog.setOnShown(event -> query.requestFocus());
+         query.textProperty().addListener(ignored -> changed()); mode.valueProperty().addListener(ignored -> changed());
+@@ -95,12 +113,29 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
+         });
+         dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED,event -> {
+             if (event.getCode()==KeyCode.F && event.isControlDown() && !event.isAltDown() && !event.isShiftDown() && !event.isMetaDown()) {
+-                query.requestFocus(); query.selectAll(); event.consume();
++                query.requestFocus(); query.selectAll(); reveal(scroll,content,query); event.consume();
+             }
+         });
+         // Enter in the query explicitly searches; it never confirms a database action.
+         query.setOnAction(event -> { submit(); event.consume(); }); buttons();
+     }
++    private static void reveal(ScrollPane scroll, VBox content, javafx.scene.Node focused) {
++        if (focused==null || !isWithin(focused,content)) return;
++        scroll.layout();
++        var viewport=scroll.lookup(".viewport");
++        if (viewport==null) return;
++        var bounds=focused.localToScene(focused.getBoundsInLocal());
++        var visible=viewport.localToScene(viewport.getBoundsInLocal());
++        double range=content.getHeight()-visible.getHeight();
++        if (range<=0) return;
++        double delta=bounds.getMinY()<visible.getMinY() ? bounds.getMinY()-visible.getMinY()
++                : bounds.getMaxY()>visible.getMaxY() ? bounds.getMaxY()-visible.getMaxY() : 0;
++        scroll.setVvalue(Math.max(0,Math.min(1,scroll.getVvalue()+delta/range)));
++    }
++    private static boolean isWithin(javafx.scene.Node node, javafx.scene.Node ancestor) {
++        for (var current=node; current!=null; current=current.getParent()) if(current==ancestor) return true;
++        return false;
++    }
+     Dialog<Selection> dialog() { return dialog; }
+     Optional<Selection> showAndWait() { return dialog.showAndWait(); }
+     /** Completes on FX after close and physical read/cancel completion; never waits on FX. */
+@@ -186,7 +221,7 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
+         if (!closed.compareAndSet(false,true)) return;
+         Pending pending=active; if (pending!=null) { pending.control.requestCancellation(); cancelDriver(pending); }
+         Runnable cleanup=() -> {
+-            deadline.stop(); published=null; list.getItems().clear(); preview.clear(); buttons(); dialog.close();
++            removeFocusListener.run(); deadline.stop(); published=null; list.getItems().clear(); preview.clear(); buttons(); dialog.close();
+             // Background close must publish any cancel task before FX can release ownership.
+             closeCleaned=true; completeDisposal();
+         };
+diff --git a/test/com/datacube/fx/SchemaMetadataSearchDialogTest.java b/test/com/datacube/fx/SchemaMetadataSearchDialogTest.java
+index c1427c8..6756b15 100644
+--- a/test/com/datacube/fx/SchemaMetadataSearchDialogTest.java
++++ b/test/com/datacube/fx/SchemaMetadataSearchDialogTest.java
+@@ -278,6 +278,110 @@ class SchemaMetadataSearchDialogTest {
+             } finally { FxUiTestSupport.call(() -> { d.close(); return null; }); }
+         }
+     }
++    @org.junit.jupiter.params.ParameterizedTest
++    @org.junit.jupiter.params.provider.CsvSource({"light,false","dark,false","light,true","dark,true"})
++    void compactWindowKeepsControlsReachableWithLongTargetAndStatus(String theme, boolean longText) throws Exception {
++        try (var runner=new FxTaskRunner()) {
++            var loaded=new CountDownLatch(1); var calls=new AtomicInteger();
++            var d=FxUiTestSupport.call(() -> {
++                var target=longText ? new ConnConfig("synthetic", "长连接名称".repeat(80), DbType.POSTGRESQL,"invalid.example",1,"db","u","",Map.of()) : target();
++                var view=new SchemaMetadataSearchDialog(target,"s",null,runner,(r,c) -> {calls.incrementAndGet(); return result();},() -> true);
++                view.dialog().show(); listen(view,loaded); text(view).setText("customer"); button(view,"submit").fire();
++                var pane=view.dialog().getDialogPane();
++                pane.getScene().getStylesheets().setAll(ThemeManager.class.getResource("theme-base.css").toExternalForm(),
++                        ThemeManager.class.getResource("theme-"+theme+".css").toExternalForm());
++                var stage=(javafx.stage.Stage)pane.getScene().getWindow(); stage.setWidth(640); stage.setHeight(480);
++                return view;
++            });
++            try {
++                assertTrue(loaded.await(5,TimeUnit.SECONDS));
++                FxUiTestSupport.call(() -> {
++                    var pane=d.dialog().getDialogPane();
++                    if(longText) ((Label)pane.lookup("#metadata-search-status")).setText("较长状态说明".repeat(40));
++                    list(d).getSelectionModel().selectFirst(); pane.applyCss(); pane.layout();
++                    assertTrue(pane.getScene().getWindow().getWidth()<=641); assertTrue(pane.getScene().getWindow().getHeight()<=481);
++                    for(String id:List.of("query","mode","submit","results","preview","select","data","ddl")) {
++                        var control=(Control)pane.lookup("#metadata-search-"+id);
++                        assertFalse(control.isDisabled()); control.requestFocus(); pane.layout();
++                        assertVisible(d,control);
++                    }
++                    assertTrue(list(d).getHeight()>=120,"results retain useful height");
++                    pane.fireEvent(new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_PRESSED,"","",javafx.scene.input.KeyCode.F,false,true,false,false));
++                    pane.layout(); assertSame(text(d),pane.getScene().getFocusOwner()); assertVisible(d,text(d));
++                    var scroll=(ScrollPane)pane.lookup("#metadata-search-scroll"); scroll.setVvalue(1); pane.layout();
++                    assertSame(text(d),pane.getScene().getFocusOwner());
++                    pane.fireEvent(new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_PRESSED,"","",javafx.scene.input.KeyCode.F,false,true,false,false));
++                    pane.layout(); assertVisible(d,text(d));
++                    assertEquals(1,calls.get(),"focus and Ctrl+F never read or execute"); assertNull(d.dialog().getResult());
++                    var close=pane.lookupButton(ButtonType.CANCEL);
++                    var closeBounds=close.localToScene(close.getBoundsInLocal());
++                    assertTrue(closeBounds.getMaxY()<=pane.getScene().getHeight()+1,"dialog cancel stays in window");
++                    return null;
++                });
++            } finally { FxUiTestSupport.call(() -> { d.close(); return null; }); }
++        }
++    }
++    @Test void resizingKeepsExistingActionFocusVisibleAndCancelOutsideScroll() throws Exception {
++        try(var runner=new FxTaskRunner()) {
++            var loaded=new CountDownLatch(1);
++            var d=FxUiTestSupport.call(() -> {
++                var view=new SchemaMetadataSearchDialog(target(),"s",null,runner,(r,c) -> result(),() -> true);
++                view.dialog().show(); listen(view,loaded); text(view).setText("customer"); button(view,"submit").fire(); return view;
++            });
++            try {
++                assertTrue(loaded.await(5,TimeUnit.SECONDS));
++                FxUiTestSupport.call(() -> {
++                    list(d).getSelectionModel().selectFirst(); button(d,"ddl").requestFocus();
++                    var pane=d.dialog().getDialogPane(); var stage=(javafx.stage.Stage)pane.getScene().getWindow();
++                    stage.setWidth(640); stage.setHeight(480); pane.applyCss(); pane.layout(); return null;
++                });
++                awaitLayoutPulses();
++                FxUiTestSupport.call(() -> {
++                    var pane=d.dialog().getDialogPane(); pane.layout(); assertSame(button(d,"ddl"),pane.getScene().getFocusOwner());
++                    assertVisible(d,button(d,"ddl"));
++                    var scroll=(ScrollPane)pane.lookup("#metadata-search-scroll"); scroll.setVvalue(0); pane.layout();
++                    assertEquals(0,scroll.getVvalue(),"manual scrolling must not be pulled back to focused action");
++                    pane.lookupButton(ButtonType.CANCEL).requestFocus();
++                    assertSame(pane.lookupButton(ButtonType.CANCEL),pane.getScene().getFocusOwner()); return null;
++                });
++            } finally { FxUiTestSupport.call(() -> {d.close();return null;}); }
++        }
++    }
++    @Test void enterInQueryOnlyExplicitlySearchesAndNeverChoosesAnAction() throws Exception {
++        try(var runner=new FxTaskRunner()) {
++            var loaded=new CountDownLatch(1); var calls=new AtomicInteger();
++            var d=FxUiTestSupport.call(() -> {
++                var view=new SchemaMetadataSearchDialog(target(),"s",null,runner,(r,c) -> {calls.incrementAndGet();return result();},() -> true);
++                view.dialog().show(); listen(view,loaded); text(view).setText("customer"); assertEquals(0,calls.get());
++                text(view).fireEvent(new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_PRESSED,"","",javafx.scene.input.KeyCode.ENTER,false,false,false,false));
++                text(view).fireEvent(new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_RELEASED,"","",javafx.scene.input.KeyCode.ENTER,false,false,false,false));
++                return view;
++            });
++            try { assertTrue(loaded.await(5,TimeUnit.SECONDS)); FxUiTestSupport.call(() -> {
++                assertEquals(1,calls.get()); assertNull(d.dialog().getResult()); assertTrue(d.dialog().isShowing()); return null;
++            }); } finally { FxUiTestSupport.call(() -> {d.close();return null;}); }
++        }
++    }
++    private static void awaitLayoutPulses() throws Exception {
++        var ready=new CountDownLatch(1);
++        FxUiTestSupport.call(() -> {
++            new javafx.animation.AnimationTimer() {
++                int frames;
++                @Override public void handle(long now) { if(++frames>=3) {stop();ready.countDown();} }
++            }.start(); return null;
++        });
++        assertTrue(ready.await(5,TimeUnit.SECONDS),"layout pulses timed out");
++    }
++    private static void assertVisible(SchemaMetadataSearchDialog d, javafx.scene.Node control) {
++        var pane=d.dialog().getDialogPane(); var scroll=(ScrollPane)pane.lookup("#metadata-search-scroll");
++        var viewport=scroll==null ? pane : scroll.lookup(".viewport");
++        var visible=scroll==null ? new javafx.geometry.BoundingBox(0,0,pane.getScene().getWidth(),pane.getScene().getHeight())
++                : viewport.localToScene(viewport.getBoundsInLocal());
++        var bounds=control.localToScene(control.getBoundsInLocal());
++        assertTrue(bounds.getMinX()>=visible.getMinX()-1 && bounds.getMaxX()<=visible.getMaxX()+1
++                && bounds.getMinY()>=visible.getMinY()-1 && bounds.getMaxY()<=visible.getMaxY()+1,
++                control.getId()+" must be visible: "+bounds+" viewport "+visible);
++    }
+     private ConnConfig target() { return new ConnConfig("synthetic", "synthetic", DbType.POSTGRESQL,"invalid.example",1,"db","u","",Map.of()); }
+     private Result result() { return new Result(List.of(new Hit(new TableInfo("s","orders",TableInfo.Kind.TABLE,null),Mode.COLUMN_NAME,"customer_id","customer_id")),false); }
+     @Test void typingNeverReadsAndEachExplicitResultActionKeepsIdentity() throws Exception {
