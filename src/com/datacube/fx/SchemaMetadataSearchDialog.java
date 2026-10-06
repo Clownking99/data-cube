@@ -44,6 +44,7 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
     private final PauseTransition deadline = new PauseTransition(Duration.seconds(SchemaMetadataSearch.TIMEOUT_SECONDS));
     private volatile Pending active;
     private boolean closeCleaned;
+    private Runnable removeFocusListener = () -> {};
     private Request published;
 
     SchemaMetadataSearchDialog(ConnConfig target, String schema, Window owner, FxTaskRunner runner, Loader loader, BooleanSupplier allowed) {
@@ -63,7 +64,7 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
         cancelRead.setId("metadata-search-cancel-read"); cancelRead.setOnAction(event -> abandon(
                 "已请求取消；等待驱动释放读取资源。", "读取已结束，未采用已取消请求的结果；可重新查找。"));
         FlowPane controls = new FlowPane(8,6,new Label("匹配来源："),mode,search,cancelRead);
-        list.setId("metadata-search-results"); list.setPrefHeight(200);
+        list.setId("metadata-search-results"); list.setPrefHeight(200); list.setMinHeight(120);
         list.setPlaceholder(new Label("未读取匹配；不会扫描其他 Schema 或连接"));
         list.setCellFactory(view -> new ListCell<>() {
             @Override protected void updateItem(Hit item, boolean empty) {
@@ -82,8 +83,25 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
             actions.add(button); commands.getChildren().add(button);
         }
         VBox content = new VBox(8,identity,query,controls,list,preview,status,commands);
-        content.setPadding(new Insets(12)); content.setPrefSize(660,560); VBox.setVgrow(list,Priority.ALWAYS);
-        dialog.getDialogPane().setContent(content); dialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
+        content.setPadding(new Insets(12)); content.setPrefWidth(660); VBox.setVgrow(list,Priority.ALWAYS);
+        // Preserve a useful results area; overflowing guidance and commands remain reachable.
+        content.setMinHeight(Region.USE_PREF_SIZE);
+        ScrollPane scroll = new ScrollPane(content);
+        scroll.setId("metadata-search-scroll"); scroll.setFitToWidth(true); scroll.setFitToHeight(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER); scroll.setPrefViewportWidth(660); scroll.setPrefViewportHeight(560);
+        dialog.getDialogPane().setContent(scroll); dialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
+        dialog.setOnShowing(event -> {
+            var scene=dialog.getDialogPane().getScene();
+            javafx.beans.value.ChangeListener<javafx.scene.Node> listener=(obs,before,focused) -> reveal(scroll,content,focused);
+            removeFocusListener.run(); scene.focusOwnerProperty().addListener(listener);
+            removeFocusListener=() -> scene.focusOwnerProperty().removeListener(listener);
+        });
+        scroll.viewportBoundsProperty().addListener((obs,before,after) -> {
+            if (before.getWidth()==after.getWidth() && before.getHeight()==after.getHeight()) return;
+            Platform.runLater(() -> {
+                if (!closed.get() && scroll.getScene()!=null) reveal(scroll,content,scroll.getScene().getFocusOwner());
+            });
+        });
         dialog.setResultConverter(button -> null);
         dialog.setOnHidden(event -> close()); dialog.setOnShown(event -> query.requestFocus());
         query.textProperty().addListener(ignored -> changed()); mode.valueProperty().addListener(ignored -> changed());
@@ -95,11 +113,28 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
         });
         dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED,event -> {
             if (event.getCode()==KeyCode.F && event.isControlDown() && !event.isAltDown() && !event.isShiftDown() && !event.isMetaDown()) {
-                query.requestFocus(); query.selectAll(); event.consume();
+                query.requestFocus(); query.selectAll(); reveal(scroll,content,query); event.consume();
             }
         });
         // Enter in the query explicitly searches; it never confirms a database action.
         query.setOnAction(event -> { submit(); event.consume(); }); buttons();
+    }
+    private static void reveal(ScrollPane scroll, VBox content, javafx.scene.Node focused) {
+        if (focused==null || !isWithin(focused,content)) return;
+        scroll.layout();
+        var viewport=scroll.lookup(".viewport");
+        if (viewport==null) return;
+        var bounds=focused.localToScene(focused.getBoundsInLocal());
+        var visible=viewport.localToScene(viewport.getBoundsInLocal());
+        double range=content.getHeight()-visible.getHeight();
+        if (range<=0) return;
+        double delta=bounds.getMinY()<visible.getMinY() ? bounds.getMinY()-visible.getMinY()
+                : bounds.getMaxY()>visible.getMaxY() ? bounds.getMaxY()-visible.getMaxY() : 0;
+        scroll.setVvalue(Math.max(0,Math.min(1,scroll.getVvalue()+delta/range)));
+    }
+    private static boolean isWithin(javafx.scene.Node node, javafx.scene.Node ancestor) {
+        for (var current=node; current!=null; current=current.getParent()) if(current==ancestor) return true;
+        return false;
     }
     Dialog<Selection> dialog() { return dialog; }
     Optional<Selection> showAndWait() { return dialog.showAndWait(); }
@@ -186,7 +221,7 @@ final class SchemaMetadataSearchDialog implements AutoCloseable {
         if (!closed.compareAndSet(false,true)) return;
         Pending pending=active; if (pending!=null) { pending.control.requestCancellation(); cancelDriver(pending); }
         Runnable cleanup=() -> {
-            deadline.stop(); published=null; list.getItems().clear(); preview.clear(); buttons(); dialog.close();
+            removeFocusListener.run(); deadline.stop(); published=null; list.getItems().clear(); preview.clear(); buttons(); dialog.close();
             // Background close must publish any cancel task before FX can release ownership.
             closeCleaned=true; completeDisposal();
         };

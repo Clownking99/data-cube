@@ -278,6 +278,121 @@ class SchemaMetadataSearchDialogTest {
             } finally { FxUiTestSupport.call(() -> { d.close(); return null; }); }
         }
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"light,false","dark,false","light,true","dark,true"})
+    void compactWindowKeepsControlsReachableWithLongTargetAndStatus(String theme, boolean longText) throws Exception {
+        try (var runner=new FxTaskRunner()) {
+            var loaded=new CountDownLatch(1); var calls=new AtomicInteger();
+            var d=FxUiTestSupport.call(() -> {
+                var target=longText ? new ConnConfig("synthetic", "长连接名称".repeat(80), DbType.POSTGRESQL,"invalid.example",1,"db","u","",Map.of()) : target();
+                var view=new SchemaMetadataSearchDialog(target,"s",null,runner,(r,c) -> {calls.incrementAndGet(); return result();},() -> true);
+                view.dialog().show(); listen(view,loaded); text(view).setText("customer"); button(view,"submit").fire();
+                var pane=view.dialog().getDialogPane();
+                pane.getScene().getStylesheets().setAll(ThemeManager.class.getResource("theme-base.css").toExternalForm(),
+                        ThemeManager.class.getResource("theme-"+theme+".css").toExternalForm());
+                var stage=(javafx.stage.Stage)pane.getScene().getWindow(); stage.setWidth(640); stage.setHeight(480);
+                return view;
+            });
+            try {
+                assertTrue(loaded.await(5,TimeUnit.SECONDS));
+                FxUiTestSupport.call(() -> {
+                    var pane=d.dialog().getDialogPane();
+                    if(longText) ((Label)pane.lookup("#metadata-search-status")).setText("较长状态说明".repeat(40));
+                    list(d).getSelectionModel().selectFirst(); pane.applyCss(); pane.layout();
+                    assertTrue(pane.getScene().getWindow().getWidth()<=641); assertTrue(pane.getScene().getWindow().getHeight()<=481);
+                    for(String id:List.of("query","mode","submit","results","preview","select","data","ddl")) {
+                        var control=(Control)pane.lookup("#metadata-search-"+id);
+                        assertFalse(control.isDisabled()); control.requestFocus(); pane.layout();
+                        assertVisible(d,control);
+                    }
+                    assertTrue(list(d).getHeight()>=120,"results retain useful height");
+                    pane.fireEvent(new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_PRESSED,"","",javafx.scene.input.KeyCode.F,false,true,false,false));
+                    pane.layout(); assertSame(text(d),pane.getScene().getFocusOwner()); assertVisible(d,text(d));
+                    var scroll=(ScrollPane)pane.lookup("#metadata-search-scroll"); scroll.setVvalue(1); pane.layout();
+                    assertSame(text(d),pane.getScene().getFocusOwner());
+                    pane.fireEvent(new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_PRESSED,"","",javafx.scene.input.KeyCode.F,false,true,false,false));
+                    pane.layout(); assertVisible(d,text(d));
+                    assertEquals(1,calls.get(),"focus and Ctrl+F never read or execute"); assertNull(d.dialog().getResult());
+                    var close=pane.lookupButton(ButtonType.CANCEL);
+                    var closeBounds=close.localToScene(close.getBoundsInLocal());
+                    assertTrue(closeBounds.getMaxY()<=pane.getScene().getHeight()+1,"dialog cancel stays in window");
+                    return null;
+                });
+            } finally { FxUiTestSupport.call(() -> { d.close(); return null; }); }
+        }
+    }
+    @Test void resizingKeepsExistingActionFocusVisibleAndCancelOutsideScroll() throws Exception {
+        try(var runner=new FxTaskRunner()) {
+            var loaded=new CountDownLatch(1);
+            var d=FxUiTestSupport.call(() -> {
+                var view=new SchemaMetadataSearchDialog(target(),"s",null,runner,(r,c) -> result(),() -> true);
+                view.dialog().show(); listen(view,loaded); text(view).setText("customer"); button(view,"submit").fire(); return view;
+            });
+            try {
+                assertTrue(loaded.await(5,TimeUnit.SECONDS));
+                FxUiTestSupport.call(() -> {
+                    list(d).getSelectionModel().selectFirst(); button(d,"ddl").requestFocus();
+                    var pane=d.dialog().getDialogPane(); var stage=(javafx.stage.Stage)pane.getScene().getWindow();
+                    stage.setWidth(640); stage.setHeight(480); pane.applyCss(); pane.layout(); return null;
+                });
+                awaitLayoutPulses();
+                FxUiTestSupport.call(() -> {
+                    var pane=d.dialog().getDialogPane(); pane.layout(); assertSame(button(d,"ddl"),pane.getScene().getFocusOwner());
+                    assertVisible(d,button(d,"ddl"));
+                    var scroll=(ScrollPane)pane.lookup("#metadata-search-scroll"); scroll.setVvalue(0); pane.layout();
+                    return null;
+                });
+                awaitLayoutPulses();
+                FxUiTestSupport.call(() -> {
+                    var pane=d.dialog().getDialogPane(); var scroll=(ScrollPane)pane.lookup("#metadata-search-scroll");
+                    assertEquals(0,scroll.getVvalue(),"manual scrolling must not be pulled back to focused action");
+                    pane.lookupButton(ButtonType.CANCEL).requestFocus();
+                    return null;
+                });
+                awaitLayoutPulses();
+                FxUiTestSupport.call(() -> {
+                    var pane=d.dialog().getDialogPane();
+                    assertSame(pane.lookupButton(ButtonType.CANCEL),pane.getScene().getFocusOwner());
+                    assertEquals(0,((ScrollPane)pane.lookup("#metadata-search-scroll")).getVvalue()); return null;
+                });
+            } finally { FxUiTestSupport.call(() -> {d.close();return null;}); }
+        }
+    }
+    @Test void enterInQueryOnlyExplicitlySearchesAndNeverChoosesAnAction() throws Exception {
+        try(var runner=new FxTaskRunner()) {
+            var loaded=new CountDownLatch(1); var calls=new AtomicInteger();
+            var d=FxUiTestSupport.call(() -> {
+                var view=new SchemaMetadataSearchDialog(target(),"s",null,runner,(r,c) -> {calls.incrementAndGet();return result();},() -> true);
+                view.dialog().show(); listen(view,loaded); text(view).setText("customer"); assertEquals(0,calls.get());
+                text(view).fireEvent(new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_PRESSED,"","",javafx.scene.input.KeyCode.ENTER,false,false,false,false));
+                text(view).fireEvent(new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_RELEASED,"","",javafx.scene.input.KeyCode.ENTER,false,false,false,false));
+                return view;
+            });
+            try { assertTrue(loaded.await(5,TimeUnit.SECONDS)); FxUiTestSupport.call(() -> {
+                assertEquals(1,calls.get()); assertNull(d.dialog().getResult()); assertTrue(d.dialog().isShowing()); return null;
+            }); } finally { FxUiTestSupport.call(() -> {d.close();return null;}); }
+        }
+    }
+    private static void awaitLayoutPulses() throws Exception {
+        var ready=new CountDownLatch(1);
+        FxUiTestSupport.call(() -> {
+            new javafx.animation.AnimationTimer() {
+                int frames;
+                @Override public void handle(long now) { if(++frames>=3) {stop();ready.countDown();} }
+            }.start(); return null;
+        });
+        assertTrue(ready.await(5,TimeUnit.SECONDS),"layout pulses timed out");
+    }
+    private static void assertVisible(SchemaMetadataSearchDialog d, javafx.scene.Node control) {
+        var pane=d.dialog().getDialogPane(); var scroll=(ScrollPane)pane.lookup("#metadata-search-scroll");
+        var viewport=scroll==null ? pane : scroll.lookup(".viewport");
+        var visible=scroll==null ? new javafx.geometry.BoundingBox(0,0,pane.getScene().getWidth(),pane.getScene().getHeight())
+                : viewport.localToScene(viewport.getBoundsInLocal());
+        var bounds=control.localToScene(control.getBoundsInLocal());
+        assertTrue(bounds.getMinX()>=visible.getMinX()-1 && bounds.getMaxX()<=visible.getMaxX()+1
+                && bounds.getMinY()>=visible.getMinY()-1 && bounds.getMaxY()<=visible.getMaxY()+1,
+                control.getId()+" must be visible: "+bounds+" viewport "+visible);
+    }
     private ConnConfig target() { return new ConnConfig("synthetic", "synthetic", DbType.POSTGRESQL,"invalid.example",1,"db","u","",Map.of()); }
     private Result result() { return new Result(List.of(new Hit(new TableInfo("s","orders",TableInfo.Kind.TABLE,null),Mode.COLUMN_NAME,"customer_id","customer_id")),false); }
     @Test void typingNeverReadsAndEachExplicitResultActionKeepsIdentity() throws Exception {
