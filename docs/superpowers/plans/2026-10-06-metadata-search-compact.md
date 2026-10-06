@@ -27,3 +27,5 @@
 C0：当前目标为验证并修复字段框小空间可达性；改动为新分支、本计划和任务下发；验证为 main/worktree HEAD 与授权范围干净；尚无本轮产品失败或通过；下一步建立红灯并独立审查。
 
 C1/C2：真实裁切与同焦点Ctrl+F红灯已复现并最小修复，具体审查返工见[独立账本](../verification/2026-10-06-metadata-search-compact-review.md)。产品58278f7；分支新定向103、全量3944 passed/3 live skipped、buildSrc8及image/root镜像审计通过。批准本地集成，main新复验仍待，不宣称原生/完整M8通过。
+
+C3/C4：本轮产品58278f7，证据af306bf，main合并194371a。main新定向103、全量3944 passed/3 live skipped、强制buildSrc8、jpackageImage与零连接镜像审计均通过，三产物SHA与分支一致，1040份worker原件main独立复核通过。工程目标完成；原生/安装升级/签名与完整M8仍待验。仅待最终证据提交、main推送及对应CI读回，不自动扩展范围或发新tag。

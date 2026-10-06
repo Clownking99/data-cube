@@ -36,3 +36,25 @@ red-real-states以正常mock查找和选择启用动作，四参数均红：普�
 原始失败、最终patch及源码快照保留。worker本地初始manifest含1123文件/64.5MB，其中Gradle binary报告缓存既不是测试结果XML也不是必要复现来源；root不删除原件，但从Git归档排除binary目录和仅反映本地全集的manifest.json，精确冻结1040份可审计日志/XML/命令/源码等（31946420 bytes），以raw-manifest.json为提交字节依据。两种集合边界明确，不宣称二进制缓存已入Git。root独立验证脚本/结果单独归档。
 
 下一步：完成精确暂存字节审计，合并main，在新的隔离目录产生main定向/全量/buildSrc/image证据；当时main未复验，不据分支通过替代。
+
+## C3 本地合并与 main 验证进行中
+
+分支证据af306bfda0456c6094b0867e1d4d15db8b7ad81a经1040份worker/15份协调原件实际Git blob审计，本地--no-ff合并为main194371ac688b3c30574aa833d13ae37b6e6f66e9。合并前main仍为起点且授权范围干净。main重新核实1040份原件字节和产品/src/test/resources/build/workflow树与58278f7一致。
+
+main新profile五组定向103/103、0skip，8tasks实际执行。随后clean全量已在另一profile实际启动；buildSrc和镜像尚待。协调命令最初用未设置的LASTEXITCODE检查退出，只完成汇总未启动全量，已确认无002目录/运行并独立正确启动；没有把未执行算通过，也未复用同名profile。
+
+本轮只取得工程/合成FX证据，不称原生键盘、小屏OS缩放、安装升级或完整M8验收。下一步完成main新验证与镜像比较，更新实际交接后推送main；v3.2.9保持发布时的0f6ba02，不移到本轮提交。
+
+## C4 main 本地交付完成
+
+main194371ac688b3c30574aa833d13ae37b6e6f66e9在新隔离profile完成：定向5 suites103/103、0skip；clean全量314 suites3947 total=3944 passed+3明确live skip、0失败/错误；强制buildSrc8/8，4tasks实际执行；jpackageImage14tasks实际执行成功。仅测试src存在既有unchecked提示，主源码Werror无失败；jlink的JEP493提示不是失败。
+
+独立main镜像审计通过：无test/fixture/profile/测试JVM选项泄漏、仅驱动发现connectCalls0。exe/cfg/modules三项长度和SHA与分支逐项一致（modules562E5C36…）。results.json汇总实际XML/镜像；main-worker-raw-audit.json确认1040份worker原件和Git字节一致、产品源码等同58278f7。主线程报告归档只保留该步实际执行任务的XML，移除runner顺带复制的未执行任务重复XML副本，日志/命令/退出码及所有实际任务报告保留，见report-selection.json；不把旧副本当新测试。
+
+本轮工程目标已完成：小窗口控件与操作可达、长文本可滚动、焦点随键盘/缩小可见、手动滚动不强拉、已有焦点Ctrl+F可返回查询，既有请求/目标/只读动作和取消/关闭契约未改。证据是mock与真实JavaFX合成窗口/事件，绝非原生输入、OS缩放或真库验收。
+
+仍待验：完整原生字段键盘/下游动作、OS缩放/多屏、完整AppShell FAILED_PARTIAL与在途恢复的原生矩阵、默认无Gate启动与闪屏视觉、真实安装升级/回退及生产签名，完整M8不称完成。本轮没有新数据库访问、安装、PR或外部联系。v3.2.9继续指向发布时0f6ba02，本轮不发新tag。
+
+下一步仅为提交最终账本与main新原件，按现有授权推送main并只读检查该提交的Verify。远端结果以交付答复中的实际GitHub run及本线程独占临时回执为准；本地通过不预判托管结果。后续只文档/证据提交不改变已复验产品，无需重复工程测试。datacube跟进保持PAUSED，不自动启动下轮。
+
+文档收尾首轮M8行匹配命中阶段表与状态表两行，被守卫中止且路线图未写；随后精确限定状态行完成，不改阶段定义或已验证产品。
