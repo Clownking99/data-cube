@@ -1,0 +1,63 @@
+{
+  "sourceFilesVerified": 5,
+  "imageExecuted": true,
+  "tests": [
+    {
+      "name": "005-final-targeted-synchronized",
+      "task": ":test",
+      "head": "3494b670f82af1257bc63c13de91ae8fee2d29e9",
+      "tests": 207,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 19,
+      "skips": [],
+      "freshXml": true,
+      "passed": 207
+    },
+    {
+      "name": "006-full",
+      "task": ":test",
+      "head": "3494b670f82af1257bc63c13de91ae8fee2d29e9",
+      "tests": 4038,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "suites": 316,
+      "skips": [
+        {
+          "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "class": "com.datacube.redis.RedisLiveIntegrationTest",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "name": "oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "freshXml": true,
+      "passed": 4035
+    },
+    {
+      "name": "007-buildsrc",
+      "task": ":buildSrc:test",
+      "head": "3494b670f82af1257bc63c13de91ae8fee2d29e9",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 1,
+      "skips": [],
+      "freshXml": true,
+      "passed": 8
+    }
+  ],
+  "imageRun": "008-image",
+  "utc": "2026-10-07T13:00:21.9175779Z"
+}
