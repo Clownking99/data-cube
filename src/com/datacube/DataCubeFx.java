@@ -2,16 +2,14 @@ package com.datacube;
 
 import com.datacube.fx.AppShell;
 import com.datacube.fx.BrandLogo;
-import com.datacube.fx.ShutdownQuarantine;
+import com.datacube.fx.WindowShutdownController;
 import com.datacube.fx.SplashScreen;
 import javafx.animation.PauseTransition;
 import javafx.application.Application;
-import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.stage.Stage;
-import javafx.stage.WindowEvent;
 import javafx.util.Duration;
 
 public class DataCubeFx extends Application {
@@ -26,7 +24,9 @@ public class DataCubeFx extends Application {
 
             AppShell appShell = new AppShell();
 
-            Scene scene = new Scene(appShell.getRoot(), 1200, 800);
+            var shutdownWindow = new WindowShutdownController(primaryStage, appShell.getRoot(),
+                    appShell::isRunning, appShell::shutdownAsync);
+            Scene scene = new Scene(shutdownWindow.getRoot(), 1200, 800);
             appShell.getThemeManager().register(scene);
             // 全局窗口钩子：二级弹窗（关于/设置/导出/更新/Alert）自动跟随主题（含原生标题栏）
             appShell.getThemeManager().installWindowHook();
@@ -35,42 +35,6 @@ public class DataCubeFx extends Application {
             primaryStage.setMinWidth(900);
             primaryStage.setMinHeight(600);
             BrandLogo.applyIcons(primaryStage);
-
-            // 窗口关闭事件：迁移任务进行中提示确认
-            ShutdownQuarantine quarantine = new ShutdownQuarantine();
-            primaryStage.setOnCloseRequest((WindowEvent e) -> {
-                e.consume();
-                if (quarantine.isQuarantined()) return;
-                if (appShell.isRunning()) {
-                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                            "迁移任务正在执行中，强制关闭可能导致数据不完整。\n确定关闭？",
-                            ButtonType.YES, ButtonType.NO);
-                    alert.setHeaderText(null);
-                    alert.showAndWait();
-                    if (alert.getResult() != ButtonType.YES) {
-                        return;
-                    }
-                }
-                if (!quarantine.begin()) return;
-                appShell.getRoot().setDisable(true);
-                appShell.shutdownAsync().whenComplete((outcome, failure) -> Platform.runLater(() -> {
-                    ShutdownQuarantine.Action action = quarantine.settle(outcome, failure);
-                    if (failure != null) {
-                        System.err.println("[DataCube] shutdown failure: " + failure);
-                        failure.printStackTrace(System.err);
-                    }
-                    if (action == ShutdownQuarantine.Action.RECOVER) {
-                        appShell.getRoot().setDisable(false);
-                        return;
-                    }
-                    if (action == ShutdownQuarantine.Action.FATAL) {
-                        System.err.println("[DataCube] shutdown partially failed; application is not retryable");
-                        return;
-                    }
-                    primaryStage.setOnCloseRequest(null);
-                    primaryStage.close();
-                }));
-            });
 
             // 闪屏最短展示后淡出，再显示主窗口并触发后台更新自检（失败不打扰用户）
             final SplashScreen splashRef = splash;

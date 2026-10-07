@@ -30,7 +30,23 @@ class AppShellGridShutdownTest {
             CompletableFuture<?> settled=(CompletableFuture<?>)field(save,"settled");
             String status=FxUiTestSupport.call(()->((Label)field(h.pane,"statusLabel")).getText());
             long started=System.nanoTime();
-            var closing=FxUiTestSupport.call(h.shell::shutdownAsync).toCompletableFuture();
+            javafx.stage.Stage exitWindow=null;
+            var shutdownRequests=new java.util.concurrent.atomic.AtomicInteger();
+            CompletableFuture<ShutdownOutcome> closing;
+            if(timeout) {
+                var requested=new java.util.concurrent.atomic.AtomicReference<CompletableFuture<ShutdownOutcome>>();
+                exitWindow=FxUiTestSupport.call(()->{
+                    var window=new javafx.stage.Stage();h.shell.getRoot().getScene().setRoot(new javafx.scene.layout.StackPane());
+                    var controller=new WindowShutdownController(window,h.shell.getRoot(),h.shell::isRunning,()->{
+                        shutdownRequests.incrementAndGet();var result=h.shell.shutdownAsync();requested.set(result.toCompletableFuture());return result;
+                    });
+                    var scene=new Scene(controller.getRoot(),900,600);scene.getStylesheets().setAll(ThemeManager.class.getResource("theme-base.css").toExternalForm(),
+                            ThemeManager.class.getResource("theme-dark.css").toExternalForm());
+                    window.setScene(scene);window.show();window.setWidth(900);window.setHeight(600);DataCubeFxShutdownContractTest.closeRequest(window);return window;
+                });closing=requested.get();
+            } else closing=FxUiTestSupport.call(h.shell::shutdownAsync).toCompletableFuture();
+            final javafx.stage.Stage feedbackWindow=exitWindow;
+            try {
             assertTrue(h.interrupted.await(3,TimeUnit.SECONDS),"production grid close must interrupt JDBC");
             assertTrue(warning.warned.await(8,TimeUnit.SECONDS),"unmodified default PT5S warning");
             Object closeAttempt=FxUiTestSupport.call(()->field(h.coordinator,"current"));
@@ -44,16 +60,27 @@ class AppShellGridShutdownTest {
             assertEquals(blockedRow-1,h.jdbc.commits.get()); assertEquals(0,h.jdbc.rollbacks.get());
             if(timeout) {
                 assertEquals(ShutdownOutcome.FAILED_PARTIAL,closing.get(20,TimeUnit.SECONDS));
+                DataCubeFxShutdownContractTest.awaitLayoutPulses();
                 long millis=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);
                 assertTrue(millis>=14500,"actual awaitClose must wait fifteen seconds: "+millis);
                 h.assertOwned(); assertFalse(settled.isDone());
+                FxUiTestSupport.call(()->{
+                    assertEquals(900,feedbackWindow.getWidth(),1);assertEquals(600,feedbackWindow.getHeight(),1);
+                    DataCubeFxShutdownContractTest.assertFailureFeedback(feedbackWindow,h.shell.getRoot());
+                    DataCubeFxShutdownContractTest.closeRequest(feedbackWindow);assertEquals(1,shutdownRequests.get());return null;
+                });
                 assertFalse((boolean)field(closeAttempt,"finalizerInvoked"),"fatal cleanup must not finalize active UI owner");
                 assertTrue(h.managed());
                 assertEquals(ShutdownOutcome.FAILED_PARTIAL,FxUiTestSupport.call(h.shell::shutdownAsync).toCompletableFuture().get(2,TimeUnit.SECONDS));
                 h.release.countDown(); settled.get(5,TimeUnit.SECONDS);
+                DataCubeFxShutdownContractTest.awaitLayoutPulses();
                 assertEquals(ShutdownOutcome.FAILED_PARTIAL,FxUiTestSupport.call(h.shell::shutdownAsync).toCompletableFuture().get(2,TimeUnit.SECONDS));
                 FxUiTestSupport.call(()->{assertFalse((boolean)field(closeAttempt,"finalizerInvoked"));assertTrue(h.tabs.getTabs().contains(h.tab));assertTrue(h.tab.isDisable());assertTrue(h.managed());return null;});
                 assertEquals(0,h.jdbc.connectionCloses.getFirst().get(),"late settlement still cannot start global teardown");
+                FxUiTestSupport.call(()->{
+                    DataCubeFxShutdownContractTest.assertFailureFeedback(feedbackWindow,h.shell.getRoot());
+                    DataCubeFxShutdownContractTest.closeRequest(feedbackWindow);assertEquals(1,shutdownRequests.get());return null;
+                });
                 assertTrue(millis<23000,"bounded actual guard settlement");
                 System.out.println("PHYSICAL_WAIT type="+type+" millis="+millis+" result=FAILED_PARTIAL fixtureCleanupNotYetStarted=true");
             } else {
@@ -76,6 +103,7 @@ class AppShellGridShutdownTest {
             });
             assertEquals(1,h.reads.get(),"no late page/refresh");
             System.out.println("SHELL_GRID type="+type+" blockedRow="+blockedRow+" timeout="+timeout+" executed="+h.jdbc.executedRows+" committed="+h.jdbc.committedRows+" rolledBack="+h.jdbc.rolledBackRows+" trace="+h.jdbc.trace);
+            } finally {if(feedbackWindow!=null)FxUiTestSupport.call(()->{feedbackWindow.setOnCloseRequest(null);feedbackWindow.close();return null;});}
         }
     }
     static final class Harness implements AutoCloseable {
