@@ -1,5 +1,7 @@
 # DataCube 产品成熟度推进计划
 
+2026-10-07 CI 跟进：收藏小窗口最终证据 bdf274c 已推送；Verify 37593098366 首次 Windows 旧概览排序测试发生 5 秒 FX 等待超时，Windows linked image 跳过，其他三任务成功。独立审查无确定根因；保留失败原件，同 SHA 失败任务只重跑一次，不改 timeout/断言。同 SHA 唯一一次重跑 attempt 2 四任务成功，Windows 单元测试和 linked image 实际通过；首次超时未复现但根因未知，仍为待诊断项。源码/测试/timeout未改。本次证据提交合并后的最终 SHA 另以新 Verify 回执核对，不预报结果。
+
 2026-10-07 最新产品：[SQL收藏小窗口修复](../verification/2026-10-07-favorites-compact-review.md)已main集成f5bc602并独立复验。真实双主题480/640窗口的取消/说明裁切已修复，滚动与焦点可达、SQL内部编辑及旧保存确认状态保留。分支/main各定向84、全量3997通过+3明确live跳过、强制buildSrc8、jpackageImage/零连接镜像审计通过；三产物SHA一致、370份开发原件Git字节验证。原生/OS缩放/安装升级签名及完整M8仍待验；只按已有授权推送最终main并核对精确SHA CI，v3.2.9不移动，datacube保持PAUSED。下方各“最新”按历史轮次解读。
 
 2026-10-07 最新产品：[SQL收藏写入/刷新结果修复](../verification/2026-10-07-favorites-refresh-outcome-review.md)已main集成00527dd并新复验。真实临时库重复UUID红灯已关闭，完成状态与重读失败分离，显式重读、真正写失败、取消关闭及迟到回调契约保留。分支/main各定向61、全量3974通过+3明确live跳过、强制buildSrc8、jpackageImage/零连接镜像审计通过；三产物SHA一致、397份开发原件Git字节验证。原生/OS缩放/安装升级签名及完整M8仍待验；最终main仅按既有授权推送、精确SHA CI由交付回执核对，v3.2.9不移动，datacube保持PAUSED。下方各“最新”按历史轮次解读。

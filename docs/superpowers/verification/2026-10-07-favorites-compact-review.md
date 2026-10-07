@@ -63,3 +63,19 @@ main-image-audit检查实际183个镜像文件、模块类和cfg，无测试类/
 首两次编译失误、005误过滤/错误换行及事件靶点、006无滚动范围时的normalized值断言、root哈希字段误读均保留/说明，不假归因于产品，也不以失败跳过取代通过。源代码红灯有真实几何证据；原生键盘/鼠标、OS缩放/多屏、完整在途/FAILED_PARTIAL恢复、无Gate正式启动/闪屏、安装升级回退与生产签名仍待验。旧原生/Oracle记录绑定旧镜像，完整M8不称完成。
 
 收尾只按既有授权推送最终main，用精确最终SHA核对Verify四任务和远端refs。版本化Push-Verify-Main.ps1把实际推送/CI/远端指向回执保存在独占build/owned-ci-UUID，最终交付消息提供run链接与SHA；本提交不预报尚未发生的CI结果。v3.2.9继续保持0f6ba02656fcf3752b180514c72e79151a3320df，datacube保持PAUSED；不自动启动下一轮。
+
+## S5 精确提交 CI 首次失败与单次复验
+
+最终本地证据提交 bdf274cac590f27105f02e20835da1fe8bf49848 已推送 main。Verify 37593098366 attempt 1 的 wrapper、Ubuntu、Redis 成功；Windows 4000 项中 1 个旧 SQL 概览排序测试在 FutureTask.get 的 5 秒等待超时，3 live 跳过，linked image 因前步失败跳过。不能把本次远端矩阵算通过。原始失败日志/API 与后续原件独立存入 favorites-compact-ci-20261007，旧 733 份工程原件不覆写。
+
+root 与 GPT-6.1-sol 独立核对旧用例/fixture/helper、排序调用链及收藏 close/reveal 生命周期，未找到跨 Scene 持续布局或确定产品缺陷。日志缺少 FX 线程栈，无法区分未开始任务与执行中耗时；本轮本地同用例 0.051/0.050 秒通过不证明远端根因已解决。只对同 SHA 的失败 Windows job 发起一次 attempt 2，不增加 timeout、不删断言/过滤用例。若重复则先获取线程栈/任务执行观测，不反复重跑。完整诊断见新增 evidence/diagnosis.md。
+
+本次跟进复用原 worktree 的 codex/favorites-compact-ci-20261007，仅记录远端 CI，不改生产/测试/构建/工作流，产品树仍与源码 125f954 完全相同。无理由重复本地工程矩阵并称新代码验证；受验身份明确沿用本轮新执行数据。当前等待 attempt 2 真实结果，再更新交接、提交、合并与精确最终 SHA CI。原生/OS 缩放/真库/安装签名及完整 M8 继续未验。
+
+## S6 同 SHA 单次重跑通过，根因未知保留
+
+Verify 37593098366 attempt 2 在 bdf274cac590f27105f02e20835da1fe8bf49848 完成成功，Windows job 112704916891 的 Unit tests 与 Windows linked image 都实际执行成功，原始日志包含 :buildSrc:test、:test、:jlink 和两次 BUILD SUCCESSFUL；API 四任务结论均为 success。首次失败与单次请求退出码、第二次 API/日志/远端 refs 分目录归档，不覆写先前证据。远端 main 指向 bdf274c，v3.2.9 peeled 仍为 0f6ba02656fcf3752b180514c72e79151a3320df。
+
+结论仅为“同一源码单次重跑未复现”，不是已找到并修复超时原因。未增加超时或弱化断言；精确原因缺少 FX 线程栈，仍为测试可靠性待验项，如再次发生先采集栈与执行阶段。由于本跟进仅新增文档/CI 原件，产品与测试树未变，不重复本地全量/image并冒充新实现证据。本轮原有新定向84、全量3997通过/3live跳过、buildSrc8、jpackageImage与镜像审计结果继续绑定原受验源码125f954。
+
+下一步仅提交并合并本次证据，推送最终 main；最终提交的全新 Verify 状态及远端指向由版本化 Push-Verify-Main.ps1 写入独占 build/owned-ci-UUID 回执，最终消息提供精确 SHA/run。当前记录不预报该未来结果。原生输入、OS缩放/多屏、真库专项、安装升级回退、生产签名及完整M8仍未验；旧tag与PAUSED不变，不自动扩展下一轮。
