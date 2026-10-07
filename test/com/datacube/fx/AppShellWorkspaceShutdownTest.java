@@ -119,6 +119,9 @@ class AppShellWorkspaceShutdownTest {
         final Path workspacePath = root.resolve(".datacube/sql-drafts/workspace.bin");
         final AppShell shell;
         final Stage stage;
+        final AtomicReference<CompletableFuture<ShutdownOutcome>> requested=new AtomicReference<>();
+        final AtomicInteger shutdownRequests=new AtomicInteger();
+        javafx.scene.Node lastWaiting;
         final TabPane tabs;
         final SqlFileTabRegistry registry;
         final SqlDraftUi drafts;
@@ -139,7 +142,15 @@ class AppShellWorkspaceShutdownTest {
                 });
                 tabs = (TabPane) ((ContentTabPane) get(shell, "contentTabs")).getNode();
                 registry = (SqlFileTabRegistry) get(shell, "sqlFileTabs");
-                stage = createdStage = FxUiTestSupport.call(() -> { Stage s = new Stage(); s.setTitle("Synthetic workspace " + UUID.randomUUID()); s.setScene(new Scene(shell.getRoot(), 1000, 700)); s.show(); return s; });
+                stage = createdStage = FxUiTestSupport.call(() -> {
+                    Stage s = new Stage();s.setTitle("Synthetic workspace " + UUID.randomUUID());
+                    var controller=new WindowShutdownController(s,shell.getRoot(),shell::isRunning,()->{
+                        shutdownRequests.incrementAndGet();var outcome=shell.shutdownAsync();requested.set(outcome.toCompletableFuture());return outcome;
+                    });
+                    var scene=new Scene(controller.getRoot(),1000,700);scene.getStylesheets().setAll(
+                            ThemeManager.class.getResource("theme-base.css").toExternalForm(),ThemeManager.class.getResource("theme-dark.css").toExternalForm());
+                    s.setScene(scene);s.show();return s;
+                });
                 Object entry = get(shell, "sqlFileEntry");
                 dispatcher = new TrackingDispatcher((AppShell.SqlFileTaskDispatcher) get(entry, "tasks"));
                 FxUiTestSupport.call(() -> { set(entry, "tasks", dispatcher); return null; });
@@ -169,7 +180,7 @@ class AppShellWorkspaceShutdownTest {
                 try {
                     if (createdStage != null) {
                         Stage ownStage = createdStage;
-                        FxUiTestSupport.call(() -> { ownStage.close(); return null; });
+                        FxUiTestSupport.call(() -> { ownStage.setOnCloseRequest(null);ownStage.close(); return null; });
                     }
                 } catch (Throwable cleanup) { failure.addSuppressed(cleanup); }
                 finally { System.setProperty("user.home", previousHome); }
@@ -206,7 +217,10 @@ class AppShellWorkspaceShutdownTest {
         SqlWorkspace capture() throws Exception { return FxUiTestSupport.call(() -> drafts.workspace().capture()); }
         SqlWorkspace frozen() throws Exception { return ((SqlWorkspaceActivity.Frozen) FxUiTestSupport.call(() -> get(drafts.workspace(), "frozen"))).workspace(); }
         void seed(SqlWorkspace workspace) throws Exception { FxUiTestSupport.call(() -> drafts.runtime().saveWorkspace(workspace)).get(5, TimeUnit.SECONDS); attempts.clear(); }
-        CompletableFuture<ShutdownOutcome> shutdown() throws Exception { return FxUiTestSupport.call(shell::shutdownAsync).toCompletableFuture(); }
+        CompletableFuture<ShutdownOutcome> shutdown() throws Exception {
+            if(completed)return FxUiTestSupport.call(shell::shutdownAsync).toCompletableFuture();
+            return FxUiTestSupport.call(()->{DataCubeFxShutdownContractTest.closeRequest(stage);return requested.get();});
+        }
         Decision beginDecision() throws Exception {
             CompletableFuture<Stage> shown = new CompletableFuture<>();
             ListChangeListener<Window> observer = change -> {
@@ -220,11 +234,16 @@ class AppShellWorkspaceShutdownTest {
             try {
                 CompletableFuture<ShutdownOutcome> outcome = shutdown();
                 Stage dialog = shown.get(10, TimeUnit.SECONDS);
+                DataCubeFxShutdownContractTest.awaitLayoutPulses();
                 return FxUiTestSupport.call(() -> {
                     DialogPane pane = (DialogPane) dialog.getScene().getRoot();
                     assertEquals(stage, dialog.getOwner()); assertEquals(SqlWorkspaceUi.MESSAGE, pane.getContentText());
                     assertEquals(List.of("重试", "取消退出", "忽略本次工作区更新并退出"), pane.getButtonTypes().stream().map(ButtonType::getText).toList());
                     for (ButtonType type : pane.getButtonTypes()) assertEquals(type.getText().equals("取消退出"), ((Button) pane.lookupButton(type)).isDefaultButton());
+                    DataCubeFxShutdownContractTest.assertPendingFeedback(stage,shell.getRoot());
+                    var waiting=stage.getScene().getRoot().lookup("#shutdown-pending-notice");assertNotSame(lastWaiting,waiting);lastWaiting=waiting;
+                    int before=shutdownRequests.get();DataCubeFxShutdownContractTest.closeRequest(stage);assertEquals(before,shutdownRequests.get(),"modal waiting never repeats application shutdown");
+                    for(ButtonType type:pane.getButtonTypes())assertFalse(((Button)pane.lookupButton(type)).isDisabled(),"production modal remains actionable");
                     assertFalse(outcome.isDone()); assertTrue(tabs.getTabs().isEmpty(), "actual guards already finalized the original tabs");
                     System.out.println("PRODUCTION_ALERT owner=syntheticShell title=" + dialog.getTitle() + " default=cancel originalTabs=removed");
                     return new Decision(dialog, pane, outcome);
@@ -232,6 +251,8 @@ class AppShellWorkspaceShutdownTest {
             } finally { FxUiTestSupport.call(() -> { Window.getWindows().removeListener(observer); return null; }); }
         }
         void assertCancelled(byte[] prior) throws Exception {
+            DataCubeFxShutdownContractTest.awaitLayoutPulses();
+            FxUiTestSupport.call(()->{assertTrue(stage.isShowing());assertFalse(shell.getRoot().isDisabled());DataCubeFxShutdownContractTest.assertNoFeedback(stage.getScene().getRoot());assertNull(lastWaiting.getParent());return null;});
             assertArrayEquals(prior, Files.readAllBytes(workspacePath));
             assertEquals(0, dispatcher.closes.get());
             ((FxTaskRunner) get(shell, "tasks")).submit(() -> {}).get(3, TimeUnit.SECONDS);
@@ -241,6 +262,8 @@ class AppShellWorkspaceShutdownTest {
             assertEquals(0, providerRequests.get(), "no database reads, SQL executions, or database writes admitted");
         }
         void assertCompleted() throws Exception {
+            DataCubeFxShutdownContractTest.awaitLayoutPulses();
+            FxUiTestSupport.call(()->{assertFalse(stage.isShowing());assertTrue(shell.getRoot().isDisabled());DataCubeFxShutdownContractTest.assertNoFeedback(stage.getScene().getRoot());if(lastWaiting!=null)assertNull(lastWaiting.getParent());return null;});
             completed = true; assertEquals(1, dispatcher.closes.get());
             assertTrue(draftMoves.get() > 0, "real successful draft atomic publication required for every scenario");
             assertThrows(RejectedExecutionException.class, () -> ((FxTaskRunner) get(shell, "tasks")).submit(() -> {}));
@@ -272,7 +295,8 @@ class AppShellWorkspaceShutdownTest {
                 try { dispose(shell); System.out.println("FIXTURE_FALLBACK shutdownRemaining=cleanupOnly"); }
                 catch (Throwable cleanup) { primary.addSuppressed(cleanup); }
             } finally {
-                try { FxUiTestSupport.call(() -> { stage.close(); return null; }); }
+                // Synthetic stage disposal only; it does not exercise or recover product shutdown.
+                try { FxUiTestSupport.call(() -> { stage.setOnCloseRequest(null);stage.close(); return null; }); }
                 catch (Throwable cleanup) { if (primary == null) primary = cleanup; else primary.addSuppressed(cleanup); }
                 finally { System.setProperty("user.home", previousHome); }
             }

@@ -46,7 +46,14 @@ class AppShellGridShutdownTest {
                 });closing=requested.get();
             } else closing=FxUiTestSupport.call(h.shell::shutdownAsync).toCompletableFuture();
             final javafx.stage.Stage feedbackWindow=exitWindow;
+            javafx.scene.Node waiting=null;
             try {
+            if(timeout) {
+                DataCubeFxShutdownContractTest.awaitLayoutPulses();
+                waiting=FxUiTestSupport.call(()->{DataCubeFxShutdownContractTest.assertPendingFeedback(feedbackWindow,h.shell.getRoot());
+                    DataCubeFxShutdownContractTest.closeRequest(feedbackWindow);assertEquals(1,shutdownRequests.get());return feedbackWindow.getScene().getRoot().lookup("#shutdown-pending-notice");});
+            }
+            final javafx.scene.Node pendingNode=waiting;
             assertTrue(h.interrupted.await(3,TimeUnit.SECONDS),"production grid close must interrupt JDBC");
             assertTrue(warning.warned.await(8,TimeUnit.SECONDS),"unmodified default PT5S warning");
             Object closeAttempt=FxUiTestSupport.call(()->field(h.coordinator,"current"));
@@ -59,6 +66,8 @@ class AppShellGridShutdownTest {
             assertTrue(((com.datacube.fx.task.FxTaskScope)field(h.pane,"tasks")).isClosed());
             assertEquals(blockedRow-1,h.jdbc.commits.get()); assertEquals(0,h.jdbc.rollbacks.get());
             if(timeout) {
+                FxUiTestSupport.call(()->{DataCubeFxShutdownContractTest.assertPendingFeedback(feedbackWindow,h.shell.getRoot());
+                    assertSame(pendingNode,feedbackWindow.getScene().getRoot().lookup("#shutdown-pending-notice"));return null;});
                 assertEquals(ShutdownOutcome.FAILED_PARTIAL,closing.get(20,TimeUnit.SECONDS));
                 DataCubeFxShutdownContractTest.awaitLayoutPulses();
                 long millis=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);
@@ -66,7 +75,7 @@ class AppShellGridShutdownTest {
                 h.assertOwned(); assertFalse(settled.isDone());
                 FxUiTestSupport.call(()->{
                     assertEquals(900,feedbackWindow.getWidth(),1);assertEquals(600,feedbackWindow.getHeight(),1);
-                    DataCubeFxShutdownContractTest.assertFailureFeedback(feedbackWindow,h.shell.getRoot());
+                    DataCubeFxShutdownContractTest.assertFailureFeedback(feedbackWindow,h.shell.getRoot());assertNull(pendingNode.getParent(),"fatal feedback replaces pending rather than retaining it");
                     DataCubeFxShutdownContractTest.closeRequest(feedbackWindow);assertEquals(1,shutdownRequests.get());return null;
                 });
                 assertFalse((boolean)field(closeAttempt,"finalizerInvoked"),"fatal cleanup must not finalize active UI owner");
@@ -78,7 +87,7 @@ class AppShellGridShutdownTest {
                 FxUiTestSupport.call(()->{assertFalse((boolean)field(closeAttempt,"finalizerInvoked"));assertTrue(h.tabs.getTabs().contains(h.tab));assertTrue(h.tab.isDisable());assertTrue(h.managed());return null;});
                 assertEquals(0,h.jdbc.connectionCloses.getFirst().get(),"late settlement still cannot start global teardown");
                 FxUiTestSupport.call(()->{
-                    DataCubeFxShutdownContractTest.assertFailureFeedback(feedbackWindow,h.shell.getRoot());
+                    DataCubeFxShutdownContractTest.assertFailureFeedback(feedbackWindow,h.shell.getRoot());assertNull(pendingNode.getParent(),"fatal feedback replaces pending rather than retaining it");
                     DataCubeFxShutdownContractTest.closeRequest(feedbackWindow);assertEquals(1,shutdownRequests.get());return null;
                 });
                 assertTrue(millis<23000,"bounded actual guard settlement");
