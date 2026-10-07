@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.fx.AppShellShutdownRecoveryTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-10-07T14:56:14.690Z" hostname="WAKEUPMAN" time="5.48">
+  <properties/>
+  <testcase name="defaultFiveSecondWarningRetainsActualShellManagedOwnership()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="5.009"/>
+  <testcase name="blockedAdmittedRecentWriteDoesNotBlockFxShutdown()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.217"/>
+  <testcase name="oldGenerationCallbacksAndPublicCancellationCannotReopenAdmissions()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.06"/>
+  <testcase name="fileDisposalFailureStillClosesRegistryGlobalTasksAndCachedConnection()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.011"/>
+  <testcase name="partialFailureRemainsQuarantined()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.005"/>
+  <testcase name="workerStartFailureAfterTabsCommitRemainsPartial()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.005"/>
+  <testcase name="queuedRecentWriteIsDiscardedAcrossCancelGeneration()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.02"/>
+  <testcase name="cancelledShutdownPreservesExistingFileIdentityAndNewAdmission()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.09"/>
+  <testcase name="preTabFailureRestoresExistingIdentityAndNewFileAdmission()" classname="com.datacube.fx.AppShellShutdownRecoveryTest" time="0.061"/>
+  <system-out><![CDATA[REAL_SHELL timer=defaultPT5S pending=true ownership=retained mockResourceClose=1 FXfinalizer=1 final=COMPLETED
+REAL_SHELL blockedAdmittedRecent=running FXshutdown=returned FXpulse=delivered cancel=CANCELLED
+REAL_SHELL staleRead=ignored staleError=ignored publicCancel=isolated repeatedCancel=retained
+REAL_SHELL fileDisposalFailure=FAILED_PARTIAL globalTasksClosed=true cachedConnectionClose=1 retry=quarantined
+REAL_SHELL cancelled=CANCELLED existingIdentity=retained duplicate=reused newFile=opened
+REAL_SHELL preTabException=recoverable existingIdentity=retained newFile=opened
+]]></system-out>
+  <system-err><![CDATA[[DataCube] tab close failure: java.util.concurrent.TimeoutException: tab close still running after PT5S
+java.util.concurrent.TimeoutException: tab close still running after PT5S
+	at com.datacube.fx.AsyncTabCloseCoordinator.timeOut(AsyncTabCloseCoordinator.java:216)
+	at com.datacube.fx.AsyncTabCloseCoordinator.lambda$start$0(AsyncTabCloseCoordinator.java:193)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:309)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+[DataCube] shutdown failure: com.datacube.fx.PartialCloseException: one or more close steps failed
+com.datacube.fx.PartialCloseException: one or more close steps failed
+	at com.datacube.fx.BestEffortCloseSequence.run(BestEffortCloseSequence.java:19)
+	at com.datacube.fx.AppShell.shutdownRemaining(AppShell.java:303)
+	at com.datacube.fx.AsyncShutdownCoordinator.lambda$tabsCompleted$0(AsyncShutdownCoordinator.java:71)
+	at java.base/java.lang.VirtualThread.run(VirtualThread.java:456)
+Caused by: java.util.concurrent.CompletionException: com.datacube.fx.PartialCloseException: one or more close steps failed
+	at java.base/java.util.concurrent.CompletableFuture.wrapInCompletionException(CompletableFuture.java:323)
+	at java.base/java.util.concurrent.CompletableFuture.reportJoin(CompletableFuture.java:457)
+	at java.base/java.util.concurrent.CompletableFuture.join(CompletableFuture.java:2139)
+	at com.datacube.fx.AppShell.closeSqlFilesOnFx(AppShell.java:322)
+	at com.datacube.fx.BestEffortCloseSequence.run(BestEffortCloseSequence.java:15)
+	... 3 more
+Caused by: com.datacube.fx.PartialCloseException: one or more close steps failed
+	at com.datacube.fx.BestEffortCloseSequence.run(BestEffortCloseSequence.java:19)
+	at com.datacube.fx.AppShell.lambda$closeSqlFilesOnFx$0(AppShell.java:318)
+	at com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+	at com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+	at com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+	at com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+Caused by: java.lang.IllegalStateException: synthetic dispatcher close failure
+	at com.datacube.fx.AppShellShutdownRecoveryTest$ControlledDispatcher.close(AppShellShutdownRecoveryTest.java:327)
+	at com.datacube.fx.AppShell$SqlFileEntry.close(AppShell.java:613)
+	at com.datacube.fx.BestEffortCloseSequence.run(BestEffortCloseSequence.java:15)
+	... 6 more
+[DataCube] shutdown failure: java.lang.IllegalStateException: synthetic worker start failure
+java.lang.IllegalStateException: synthetic worker start failure
+	at com.datacube.fx.AppShellShutdownRecoveryTest.lambda$workerStartFailureAfterTabsCommitRemainsPartial$1(AppShellShutdownRecoveryTest.java:209)
+	at com.datacube.fx.AsyncShutdownCoordinator.tabsCompleted(AsyncShutdownCoordinator.java:69)
+	at com.datacube.fx.AsyncShutdownCoordinator.lambda$shutdown$0(AsyncShutdownCoordinator.java:41)
+	at java.base/java.util.concurrent.CompletableFuture.uniWhenComplete(CompletableFuture.java:884)
+	at java.base/java.util.concurrent.CompletableFuture.uniWhenCompleteStage(CompletableFuture.java:908)
+	at java.base/java.util.concurrent.CompletableFuture.whenComplete(CompletableFuture.java:2384)
+	at java.base/java.util.concurrent.CompletableFuture.whenComplete(CompletableFuture.java:144)
+	at com.datacube.fx.AsyncShutdownCoordinator.shutdown(AsyncShutdownCoordinator.java:41)
+	at com.datacube.fx.AppShell.shutdownAsync(AppShell.java:280)
+	at com.datacube.fx.FxUiTestSupport.lambda$call$0(FxUiTestSupport.java:29)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+	at com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+	at com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+	at com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+[DataCube] shutdown failure: java.lang.IllegalStateException: synthetic before-tab failure
+java.lang.IllegalStateException: synthetic before-tab failure
+	at com.datacube.fx.AppShellShutdownRecoveryTest.lambda$preTabFailureRestoresExistingIdentityAndNewFileAdmission$1(AppShellShutdownRecoveryTest.java:224)
+	at com.datacube.fx.AsyncShutdownCoordinator.shutdown(AsyncShutdownCoordinator.java:40)
+	at com.datacube.fx.AppShell.shutdownAsync(AppShell.java:280)
+	at com.datacube.fx.FxUiTestSupport.lambda$call$0(FxUiTestSupport.java:29)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+	at com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+	at com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+	at com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+]]></system-err>
+</testsuite>
