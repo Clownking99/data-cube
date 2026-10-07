@@ -1,5 +1,7 @@
 # DataCube 新会话交接：产品成熟度与首个目标
 
+**2026-10-07 SQL收藏小窗口修复（最新产品）：** 真实480×480/640×480双主题窗口已复现并修复取消按钮/说明裁切；新增垂直滚动与焦点显露，同焦点Ctrl+F、长SQL内部滚动和选区保持，保存/删除/恢复/重读及旧写完成状态不变。GPT-6.1-sol开发、root独立审查；源码125f954、证据06fbab9、main集成f5bc602。分支/main各新定向84、全量3997通过/3明确live跳过、buildSrc8、jpackageImage及镜像隔离/零连接检查通过，三产物SHA一致、370份worker原件Git字节复核。详见[独立审查与main复验](../superpowers/verification/2026-10-07-favorites-compact-review.md)。编译/夹具诊断失败原件保留；这是工程与合成FX交付，原生输入、OS缩放/多屏、安装升级和生产签名及完整M8仍待验。最终main按已有授权推送，精确SHA CI由最终回执核对；v3.2.9不移动、无新tag，datacube保持PAUSED。下方“最新”为历史轮次。
+
 **2026-10-07 SQL收藏写后刷新修复（最新产品）：** 已用真实专用临时收藏库复现“保存落盘后读取失败，再保存重复UUID”，现将写完成结果与刷新失败分离，冻结重复写/旧快照动作并要求显式重读；真正写失败和关闭/取消/迟到回调行为保留。GPT-6.1-sol开发、root独立审核修正并接管中断后的工程验证。源码3b34183、证据9fca371、本地main集成00527dd；分支/main各新定向61、全量3974通过/3明确live跳过、buildSrc8、jpackageImage及镜像隔离/零连接审计通过，三产物SHA一致、397份worker原件Git字节复核。见[独立审查与main复验](../superpowers/verification/2026-10-07-favorites-refresh-outcome-review.md)。中断full-final未算通过，失败/夹具诊断均保留。本次工程/合成FX交付不替代原生/OS缩放/安装升级/生产签名，完整M8仍待验。最终main按既有授权推送，精确SHA CI以最终交付回执为准；v3.2.9保持原发布内容，无新tag，datacube保持PAUSED。下方“最新”为各历史轮次。
 
 **2026-10-07 表/视图查找小窗口修复（最新产品）：** 真实480×480窗口已复现并修复候选行裁切，新增滚动与动态焦点可见性，保留快照/本地筛选/明确Enter及取消关闭契约。GPT-6.1-sol实施、root独立审核；产品74517f6、本地main集成53d2dc6。分支/main各新定向160、全量3954通过/3明确live跳过、强制buildSrc8、jpackageImage及镜像隔离/零连接审计通过，三产物SHA一致，719份worker原件Git字节复验。首full四旧尺寸夹具失败及诊断保留，未充当通过。详见[本轮独立账本](../superpowers/verification/2026-10-07-schema-object-compact-review.md)。本次为工程与合成FX交付，原生名称/字段键盘、OS缩放、多屏、安装升级/生产签名和完整M8仍待验；main按既有授权推送，实际CI以最终交付回执为准。v3.2.9保持原发布内容，无新tag，datacube保持PAUSED。

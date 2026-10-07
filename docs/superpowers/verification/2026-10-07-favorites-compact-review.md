@@ -45,3 +45,21 @@ root的Audit-Branch-Tests独立核对实际Task行、command/exit、新鲜XML时
 源码提交125f954bd81c06b9806581d7355cbee8f2d70666（仅两文件）。branch-image-audit检查实际模块类/镜像文件/cfg，无测试类、探针、profile/fixture或JVM测试选项泄漏；外置driverFor探针只发现Oracle/PG驱动，connectCalls=0。runtime modules SHA ACD69E25AFA105B3898CCCFFAEADD02568EC9486F21E0C339D72089C05D33B02，字节102398287；完整三个产物身份见audit.json。此为工程/合成FX与镜像隔离，旧原生记录不自动绑定新runtime。
 
 当前源审核与分支验证完成，原始失败和诊断均保留。下一步精确冻结、Git字节审计、证据提交与main合并，再新跑完整矩阵；尚无本轮main/CI完成声明。
+
+## S3 main集成与定向复验
+
+证据提交06fbab9a7f2bed83f6af8b0bec578fa47e0e5bf4，冻结370份worker原件/18份协调原件并校验全部Git实际blob字节。main基线f5b2b7d及授权范围干净复核后，no-ff合并为f5bc602354db94cdd5dc845f4ccf61175e853360。合并后370+18原件字节复核、受验源码树与125f954一致。
+
+main-directed强制新执行六组84/84、0失败/错误/跳过，未沿用分支报告；原命令/日志/新XML/summary保存。接下来新main-full、buildSrc、image及镜像审计、最终推送/精确SHA CI，当前不提前宣称这些待办完成。原生桌面/OS缩放与完整M8继续待验。
+
+## S4 main完整复验与本地交付
+
+main f5bc602354db94cdd5dc845f4ccf61175e853360新执行main-directed84/84、main-full4000总数/3997通过/3明确live跳过、main-buildsrc实际root :buildSrc:test8/8、main-image实际jpackageImage，全部exit0。各自独占合成profile、实际日志和本次XML/summary保存；未借用分支或UP-TO-DATE作为新执行。Redis standalone及Oracle/PG SchemaDiff live仍未验。
+
+main-image-audit检查实际183个镜像文件、模块类和cfg，无测试类/探针/profile/fixture/测试JVM选项泄漏，外置Oracle/PG驱动发现connectCalls=0。实际exe、cfg、runtime/modules三项SHA/字节与分支完全相同，runtime SHA ACD69E25AFA105B3898CCCFFAEADD02568EC9486F21E0C339D72089C05D33B02。main产品树与125f954一致，370份worker原件的原字节和Git再次核对通过。完整结果见results.json。
+
+本限定增量本地交付完成：收藏480×480/640×480双主题窗口取消/说明裁切红灯已修复，所有编辑/操作/状态可滚动访问；焦点变化/resize/同焦点Ctrl+F可显露控件，手动滚动和长SQL内部滚动/caret保持。23项新增合成FX回归包括实际操作计数和旧写后刷新状态；旧29项收藏测试本轮重验。布局变化、存储/确认与关闭所有权分开，未扩展其他产品功能。
+
+首两次编译失误、005误过滤/错误换行及事件靶点、006无滚动范围时的normalized值断言、root哈希字段误读均保留/说明，不假归因于产品，也不以失败跳过取代通过。源代码红灯有真实几何证据；原生键盘/鼠标、OS缩放/多屏、完整在途/FAILED_PARTIAL恢复、无Gate正式启动/闪屏、安装升级回退与生产签名仍待验。旧原生/Oracle记录绑定旧镜像，完整M8不称完成。
+
+收尾只按既有授权推送最终main，用精确最终SHA核对Verify四任务和远端refs。版本化Push-Verify-Main.ps1把实际推送/CI/远端指向回执保存在独占build/owned-ci-UUID，最终交付消息提供run链接与SHA；本提交不预报尚未发生的CI结果。v3.2.9继续保持0f6ba02656fcf3752b180514c72e79151a3320df，datacube保持PAUSED；不自动启动下一轮。

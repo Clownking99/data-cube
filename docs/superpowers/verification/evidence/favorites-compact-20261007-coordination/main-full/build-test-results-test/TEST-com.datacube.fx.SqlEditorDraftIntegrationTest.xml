@@ -1,0 +1,439 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.fx.SqlEditorDraftIntegrationTest" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-10-07T08:13:53.953Z" hostname="WAKEUPMAN" time="0.819">
+  <properties/>
+  <testcase name="closingCapturesEditNewerThanAlreadyQueuedAutosave()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.051"/>
+  <testcase name="interactiveCancelKeepsEditorAndExplicitDiscardKeepsPreviousCheckpoint()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.108"/>
+  <testcase name="explicitDisableAllowsCloseWithoutClaimingLatestSaved()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.035"/>
+  <testcase name="writeFailureRefusesMandatoryCloseAndRestoresExactFlagsThenSavesNewEdit()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.039"/>
+  <testcase name="initializationRefusesMandatoryCloseAndRetainsSubscriptions()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.035"/>
+  <testcase name="autoSavePreservesRawTextSchemaAndIndependentQueryStatus()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.041"/>
+  <testcase name="failingDraftPrecedesRunningQueryCloseDecisionDialog()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.038"/>
+  <testcase name="mandatoryDraftRefusalDoesNotDropAnOperationCompletingDuringFlush()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.021"/>
+  <testcase name="constructionAbortDetachesHandleAndSubscriptions()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.022"/>
+  <testcase name="closingWaitsForLatestSnapshotAndBlocksProgrammaticEditingActions()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.041"/>
+  <testcase name="clearDoesNotResurrectUneditedTextOnClose()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.048"/>
+  <testcase name="explicitAdmissionUpdatesStoredStableConnectionIdentity()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.043"/>
+  <testcase name="newEmptyEditorDoesNotCreateCheckpoint()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.026"/>
+  <testcase name="historyInitializationQualifiesButRestoredCheckpointStartsClean()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.079"/>
+  <testcase name="successfulEditorClearWarnsAboutProtectedCorruptFiles()" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.067"/>
+  <testcase name="[1] false" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.062"/>
+  <testcase name="[2] true" classname="com.datacube.fx.SqlEditorDraftIntegrationTest" time="0.061"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[10月 07, 2026 4:13:53 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:53 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:53 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@9ae7915[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:53 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@9ae7915[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:53 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:53 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:53 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:53 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@62d2e5a1[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@24342865[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@24342865[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@39b22146[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@72e92ac5[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@72e92ac5[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@4ec44644[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@8297f06[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@8297f06[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@239db67a[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@d29edda[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@d29edda[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@29567383[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@63dc23df[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@63dc23df[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@32b4d9c0[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@52d9e429[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@52d9e429[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@28a66c22[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@69cccec0[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@69cccec0[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@25e1de89[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@32009d1[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@32009d1[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@4834941d[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@edd1dfd[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@edd1dfd[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@3323e6b0[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@21a1fc68[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@21a1fc68[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@4f39fb06[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@6e26d783[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@6e26d783[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@63c91d2d[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@49f083ad[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@49f083ad[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@68e8d511[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@55ae14f8[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@55ae14f8[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@788a1a61[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@37125212[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@37125212[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@5a07fc4f[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@7542f9c1[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@7542f9c1[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@7a0b513[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@5d4ae3db[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@5d4ae3db[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@4a2b3123[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@5d4ae3db[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@4a2b3123[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-keyword' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-keyword' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-number' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-number' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@39d18250[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@39d18250[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@621b02f[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@39d18250[styleClass=label]'尚未创建专用会话'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@621b02f[styleClass=label]'就绪'
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-keyword' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-keyword' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-number' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-number' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+10月 07, 2026 4:13:54 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/D:/Projects/%e6%9c%9d%e8%8a%b1%e5%a4%95%e6%8b%be/build/resources/main/com/datacube/fx/sql-highlight.css
+]]></system-err>
+</testsuite>
