@@ -1,0 +1,159 @@
+diff --git a/src/com/datacube/DataCubeFx.java b/src/com/datacube/DataCubeFx.java
+index d080d25..d160400 100644
+--- a/src/com/datacube/DataCubeFx.java
++++ b/src/com/datacube/DataCubeFx.java
+@@ -2,16 +2,14 @@ package com.datacube;
+ 
+ import com.datacube.fx.AppShell;
+ import com.datacube.fx.BrandLogo;
+-import com.datacube.fx.ShutdownQuarantine;
++import com.datacube.fx.WindowShutdownController;
+ import com.datacube.fx.SplashScreen;
+ import javafx.animation.PauseTransition;
+ import javafx.application.Application;
+-import javafx.application.Platform;
+ import javafx.scene.Scene;
+ import javafx.scene.control.Alert;
+ import javafx.scene.control.ButtonType;
+ import javafx.stage.Stage;
+-import javafx.stage.WindowEvent;
+ import javafx.util.Duration;
+ 
+ public class DataCubeFx extends Application {
+@@ -26,7 +24,9 @@ public class DataCubeFx extends Application {
+ 
+             AppShell appShell = new AppShell();
+ 
+-            Scene scene = new Scene(appShell.getRoot(), 1200, 800);
++            var shutdownWindow = new WindowShutdownController(primaryStage, appShell.getRoot(),
++                    appShell::isRunning, appShell::shutdownAsync);
++            Scene scene = new Scene(shutdownWindow.getRoot(), 1200, 800);
+             appShell.getThemeManager().register(scene);
+             // 全局窗口钩子：二级弹窗（关于/设置/导出/更新/Alert）自动跟随主题（含原生标题栏）
+             appShell.getThemeManager().installWindowHook();
+@@ -36,42 +36,6 @@ public class DataCubeFx extends Application {
+             primaryStage.setMinHeight(600);
+             BrandLogo.applyIcons(primaryStage);
+ 
+-            // 窗口关闭事件：迁移任务进行中提示确认
+-            ShutdownQuarantine quarantine = new ShutdownQuarantine();
+-            primaryStage.setOnCloseRequest((WindowEvent e) -> {
+-                e.consume();
+-                if (quarantine.isQuarantined()) return;
+-                if (appShell.isRunning()) {
+-                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
+-                            "迁移任务正在执行中，强制关闭可能导致数据不完整。\n确定关闭？",
+-                            ButtonType.YES, ButtonType.NO);
+-                    alert.setHeaderText(null);
+-                    alert.showAndWait();
+-                    if (alert.getResult() != ButtonType.YES) {
+-                        return;
+-                    }
+-                }
+-                if (!quarantine.begin()) return;
+-                appShell.getRoot().setDisable(true);
+-                appShell.shutdownAsync().whenComplete((outcome, failure) -> Platform.runLater(() -> {
+-                    ShutdownQuarantine.Action action = quarantine.settle(outcome, failure);
+-                    if (failure != null) {
+-                        System.err.println("[DataCube] shutdown failure: " + failure);
+-                        failure.printStackTrace(System.err);
+-                    }
+-                    if (action == ShutdownQuarantine.Action.RECOVER) {
+-                        appShell.getRoot().setDisable(false);
+-                        return;
+-                    }
+-                    if (action == ShutdownQuarantine.Action.FATAL) {
+-                        System.err.println("[DataCube] shutdown partially failed; application is not retryable");
+-                        return;
+-                    }
+-                    primaryStage.setOnCloseRequest(null);
+-                    primaryStage.close();
+-                }));
+-            });
+-
+             // 闪屏最短展示后淡出，再显示主窗口并触发后台更新自检（失败不打扰用户）
+             final SplashScreen splashRef = splash;
+             PauseTransition hold = new PauseTransition(Duration.millis(1100));
+diff --git a/test/com/datacube/fx/DataCubeFxShutdownContractTest.java b/test/com/datacube/fx/DataCubeFxShutdownContractTest.java
+index cd8b025..d3adf10 100644
+--- a/test/com/datacube/fx/DataCubeFxShutdownContractTest.java
++++ b/test/com/datacube/fx/DataCubeFxShutdownContractTest.java
+@@ -1,23 +1,59 @@
+ package com.datacube.fx;
+ 
+-import org.junit.jupiter.api.Test;
+-
+-import java.nio.file.Files;
+-import java.nio.file.Path;
+-
+-import static org.junit.jupiter.api.Assertions.assertFalse;
+-import static org.junit.jupiter.api.Assertions.assertTrue;
++import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.atomic.AtomicInteger;
++import javafx.scene.Scene;
++import javafx.scene.control.Label;
++import javafx.scene.layout.BorderPane;
++import javafx.stage.Stage;
++import javafx.stage.WindowEvent;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.CsvSource;
++import static org.junit.jupiter.api.Assertions.*;
+ 
+ class DataCubeFxShutdownContractTest {
+-
+-    @Test
+-    void windowClosesOnlyForCompletedOutcomeAndPartialFailureIsNotMadeRetryable() throws Exception {
+-        String source = Files.readString(Path.of("src/com/datacube/DataCubeFx.java"));
+-
+-        assertTrue(source.contains("ShutdownQuarantine.Action.RECOVER"));
+-        assertTrue(source.contains("ShutdownQuarantine.Action.FATAL"));
+-        assertTrue(source.contains("appShell.getRoot().setDisable(true)"));
+-        assertTrue(source.contains("appShell.getRoot().setDisable(false)"));
+-        assertFalse(source.contains("Boolean.TRUE.equals(approved)"));
++    @ParameterizedTest @CsvSource({"dark,900,600","light,900,600","dark,1200,800","light,1200,800"})
++    void partialFailureLeavesPersistentReadableFeedbackOutsideDisabledBody(String theme,int width,int height) throws Exception {
++        var result=new CompletableFuture<ShutdownOutcome>();var requests=new AtomicInteger();
++        var fixture=FxUiTestSupport.call(() -> {
++            var stage=new Stage();var body=new BorderPane(new Label("synthetic body"));
++            var controller=new WindowShutdownController(stage,body,() -> false,() -> {requests.incrementAndGet();return result;});
++            var scene=new Scene(controller.getRoot(),width,height);
++            scene.getStylesheets().setAll(ThemeManager.class.getResource("theme-base.css").toExternalForm(),
++                    ThemeManager.class.getResource("theme-"+theme+".css").toExternalForm());
++            stage.setScene(scene);stage.show();stage.setWidth(width);stage.setHeight(height);return new Fixture(stage,body,controller);
++        });
++        try {
++            awaitLayoutPulses();
++            FxUiTestSupport.call(() -> {closeRequest(fixture.stage);assertTrue(fixture.body.isDisabled());return null;});
++            result.complete(ShutdownOutcome.FAILED_PARTIAL);awaitLayoutPulses();
++            FxUiTestSupport.call(() -> {
++                var stage=fixture.stage;var root=fixture.controller.getRoot();root.applyCss();root.layout();
++                assertEquals(width,stage.getWidth(),1);assertEquals(height,stage.getHeight(),1);assertTrue(stage.isShowing());
++                assertTrue(fixture.body.isDisabled());assertEquals(1,requests.get());
++                System.out.println("SHUTDOWN geometry theme="+theme+" stage="+stage.getWidth()+"x"+stage.getHeight()
++                        +" scene="+stage.getScene().getWidth()+"x"+stage.getScene().getHeight()+" bodyDisabled="+fixture.body.isDisabled());
++                var notice=root.lookup("#shutdown-failure-notice");
++                assertNotNull(notice,"partial exit leaves a disabled main window with no visible explanation");
++                assertFalse(notice.isDisabled());assertInScene(stage,notice);return null;
++            });
++        } finally {FxUiTestSupport.call(() -> {fixture.stage.setOnCloseRequest(null);fixture.stage.close();return null;});}
++    }
++    private static void closeRequest(Stage stage) {stage.fireEvent(new WindowEvent(stage,WindowEvent.WINDOW_CLOSE_REQUEST));}
++    private static void assertInScene(Stage stage,javafx.scene.Node node) {
++        var bounds=node.localToScene(node.getBoundsInLocal());var screen=node.localToScreen(node.getBoundsInLocal());
++        System.out.println("SHUTDOWN node="+node.getId()+" bounds="+bounds+" screen="+screen);
++        assertNotNull(screen);assertTrue(bounds.getMinX()>=-1 && bounds.getMaxX()<=stage.getScene().getWidth()+1
++                && bounds.getMinY()>=-1 && bounds.getMaxY()<=stage.getScene().getHeight()+1,"outside shown scene: "+bounds);
++    }
++    private static void awaitLayoutPulses() throws Exception {
++        var ready=new CountDownLatch(1);
++        FxUiTestSupport.call(() -> {new javafx.animation.AnimationTimer() {
++            int frames;
++            @Override public void handle(long now){if(++frames>=3){stop();ready.countDown();}}
++        }.start();return null;});assertTrue(ready.await(5,TimeUnit.SECONDS));
+     }
+-}
++    private record Fixture(Stage stage,BorderPane body,WindowShutdownController controller) {}
++}
+\ No newline at end of file

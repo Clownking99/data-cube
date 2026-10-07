@@ -1,0 +1,66 @@
+diff --git "a/docs\\superpowers\\verification\\evidence\\shutdown-feedback-20261007-worker\\red-extraction-source\\WindowShutdownController.java" "b/docs\\superpowers\\verification\\evidence\\shutdown-feedback-20261007-worker\\red-extraction-source\\WindowShutdownController.java"
+new file mode 100644
+index 0000000..97cf9d7
+--- /dev/null
++++ "b/docs\\superpowers\\verification\\evidence\\shutdown-feedback-20261007-worker\\red-extraction-source\\WindowShutdownController.java"
+@@ -0,0 +1,59 @@
++package com.datacube.fx;
++
++import java.util.Objects;
++import java.util.concurrent.CompletionStage;
++import java.util.function.BooleanSupplier;
++import java.util.function.Supplier;
++import javafx.application.Platform;
++import javafx.scene.Parent;
++import javafx.scene.control.Alert;
++import javafx.scene.control.ButtonType;
++import javafx.scene.layout.StackPane;
++import javafx.stage.Stage;
++
++/** Owns window shutdown feedback only; the supplied application still owns resource cleanup. */
++public final class WindowShutdownController {
++    private final StackPane root;
++    private final ShutdownQuarantine quarantine=new ShutdownQuarantine();
++
++    public WindowShutdownController(Stage window,Parent body,BooleanSupplier running,
++            Supplier<CompletionStage<ShutdownOutcome>> shutdown) {
++        this(window,body,running,shutdown,() -> confirmRunning(window));
++    }
++
++    WindowShutdownController(Stage window,Parent body,BooleanSupplier running,
++            Supplier<CompletionStage<ShutdownOutcome>> shutdown,BooleanSupplier confirm) {
++        Objects.requireNonNull(window);Objects.requireNonNull(body);Objects.requireNonNull(running);
++        Objects.requireNonNull(shutdown);Objects.requireNonNull(confirm);
++        root=new StackPane(body);
++        window.setOnCloseRequest(event -> {
++            event.consume();
++            if(quarantine.isQuarantined()) return;
++            if(running.getAsBoolean() && !confirm.getAsBoolean()) return;
++            if(!quarantine.begin()) return;
++            body.setDisable(true);
++            shutdown.get().whenComplete((outcome,failure) -> Platform.runLater(() -> {
++                ShutdownQuarantine.Action action=quarantine.settle(outcome,failure);
++                if(failure!=null) {
++                    System.err.println("[DataCube] shutdown failure: "+failure);
++                    failure.printStackTrace(System.err);
++                }
++                if(action==ShutdownQuarantine.Action.RECOVER) {body.setDisable(false);return;}
++                if(action==ShutdownQuarantine.Action.FATAL) {
++                    System.err.println("[DataCube] shutdown partially failed; application is not retryable");
++                    return;
++                }
++                window.setOnCloseRequest(null);window.close();
++            }));
++        });
++    }
++
++    public StackPane getRoot() {return root;}
++
++    private static boolean confirmRunning(Stage window) {
++        var alert=new Alert(Alert.AlertType.CONFIRMATION,
++                "迁移任务正在执行中，强制关闭可能导致数据不完整。\n确定关闭？",ButtonType.YES,ButtonType.NO);
++        alert.initOwner(window);alert.setHeaderText(null);
++        return alert.showAndWait().orElse(ButtonType.NO)==ButtonType.YES;
++    }
++}
+\ No newline at end of file
