@@ -40,6 +40,7 @@ final class SqlFavoritesDialog implements AutoCloseable {
     private Completed pendingRefresh;
     private boolean busy,closed,mutating,writable;
     private String initialSql;
+    private Runnable removeFocusListener=() -> {};
     private final boolean seedTooLarge;
     BooleanSupplier confirmDiscard=() -> confirm("放弃尚未保存的收藏编辑？");
     Predicate<SqlFavorite> confirmDelete=value -> confirm("删除此收藏及其上一版本备份？此操作不会删除源 SQL 文件。");
@@ -76,10 +77,28 @@ final class SqlFavoritesDialog implements AutoCloseable {
         FlowPane commands=new FlowPane(8,6,create,save,discard,remove,restore,open,reload);
         status.setId("favorites-status"); status.setWrapText(true); status.setMinHeight(Region.USE_PREF_SIZE);
         Label privacy=new Label("收藏在本机以明文保存，SQL 可能含敏感值；不保存连接密码或查询结果。最多 100 项，每项 SQL 256 KiB，总额度 16 MiB（含备份）。离线打开后须另行选择连接。损坏项保留原文件，恢复会另存新项。");
-        privacy.setWrapText(true); privacy.setMinHeight(Region.USE_PREF_SIZE);
+        privacy.setId("favorites-privacy"); privacy.setWrapText(true); privacy.setMinHeight(Region.USE_PREF_SIZE);
         VBox content=new VBox(8,filter,list,name,group,sql,commands,status,privacy); content.setPadding(new Insets(12));
-        content.setPrefSize(760,650); VBox.setVgrow(list,Priority.SOMETIMES); VBox.setVgrow(sql,Priority.ALWAYS);
-        dialog.getDialogPane().setContent(content); dialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
+        content.setPrefWidth(760); content.setMinWidth(0); content.setMinHeight(Region.USE_PREF_SIZE);
+        list.setMinWidth(0); sql.setMinWidth(0); commands.setMinWidth(0);
+        VBox.setVgrow(list,Priority.SOMETIMES); VBox.setVgrow(sql,Priority.ALWAYS);
+        ScrollPane scroll=new ScrollPane(content);
+        scroll.setId("favorites-scroll"); scroll.setFitToWidth(true); scroll.setFitToHeight(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER); scroll.setPrefViewportWidth(760); scroll.setPrefViewportHeight(650);
+        dialog.getDialogPane().setContent(scroll); dialog.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
+        dialog.setOnShowing(event -> {
+            var scene=dialog.getDialogPane().getScene();
+            javafx.beans.value.ChangeListener<javafx.scene.Node> listener=(obs,before,focused) -> reveal(scroll,content,focused);
+            removeFocusListener.run(); scene.focusOwnerProperty().addListener(listener);
+            removeFocusListener=() -> scene.focusOwnerProperty().removeListener(listener);
+        });
+        Runnable revealAfterLayout=() -> javafx.application.Platform.runLater(() -> {
+            if(!closed && scroll.getScene()!=null) reveal(scroll,content,scroll.getScene().getFocusOwner());
+        });
+        scroll.viewportBoundsProperty().addListener((obs,before,after) -> {
+            if(before.getWidth()!=after.getWidth() || before.getHeight()!=after.getHeight()) revealAfterLayout.run();
+        });
+        content.heightProperty().addListener((obs,before,after) -> revealAfterLayout.run());
         dialog.setOnCloseRequest(event -> { if(busy || dirty() && !confirmDiscard.getAsBoolean()) event.consume(); });
         dialog.setOnShown(event -> load(null)); dialog.setOnHidden(event -> close());
         filter.textProperty().addListener(ignored -> filtered());
@@ -99,9 +118,26 @@ final class SqlFavoritesDialog implements AutoCloseable {
         });
         open.setOnAction(event -> { if(!closed && !busy && pendingRefresh==null && !dirty() && selected!=null && !selected.recovery()) { dialog.setResult(selected.value()); dialog.close(); } });
         dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED,event -> {
-            if(event.getCode()==KeyCode.F && event.isControlDown() && !event.isAltDown() && !event.isShiftDown() && !event.isMetaDown()) { if(!filter.isDisabled()) { filter.requestFocus(); filter.selectAll(); } event.consume(); }
+            if(event.getCode()==KeyCode.F && event.isControlDown() && !event.isAltDown() && !event.isShiftDown() && !event.isMetaDown()) { if(!filter.isDisabled()) { filter.requestFocus(); filter.selectAll(); reveal(scroll,content,filter); } event.consume(); }
         });
         edit(null); buttons();
+    }
+    private void reveal(ScrollPane scroll,VBox content,javafx.scene.Node focused) {
+        if(closed || focused==null) return;
+        boolean within=false;
+        for(var current=focused;current!=null;current=current.getParent()) {
+            // Reveal the editor/list control, leaving its own scrolling and caret to its skin.
+            if(current==sql || current==list) focused=current;
+            if(current==content) {within=true;break;}
+        }
+        if(!within) return;
+        scroll.layout();var viewport=scroll.lookup(".viewport");if(viewport==null) return;
+        var bounds=focused.localToScene(focused.getBoundsInLocal());
+        var visible=viewport.localToScene(viewport.getBoundsInLocal());
+        double range=content.getHeight()-visible.getHeight();if(range<=0) return;
+        double delta=bounds.getMinY()<visible.getMinY() ? bounds.getMinY()-visible.getMinY()
+                : bounds.getMaxY()>visible.getMaxY() ? bounds.getMaxY()-visible.getMaxY() : 0;
+        scroll.setVvalue(Math.max(0,Math.min(1,scroll.getVvalue()+delta/range)));
     }
     Dialog<SqlFavorite> dialog() { return dialog; }
     private static void limit(TextField field,int max) { field.setTextFormatter(new TextFormatter<String>(change -> change.getControlNewText().length()<=max ? change : null)); }
@@ -195,5 +231,5 @@ final class SqlFavoritesDialog implements AutoCloseable {
         }
     }
     private record Refreshed(Completed completed,SqlFavoriteStore.Snapshot snapshot) {}
-    @Override public void close() { if(closed) return; closed=true; tasks.close(); entries=List.of(); selected=null; pendingRefresh=null; initialSql=""; mutating=true; try { list.getItems().clear(); sql.clear(); name.clear(); group.clear(); } finally { mutating=false; } buttons(); }
+    @Override public void close() { if(closed) return; closed=true; removeFocusListener.run(); tasks.close(); entries=List.of(); selected=null; pendingRefresh=null; initialSql=""; mutating=true; try { list.getItems().clear(); sql.clear(); name.clear(); group.clear(); } finally { mutating=false; } buttons(); }
 }

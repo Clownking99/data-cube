@@ -388,6 +388,253 @@ class SqlFavoritesDialogTest {
             assertEquals(1,repo.saves.get());FxUiTestSupport.call(() -> {assertPending(f,repo.values.getFirst(),"new");return null;});
         }
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"light,480","dark,480","light,640","dark,640"})
+    void compactShownStagesKeepFocusedControlsAndBottomGuidanceReachable(String theme,int width) throws Exception {
+        var repo=new Repository();repo.values.add(favorite("synthetic row","group"));
+        try(var f=new Fixture(repo,"")) {
+            f.idle();compact(f,theme,width);awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                var pane=f.view.dialog().getDialogPane();pane.applyCss();pane.layout();
+                var stage=pane.getScene().getWindow();
+                assertEquals(width,stage.getWidth(),1);assertEquals(480,stage.getHeight(),1);
+                System.out.println("COMPACT geometry theme="+theme+" stage="+stage.getWidth()+"x"+stage.getHeight()
+                        +" scene="+pane.getScene().getWidth()+"x"+pane.getScene().getHeight());
+                var checks=new ArrayList<org.junit.jupiter.api.function.Executable>();
+                for(javafx.scene.Node node:List.of(f.text("filter"),f.list(),f.text("name"),f.text("group"),f.sql(),
+                        f.button("new"),f.button("reload")))checks.add(() -> {node.requestFocus();pane.layout();assertReachable(f,node);});
+                checks.add(() -> {var scroll=f.scroll();if(scroll!=null){scroll.setVvalue(1);pane.layout();}});
+                checks.add(() -> assertReachable(f,f.status()));
+                var privacy=pane.lookupAll(".label").stream().filter(Label.class::isInstance).map(Label.class::cast)
+                        .filter(label -> label.getText().startsWith("收藏在本机以明文保存")).findFirst().orElseThrow();
+                checks.add(() -> assertReachable(f,privacy));
+                checks.add(() -> assertInScene(pane,pane.lookupButton(ButtonType.CANCEL)));
+                assertAll(checks);assertEquals(1,repo.reads.get());assertNull(f.view.dialog().getResult());return null;
+            });
+        }
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"light,480","dark,480","light,640","dark,640"})
+    void compactFocusFindAndEditorScrollingPreserveManualPositionAndSelection(String theme,int width) throws Exception {
+        var repo=new Repository();repo.values.add(favorite("synthetic","group"));var scrollState=new double[2];var preScrollText=new AtomicReference<String>();
+        try(var f=new Fixture(repo,"")) {
+            f.idle();compact(f,theme,width);awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                var pane=f.view.dialog().getDialogPane();f.text("filter").setText("synthetic");f.text("filter").requestFocus();
+                pane.layout();assertReachable(f,f.text("filter"));f.scroll().setVvalue(1);pane.layout();return null;
+            });
+            awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                assertEquals(1,f.scroll().getVvalue(),"manual scroll must not pull the still-focused filter back");
+                assertSame(f.text("filter"),f.text("filter").getScene().getFocusOwner());
+                find(f.text("filter"));f.view.dialog().getDialogPane().layout();assertReachable(f,f.text("filter"));
+                assertEquals("synthetic",f.text("filter").getSelectedText());
+                f.text("filter").fireEvent(new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_PRESSED,"","",
+                        javafx.scene.input.KeyCode.TAB,false,false,false,false));
+                assertSame(f.list(),f.list().getScene().getFocusOwner());f.view.dialog().getDialogPane().layout();assertReachable(f,f.list());
+                f.list().getSelectionModel().selectFirst();f.sql().requestFocus();
+                f.sql().setText("select '"+"x".repeat(12000)+"';\n"+"select 'synthetic line';\n".repeat(180));
+                f.sql().selectRange(12020,12044);f.sql().setScrollTop(160);
+                f.view.dialog().getDialogPane().layout();assertReachable(f,f.sql());assertTrue(f.text("filter").isDisabled());return null;
+            });
+            awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                var pane=f.view.dialog().getDialogPane();var selection=f.sql().getSelection();
+                String text=f.sql().getText();double internal=f.sql().getScrollTop(),external=f.scroll().getVvalue();
+                assertTrue(internal>0,"long SQL really scrolls internally");find(f.sql());
+                assertSame(f.sql(),pane.getScene().getFocusOwner());assertEquals(selection,f.sql().getSelection());
+                assertEquals(text,f.sql().getText());assertEquals(internal,f.sql().getScrollTop(),1);assertEquals(external,f.scroll().getVvalue(),0.001);
+                scrollState[0]=internal;scrollState[1]=external;preScrollText.set(text);
+                f.sql().lookup(".content").fireEvent(new javafx.scene.input.ScrollEvent(javafx.scene.input.ScrollEvent.SCROLL,
+                        0,0,0,0,false,false,false,false,false,false,0,-40,0,-40,
+                        javafx.scene.input.ScrollEvent.HorizontalTextScrollUnits.NONE,0,
+                        javafx.scene.input.ScrollEvent.VerticalTextScrollUnits.LINES,-3,0,null));
+                assertEquals(selection,f.sql().getSelection());return null;
+            });
+            awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                var pane=f.view.dialog().getDialogPane();double external=scrollState[1];
+                assertTrue(f.sql().getScrollTop()>scrollState[0],"synthetic scroll is handled inside TextArea");
+                assertEquals(external,f.scroll().getVvalue(),0.001,"editor scroll must not also scroll the outer content");
+                assertSame(f.sql(),pane.getScene().getFocusOwner());assertEquals(preScrollText.get(),f.sql().getText());
+                assertEquals(new IndexRange(12020,12044),f.sql().getSelection());f.sql().replaceSelection("synthetic edit");
+                assertTrue(f.sql().getText().contains("synthetic edit"));
+                assertEquals(external,f.scroll().getVvalue(),0.001);
+                ((javafx.stage.Stage)pane.getScene().getWindow()).setWidth(width==480 ? 640 : 480);return null;
+            });
+            awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                var pane=f.view.dialog().getDialogPane();pane.layout();assertSame(f.sql(),pane.getScene().getFocusOwner());assertReachable(f,f.sql());
+                assertTrue(f.sql().getWidth()<=f.scroll().getViewportBounds().getWidth());
+                assertEquals(12034,f.sql().getCaretPosition());assertEquals(new IndexRange(12034,12034),f.sql().getSelection());
+                f.button("discard").requestFocus();pane.layout();assertReachable(f,f.button("discard"));
+                f.scroll().setVvalue(0);pane.layout();return null;
+            });
+            awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                assertEquals(0,f.scroll().getVvalue(),"manual scroll without focus/layout change is stable");
+                f.view.dialog().getDialogPane().lookupButton(ButtonType.CANCEL).requestFocus();return null;
+            });
+            awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {assertEquals(0,f.scroll().getVvalue(),"footer focus must not move scrolling content");
+                assertEquals(0,repo.saves.get());assertEquals(1,repo.reads.get());return null;});
+        }
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"light,480,save","dark,480,save","light,640,save","dark,640,save",
+            "light,480,delete","dark,480,delete","light,640,delete","dark,640,delete",
+            "light,480,recover","dark,480,recover","light,640,recover","dark,640,recover"})
+    void compactFailuresCompletedWritesAndRereadRemainReachable(String theme,int width,String operation) throws Exception {
+        var repo=new Repository();var original=favorite("synthetic original","group");
+        repo.values.add(original);if(operation.equals("recover"))repo.recoverable.add(favorite("synthetic recovery","backup"));
+        try(var f=new Fixture(repo,"")) {
+            f.idle();compact(f,theme,width);awaitLayoutPulses();
+            var confirmations=new AtomicInteger();
+            FxUiTestSupport.call(() -> {
+                var pane=f.view.dialog().getDialogPane();f.list().requestFocus();pane.layout();assertReachable(f,f.list());
+                f.list().getSelectionModel().select(operation.equals("recover") ? 1 : 0);
+                var cell=f.list().lookupAll(".list-cell").stream().filter(ListCell.class::isInstance).map(ListCell.class::cast)
+                        .filter(c -> !c.isEmpty() && c.isSelected()).findFirst().orElseThrow();
+                var row=cell.localToScene(cell.getBoundsInLocal());var list=f.list().localToScene(f.list().getBoundsInLocal());
+                assertTrue(row.getMinY()>=list.getMinY() && row.getMaxY()<=list.getMaxY(),"selected row is actually inside list");
+                assertEquals(1,repo.reads.get());
+                if(operation.equals("save")) {
+                    fireReachable(f,"new");assertSame(f.text("name"),pane.getScene().getFocusOwner());pane.layout();assertReachable(f,f.text("name"));
+                    f.text("name").setText("synthetic draft");f.text("group").setText("synthetic group");f.sql().setText("select 'synthetic draft';");
+                    f.view.confirmDiscard=() -> {confirmations.incrementAndGet();return false;};fireReachable(f,"discard");
+                    assertEquals("synthetic draft",f.text("name").getText());assertEquals(1,confirmations.get());
+                    f.view.confirmDiscard=() -> {confirmations.incrementAndGet();return true;};fireReachable(f,"discard");
+                    assertEquals("",f.sql().getText());assertEquals(2,confirmations.get());
+                    f.text("name").setText("synthetic saved");f.sql().setText("select 'synthetic saved';");repo.failSave=true;
+                } else if(operation.equals("delete")) {
+                    f.view.confirmDelete=v -> {confirmations.incrementAndGet();return false;};fireReachable(f,"delete");
+                    assertEquals(0,repo.deletes.get());assertEquals(1,confirmations.get());
+                    f.view.confirmDelete=v -> {confirmations.incrementAndGet();return true;};repo.failDelete=true;
+                } else {assertTrue(f.sql().isDisabled());assertTrue(f.button("open").isDisabled());repo.failRecover=true;}
+                fireReachable(f,operation.equals("recover") ? "recover" : operation);return null;
+            });
+            f.idle();awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                assertTrue(f.status().getText().contains("读取或写入未完成"));assertFalse(f.status().getText().contains("secret"));
+                bottomReachable(f);assertInScene(f.view.dialog().getDialogPane(),f.view.dialog().getDialogPane().lookupButton(ButtonType.CANCEL));
+                assertEquals(1,operation.equals("save") ? repo.saves.get() : operation.equals("delete") ? repo.deletes.get() : repo.recovers.get());
+                repo.failSave=false;repo.failDelete=false;repo.failRecover=false;repo.failLoad=true;
+                fireReachable(f,operation.equals("recover") ? "recover" : operation);return null;
+            });
+            f.idle();awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                assertPending(f,operation.equals("delete") ? original : repo.values.getLast(),operation);
+                bottomReachable(f);if(width==480)assertTrue(f.status().getHeight()>20,"completed notice is wrapped at 480 width");
+                fireReachable(f,"reload");return null;
+            });
+            f.idle();awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                assertPending(f,operation.equals("delete") ? original : repo.values.getLast(),operation);bottomReachable(f);
+                assertEquals(2,operation.equals("save") ? repo.saves.get() : operation.equals("delete") ? repo.deletes.get() : repo.recovers.get());
+                repo.failLoad=false;fireReachable(f,"reload");return null;
+            });
+            f.idle();awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                assertTrue(f.status().getText().startsWith("已读取"));bottomReachable(f);
+                assertFalse(f.list().isDisabled());f.list().requestFocus();f.view.dialog().getDialogPane().layout();assertReachable(f,f.list());
+                if(operation.equals("delete")) {
+                    assertTrue(f.list().getItems().isEmpty());assertEquals(3,confirmations.get());
+                    var cancel=(Button)f.view.dialog().getDialogPane().lookupButton(ButtonType.CANCEL);assertInScene(f.view.dialog().getDialogPane(),cancel);cancel.fire();
+                    assertNull(f.view.dialog().getResult());
+                } else {var saved=repo.values.getLast();fireReachable(f,"open");assertEquals(saved,f.view.dialog().getResult());}
+                assertFalse(f.view.dialog().isShowing());assertEquals(4,repo.reads.get());return null;
+            });
+        }
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints={480,640})
+    void compactFirstReadAndProtectedStatusAllowRereadWithoutMutation(int width) throws Exception {
+        var repo=new Repository();repo.block=true;var value=favorite("synthetic protected","backup");
+        repo.values.add(value);repo.recoverable.add(value);
+        try(var f=new Fixture(repo,"x".repeat(SqlFavoriteStore.MAX_SQL_BYTES+1))) {
+            assertTrue(repo.started.await(5,TimeUnit.SECONDS));compact(f,"dark",width);awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                assertTrue(f.sql().isDisabled());assertTrue(f.button("reload").isDisabled());bottomReachable(f);
+                assertTrue(f.status().getText().contains("正在处理"));
+                var pane=f.view.dialog().getDialogPane();assertInScene(pane,pane.lookupButton(ButtonType.CANCEL));
+                ((Button)pane.lookupButton(ButtonType.CANCEL)).fire();assertTrue(f.view.dialog().isShowing(),"busy close is rejected");return null;
+            });
+            repo.block=false;repo.release.countDown();f.idle();awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                assertTrue(f.status().getText().contains("超过收藏上限"));assertTrue(f.status().getText().contains("受保护"));bottomReachable(f);
+                f.list().requestFocus();f.view.dialog().getDialogPane().layout();assertReachable(f,f.list());f.list().getSelectionModel().selectFirst();
+                assertTrue(f.button("save").isDisabled());assertTrue(f.button("delete").isDisabled());
+                fireReachable(f,"reload");return null;
+            });f.idle();awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {bottomReachable(f);assertEquals(2,repo.reads.get());assertEquals(0,repo.saves.get());
+                assertEquals(0,repo.deletes.get());assertEquals(0,repo.recovers.get());return null;});
+        } finally {repo.release.countDown();}
+    }
+    @Test void wideResizeKeepsEditorFocusAndClosedQueuedLayoutCannotRestoreContent() throws Exception {
+        var repo=new Repository();repo.values.add(favorite("synthetic","group"));
+        try(var f=new Fixture(repo,"")) {
+            f.idle();compact(f,"light",480);awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                f.list().getSelectionModel().selectFirst();f.sql().requestFocus();var pane=f.view.dialog().getDialogPane();pane.layout();assertReachable(f,f.sql());
+                var stage=(javafx.stage.Stage)pane.getScene().getWindow();stage.setWidth(960);stage.setHeight(760);return null;
+            });awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                var pane=f.view.dialog().getDialogPane();pane.layout();assertEquals(960,pane.getScene().getWindow().getWidth(),1);
+                assertEquals(760,pane.getScene().getWindow().getHeight(),1);assertSame(f.sql(),pane.getScene().getFocusOwner());
+                for(javafx.scene.Node node:List.of(f.text("filter"),f.list(),f.text("name"),f.text("group"),f.sql(),f.status(),
+                        pane.lookup("#favorites-privacy")))assertReachable(f,node);
+                assertTrue(((javafx.scene.layout.Region)f.scroll().getContent()).getHeight()<=f.scroll().getViewportBounds().getHeight()+1);
+                assertInScene(pane,pane.lookupButton(ButtonType.CANCEL));
+                // Force a real content-height listener to enqueue reveal while a body control owns focus.
+                double before=((javafx.scene.layout.Region)f.scroll().getContent()).getHeight();
+                f.status().setText("合成长状态，用于关闭后布局回调验证。".repeat(40));pane.applyCss();pane.layout();f.scroll().layout();
+                assertTrue(((javafx.scene.layout.Region)f.scroll().getContent()).getHeight()>before,"height change actually enqueues reveal");
+                f.view.close();f.scroll().setVvalue(0.5);f.view.dialog().close();return null;
+            });awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                assertFalse(f.view.dialog().isShowing());assertEquals(0.5,f.scroll().getVvalue(),0.001,"queued reveal must stop after close");
+                assertEquals("",f.sql().getText());assertEquals("",f.text("name").getText());assertTrue(f.list().getItems().isEmpty());
+                for(String id:List.of("save","delete","recover","new","reload","open"))f.button(id).getOnAction().handle(new javafx.event.ActionEvent());
+                assertEquals(1,repo.reads.get());assertEquals(0,repo.saves.get());assertEquals(0,repo.deletes.get());assertEquals(0,repo.recovers.get());return null;
+            });
+        }
+    }
+    private static void find(javafx.scene.Node source) {
+        source.fireEvent(new javafx.scene.input.KeyEvent(javafx.scene.input.KeyEvent.KEY_PRESSED,"","",javafx.scene.input.KeyCode.F,false,true,false,false));
+    }
+    private static void fireReachable(Fixture f,String id) {
+        var button=f.button(id);assertFalse(button.isDisabled(),id);button.requestFocus();f.view.dialog().getDialogPane().layout();
+        assertReachable(f,button);button.fire();
+    }
+    private static void bottomReachable(Fixture f) {
+        f.scroll().setVvalue(1);f.view.dialog().getDialogPane().layout();assertReachable(f,f.status());
+        assertReachable(f,f.view.dialog().getDialogPane().lookup("#favorites-privacy"));
+    }
+    private static void compact(Fixture f,String theme,int width) throws Exception {
+        FxUiTestSupport.call(() -> {
+            var pane=f.view.dialog().getDialogPane();pane.getScene().getStylesheets().setAll(
+                    ThemeManager.class.getResource("theme-base.css").toExternalForm(),ThemeManager.class.getResource("theme-"+theme+".css").toExternalForm());
+            var stage=(javafx.stage.Stage)pane.getScene().getWindow();stage.setWidth(width);stage.setHeight(480);return null;
+        });
+    }
+    private static void assertReachable(Fixture f,javafx.scene.Node node) {
+        var pane=f.view.dialog().getDialogPane();var scroll=f.scroll();
+        var viewport=scroll==null ? pane : scroll.lookup(".viewport");
+        var visible=scroll==null ? new javafx.geometry.BoundingBox(0,0,pane.getScene().getWidth(),pane.getScene().getHeight())
+                : viewport.localToScene(viewport.getBoundsInLocal());
+        var bounds=node.localToScene(node.getBoundsInLocal());
+        var screen=node.localToScreen(node.getBoundsInLocal());
+        System.out.println("COMPACT node="+node.getId()+" bounds="+bounds+" viewport="+visible+" screen="+screen);
+        assertTrue(bounds.getMinX()>=visible.getMinX()-1 && bounds.getMaxX()<=visible.getMaxX()+1
+                && bounds.getMinY()>=visible.getMinY()-1 && bounds.getMaxY()<=visible.getMaxY()+1,
+                node.getId()+" must be reachable: "+bounds+" visible "+visible);
+        assertInScene(pane,viewport);
+    }
+    private static void assertInScene(DialogPane pane,javafx.scene.Node node) {
+        var bounds=node.localToScene(node.getBoundsInLocal());
+        assertTrue(bounds.getMinX()>=-1 && bounds.getMaxX()<=pane.getScene().getWidth()+1
+                && bounds.getMinY()>=-1 && bounds.getMaxY()<=pane.getScene().getHeight()+1,"outside actual scene: "+bounds);
+    }
     private static void awaitLayoutPulses() throws Exception {
         var ready=new CountDownLatch(1);
         FxUiTestSupport.call(() -> {new javafx.animation.AnimationTimer() {
@@ -445,6 +692,7 @@ class SqlFavoritesDialogTest {
         TextField text(String id) { return (TextField)view.dialog().getDialogPane().lookup("#favorites-"+id); }
         TextArea sql() { return (TextArea)view.dialog().getDialogPane().lookup("#favorites-sql"); }
         ListView<?> list() { return (ListView<?>)view.dialog().getDialogPane().lookup("#favorites-list"); }
+        ScrollPane scroll() { return (ScrollPane)view.dialog().getDialogPane().lookup("#favorites-scroll"); }
         Label status() { return (Label)view.dialog().getDialogPane().lookup("#favorites-status"); }
         void idle() throws Exception {
             CountDownLatch ready=new CountDownLatch(1);
