@@ -1,0 +1,459 @@
+diff --git a/src/com/datacube/fx/SqlFavoritesDialog.java b/src/com/datacube/fx/SqlFavoritesDialog.java
+index 0c8e7b6..9d3d00a 100644
+--- a/src/com/datacube/fx/SqlFavoritesDialog.java
++++ b/src/com/datacube/fx/SqlFavoritesDialog.java
+@@ -37,6 +37,7 @@ final class SqlFavoritesDialog implements AutoCloseable {
+     private List<Entry> entries=List.of();
+     private Set<UUID> protectedIds=Set.of();
+     private Entry selected;
++    private Completed pendingRefresh;
+     private boolean busy,closed,mutating,writable;
+     private String initialSql;
+     private final boolean seedTooLarge;
+@@ -82,21 +83,21 @@ final class SqlFavoritesDialog implements AutoCloseable {
+         dialog.setOnCloseRequest(event -> { if(busy || dirty() && !confirmDiscard.getAsBoolean()) event.consume(); });
+         dialog.setOnShown(event -> load(null)); dialog.setOnHidden(event -> close());
+         filter.textProperty().addListener(ignored -> filtered());
+-        list.getSelectionModel().selectedItemProperty().addListener((obs,before,entry) -> { if(!mutating) edit(entry); });
++        list.getSelectionModel().selectedItemProperty().addListener((obs,before,entry) -> { if(!mutating && pendingRefresh==null && !closed) edit(entry); });
+         name.textProperty().addListener(ignored -> buttons()); group.textProperty().addListener(ignored -> buttons()); sql.textProperty().addListener(ignored -> buttons());
+-        create.setOnAction(event -> { if(!busy && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; edit(null); name.requestFocus(); } });
+-        discard.setOnAction(event -> { if(!closed && !busy && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; edit(selected); } });
+-        reload.setOnAction(event -> { if(!busy && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; load(null); } });
++        create.setOnAction(event -> { if(!closed && !busy && pendingRefresh==null && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; edit(null); name.requestFocus(); } });
++        discard.setOnAction(event -> { if(!closed && !busy && pendingRefresh==null && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; edit(selected); } });
++        reload.setOnAction(event -> { if(!closed && !busy && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; load(null); } });
+         save.setOnAction(event -> save());
+         remove.setOnAction(event -> {
+-            if(busy || selected==null || selected.recovery() || dirty() || !confirmDelete.test(selected.value())) return;
+-            SqlFavorite expected=selected.value(); operate(() -> { repository.delete(expected); return repository.load(); },snapshot -> loaded(snapshot,null));
++            if(closed || busy || pendingRefresh!=null || selected==null || selected.recovery() || dirty() || !confirmDelete.test(selected.value())) return;
++            SqlFavorite expected=selected.value(); write(Outcome.DELETE,() -> { repository.delete(expected); return expected; });
+         });
+         restore.setOnAction(event -> {
+-            if(busy || selected==null || !selected.recovery()) return;
+-            UUID id=selected.value().id(); operate(() -> { var value=repository.recover(id,System.currentTimeMillis()); return new Saved(value,repository.load()); },saved -> loaded(saved.snapshot(),saved.value().id()));
++            if(closed || busy || pendingRefresh!=null || selected==null || !selected.recovery()) return;
++            UUID id=selected.value().id(); write(Outcome.RECOVER,() -> repository.recover(id,System.currentTimeMillis()));
+         });
+-        open.setOnAction(event -> { if(!busy && !dirty() && selected!=null && !selected.recovery()) { dialog.setResult(selected.value()); dialog.close(); } });
++        open.setOnAction(event -> { if(!closed && !busy && pendingRefresh==null && !dirty() && selected!=null && !selected.recovery()) { dialog.setResult(selected.value()); dialog.close(); } });
+         dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED,event -> {
+             if(event.getCode()==KeyCode.F && event.isControlDown() && !event.isAltDown() && !event.isShiftDown() && !event.isMetaDown()) { if(!filter.isDisabled()) { filter.requestFocus(); filter.selectAll(); } event.consume(); }
+         });
+@@ -110,19 +111,19 @@ final class SqlFavoritesDialog implements AutoCloseable {
+         return alert.showAndWait().orElse(ButtonType.CANCEL)==ButtonType.OK;
+     }
+     private boolean dirty() {
+-        if(mutating) return false;
++        if(mutating || pendingRefresh!=null) return false;
+         return selected==null ? !name.getText().isEmpty() || !group.getText().isEmpty() || !sql.getText().isEmpty()
+                 : !name.getText().equals(selected.value().name()) || !group.getText().equals(selected.value().group()) || !sql.getText().equals(selected.value().sql());
+     }
+     private void buttons() {
+         if(mutating) return;
+-        boolean unavailable=busy || closed; boolean recovery=selected!=null && selected.recovery();
++        boolean unavailable=busy || closed || pendingRefresh!=null; boolean recovery=selected!=null && selected.recovery();
+         boolean protectedEntry=selected!=null && protectedIds.contains(selected.value().id());
+         list.setDisable(unavailable || dirty()); filter.setDisable(unavailable || dirty());
+         name.setDisable(unavailable || recovery); group.setDisable(unavailable || recovery); sql.setDisable(unavailable || recovery);
+         save.setDisable(unavailable || !writable || recovery || protectedEntry || !dirty() || name.getText().isBlank() || sql.getText().isBlank());
+         remove.setDisable(unavailable || recovery || protectedEntry || selected==null || dirty()); restore.setDisable(unavailable || !writable || !recovery);
+-        open.setDisable(unavailable || selected==null || recovery || dirty()); create.setDisable(unavailable); reload.setDisable(unavailable); discard.setDisable(unavailable || !dirty());
++        open.setDisable(unavailable || selected==null || recovery || dirty()); create.setDisable(unavailable); reload.setDisable(busy || closed); discard.setDisable(unavailable || !dirty());
+     }
+     private void edit(Entry entry) {
+         mutating=true;
+@@ -130,7 +131,7 @@ final class SqlFavoritesDialog implements AutoCloseable {
+         finally { mutating=false; } buttons();
+     }
+     private void filtered() {
+-        if(mutating) return;
++        if(mutating || closed || pendingRefresh!=null) return;
+         String term=filter.getText().strip().toLowerCase(Locale.ROOT); Entry previous=selected;
+         mutating=true;
+         try { list.getItems().setAll(entries.stream().filter(e -> (e.value().name()+"\n"+e.value().group()).toLowerCase(Locale.ROOT).contains(term)).toList());
+@@ -138,9 +139,9 @@ final class SqlFavoritesDialog implements AutoCloseable {
+         finally { mutating=false; }
+         edit(list.getSelectionModel().getSelectedItem());
+     }
+-    private void load(UUID select) { operate(repository::load,snapshot -> loaded(snapshot,select)); }
++    private void load(UUID select) { UUID requested=pendingRefresh==null ? select : pendingRefresh.select(); operate(repository::load,snapshot -> loaded(snapshot,requested)); }
+     private void loaded(SqlFavoriteStore.Snapshot snapshot,UUID select) {
+-        writable=snapshot.writable(); protectedIds=new HashSet<>(snapshot.recoverable().stream().map(SqlFavorite::id).toList());
++        pendingRefresh=null; writable=snapshot.writable(); protectedIds=new HashSet<>(snapshot.recoverable().stream().map(SqlFavorite::id).toList());
+         var all=new ArrayList<Entry>(); snapshot.favorites().forEach(v -> all.add(new Entry(v,false))); snapshot.recoverable().forEach(v -> all.add(new Entry(v,true))); entries=List.copyOf(all);
+         selected=null; filtered();
+         if(select!=null) { initialSql=""; entries.stream().filter(e -> !e.recovery() && e.value().id().equals(select)).findFirst().ifPresent(e -> { filter.clear(); list.getSelectionModel().select(e); edit(e); }); }
+@@ -148,23 +149,51 @@ final class SqlFavoritesDialog implements AutoCloseable {
+         buttons();
+     }
+     private void save() {
+-        if(closed || save.isDisabled()) return;
++        if(closed || pendingRefresh!=null || save.isDisabled()) return;
+         SqlFavorite expected=selected==null ? null : selected.value();
+         SqlFavorite value=new SqlFavorite(expected==null ? UUID.randomUUID() : expected.id(),name.getText().strip(),group.getText().strip(),sql.getText(),System.currentTimeMillis());
+-        operate(() -> { repository.save(value,expected); return new Saved(value,repository.load()); },saved -> loaded(saved.snapshot(),saved.value().id()));
++        write(Outcome.SAVE,() -> { repository.save(value,expected); return value; });
++    }
++    private void write(Outcome outcome,Callable<SqlFavorite> operation) {
++        if(closed || busy || pendingRefresh!=null) return;
++        operate(() -> {
++            // Only a normally returned write (including repository resource close) is confirmed.
++            Completed completed=new Completed(outcome,operation.call());
++            SqlFavoriteStore.Snapshot snapshot;
++            try { snapshot=repository.load(); }
++            catch(Exception unreadable) { if(unreadable instanceof InterruptedException) Thread.currentThread().interrupt(); snapshot=null; }
++            return new Refreshed(completed,snapshot);
++        },result -> {
++            pendingRefresh=result.completed(); initialSql=""; entries=List.of(); protectedIds=Set.of(); writable=false;
++            mutating=true; try { list.getItems().clear(); } finally { mutating=false; }
++            edit(new Entry(pendingRefresh.value(),false));
++            if(result.snapshot()!=null) loaded(result.snapshot(),pendingRefresh.select());
++            else status.setText(pendingRefresh.notice());
++        });
+     }
+     private <T> void operate(Callable<T> operation,Consumer<T> success) {
+         if(busy || closed) return; busy=true; status.setText("正在处理本地收藏，请等待完成…"); buttons();
+         try { tasks.submit(operation,result -> { busy=false; success.accept(result); buttons(); },failure -> {
+-            busy=false; status.setText(failure instanceof SqlFavoriteStore.Failure f ? switch(f.code()) {
++            busy=false; status.setText(pendingRefresh!=null ? pendingRefresh.notice() : failure instanceof SqlFavoriteStore.Failure f ? switch(f.code()) {
+                 case CAPACITY -> "收藏额度不足，未驱逐旧项；请先明确删除不需要的收藏。";
+                 case CHANGED -> "收藏已变化，未覆盖；请重新读取后核对。";
+                 case PROTECTED -> "文件损坏或版本未知，已保留原文件；可从有效副本恢复为新项。";
+                 case INVALID -> "收藏内容无效或超过 UTF-8 字节额度，尚未保存。";
+                 default -> "收藏暂不可用，原内容未主动清理，请重试。";
+             } : "收藏读取或写入未完成，请重新读取核对；不会自动清理旧内容。"); buttons();
+-        }); } catch(java.util.concurrent.RejectedExecutionException rejected) { busy=false; status.setText("收藏任务暂不可用。"); buttons(); }
++        }); } catch(java.util.concurrent.RejectedExecutionException rejected) { busy=false; status.setText(pendingRefresh==null ? "收藏任务暂不可用。" : pendingRefresh.notice()); buttons(); }
++    }
++    private enum Outcome { SAVE, DELETE, RECOVER }
++    private record Completed(Outcome outcome,SqlFavorite value) {
++        UUID select() { return outcome==Outcome.DELETE ? null : value.id(); }
++        String notice() {
++            return switch(outcome) {
++                case SAVE -> "收藏已保存";
++                case DELETE -> "收藏已删除";
++                case RECOVER -> "已从副本恢复为新收藏";
++            } + "，但列表读取未完成；已完成的操作不会重试。请点击重新读取后核对。";
++        }
+     }
+-    private record Saved(SqlFavorite value,SqlFavoriteStore.Snapshot snapshot) {}
+-    @Override public void close() { if(closed) return; closed=true; tasks.close(); entries=List.of(); selected=null; initialSql=""; mutating=true; try { list.getItems().clear(); sql.clear(); name.clear(); group.clear(); } finally { mutating=false; } buttons(); }
++    private record Refreshed(Completed completed,SqlFavoriteStore.Snapshot snapshot) {}
++    @Override public void close() { if(closed) return; closed=true; tasks.close(); entries=List.of(); selected=null; pendingRefresh=null; initialSql=""; mutating=true; try { list.getItems().clear(); sql.clear(); name.clear(); group.clear(); } finally { mutating=false; } buttons(); }
+ }
+diff --git a/test/com/datacube/fx/SqlFavoritesDialogTest.java b/test/com/datacube/fx/SqlFavoritesDialogTest.java
+index 66bb550..a8f418f 100644
+--- a/test/com/datacube/fx/SqlFavoritesDialogTest.java
++++ b/test/com/datacube/fx/SqlFavoritesDialogTest.java
+@@ -144,14 +144,275 @@ class SqlFavoritesDialogTest {
+             });
+         }
+     }
++    @Test void committedNewSaveWithFailedRefreshCannotCreateAnotherPersistedUuid(@org.junit.jupiter.api.io.TempDir java.nio.file.Path temp) throws Exception {
++        var directory=temp.resolve("synthetic-favorites");var local=SqlFavoritesDialog.local(directory);
++        var failReads=new AtomicBoolean();var writes=new AtomicInteger();
++        var repository=new SqlFavoritesDialog.Repository() {
++            public SqlFavoriteStore.Snapshot load() throws Exception {
++                if(failReads.get()) throw new java.io.IOException("private synthetic read diagnostic");return local.load();
++            }
++            public void save(SqlFavorite value,SqlFavorite expected) throws Exception {local.save(value,expected);writes.incrementAndGet();failReads.set(true);}
++            public void delete(SqlFavorite expected) throws Exception {local.delete(expected);}
++            public SqlFavorite recover(UUID id,long now) throws Exception {return local.recover(id,now);}
++        };
++        try(var f=new Fixture(repository,"select 'synthetic committed';")) {
++            f.idle();FxUiTestSupport.call(() -> {f.text("name").setText("committed new");f.button("save").fire();return null;});f.idle();
++            var first=local.load().favorites().getFirst();var path=directory.resolve(first.id()+".favorite");var bytes=java.nio.file.Files.readAllBytes(path);
++            assertEquals("select 'synthetic committed';",first.sql());assertEquals(1,writes.get());
++            FxUiTestSupport.call(() -> {f.button("save").fire();return null;});f.idle();
++            assertEquals(1,local.load().favorites().size(),"completed save followed by read failure must not create a second UUID");
++            assertEquals(1,writes.get());assertArrayEquals(bytes,java.nio.file.Files.readAllBytes(path));
++            FxUiTestSupport.call(() -> {
++                assertEquals(first.name(),f.text("name").getText());assertEquals(first.sql(),f.sql().getText());
++                assertTrue(f.status().getText().contains("已保存"));assertTrue(f.status().getText().contains("重新读取"));
++                assertFalse(f.status().getText().contains("private"));assertTrue(f.button("save").isDisabled());assertTrue(f.button("open").isDisabled());return null;
++            });
++        }
++    }
++    @org.junit.jupiter.params.ParameterizedTest
++    @org.junit.jupiter.params.provider.ValueSource(strings={"new","edit","delete","recover"})
++    void completedWritesStayFrozenAcrossFailedRereadAndResumeFromFreshSnapshot(String operation) throws Exception {
++        var repo=new Repository();var original=favorite("original","group");
++        if(operation.equals("recover")) repo.recoverable.add(original);else if(!operation.equals("new")) repo.values.add(original);
++        try(var f=new Fixture(repo,"")) {
++            f.idle();FxUiTestSupport.call(() -> {
++                f.view.confirmDiscard=() -> {throw new AssertionError("completed operation is not dirty");};
++                if(!operation.equals("new")) f.list().getSelectionModel().selectFirst();
++                repo.failLoad=true;
++                switch(operation) {
++                    case "new" -> {f.text("name").setText("new saved");f.sql().setText("select 'new committed';");f.button("save").fire();}
++                    case "edit" -> {f.sql().setText("select 'edited committed';");f.button("save").fire();}
++                    case "delete" -> {f.view.confirmDelete=value -> {assertEquals(original,value);return true;};f.button("delete").fire();}
++                    default -> f.button("recover").fire();
++                } return null;
++            });f.idle();
++            var completed=operation.equals("delete") ? original : repo.values.getFirst();
++            var notice=FxUiTestSupport.call(() -> {
++                assertPending(f,completed,operation);var message=f.status().getText();
++                for(String id:List.of("save","delete","recover","open","new","discard")) {
++                    var button=f.button(id);assertTrue(button.isDisabled(),id);
++                    // Deliberate handler invocation verifies the state guard separately from disabled controls.
++                    button.getOnAction().handle(new javafx.event.ActionEvent(button,button));
++                }
++                f.text("filter").setText("does not match committed item");
++                assertEquals(completed.sql(),f.sql().getText());assertTrue(f.view.dialog().isShowing());assertNull(f.view.dialog().getResult());
++                f.button("reload").fire();return message;
++            });f.idle();
++            FxUiTestSupport.call(() -> {assertPending(f,completed,operation);assertEquals(notice,f.status().getText());return null;});
++            assertEquals(operation.equals("new") || operation.equals("edit") ? 1 : 0,repo.saves.get());
++            assertEquals(operation.equals("delete") ? 1 : 0,repo.deletes.get());assertEquals(operation.equals("recover") ? 1 : 0,repo.recovers.get());
++            assertEquals(3,repo.reads.get(),"only explicit reread repeats the read, never the completed write");
++            repo.failLoad=false;
++            var fresh=operation.equals("delete") ? null : new SqlFavorite(completed.id(),"fresh external name","fresh",completed.sql()+" -- fresh snapshot",completed.modifiedAt()+1);
++            if(fresh!=null) {repo.values.clear();repo.values.add(fresh);}
++            FxUiTestSupport.call(() -> {f.button("reload").fire();return null;});f.idle();
++            FxUiTestSupport.call(() -> {
++                assertFalse(f.list().isDisabled());assertFalse(f.button("new").isDisabled());
++                if(fresh==null) {assertTrue(f.list().getItems().isEmpty());assertEquals("",f.sql().getText());assertTrue(f.button("open").isDisabled());}
++                else {assertEquals(fresh.name(),f.text("name").getText());assertEquals(fresh.sql(),f.sql().getText());f.button("open").fire();assertEquals(fresh,f.view.dialog().getResult());}
++                return null;
++            });assertEquals(4,repo.reads.get());
++            if(operation.equals("recover")) assertEquals(List.of(original),repo.recoverable);
++        }
++    }
++    @Test void successfulRereadDoesNotRecreateACompletedItemMissingFromFreshSnapshot() throws Exception {
++        var repo=new Repository();
++        try(var f=new Fixture(repo,"")) {
++            f.idle();FxUiTestSupport.call(() -> {f.text("name").setText("saved");f.sql().setText("select 'saved';");repo.failLoad=true;f.button("save").fire();return null;});f.idle();
++            repo.values.clear();repo.failLoad=false;FxUiTestSupport.call(() -> {f.button("reload").fire();return null;});f.idle();
++            FxUiTestSupport.call(() -> {assertTrue(f.list().getItems().isEmpty());assertEquals("",f.sql().getText());assertTrue(f.button("open").isDisabled());return null;});
++            assertEquals(1,repo.saves.get());assertTrue(repo.values.isEmpty());
++        }
++    }
++    @Test void rejectedRereadPreservesCompletedNoticeAndDoesNotWriteAgain() throws Exception {
++        var repo=new Repository();
++        try(var f=new Fixture(repo,"")) {
++            f.idle();FxUiTestSupport.call(() -> {f.text("name").setText("saved");f.sql().setText("select 'saved';");repo.failLoad=true;f.button("save").fire();return null;});f.idle();
++            var notice=FxUiTestSupport.call(() -> f.status().getText());f.runner.close();
++            FxUiTestSupport.call(() -> {f.button("reload").fire();assertEquals(notice,f.status().getText());assertPending(f,repo.values.getFirst(),"new");return null;});
++            assertEquals(2,repo.reads.get());assertEquals(1,repo.saves.get());
++        }
++    }
++    @org.junit.jupiter.params.ParameterizedTest
++    @org.junit.jupiter.params.provider.ValueSource(strings={"new","edit","delete","recover"})
++    void completedOperationCanCloseWithoutDiscardPrompt(String operation) throws Exception {
++        var repo=new Repository();var original=favorite("original","g");
++        if(operation.equals("recover"))repo.recoverable.add(original);else if(!operation.equals("new"))repo.values.add(original);
++        try(var f=new Fixture(repo,"")) {
++            f.idle();FxUiTestSupport.call(() -> {
++                f.view.confirmDiscard=() -> {throw new AssertionError("completed outcome must not prompt to discard");};repo.failLoad=true;
++                if(!operation.equals("new"))f.list().getSelectionModel().selectFirst();
++                switch(operation) {
++                    case "new" -> {f.text("name").setText("saved");f.sql().setText("select 1;");f.button("save").fire();}
++                    case "edit" -> {f.sql().setText("select 2;");f.button("save").fire();}
++                    case "delete" -> {f.view.confirmDelete=v -> true;f.button("delete").fire();}
++                    default -> f.button("recover").fire();
++                }return null;
++            });f.idle();
++            FxUiTestSupport.call(() -> {((Button)f.view.dialog().getDialogPane().lookupButton(ButtonType.CANCEL)).fire();assertFalse(f.view.dialog().isShowing());assertNull(f.view.dialog().getResult());assertEquals("",f.sql().getText());return null;});
++        }
++    }
++    @org.junit.jupiter.params.ParameterizedTest
++    @org.junit.jupiter.params.provider.ValueSource(strings={"new","edit","delete","recover"})
++    void genuineWriteFailurePreservesDraftAndAllowsOnlyExplicitRetry(String operation) throws Exception {
++        var repo=new Repository();var original=favorite("original","g");
++        if(operation.equals("recover"))repo.recoverable.add(original);else if(!operation.equals("new"))repo.values.add(original);
++        try(var f=new Fixture(repo,"")) {
++            f.idle();var discards=new AtomicInteger();
++            FxUiTestSupport.call(() -> {
++                f.view.confirmDiscard=() -> {discards.incrementAndGet();return false;};f.view.confirmDelete=v -> true;
++                if(!operation.equals("new"))f.list().getSelectionModel().selectFirst();
++                if(operation.equals("new")) {f.text("name").setText("pending new");f.sql().setText("select 'pending';");}
++                if(operation.equals("edit"))f.sql().setText("select 'pending';");
++                repo.failSave=true;repo.failDelete=true;repo.failRecover=true;
++                f.button(operation.equals("delete") ? "delete" : operation.equals("recover") ? "recover" : "save").fire();return null;
++            });f.idle();
++            FxUiTestSupport.call(() -> {
++                assertEquals(operation.equals("new") || operation.equals("edit") ? "select 'pending';" : original.sql(),f.sql().getText());
++                assertFalse(f.status().getText().contains("secret"));assertFalse(f.status().getText().contains("已保存"));
++                assertFalse(f.status().getText().contains("已删除"));assertFalse(f.status().getText().contains("已从副本恢复"));
++                var action=f.button(operation.equals("delete") ? "delete" : operation.equals("recover") ? "recover" : "save");assertFalse(action.isDisabled());
++                if(operation.equals("new") || operation.equals("edit")) {((Button)f.view.dialog().getDialogPane().lookupButton(ButtonType.CANCEL)).fire();assertTrue(f.view.dialog().isShowing());assertEquals(1,discards.get());}
++                assertEquals(1,repo.reads.get(),"a write failure cannot automatically reload or retry");
++                repo.failSave=false;repo.failDelete=false;repo.failRecover=false;action.fire();return null;
++            });f.idle();
++            assertEquals(operation.equals("new") || operation.equals("edit") ? 2 : 0,repo.saves.get());
++            assertEquals(operation.equals("delete") ? 2 : 0,repo.deletes.get());assertEquals(operation.equals("recover") ? 2 : 0,repo.recovers.get());
++            assertEquals(2,repo.reads.get());
++            if(operation.equals("edit"))assertEquals(original,repo.expected.get());
++            if(operation.equals("delete"))assertTrue(repo.values.isEmpty());else assertEquals(1,repo.values.size());
++        }
++    }
++    @Test void thrownWriteDoesNotClaimNoPartialMutationAndExplicitReadCanReconcileIt() throws Exception {
++        var repo=new Repository();
++        var partial=new SqlFavoritesDialog.Repository() {
++            public SqlFavoriteStore.Snapshot load() throws Exception {return repo.load();}
++            public void save(SqlFavorite value,SqlFavorite expected) throws Exception {repo.save(value,expected);throw new java.io.IOException("secret post-write resource close failure");}
++            public void delete(SqlFavorite expected) throws Exception {repo.delete(expected);}
++            public SqlFavorite recover(UUID id,long now) throws Exception {return repo.recover(id,now);}
++        };
++        try(var f=new Fixture(partial,"")) {
++            f.idle();FxUiTestSupport.call(() -> {f.text("name").setText("uncertain");f.sql().setText("select 'synthetic uncertain';");f.button("save").fire();return null;});f.idle();
++            assertEquals(1,repo.values.size());
++            FxUiTestSupport.call(() -> {
++                assertEquals("select 'synthetic uncertain';",f.sql().getText());assertFalse(f.button("save").isDisabled());
++                assertFalse(f.status().getText().contains("尚未保存"));assertFalse(f.status().getText().contains("已保存"));
++                f.view.confirmDiscard=() -> false;f.button("reload").fire();assertEquals(1,repo.reads.get());
++                f.view.confirmDiscard=() -> true;f.button("reload").fire();return null;
++            });f.idle();
++            FxUiTestSupport.call(() -> {f.list().getSelectionModel().selectFirst();f.button("open").fire();assertEquals(repo.values.getFirst(),f.view.dialog().getResult());return null;});
++            assertEquals(1,repo.saves.get());assertEquals(2,repo.reads.get());
++        }
++    }
++    @Test void realRecoveredCopyWithFailedRefreshPreservesDamagedOriginalAndBackup(@org.junit.jupiter.api.io.TempDir java.nio.file.Path temp) throws Exception {
++        var directory=temp.resolve("synthetic-protected-favorites");var original=favorite("protected source","g");
++        try(var store=SqlFavoriteStore.open(directory)) {
++            store.save(original,null);store.save(new SqlFavorite(original.id(),"newer","g","select 'newer';",2),original);
++        }
++        var primary=directory.resolve(original.id()+".favorite");var backup=directory.resolve(original.id()+".favorite-backup");
++        var corrupt=java.nio.file.Files.readAllBytes(primary);corrupt[corrupt.length-1]^=1;java.nio.file.Files.write(primary,corrupt);
++        var backupBytes=java.nio.file.Files.readAllBytes(backup);var local=SqlFavoritesDialog.local(directory);var readsFail=new AtomicBoolean();var recoveries=new AtomicInteger();
++        var repository=new SqlFavoritesDialog.Repository() {
++            public SqlFavoriteStore.Snapshot load() throws Exception {if(readsFail.get())throw new java.io.IOException("secret synthetic recovery refresh failure");return local.load();}
++            public void save(SqlFavorite value,SqlFavorite expected) throws Exception {local.save(value,expected);}
++            public void delete(SqlFavorite expected) throws Exception {local.delete(expected);}
++            public SqlFavorite recover(UUID id,long now) throws Exception {var restored=local.recover(id,now);recoveries.incrementAndGet();readsFail.set(true);return restored;}
++        };
++        try(var f=new Fixture(repository,"")) {
++            f.idle();FxUiTestSupport.call(() -> {f.list().getSelectionModel().selectFirst();f.button("recover").fire();return null;});f.idle();
++            var restored=local.load().favorites().getFirst();assertNotEquals(original.id(),restored.id());assertEquals(original.sql(),restored.sql());
++            var restoredPath=directory.resolve(restored.id()+".favorite");var restoredBytes=java.nio.file.Files.readAllBytes(restoredPath);
++            FxUiTestSupport.call(() -> {assertPending(f,restored,"recover");f.button("recover").getOnAction().handle(new javafx.event.ActionEvent());f.button("reload").fire();return null;});f.idle();
++            assertEquals(1,recoveries.get());assertEquals(List.of(restored),local.load().favorites());
++            assertArrayEquals(corrupt,java.nio.file.Files.readAllBytes(primary));assertArrayEquals(backupBytes,java.nio.file.Files.readAllBytes(backup));
++            assertArrayEquals(restoredBytes,java.nio.file.Files.readAllBytes(restoredPath));assertEquals(List.of(original),local.load().recoverable());
++            readsFail.set(false);FxUiTestSupport.call(() -> {f.button("reload").fire();return null;});f.idle();
++            FxUiTestSupport.call(() -> {f.button("open").fire();assertEquals(restored,f.view.dialog().getResult());return null;});
++        }
++    }
++    @org.junit.jupiter.params.ParameterizedTest
++    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
++    void ownerCloseSuppressesLatePostWriteRefreshWithoutRepeatingTheCommittedSave(boolean readFails) throws Exception {
++        var values=new CopyOnWriteArrayList<SqlFavorite>();var writes=new AtomicInteger();var reads=new AtomicInteger();
++        var started=new CountDownLatch(1);var release=new CountDownLatch(1);var returned=new CountDownLatch(1);var interrupted=new AtomicBoolean();var readThread=new AtomicReference<Thread>();
++        var repository=new SqlFavoritesDialog.Repository() {
++            public SqlFavoriteStore.Snapshot load() throws Exception {
++                reads.incrementAndGet();if(writes.get()>0) {
++                    readThread.set(Thread.currentThread());started.countDown();try {
++                        while(true) {try {if(release.await(5,TimeUnit.SECONDS))break;throw new AssertionError("synthetic release timeout");}catch(InterruptedException canceled){interrupted.set(true);}}
++                        if(readFails)throw new java.io.IOException("secret late refresh diagnostic");
++                    } finally {returned.countDown();}
++                }return new SqlFavoriteStore.Snapshot(values,List.of(),0,true);
++            }
++            public void save(SqlFavorite value,SqlFavorite expected) {writes.incrementAndGet();values.add(value);}
++            public void delete(SqlFavorite expected) {throw new AssertionError("unexpected delete");}
++            public SqlFavorite recover(UUID id,long now) {throw new AssertionError("unexpected recover");}
++        };
++        var owner=FxUiTestSupport.call(() -> {var stage=new javafx.stage.Stage();stage.setScene(new javafx.scene.Scene(new javafx.scene.layout.VBox(),300,200));stage.show();return stage;});
++        try(var f=new Fixture(repository,"",owner,new FxTaskRunner(),true)) {
++            f.idle();FxUiTestSupport.call(() -> {f.text("name").setText("committed before close");f.sql().setText("select 'owner synthetic';");f.button("save").fire();return null;});
++            assertTrue(started.await(5,TimeUnit.SECONDS));assertEquals(1,writes.get());assertEquals(1,values.size());
++            var before=FxUiTestSupport.call(() -> {
++                ((Button)f.view.dialog().getDialogPane().lookupButton(ButtonType.CANCEL)).fire();assertTrue(f.view.dialog().isShowing(),"ordinary busy close is rejected");
++                owner.close();assertFalse(f.view.dialog().isShowing());return f.status().getText();
++            });
++            assertTrue(f.modalExited.await(5,TimeUnit.SECONDS),"production ownership wrapper must exit after owner hides");
++            awaitLayoutPulses();FxUiTestSupport.call(() -> {assertEquals("",f.sql().getText());return null;});
++            release.countDown();assertTrue(returned.await(5,TimeUnit.SECONDS));
++            readThread.get().join(5000);assertFalse(readThread.get().isAlive(),"owned post-write task must complete before testing late UI publication");
++            FxUiTestSupport.call(() -> {
++                assertEquals(before,f.status().getText());assertTrue(f.list().getItems().isEmpty());assertEquals("",f.sql().getText());
++                for(String id:List.of("save","delete","recover","reload","open"))f.button(id).getOnAction().handle(new javafx.event.ActionEvent());
++                assertNull(f.view.dialog().getResult());return null;
++            });assertTrue(interrupted.get());assertEquals(1,writes.get());assertEquals(2,reads.get());assertEquals(1,values.size());
++        } finally {release.countDown();FxUiTestSupport.call(() -> {owner.close();return null;});}
++    }
++    @Test void interruptedPostWriteReadRetainsCompletedOutcomeAndWorkerInterruptSignal() throws Exception {
++        var signals=new LinkedBlockingQueue<Boolean>();
++        var executor=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new LinkedBlockingQueue<>(),
++                Thread.ofPlatform().daemon(true).name("synthetic-favorites-interrupt").factory()) {
++            @Override protected void afterExecute(Runnable task,Throwable failure) {signals.add(Thread.currentThread().isInterrupted());}
++        };
++        var constructor=FxTaskRunner.class.getDeclaredConstructor(ExecutorService.class,java.time.Duration.class);constructor.setAccessible(true);
++        var runner=constructor.newInstance(executor,java.time.Duration.ofSeconds(1));var repo=new Repository();
++        var repository=new SqlFavoritesDialog.Repository() {
++            public SqlFavoriteStore.Snapshot load() throws Exception {if(repo.saves.get()>0)throw new InterruptedException("synthetic post-write interruption");return repo.load();}
++            public void save(SqlFavorite value,SqlFavorite expected) throws Exception {repo.save(value,expected);}
++            public void delete(SqlFavorite expected) throws Exception {repo.delete(expected);}
++            public SqlFavorite recover(UUID id,long now) throws Exception {return repo.recover(id,now);}
++        };
++        try(var f=new Fixture(repository,"",null,runner)) {
++            f.idle();assertEquals(Boolean.FALSE,signals.poll(5,TimeUnit.SECONDS));
++            FxUiTestSupport.call(() -> {f.text("name").setText("saved before interrupt");f.sql().setText("select 'synthetic interrupted';");f.button("save").fire();return null;});f.idle();
++            assertEquals(Boolean.TRUE,signals.poll(5,TimeUnit.SECONDS),"post-write InterruptedException must restore the worker signal");
++            assertEquals(1,repo.saves.get());FxUiTestSupport.call(() -> {assertPending(f,repo.values.getFirst(),"new");return null;});
++        }
++    }
++    private static void awaitLayoutPulses() throws Exception {
++        var ready=new CountDownLatch(1);
++        FxUiTestSupport.call(() -> {new javafx.animation.AnimationTimer() {
++            int frames;
++            @Override public void handle(long now) {if(++frames>=3){stop();ready.countDown();}}
++        }.start();return null;});
++        assertTrue(ready.await(5,TimeUnit.SECONDS));
++    }
++    private static void assertPending(Fixture f,SqlFavorite value,String operation) {
++        assertEquals(value.name(),f.text("name").getText());assertEquals(value.group(),f.text("group").getText());assertEquals(value.sql(),f.sql().getText());
++        assertTrue(f.sql().isDisabled());assertTrue(f.list().isDisabled());assertTrue(f.list().getItems().isEmpty());
++        for(String id:List.of("save","delete","recover","open","new","discard"))assertTrue(f.button(id).isDisabled(),id);
++        assertFalse(f.button("reload").isDisabled());assertFalse(f.status().getText().contains("secret"));
++        assertTrue(f.status().getText().contains(operation.equals("delete") ? "已删除" : operation.equals("recover") ? "已从副本恢复" : "已保存"));
++        assertTrue(f.status().getText().contains("重新读取"));
++    }
+     private static final class Repository implements SqlFavoritesDialog.Repository {
+         final List<SqlFavorite> values=new CopyOnWriteArrayList<>(),recoverable=new CopyOnWriteArrayList<>();
+-        final AtomicInteger saves=new AtomicInteger(),deletes=new AtomicInteger();
++        final AtomicInteger saves=new AtomicInteger(),deletes=new AtomicInteger(),recovers=new AtomicInteger(),reads=new AtomicInteger();
+         final AtomicReference<SqlFavorite> expected=new AtomicReference<>();
+         final CountDownLatch started=new CountDownLatch(1),release=new CountDownLatch(1),ended=new CountDownLatch(1);
+-        boolean failSave,block;
++        boolean failSave,failDelete,failRecover,failLoad,block;
+         public SqlFavoriteStore.Snapshot load() throws Exception {
+-            assertFalse(javafx.application.Platform.isFxApplicationThread()); started.countDown();
++            assertFalse(javafx.application.Platform.isFxApplicationThread()); reads.incrementAndGet();
++            if(failLoad) throw new java.io.IOException("secret synthetic refresh diagnostic"); started.countDown();
+             if(block) try { while(true) { try { if(release.await(5,TimeUnit.SECONDS)) break; throw new AssertionError("release timed out"); } catch(InterruptedException ignored) {} } } finally { ended.countDown(); }
+             return new SqlFavoriteStore.Snapshot(values,recoverable,recoverable.size(),true);
+         }
+@@ -160,16 +421,25 @@ class SqlFavoritesDialogTest {
+             if(failSave) throw new java.io.IOException("secret SQL diagnostic");
+             expected.set(old); if(old!=null) assertTrue(values.remove(old)); values.add(value);
+         }
+-        public void delete(SqlFavorite value) { assertFalse(javafx.application.Platform.isFxApplicationThread()); deletes.incrementAndGet(); assertTrue(values.remove(value)); }
+-        public SqlFavorite recover(UUID id,long now) {
++        public void delete(SqlFavorite value) throws Exception { assertFalse(javafx.application.Platform.isFxApplicationThread()); deletes.incrementAndGet(); if(failDelete) throw new java.io.IOException("secret synthetic delete diagnostic"); assertTrue(values.remove(value)); }
++        public SqlFavorite recover(UUID id,long now) throws Exception {
++            assertFalse(javafx.application.Platform.isFxApplicationThread()); recovers.incrementAndGet(); if(failRecover) throw new java.io.IOException("secret synthetic recover diagnostic");
+             var old=recoverable.stream().filter(v -> v.id().equals(id)).findFirst().orElseThrow();
+             var copy=new SqlFavorite(UUID.randomUUID(),old.name(),old.group(),old.sql(),now); values.add(copy); return copy;
+         }
+     }
+     private static final class Fixture implements AutoCloseable {
+-        final FxTaskRunner runner=new FxTaskRunner(); final SqlFavoritesDialog view;
+-        Fixture(Repository repo,String seed) throws Exception { view=FxUiTestSupport.call(() -> {
+-            var d=new SqlFavoritesDialog(repo,null,runner,seed); d.dialog().show(); return d;
++        final FxTaskRunner runner; final SqlFavoritesDialog view;
++        final CountDownLatch modalExited=new CountDownLatch(1);
++        Fixture(SqlFavoritesDialog.Repository repo,String seed) throws Exception { this(repo,seed,null,new FxTaskRunner()); }
++        Fixture(SqlFavoritesDialog.Repository repo,String seed,javafx.stage.Window owner,FxTaskRunner runner) throws Exception {this(repo,seed,owner,runner,false);}
++        Fixture(SqlFavoritesDialog.Repository repo,String seed,javafx.stage.Window owner,FxTaskRunner runner,boolean modal) throws Exception {
++            this.runner=runner; view=FxUiTestSupport.call(() -> {
++            var d=new SqlFavoritesDialog(repo,owner,runner,seed);
++            if(modal) javafx.application.Platform.runLater(() -> {
++                // Match the production show(...) ownership wrapper, including its exit cleanup.
++                try(d) {d.dialog().showAndWait();} finally {modalExited.countDown();}
++            }); else d.dialog().show();return d;
+         }); }
+         Button button(String id) { return (Button)view.dialog().getDialogPane().lookup("#favorites-"+id); }
+         TextField text(String id) { return (TextField)view.dialog().getDialogPane().lookup("#favorites-"+id); }

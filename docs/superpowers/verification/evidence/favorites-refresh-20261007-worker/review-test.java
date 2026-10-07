@@ -334,11 +334,11 @@ class SqlFavoritesDialogTest {
     @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
     void ownerCloseSuppressesLatePostWriteRefreshWithoutRepeatingTheCommittedSave(boolean readFails) throws Exception {
         var values=new CopyOnWriteArrayList<SqlFavorite>();var writes=new AtomicInteger();var reads=new AtomicInteger();
-        var started=new CountDownLatch(1);var release=new CountDownLatch(1);var returned=new CountDownLatch(1);var interrupted=new AtomicBoolean();var readThread=new AtomicReference<Thread>();
+        var started=new CountDownLatch(1);var release=new CountDownLatch(1);var returned=new CountDownLatch(1);var interrupted=new AtomicBoolean();
         var repository=new SqlFavoritesDialog.Repository() {
             public SqlFavoriteStore.Snapshot load() throws Exception {
                 reads.incrementAndGet();if(writes.get()>0) {
-                    readThread.set(Thread.currentThread());started.countDown();try {
+                    started.countDown();try {
                         while(true) {try {if(release.await(5,TimeUnit.SECONDS))break;throw new AssertionError("synthetic release timeout");}catch(InterruptedException canceled){interrupted.set(true);}}
                         if(readFails)throw new java.io.IOException("secret late refresh diagnostic");
                     } finally {returned.countDown();}
@@ -359,8 +359,7 @@ class SqlFavoritesDialogTest {
             assertTrue(f.modalExited.await(5,TimeUnit.SECONDS),"production ownership wrapper must exit after owner hides");
             awaitLayoutPulses();FxUiTestSupport.call(() -> {assertEquals("",f.sql().getText());return null;});
             release.countDown();assertTrue(returned.await(5,TimeUnit.SECONDS));
-            readThread.get().join(5000);assertFalse(readThread.get().isAlive(),"owned post-write task must complete before testing late UI publication");
-            FxUiTestSupport.call(() -> {
+            f.runner.submit(() -> {}).get(5,TimeUnit.SECONDS);FxUiTestSupport.call(() -> {
                 assertEquals(before,f.status().getText());assertTrue(f.list().getItems().isEmpty());assertEquals("",f.sql().getText());
                 for(String id:List.of("save","delete","recover","reload","open"))f.button(id).getOnAction().handle(new javafx.event.ActionEvent());
                 assertNull(f.view.dialog().getResult());return null;

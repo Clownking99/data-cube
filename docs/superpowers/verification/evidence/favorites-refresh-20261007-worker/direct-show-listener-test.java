@@ -334,11 +334,11 @@ class SqlFavoritesDialogTest {
     @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
     void ownerCloseSuppressesLatePostWriteRefreshWithoutRepeatingTheCommittedSave(boolean readFails) throws Exception {
         var values=new CopyOnWriteArrayList<SqlFavorite>();var writes=new AtomicInteger();var reads=new AtomicInteger();
-        var started=new CountDownLatch(1);var release=new CountDownLatch(1);var returned=new CountDownLatch(1);var interrupted=new AtomicBoolean();var readThread=new AtomicReference<Thread>();
+        var started=new CountDownLatch(1);var release=new CountDownLatch(1);var returned=new CountDownLatch(1);var interrupted=new AtomicBoolean();
         var repository=new SqlFavoritesDialog.Repository() {
             public SqlFavoriteStore.Snapshot load() throws Exception {
                 reads.incrementAndGet();if(writes.get()>0) {
-                    readThread.set(Thread.currentThread());started.countDown();try {
+                    started.countDown();try {
                         while(true) {try {if(release.await(5,TimeUnit.SECONDS))break;throw new AssertionError("synthetic release timeout");}catch(InterruptedException canceled){interrupted.set(true);}}
                         if(readFails)throw new java.io.IOException("secret late refresh diagnostic");
                     } finally {returned.countDown();}
@@ -349,44 +349,21 @@ class SqlFavoritesDialogTest {
             public SqlFavorite recover(UUID id,long now) {throw new AssertionError("unexpected recover");}
         };
         var owner=FxUiTestSupport.call(() -> {var stage=new javafx.stage.Stage();stage.setScene(new javafx.scene.Scene(new javafx.scene.layout.VBox(),300,200));stage.show();return stage;});
-        try(var f=new Fixture(repository,"",owner,new FxTaskRunner(),true)) {
+        try(var f=new Fixture(repository,"",owner,new FxTaskRunner())) {
             f.idle();FxUiTestSupport.call(() -> {f.text("name").setText("committed before close");f.sql().setText("select 'owner synthetic';");f.button("save").fire();return null;});
             assertTrue(started.await(5,TimeUnit.SECONDS));assertEquals(1,writes.get());assertEquals(1,values.size());
             var before=FxUiTestSupport.call(() -> {
                 ((Button)f.view.dialog().getDialogPane().lookupButton(ButtonType.CANCEL)).fire();assertTrue(f.view.dialog().isShowing(),"ordinary busy close is rejected");
                 owner.close();assertFalse(f.view.dialog().isShowing());return f.status().getText();
             });
-            assertTrue(f.modalExited.await(5,TimeUnit.SECONDS),"production ownership wrapper must exit after owner hides");
             awaitLayoutPulses();FxUiTestSupport.call(() -> {assertEquals("",f.sql().getText());return null;});
             release.countDown();assertTrue(returned.await(5,TimeUnit.SECONDS));
-            readThread.get().join(5000);assertFalse(readThread.get().isAlive(),"owned post-write task must complete before testing late UI publication");
-            FxUiTestSupport.call(() -> {
+            f.runner.submit(() -> {}).get(5,TimeUnit.SECONDS);FxUiTestSupport.call(() -> {
                 assertEquals(before,f.status().getText());assertTrue(f.list().getItems().isEmpty());assertEquals("",f.sql().getText());
                 for(String id:List.of("save","delete","recover","reload","open"))f.button(id).getOnAction().handle(new javafx.event.ActionEvent());
                 assertNull(f.view.dialog().getResult());return null;
             });assertTrue(interrupted.get());assertEquals(1,writes.get());assertEquals(2,reads.get());assertEquals(1,values.size());
         } finally {release.countDown();FxUiTestSupport.call(() -> {owner.close();return null;});}
-    }
-    @Test void interruptedPostWriteReadRetainsCompletedOutcomeAndWorkerInterruptSignal() throws Exception {
-        var signals=new LinkedBlockingQueue<Boolean>();
-        var executor=new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,new LinkedBlockingQueue<>(),
-                Thread.ofPlatform().daemon(true).name("synthetic-favorites-interrupt").factory()) {
-            @Override protected void afterExecute(Runnable task,Throwable failure) {signals.add(Thread.currentThread().isInterrupted());}
-        };
-        var constructor=FxTaskRunner.class.getDeclaredConstructor(ExecutorService.class,java.time.Duration.class);constructor.setAccessible(true);
-        var runner=constructor.newInstance(executor,java.time.Duration.ofSeconds(1));var repo=new Repository();
-        var repository=new SqlFavoritesDialog.Repository() {
-            public SqlFavoriteStore.Snapshot load() throws Exception {if(repo.saves.get()>0)throw new InterruptedException("synthetic post-write interruption");return repo.load();}
-            public void save(SqlFavorite value,SqlFavorite expected) throws Exception {repo.save(value,expected);}
-            public void delete(SqlFavorite expected) throws Exception {repo.delete(expected);}
-            public SqlFavorite recover(UUID id,long now) throws Exception {return repo.recover(id,now);}
-        };
-        try(var f=new Fixture(repository,"",null,runner)) {
-            f.idle();assertEquals(Boolean.FALSE,signals.poll(5,TimeUnit.SECONDS));
-            FxUiTestSupport.call(() -> {f.text("name").setText("saved before interrupt");f.sql().setText("select 'synthetic interrupted';");f.button("save").fire();return null;});f.idle();
-            assertEquals(Boolean.TRUE,signals.poll(5,TimeUnit.SECONDS),"post-write InterruptedException must restore the worker signal");
-            assertEquals(1,repo.saves.get());FxUiTestSupport.call(() -> {assertPending(f,repo.values.getFirst(),"new");return null;});
-        }
     }
     private static void awaitLayoutPulses() throws Exception {
         var ready=new CountDownLatch(1);
@@ -430,16 +407,10 @@ class SqlFavoritesDialogTest {
     }
     private static final class Fixture implements AutoCloseable {
         final FxTaskRunner runner; final SqlFavoritesDialog view;
-        final CountDownLatch modalExited=new CountDownLatch(1);
         Fixture(SqlFavoritesDialog.Repository repo,String seed) throws Exception { this(repo,seed,null,new FxTaskRunner()); }
-        Fixture(SqlFavoritesDialog.Repository repo,String seed,javafx.stage.Window owner,FxTaskRunner runner) throws Exception {this(repo,seed,owner,runner,false);}
-        Fixture(SqlFavoritesDialog.Repository repo,String seed,javafx.stage.Window owner,FxTaskRunner runner,boolean modal) throws Exception {
+        Fixture(SqlFavoritesDialog.Repository repo,String seed,javafx.stage.Window owner,FxTaskRunner runner) throws Exception {
             this.runner=runner; view=FxUiTestSupport.call(() -> {
-            var d=new SqlFavoritesDialog(repo,owner,runner,seed);
-            if(modal) javafx.application.Platform.runLater(() -> {
-                // Match the production show(...) ownership wrapper, including its exit cleanup.
-                try(d) {d.dialog().showAndWait();} finally {modalExited.countDown();}
-            }); else d.dialog().show();return d;
+            var d=new SqlFavoritesDialog(repo,owner,runner,seed); d.dialog().show(); return d;
         }); }
         Button button(String id) { return (Button)view.dialog().getDialogPane().lookup("#favorites-"+id); }
         TextField text(String id) { return (TextField)view.dialog().getDialogPane().lookup("#favorites-"+id); }

@@ -1,0 +1,45 @@
+diff --git a/test/com/datacube/fx/SqlFavoritesDialogTest.java b/test/com/datacube/fx/SqlFavoritesDialogTest.java
+index 66bb550..62f3706 100644
+--- a/test/com/datacube/fx/SqlFavoritesDialogTest.java
++++ b/test/com/datacube/fx/SqlFavoritesDialogTest.java
+@@ -144,6 +144,31 @@ class SqlFavoritesDialogTest {
+             });
+         }
+     }
++    @Test void committedNewSaveWithFailedRefreshCannotCreateAnotherPersistedUuid(@org.junit.jupiter.api.io.TempDir java.nio.file.Path temp) throws Exception {
++        var directory=temp.resolve("synthetic-favorites");var local=SqlFavoritesDialog.local(directory);
++        var failReads=new AtomicBoolean();var writes=new AtomicInteger();
++        var repository=new SqlFavoritesDialog.Repository() {
++            public SqlFavoriteStore.Snapshot load() throws Exception {
++                if(failReads.get()) throw new java.io.IOException("private synthetic read diagnostic");return local.load();
++            }
++            public void save(SqlFavorite value,SqlFavorite expected) throws Exception {local.save(value,expected);writes.incrementAndGet();failReads.set(true);}
++            public void delete(SqlFavorite expected) throws Exception {local.delete(expected);}
++            public SqlFavorite recover(UUID id,long now) throws Exception {return local.recover(id,now);}
++        };
++        try(var f=new Fixture(repository,"select 'synthetic committed';")) {
++            f.idle();FxUiTestSupport.call(() -> {f.text("name").setText("committed new");f.button("save").fire();return null;});f.idle();
++            var first=local.load().favorites().getFirst();var path=directory.resolve(first.id()+".favorite");var bytes=java.nio.file.Files.readAllBytes(path);
++            assertEquals("select 'synthetic committed';",first.sql());assertEquals(1,writes.get());
++            FxUiTestSupport.call(() -> {f.button("save").fire();return null;});f.idle();
++            assertEquals(1,local.load().favorites().size(),"completed save followed by read failure must not create a second UUID");
++            assertEquals(1,writes.get());assertArrayEquals(bytes,java.nio.file.Files.readAllBytes(path));
++            FxUiTestSupport.call(() -> {
++                assertEquals(first.name(),f.text("name").getText());assertEquals(first.sql(),f.sql().getText());
++                assertTrue(f.status().getText().contains("已保存"));assertTrue(f.status().getText().contains("重新读取"));
++                assertFalse(f.status().getText().contains("private"));assertTrue(f.button("save").isDisabled());assertTrue(f.button("open").isDisabled());return null;
++            });
++        }
++    }
+     private static final class Repository implements SqlFavoritesDialog.Repository {
+         final List<SqlFavorite> values=new CopyOnWriteArrayList<>(),recoverable=new CopyOnWriteArrayList<>();
+         final AtomicInteger saves=new AtomicInteger(),deletes=new AtomicInteger();
+@@ -168,7 +193,7 @@ class SqlFavoritesDialogTest {
+     }
+     private static final class Fixture implements AutoCloseable {
+         final FxTaskRunner runner=new FxTaskRunner(); final SqlFavoritesDialog view;
+-        Fixture(Repository repo,String seed) throws Exception { view=FxUiTestSupport.call(() -> {
++        Fixture(SqlFavoritesDialog.Repository repo,String seed) throws Exception { view=FxUiTestSupport.call(() -> {
+             var d=new SqlFavoritesDialog(repo,null,runner,seed); d.dialog().show(); return d;
+         }); }
+         Button button(String id) { return (Button)view.dialog().getDialogPane().lookup("#favorites-"+id); }
