@@ -37,6 +37,7 @@ final class SqlFavoritesDialog implements AutoCloseable {
     private List<Entry> entries=List.of();
     private Set<UUID> protectedIds=Set.of();
     private Entry selected;
+    private Completed pendingRefresh;
     private boolean busy,closed,mutating,writable;
     private String initialSql;
     private final boolean seedTooLarge;
@@ -82,21 +83,21 @@ final class SqlFavoritesDialog implements AutoCloseable {
         dialog.setOnCloseRequest(event -> { if(busy || dirty() && !confirmDiscard.getAsBoolean()) event.consume(); });
         dialog.setOnShown(event -> load(null)); dialog.setOnHidden(event -> close());
         filter.textProperty().addListener(ignored -> filtered());
-        list.getSelectionModel().selectedItemProperty().addListener((obs,before,entry) -> { if(!mutating) edit(entry); });
+        list.getSelectionModel().selectedItemProperty().addListener((obs,before,entry) -> { if(!mutating && pendingRefresh==null && !closed) edit(entry); });
         name.textProperty().addListener(ignored -> buttons()); group.textProperty().addListener(ignored -> buttons()); sql.textProperty().addListener(ignored -> buttons());
-        create.setOnAction(event -> { if(!busy && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; edit(null); name.requestFocus(); } });
-        discard.setOnAction(event -> { if(!closed && !busy && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; edit(selected); } });
-        reload.setOnAction(event -> { if(!busy && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; load(null); } });
+        create.setOnAction(event -> { if(!closed && !busy && pendingRefresh==null && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; edit(null); name.requestFocus(); } });
+        discard.setOnAction(event -> { if(!closed && !busy && pendingRefresh==null && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; edit(selected); } });
+        reload.setOnAction(event -> { if(!closed && !busy && (!dirty() || confirmDiscard.getAsBoolean())) { this.initialSql=""; load(null); } });
         save.setOnAction(event -> save());
         remove.setOnAction(event -> {
-            if(busy || selected==null || selected.recovery() || dirty() || !confirmDelete.test(selected.value())) return;
-            SqlFavorite expected=selected.value(); operate(() -> { repository.delete(expected); return repository.load(); },snapshot -> loaded(snapshot,null));
+            if(closed || busy || pendingRefresh!=null || selected==null || selected.recovery() || dirty() || !confirmDelete.test(selected.value())) return;
+            SqlFavorite expected=selected.value(); write(Outcome.DELETE,() -> { repository.delete(expected); return expected; });
         });
         restore.setOnAction(event -> {
-            if(busy || selected==null || !selected.recovery()) return;
-            UUID id=selected.value().id(); operate(() -> { var value=repository.recover(id,System.currentTimeMillis()); return new Saved(value,repository.load()); },saved -> loaded(saved.snapshot(),saved.value().id()));
+            if(closed || busy || pendingRefresh!=null || selected==null || !selected.recovery()) return;
+            UUID id=selected.value().id(); write(Outcome.RECOVER,() -> repository.recover(id,System.currentTimeMillis()));
         });
-        open.setOnAction(event -> { if(!busy && !dirty() && selected!=null && !selected.recovery()) { dialog.setResult(selected.value()); dialog.close(); } });
+        open.setOnAction(event -> { if(!closed && !busy && pendingRefresh==null && !dirty() && selected!=null && !selected.recovery()) { dialog.setResult(selected.value()); dialog.close(); } });
         dialog.getDialogPane().addEventFilter(KeyEvent.KEY_PRESSED,event -> {
             if(event.getCode()==KeyCode.F && event.isControlDown() && !event.isAltDown() && !event.isShiftDown() && !event.isMetaDown()) { if(!filter.isDisabled()) { filter.requestFocus(); filter.selectAll(); } event.consume(); }
         });
@@ -110,19 +111,19 @@ final class SqlFavoritesDialog implements AutoCloseable {
         return alert.showAndWait().orElse(ButtonType.CANCEL)==ButtonType.OK;
     }
     private boolean dirty() {
-        if(mutating) return false;
+        if(mutating || pendingRefresh!=null) return false;
         return selected==null ? !name.getText().isEmpty() || !group.getText().isEmpty() || !sql.getText().isEmpty()
                 : !name.getText().equals(selected.value().name()) || !group.getText().equals(selected.value().group()) || !sql.getText().equals(selected.value().sql());
     }
     private void buttons() {
         if(mutating) return;
-        boolean unavailable=busy || closed; boolean recovery=selected!=null && selected.recovery();
+        boolean unavailable=busy || closed || pendingRefresh!=null; boolean recovery=selected!=null && selected.recovery();
         boolean protectedEntry=selected!=null && protectedIds.contains(selected.value().id());
         list.setDisable(unavailable || dirty()); filter.setDisable(unavailable || dirty());
         name.setDisable(unavailable || recovery); group.setDisable(unavailable || recovery); sql.setDisable(unavailable || recovery);
         save.setDisable(unavailable || !writable || recovery || protectedEntry || !dirty() || name.getText().isBlank() || sql.getText().isBlank());
         remove.setDisable(unavailable || recovery || protectedEntry || selected==null || dirty()); restore.setDisable(unavailable || !writable || !recovery);
-        open.setDisable(unavailable || selected==null || recovery || dirty()); create.setDisable(unavailable); reload.setDisable(unavailable); discard.setDisable(unavailable || !dirty());
+        open.setDisable(unavailable || selected==null || recovery || dirty()); create.setDisable(unavailable); reload.setDisable(busy || closed); discard.setDisable(unavailable || !dirty());
     }
     private void edit(Entry entry) {
         mutating=true;
@@ -130,7 +131,7 @@ final class SqlFavoritesDialog implements AutoCloseable {
         finally { mutating=false; } buttons();
     }
     private void filtered() {
-        if(mutating) return;
+        if(mutating || closed || pendingRefresh!=null) return;
         String term=filter.getText().strip().toLowerCase(Locale.ROOT); Entry previous=selected;
         mutating=true;
         try { list.getItems().setAll(entries.stream().filter(e -> (e.value().name()+"\n"+e.value().group()).toLowerCase(Locale.ROOT).contains(term)).toList());
@@ -138,9 +139,9 @@ final class SqlFavoritesDialog implements AutoCloseable {
         finally { mutating=false; }
         edit(list.getSelectionModel().getSelectedItem());
     }
-    private void load(UUID select) { operate(repository::load,snapshot -> loaded(snapshot,select)); }
+    private void load(UUID select) { UUID requested=pendingRefresh==null ? select : pendingRefresh.select(); operate(repository::load,snapshot -> loaded(snapshot,requested)); }
     private void loaded(SqlFavoriteStore.Snapshot snapshot,UUID select) {
-        writable=snapshot.writable(); protectedIds=new HashSet<>(snapshot.recoverable().stream().map(SqlFavorite::id).toList());
+        pendingRefresh=null; writable=snapshot.writable(); protectedIds=new HashSet<>(snapshot.recoverable().stream().map(SqlFavorite::id).toList());
         var all=new ArrayList<Entry>(); snapshot.favorites().forEach(v -> all.add(new Entry(v,false))); snapshot.recoverable().forEach(v -> all.add(new Entry(v,true))); entries=List.copyOf(all);
         selected=null; filtered();
         if(select!=null) { initialSql=""; entries.stream().filter(e -> !e.recovery() && e.value().id().equals(select)).findFirst().ifPresent(e -> { filter.clear(); list.getSelectionModel().select(e); edit(e); }); }
@@ -148,23 +149,51 @@ final class SqlFavoritesDialog implements AutoCloseable {
         buttons();
     }
     private void save() {
-        if(closed || save.isDisabled()) return;
+        if(closed || pendingRefresh!=null || save.isDisabled()) return;
         SqlFavorite expected=selected==null ? null : selected.value();
         SqlFavorite value=new SqlFavorite(expected==null ? UUID.randomUUID() : expected.id(),name.getText().strip(),group.getText().strip(),sql.getText(),System.currentTimeMillis());
-        operate(() -> { repository.save(value,expected); return new Saved(value,repository.load()); },saved -> loaded(saved.snapshot(),saved.value().id()));
+        write(Outcome.SAVE,() -> { repository.save(value,expected); return value; });
+    }
+    private void write(Outcome outcome,Callable<SqlFavorite> operation) {
+        if(closed || busy || pendingRefresh!=null) return;
+        operate(() -> {
+            // Only a normally returned write (including repository resource close) is confirmed.
+            Completed completed=new Completed(outcome,operation.call());
+            SqlFavoriteStore.Snapshot snapshot;
+            try { snapshot=repository.load(); }
+            catch(Exception unreadable) { if(unreadable instanceof InterruptedException) Thread.currentThread().interrupt(); snapshot=null; }
+            return new Refreshed(completed,snapshot);
+        },result -> {
+            pendingRefresh=result.completed(); initialSql=""; entries=List.of(); protectedIds=Set.of(); writable=false;
+            mutating=true; try { list.getItems().clear(); } finally { mutating=false; }
+            edit(new Entry(pendingRefresh.value(),false));
+            if(result.snapshot()!=null) loaded(result.snapshot(),pendingRefresh.select());
+            else status.setText(pendingRefresh.notice());
+        });
     }
     private <T> void operate(Callable<T> operation,Consumer<T> success) {
         if(busy || closed) return; busy=true; status.setText("正在处理本地收藏，请等待完成…"); buttons();
         try { tasks.submit(operation,result -> { busy=false; success.accept(result); buttons(); },failure -> {
-            busy=false; status.setText(failure instanceof SqlFavoriteStore.Failure f ? switch(f.code()) {
+            busy=false; status.setText(pendingRefresh!=null ? pendingRefresh.notice() : failure instanceof SqlFavoriteStore.Failure f ? switch(f.code()) {
                 case CAPACITY -> "收藏额度不足，未驱逐旧项；请先明确删除不需要的收藏。";
                 case CHANGED -> "收藏已变化，未覆盖；请重新读取后核对。";
                 case PROTECTED -> "文件损坏或版本未知，已保留原文件；可从有效副本恢复为新项。";
                 case INVALID -> "收藏内容无效或超过 UTF-8 字节额度，尚未保存。";
                 default -> "收藏暂不可用，原内容未主动清理，请重试。";
             } : "收藏读取或写入未完成，请重新读取核对；不会自动清理旧内容。"); buttons();
-        }); } catch(java.util.concurrent.RejectedExecutionException rejected) { busy=false; status.setText("收藏任务暂不可用。"); buttons(); }
+        }); } catch(java.util.concurrent.RejectedExecutionException rejected) { busy=false; status.setText(pendingRefresh==null ? "收藏任务暂不可用。" : pendingRefresh.notice()); buttons(); }
     }
-    private record Saved(SqlFavorite value,SqlFavoriteStore.Snapshot snapshot) {}
-    @Override public void close() { if(closed) return; closed=true; tasks.close(); entries=List.of(); selected=null; initialSql=""; mutating=true; try { list.getItems().clear(); sql.clear(); name.clear(); group.clear(); } finally { mutating=false; } buttons(); }
+    private enum Outcome { SAVE, DELETE, RECOVER }
+    private record Completed(Outcome outcome,SqlFavorite value) {
+        UUID select() { return outcome==Outcome.DELETE ? null : value.id(); }
+        String notice() {
+            return switch(outcome) {
+                case SAVE -> "收藏已保存";
+                case DELETE -> "收藏已删除";
+                case RECOVER -> "已从副本恢复为新收藏";
+            } + "，但列表读取未完成；已完成的操作不会重试。请点击重新读取后核对。";
+        }
+    }
+    private record Refreshed(Completed completed,SqlFavoriteStore.Snapshot snapshot) {}
+    @Override public void close() { if(closed) return; closed=true; tasks.close(); entries=List.of(); selected=null; pendingRefresh=null; initialSql=""; mutating=true; try { list.getItems().clear(); sql.clear(); name.clear(); group.clear(); } finally { mutating=false; } buttons(); }
 }
