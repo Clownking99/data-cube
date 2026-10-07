@@ -1,0 +1,929 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.fx.AppShellSqlShutdownTest" tests="4" skipped="0" failures="4" errors="0" timestamp="2026-10-07T11:06:30.572Z" hostname="WAKEUPMAN" time="6.015">
+  <properties/>
+  <testcase name="POSTGRESQL cancelStillExecuting=false" classname="com.datacube.fx.AppShellSqlShutdownTest" time="4.268">
+    <failure message="java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null" type="java.util.concurrent.ExecutionException">java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null
+	at java.base/java.util.concurrent.FutureTask.report(FutureTask.java:124)
+	at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:207)
+	at com.datacube.fx.FxUiTestSupport.call(FxUiTestSupport.java:32)
+	at com.datacube.fx.AppShellSqlShutdownTest.windowExitWaitsForRealSqlExecutionThenRollsBackAndReleasesOwnership(AppShellSqlShutdownTest.java:45)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:197)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.ReferencePipeline$Head.forEach(ReferencePipeline.java:803)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	Suppressed: org.junit.platform.commons.JUnitException: Failed to close extension context
+		... 38 more
+	Caused by: java.io.IOException: Failed to delete temp directory C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360. The following paths could not be deleted (see suppressed exceptions for details): &lt;root&gt;, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-console-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-console-l1-2-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-datetime-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-debug-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-errorhandling-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-file-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-file-l1-2-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-file-l2-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-handle-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-heap-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-interlocked-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-libraryloader-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-localization-l1-2-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-memory-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-namedpipe-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-processenvironment-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-processthreads-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-processthreads-l1-1-1.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-profile-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-rtlsupport-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-string-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-synch-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-synch-l1-2-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-sysinfo-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-timezone-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-util-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-conio-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-convert-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-environment-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-filesystem-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-heap-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-locale-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-math-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-multibyte-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-private-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-process-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-runtime-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-stdio-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-string-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-time-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-utility-l1-1-0.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\glass.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\javafx_font.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\msvcp140.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\msvcp140_1.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\msvcp140_2.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\prism_d3d.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\ucrtbase.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\vcruntime140.dll, profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\vcruntime140_1.dll
+		at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+		at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+		at java.base/java.util.stream.SortedOps$RefSortingSink.end(SortedOps.java:395)
+		at java.base/java.util.stream.Sink$ChainedReference.end(Sink.java:261)
+		at java.base/java.util.stream.Sink$ChainedReference.end(Sink.java:261)
+		at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:571)
+		at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+		at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+		at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+		at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+		at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+		... 38 more
+		Suppressed: java.nio.file.DirectoryNotEmptyException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:266)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2560)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+		Suppressed: java.nio.file.DirectoryNotEmptyException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:266)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2560)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+		Suppressed: java.nio.file.DirectoryNotEmptyException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:266)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2560)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+		Suppressed: java.nio.file.DirectoryNotEmptyException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:266)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2560)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+		Suppressed: java.nio.file.DirectoryNotEmptyException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:266)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2560)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+		Suppressed: java.nio.file.DirectoryNotEmptyException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:266)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2560)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-console-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-console-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-console-l1-2-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-console-l1-2-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-datetime-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-datetime-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-debug-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-debug-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-errorhandling-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-errorhandling-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-file-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-file-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-file-l1-2-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-file-l1-2-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-file-l2-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-file-l2-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-handle-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-handle-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-heap-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-heap-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-interlocked-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-interlocked-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-libraryloader-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-libraryloader-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-localization-l1-2-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-localization-l1-2-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-memory-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-memory-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-namedpipe-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-namedpipe-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-processenvironment-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-processenvironment-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-processthreads-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-processthreads-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-processthreads-l1-1-1.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-processthreads-l1-1-1.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-profile-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-profile-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-rtlsupport-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-rtlsupport-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-string-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-string-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-synch-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-synch-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-synch-l1-2-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-synch-l1-2-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-sysinfo-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-sysinfo-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-timezone-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-timezone-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-util-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-core-util-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-conio-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-conio-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-convert-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-convert-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-environment-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-environment-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-filesystem-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-filesystem-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-heap-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-heap-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-locale-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-locale-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-math-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-math-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-multibyte-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-multibyte-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-private-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-private-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-process-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-process-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-runtime-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-runtime-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-stdio-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-stdio-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-string-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-string-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-time-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-time-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-utility-l1-1-0.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\api-ms-win-crt-utility-l1-1-0.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\glass.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\glass.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\javafx_font.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\javafx_font.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\msvcp140.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\msvcp140.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\msvcp140_1.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\msvcp140_1.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\msvcp140_2.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\msvcp140_2.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\prism_d3d.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\prism_d3d.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\ucrtbase.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\ucrtbase.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\vcruntime140.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\vcruntime140.dll
+				... 57 more
+		Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\vcruntime140_1.dll
+			at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:89)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+			at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+			at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:269)
+			at java.base/sun.nio.fs.AbstractFileSystemProvider.delete(AbstractFileSystemProvider.java:105)
+			at java.base/java.nio.file.Files.delete(Files.java:1052)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2543)
+			at java.base/java.nio.file.Files.walkFileTree(Files.java:2609)
+			... 49 more
+			Suppressed: java.nio.file.AccessDeniedException: C:\Users\hetia\AppData\Local\Temp\DA0588~1\temp\junit-17600742273017220360\profile-6d02589a-fe36-4c34-9f72-881f1311e0b2\.openjfx\cache\25+29\amd64\vcruntime140_1.dll
+				... 57 more
+Caused by: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null
+	at com.datacube.fx.AppShellSqlShutdownTest$Fixture.visible(AppShellSqlShutdownTest.java:167)
+	at com.datacube.fx.AppShellSqlShutdownTest.lambda$windowExitWaitsForRealSqlExecutionThenRollsBackAndReleasesOwnership$4(AppShellSqlShutdownTest.java:48)
+	at com.datacube.fx.FxUiTestSupport.lambda$call$0(FxUiTestSupport.java:29)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+	at com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+	at com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+	at com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+</failure>
+  </testcase>
+  <testcase name="ORACLE cancelStillExecuting=false" classname="com.datacube.fx.AppShellSqlShutdownTest" time="0.569">
+    <failure message="java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null" type="java.util.concurrent.ExecutionException">java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null
+	at java.base/java.util.concurrent.FutureTask.report(FutureTask.java:124)
+	at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:207)
+	at com.datacube.fx.FxUiTestSupport.call(FxUiTestSupport.java:32)
+	at com.datacube.fx.AppShellSqlShutdownTest.windowExitWaitsForRealSqlExecutionThenRollsBackAndReleasesOwnership(AppShellSqlShutdownTest.java:45)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:197)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.ReferencePipeline$Head.forEach(ReferencePipeline.java:803)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+Caused by: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null
+	at com.datacube.fx.AppShellSqlShutdownTest$Fixture.visible(AppShellSqlShutdownTest.java:167)
+	at com.datacube.fx.AppShellSqlShutdownTest.lambda$windowExitWaitsForRealSqlExecutionThenRollsBackAndReleasesOwnership$4(AppShellSqlShutdownTest.java:48)
+	at com.datacube.fx.FxUiTestSupport.lambda$call$0(FxUiTestSupport.java:29)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+	at com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+	at com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+	at com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+</failure>
+  </testcase>
+  <testcase name="POSTGRESQL cancelStillExecuting=true" classname="com.datacube.fx.AppShellSqlShutdownTest" time="0.673">
+    <failure message="java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null" type="java.util.concurrent.ExecutionException">java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null
+	at java.base/java.util.concurrent.FutureTask.report(FutureTask.java:124)
+	at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:207)
+	at com.datacube.fx.FxUiTestSupport.call(FxUiTestSupport.java:32)
+	at com.datacube.fx.AppShellSqlShutdownTest.windowExitWaitsForRealSqlExecutionThenRollsBackAndReleasesOwnership(AppShellSqlShutdownTest.java:45)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:197)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.ReferencePipeline$Head.forEach(ReferencePipeline.java:803)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+Caused by: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null
+	at com.datacube.fx.AppShellSqlShutdownTest$Fixture.visible(AppShellSqlShutdownTest.java:167)
+	at com.datacube.fx.AppShellSqlShutdownTest.lambda$windowExitWaitsForRealSqlExecutionThenRollsBackAndReleasesOwnership$4(AppShellSqlShutdownTest.java:48)
+	at com.datacube.fx.FxUiTestSupport.lambda$call$0(FxUiTestSupport.java:29)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+	at com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+	at com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+	at com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+</failure>
+  </testcase>
+  <testcase name="ORACLE cancelStillExecuting=true" classname="com.datacube.fx.AppShellSqlShutdownTest" time="0.495">
+    <failure message="java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null" type="java.util.concurrent.ExecutionException">java.util.concurrent.ExecutionException: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null
+	at java.base/java.util.concurrent.FutureTask.report(FutureTask.java:124)
+	at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:207)
+	at com.datacube.fx.FxUiTestSupport.call(FxUiTestSupport.java:32)
+	at com.datacube.fx.AppShellSqlShutdownTest.windowExitWaitsForRealSqlExecutionThenRollsBackAndReleasesOwnership(AppShellSqlShutdownTest.java:45)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$2$1.accept(ReferencePipeline.java:197)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:186)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.ReferencePipeline$Head.forEach(ReferencePipeline.java:803)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.stream.ReferencePipeline$7$1FlatMap.accept(ReferencePipeline.java:293)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1716)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:153)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:176)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:632)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1604)
+Caused by: java.lang.NullPointerException: Cannot invoke &quot;com.datacube.sqleditor.SqlScriptExecutionReport.summary()&quot; because the return value of &quot;com.datacube.fx.SqlBatchResults.report()&quot; is null
+	at com.datacube.fx.AppShellSqlShutdownTest$Fixture.visible(AppShellSqlShutdownTest.java:167)
+	at com.datacube.fx.AppShellSqlShutdownTest.lambda$windowExitWaitsForRealSqlExecutionThenRollsBackAndReleasesOwnership$4(AppShellSqlShutdownTest.java:48)
+	at com.datacube.fx.FxUiTestSupport.lambda$call$0(FxUiTestSupport.java:29)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+	at com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+	at com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+	at com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+</failure>
+  </testcase>
+  <system-out><![CDATA[SQL_MANUAL_PRECONDITION transaction=ACTIVE realUiMode=true realUiDml=true committed=0 pendingWrites=1 runner=PgSqlRunner
+SHUTDOWN node=shutdown-pending-notice bounds=BoundingBox [minX:62.66666793823242, minY:16.0, minZ:0.0, width:760.0000190734863, height:108.66666412353516, depth:0.0, maxX:822.6666870117188, maxY:124.66666412353516, maxZ:0.0] screen=BoundingBox [minX:466.00000015894574, minY:137.33333587646484, minZ:0.0, width:759.9999999999998, height:108.66666412353516, depth:0.0, maxX:1226.0000001589456, maxY:246.0, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-title bounds=BoundingBox [minX:80.0, minY:33.333335876464844, minZ:0.0, width:725.3333129882812, height:21.999996185302734, depth:0.0, maxX:805.3333129882812, maxY:55.33333206176758, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:154.6666692097982, minZ:0.0, width:725.3333129882812, height:21.99999999999997, depth:0.0, maxX:1208.6666464805603, maxY:176.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:33.333335876464844, minZ:0.0, width:128.0, height:21.999996185302734, depth:0.0, maxX:208.0, maxY:55.33333206176758, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:154.6666692097982, minZ:0.0, width:128.0, height:21.99999999999997, depth:0.0, maxX:611.333333492279, maxY:176.66666920979816, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-state bounds=BoundingBox [minX:80.0, minY:63.33333206176758, minZ:0.0, width:725.3333129882812, height:18.000003814697266, depth:0.0, maxX:805.3333129882812, maxY:81.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:184.66666920979816, minZ:0.0, width:725.3333129882812, height:18.0, depth:0.0, maxX:1208.6666464805603, maxY:202.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:63.33333206176758, minZ:0.0, width:442.0, height:18.000003814697266, depth:0.0, maxX:522.0, maxY:81.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:184.66666920979816, minZ:0.0, width:442.0, height:18.0, depth:0.0, maxX:925.333333492279, maxY:202.66666920979816, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-caution bounds=BoundingBox [minX:80.0, minY:89.33333587646484, minZ:0.0, width:725.3333129882812, height:18.0, depth:0.0, maxX:805.3333129882812, maxY:107.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:210.6666692097982, minZ:0.0, width:725.3333129882812, height:17.99999999999997, depth:0.0, maxX:1208.6666464805603, maxY:228.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:89.33333587646484, minZ:0.0, width:429.0, height:18.0, depth:0.0, maxX:509.0, maxY:107.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:210.6666692097982, minZ:0.0, width:429.0, height:17.99999999999997, depth:0.0, maxX:912.333333492279, maxY:228.66666920979816, maxZ:0.0]
+FIXTURE_CLEANUP sqlSyntheticStageOnly=true productAssertionsAlreadyRecorded=true
+SQL_MANUAL_PRECONDITION transaction=ACTIVE realUiMode=true realUiDml=true committed=0 pendingWrites=1 runner=OracleSqlRunner
+SHUTDOWN node=shutdown-pending-notice bounds=BoundingBox [minX:62.66666793823242, minY:16.0, minZ:0.0, width:760.0000190734863, height:108.66666412353516, depth:0.0, maxX:822.6666870117188, maxY:124.66666412353516, maxZ:0.0] screen=BoundingBox [minX:466.00000015894574, minY:137.33333587646484, minZ:0.0, width:759.9999999999998, height:108.66666412353516, depth:0.0, maxX:1226.0000001589456, maxY:246.0, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-title bounds=BoundingBox [minX:80.0, minY:33.333335876464844, minZ:0.0, width:725.3333129882812, height:21.999996185302734, depth:0.0, maxX:805.3333129882812, maxY:55.33333206176758, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:154.6666692097982, minZ:0.0, width:725.3333129882812, height:21.99999999999997, depth:0.0, maxX:1208.6666464805603, maxY:176.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:33.333335876464844, minZ:0.0, width:128.0, height:21.999996185302734, depth:0.0, maxX:208.0, maxY:55.33333206176758, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:154.6666692097982, minZ:0.0, width:128.0, height:21.99999999999997, depth:0.0, maxX:611.333333492279, maxY:176.66666920979816, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-state bounds=BoundingBox [minX:80.0, minY:63.33333206176758, minZ:0.0, width:725.3333129882812, height:18.000003814697266, depth:0.0, maxX:805.3333129882812, maxY:81.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:184.66666920979816, minZ:0.0, width:725.3333129882812, height:18.0, depth:0.0, maxX:1208.6666464805603, maxY:202.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:63.33333206176758, minZ:0.0, width:442.0, height:18.000003814697266, depth:0.0, maxX:522.0, maxY:81.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:184.66666920979816, minZ:0.0, width:442.0, height:18.0, depth:0.0, maxX:925.333333492279, maxY:202.66666920979816, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-caution bounds=BoundingBox [minX:80.0, minY:89.33333587646484, minZ:0.0, width:725.3333129882812, height:18.0, depth:0.0, maxX:805.3333129882812, maxY:107.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:210.6666692097982, minZ:0.0, width:725.3333129882812, height:17.99999999999997, depth:0.0, maxX:1208.6666464805603, maxY:228.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:89.33333587646484, minZ:0.0, width:429.0, height:18.0, depth:0.0, maxX:509.0, maxY:107.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:210.6666692097982, minZ:0.0, width:429.0, height:17.99999999999997, depth:0.0, maxX:912.333333492279, maxY:228.66666920979816, maxZ:0.0]
+FIXTURE_CLEANUP sqlSyntheticStageOnly=true productAssertionsAlreadyRecorded=true
+SQL_MANUAL_PRECONDITION transaction=ACTIVE realUiMode=true realUiDml=true committed=0 pendingWrites=1 runner=PgSqlRunner
+SHUTDOWN node=shutdown-pending-notice bounds=BoundingBox [minX:62.66666793823242, minY:16.0, minZ:0.0, width:760.0000190734863, height:108.66666412353516, depth:0.0, maxX:822.6666870117188, maxY:124.66666412353516, maxZ:0.0] screen=BoundingBox [minX:466.00000015894574, minY:137.33333587646484, minZ:0.0, width:759.9999999999998, height:108.66666412353516, depth:0.0, maxX:1226.0000001589456, maxY:246.0, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-title bounds=BoundingBox [minX:80.0, minY:33.333335876464844, minZ:0.0, width:725.3333129882812, height:21.999996185302734, depth:0.0, maxX:805.3333129882812, maxY:55.33333206176758, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:154.6666692097982, minZ:0.0, width:725.3333129882812, height:21.99999999999997, depth:0.0, maxX:1208.6666464805603, maxY:176.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:33.333335876464844, minZ:0.0, width:128.0, height:21.999996185302734, depth:0.0, maxX:208.0, maxY:55.33333206176758, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:154.6666692097982, minZ:0.0, width:128.0, height:21.99999999999997, depth:0.0, maxX:611.333333492279, maxY:176.66666920979816, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-state bounds=BoundingBox [minX:80.0, minY:63.33333206176758, minZ:0.0, width:725.3333129882812, height:18.000003814697266, depth:0.0, maxX:805.3333129882812, maxY:81.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:184.66666920979816, minZ:0.0, width:725.3333129882812, height:18.0, depth:0.0, maxX:1208.6666464805603, maxY:202.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:63.33333206176758, minZ:0.0, width:442.0, height:18.000003814697266, depth:0.0, maxX:522.0, maxY:81.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:184.66666920979816, minZ:0.0, width:442.0, height:18.0, depth:0.0, maxX:925.333333492279, maxY:202.66666920979816, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-caution bounds=BoundingBox [minX:80.0, minY:89.33333587646484, minZ:0.0, width:725.3333129882812, height:18.0, depth:0.0, maxX:805.3333129882812, maxY:107.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:210.6666692097982, minZ:0.0, width:725.3333129882812, height:17.99999999999997, depth:0.0, maxX:1208.6666464805603, maxY:228.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:89.33333587646484, minZ:0.0, width:429.0, height:18.0, depth:0.0, maxX:509.0, maxY:107.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:210.6666692097982, minZ:0.0, width:429.0, height:17.99999999999997, depth:0.0, maxX:912.333333492279, maxY:228.66666920979816, maxZ:0.0]
+FIXTURE_CLEANUP sqlSyntheticStageOnly=true productAssertionsAlreadyRecorded=true
+SQL_MANUAL_PRECONDITION transaction=ACTIVE realUiMode=true realUiDml=true committed=0 pendingWrites=1 runner=OracleSqlRunner
+SHUTDOWN node=shutdown-pending-notice bounds=BoundingBox [minX:62.66666793823242, minY:16.0, minZ:0.0, width:760.0000190734863, height:108.66666412353516, depth:0.0, maxX:822.6666870117188, maxY:124.66666412353516, maxZ:0.0] screen=BoundingBox [minX:466.00000015894574, minY:137.33333587646484, minZ:0.0, width:759.9999999999998, height:108.66666412353516, depth:0.0, maxX:1226.0000001589456, maxY:246.0, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-title bounds=BoundingBox [minX:80.0, minY:33.333335876464844, minZ:0.0, width:725.3333129882812, height:21.999996185302734, depth:0.0, maxX:805.3333129882812, maxY:55.33333206176758, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:154.6666692097982, minZ:0.0, width:725.3333129882812, height:21.99999999999997, depth:0.0, maxX:1208.6666464805603, maxY:176.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:33.333335876464844, minZ:0.0, width:128.0, height:21.999996185302734, depth:0.0, maxX:208.0, maxY:55.33333206176758, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:154.6666692097982, minZ:0.0, width:128.0, height:21.99999999999997, depth:0.0, maxX:611.333333492279, maxY:176.66666920979816, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-state bounds=BoundingBox [minX:80.0, minY:63.33333206176758, minZ:0.0, width:725.3333129882812, height:18.000003814697266, depth:0.0, maxX:805.3333129882812, maxY:81.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:184.66666920979816, minZ:0.0, width:725.3333129882812, height:18.0, depth:0.0, maxX:1208.6666464805603, maxY:202.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:63.33333206176758, minZ:0.0, width:442.0, height:18.000003814697266, depth:0.0, maxX:522.0, maxY:81.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:184.66666920979816, minZ:0.0, width:442.0, height:18.0, depth:0.0, maxX:925.333333492279, maxY:202.66666920979816, maxZ:0.0]
+SHUTDOWN node=shutdown-pending-caution bounds=BoundingBox [minX:80.0, minY:89.33333587646484, minZ:0.0, width:725.3333129882812, height:18.0, depth:0.0, maxX:805.3333129882812, maxY:107.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:210.6666692097982, minZ:0.0, width:725.3333129882812, height:17.99999999999997, depth:0.0, maxX:1208.6666464805603, maxY:228.66666920979816, maxZ:0.0]
+SHUTDOWN node=null bounds=BoundingBox [minX:80.0, minY:89.33333587646484, minZ:0.0, width:429.0, height:18.0, depth:0.0, maxX:509.0, maxY:107.33333587646484, maxZ:0.0] screen=BoundingBox [minX:483.33333349227905, minY:210.6666692097982, minZ:0.0, width:429.0, height:17.99999999999997, depth:0.0, maxX:912.333333492279, maxY:228.66666920979816, maxZ:0.0]
+FIXTURE_CLEANUP sqlSyntheticStageOnly=true productAssertionsAlreadyRecorded=true
+]]></system-out>
+  <system-err><![CDATA[10月 07, 2026 7:06:30 下午 com.sun.javafx.application.PlatformImpl startup
+警告: Unsupported JavaFX configuration: classes were loaded from 'unnamed module @5136d012'
+]]></system-err>
+</testsuite>
