@@ -39,3 +39,7 @@ root批准004-final-targeted：22新矩阵（10事务结果含原首红2、2 FX 
 ## S6 最终审查与移交
 
 root独立审005的19suite/207项0fail/0skip及4源+runner冻结，批准006/007/008。006实际316suite/4038总/4035通过/3live skip，007实际8/0skip，008实际14tasks与jpackageImage执行；均exit0。4源+runner哈希复验一致，worker停止并移交唯一Gradle许可；root负责镜像审计、提交/main交付。首红与002/004失败原件保留，详情见worker最终报告及manifest。不展开下一功能。
+
+## root集成状态
+
+源提交c71dd241、分支证据11f70af5已合并main c1711dca。root独立新定向207/207、全量4035通过/3live跳过、buildSrc8/8及jpackageImage通过；main镜像183文件审计与三产物SHA比较通过。原始失败、冻结与独立审查见2026-10-07-sql-transaction-shutdown-review.md。最终仅推送main并核对精确SHA CI，实际结果以交付回执为准；不改tag、不扩功能，原生/真库/安装签名和完整M8待验边界不变。

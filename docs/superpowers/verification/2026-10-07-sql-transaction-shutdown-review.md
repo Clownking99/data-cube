@@ -69,3 +69,21 @@ root Audit-Worker重新校验冻结5文件和原始实际Task/新鲜XML：005定
 已仅提交2src+2test为c71dd24100644dc5a60cc674137bf0a3416412e2。镜像独立审计passed：183文件，模块/cfg无测试类、profile或测试JVM选项；独立读过driverFor实现和探针，仅发现Oracle/PG驱动，不调用connect/open。exe595968字节/SHA6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F；cfg369/SHAE53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D；modules102411629/SHAED9DDEAE2C3C79A386C17908118F9139C9FAD2AF62562612C4FDAEF6939B3071。
 
 worker已停止全部Gradle并交还许可，最终434项原件清单由root逐项长度/SHA验证；原报告17152字节、SHA875AE479831841FE2CB6A39F20E7B7DC3C4C61AF243E1FEEAD44BD6D5C9C4040与冻结副本一致。当前进入Git原字节归档门禁，然后main合并和全新复验；本段不预报main或CI成功。所有原生/真库/安装签名与完整M8待验边界保持。
+
+## S7：main合并与全新复验启动
+
+分支证据提交11f70af5e02ba847d330f957aa662ef70ffebe2f。重新核对main仍为3494b670且范围内干净后，no-ff合并至c1711dca42748e899822e94cbbbb8f79d1f7529f。main的src/test/resources/buildSrc/build/workflow树与审查源提交c71dd241一致；437份worker raw及31份协调raw实际工作区/Git字节均通过审计。worker原报告17152字节SHA再核相同，本轮起即指定单文件-text，未发生上轮报告归档转换问题。
+
+main新001-main-targeted已启动，独占profile/真实8.3temp；main实际4源字节另存main-merge-source.json（Git正常源码换行转换不冒称分支原字节完全相同）。后续新clean full、强制buildSrc/image和镜像独立审计，不能用分支结果替代。最后还需更新交接、提交最终文档、推送main及精确SHA CI。既有tag和PAUSED跟进保持。
+
+## S8：main全部本地复验完成与限定交付
+
+main c1711dca 上实际新执行：001定向19套207/207、0skip、1m52；002全量316套4038总/4035通过/3live跳过、4m58；003强制root buildSrc8/8、7s，均0failure/error；004强制jpackageImage14任务执行、34s。每次新UUID profile/真实8.3temp，command/exit/Task/XML及具体skip理由保存，不用分支结果替代。main 4源实际字节保持冻结；代码/测试Git树与c71dd241一致。
+
+main新镜像审计passed、183文件，无测试类/profile/JVM测试选项泄漏，驱动探针仅发现、不连接。exe/cfg/modules的长度和SHA全部与S6分支镜像一致，比较原件main-image-comparison.json。新增22个真实AppShell/mock PG/Oracle组合补齐明确事务在途、物理完成未呈现、非选中标签、模式转换、排队取消及草稿拒绝后恢复；已模拟生效后commit抛错，保护不推断提交/撤销结果。原前置回调和guard suppress后回调分别验证，关闭成功等待物理结算，失败不额外回滚或清理。
+
+源码复核还确认树、文件、新建、草稿恢复、历史、收藏、SELECT入口最终使用同一SQL内容身份，早期捕获不依赖选中/父节点disabled。所有FAILED_PARTIAL资源兜底明确仅测试夹具，不表示产品具备终态进程内恢复。
+
+本轮未做真库、原生输入/OS缩放、额外PRODUCTION确认modal、正式无Gate启动、安装升级回退/签名或完整M8发布验收；旧分层证据保持历史，不扩大结论。v3.2.9不移动，datacube跟进不改，不自动扩下一功能。最终文档提交不改受验源码；最后只推送main并核对精确SHA Verify，当前不预报CI成功，回执位置见delivery-intent.json及最终交付消息。
+
+最终本地归档：437份worker raw和393份协调原件冻结；worker报告与原17152字节/SHA及实际Git blob再次匹配。源提交和测试树未再改动。两轮产品失败与一轮夹具时序失败都保留，不把它们算通过；最终精确SHA CI在提交/推送后另据实际回执核验。

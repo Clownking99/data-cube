@@ -1,5 +1,7 @@
 # DataCube 产品成熟度推进计划
 
+**2026-10-07 显式事务整窗退出缺陷修复（最新）：** 修复COMMIT/ROLLBACK/SET_MODE失败在退出时被吞掉并继续回滚、释放和隐藏窗口的问题。AppShell在异步workspace freeze前捕获所有SQL标签的未呈现事务，pane等真实queue idle后保留FAILED_PARTIAL可见保护；已显示旧错误、退出取消后恢复和非选中tab均有真实链路回归。源提交c71dd241、分支证据11f70af5、main集成c1711dca；新22例，分支/main各新定向207、全量4035通过/3明确live跳过、buildSrc8、jpackageImage/183文件零连接镜像审计通过，三产物SHA一致。首红、剩余竞态红灯和夹具同步失败原件均保留。详见[独立审查记录](../verification/2026-10-07-sql-transaction-shutdown-review.md)。本轮仅mock/合成；真实驱动事务、剩余原生/OS缩放、终态进程内恢复、无Gate启动、安装升级签名与完整M8仍待验。最终main推送和精确SHA CI以实际交付回执为准，v3.2.9与PAUSED跟进不动。下方各轮为历史，不把旧“最新”视为当前结论。
+
 **2026-10-07 SQL在途整窗退出集成验收（最新）：** 新增PG/Oracle各两例真实AppShell→SQL编辑器→生产runner→mock JDBC→原mandatory guard→整窗handler回归；跨默认5秒仍等待，物理结束后回滚/关闭、队列封闭、迟到回调抑制均通过。未发现生产缺陷，产品源码未改。测试5b3d7172、证据8acdb188、main集成cf8a4390；分支/main各新定向184、全量4013通过/3明确live跳过、buildSrc8、jpackageImage/183文件零连接镜像审计通过，三产物SHA一致。378份worker raw/Git及含报告的原件清单均复核，夹具失败和报告换行归档诊断保留。详见[独立审查记录](../verification/2026-10-07-sql-inflight-shutdown-review.md)。非可取消COMMIT在途、真驱动取消/事务、原生/OS缩放、终态恢复、无Gate启动、安装升级签名及完整M8仍待验；最终main推送和精确SHA CI以交付回执核对，v3.2.9与PAUSED跟进不动。下方“最新”均按历史轮次解读。
 
 **2026-10-07 退出等待可见反馈（最新产品）：** 关闭进入在途后即时显示等待与对话框指引；取消/可恢复异常清除、成功关闭清除、partial互斥切换保护说明，保留事务/资源/关闭时限。GPT-6.1-sol开发、root独立审核；源码6ef4b3e、证据b6cd398d、main集成f94c102。分支/main各新定向40、全量4009通过/3明确live跳过、buildSrc8、jpackageImage及镜像零连接审计通过，三产物SHA一致；366份worker原件Git字节复核。详见[独立审查记录](../verification/2026-10-07-shutdown-pending-feedback-review.md)。首红与调度诊断保留。仅工程与合成FX交付；原生输入/OS缩放、完整在途/终态恢复、无Gate启动、安装升级签名及完整M8仍待验。最终main推送与精确SHA CI以交付回执核对；v3.2.9不动，datacube保持PAUSED。下方各“最新”按历史轮次解读。
