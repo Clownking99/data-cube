@@ -275,7 +275,10 @@ public final class AppShell {
         sqlFileEntry.suspend();
         var attempt = new java.util.concurrent.CompletableFuture<ShutdownOutcome>();
         shutdownAttempt = attempt;
+        List<Runnable> releaseTransactions = ((TabPane) contentTabs.getNode()).getTabs().stream()
+                .map(tab -> SqlEditorPane.captureApplicationCloseTransactions(tab.getContent())).toList();
         shutdown.shutdown().whenComplete((outcome, failure) -> Platform.runLater(() -> {
+            releaseTransactions.forEach(Runnable::run);
             if (failure != null && shutdownTabsCommitted) {
                 attempt.complete(ShutdownOutcome.FAILED_PARTIAL);
                 return;
