@@ -1,0 +1,113 @@
+{
+  "testCommit": "5b3d7172c5e6b61d49cba166ae37bd60d16625ab",
+  "utc": "2026-10-07T11:39:25.4836517Z",
+  "branchMainImageIdentical": true,
+  "mainImage": {
+    "classLeaks": [],
+    "artifacts": [
+      {
+        "bytes": 595968,
+        "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F",
+        "path": "DataCube.exe"
+      },
+      {
+        "bytes": 369,
+        "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D",
+        "path": "app/DataCube.cfg"
+      },
+      {
+        "bytes": 102405401,
+        "sha256": "06D4956F06D5B54C4EB6D7633C735BBADFDDA20F30D4B243C2B4D14BEA5D160D",
+        "path": "runtime/lib/modules"
+      }
+    ],
+    "profile": "C:\\Users\\hetia\\AppData\\Local\\Temp\\datacube-sql-inflight-image-aa28ddc57f594b1c9f33eb0166c56022/profile",
+    "fileLeaks": [],
+    "source": "cf8a43902ac683f4cc7d528473e9e928c6d852af",
+    "driverExit": 0,
+    "optionLeaks": false,
+    "passed": true,
+    "driverOutput": "oracle=oracle.jdbc.OracleDriver\r\npostgres=org.postgresql.Driver\r\nconnectCalls=0; no credentials or user profile loaded\r\n",
+    "utc": "2026-10-07T11:37:43.6629418Z"
+  },
+  "evidenceCommit": "8acdb18817cabaa39c12966958253707232352f3",
+  "productionCodeChanged": false,
+  "mainMerge": "cf8a43902ac683f4cc7d528473e9e928c6d852af",
+  "baseline": "57b044497175cf906fbf8dfc8254b768d07d63d2",
+  "rawWorkerFiles": 378,
+  "finalCi": "Pending exact final commit; receipt will be stored in dedicated build/owned-ci-UUID",
+  "mainTests": [
+    {
+      "run": "009-main-targeted",
+      "source": "cf8a43902ac683f4cc7d528473e9e928c6d852af",
+      "task": ":test",
+      "exitCode": 0,
+      "suites": 17,
+      "tests": 184,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 184,
+      "skips": [],
+      "freshXml": true
+    },
+    {
+      "run": "010-main-clean-test",
+      "source": "cf8a43902ac683f4cc7d528473e9e928c6d852af",
+      "task": ":test",
+      "exitCode": 0,
+      "suites": 315,
+      "tests": 4016,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "passed": 4013,
+      "skips": [
+        {
+          "class": "com.datacube.redis.RedisLiveIntegrationTest",
+          "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "name": "oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "freshXml": true
+    },
+    {
+      "run": "011-main-root-buildsrc-test",
+      "source": "cf8a43902ac683f4cc7d528473e9e928c6d852af",
+      "task": ":buildSrc:test",
+      "exitCode": 0,
+      "suites": 1,
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 8,
+      "skips": [],
+      "freshXml": true
+    }
+  ],
+  "notVerified": [
+    "noncancellable COMMIT in-flight window exit",
+    "real Oracle/PostgreSQL driver cancellation and transaction behavior",
+    "native keyboard/mouse and OS scaling",
+    "in-process recovery after partial failure",
+    "formal launcher without acceptance gate",
+    "install upgrade rollback and signing",
+    "complete M8 release acceptance"
+  ],
+  "newSqlCases": 4,
+  "earlierFailedRuns": [
+    "001-sql-inflight-targeted: fixture null report",
+    "002-sql-inflight-fixture-corrected: native DLL TempDir cleanup"
+  ]
+}

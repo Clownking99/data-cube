@@ -1,5 +1,7 @@
 # DataCube 产品成熟度推进计划
 
+**2026-10-07 SQL在途整窗退出集成验收（最新）：** 新增PG/Oracle各两例真实AppShell→SQL编辑器→生产runner→mock JDBC→原mandatory guard→整窗handler回归；跨默认5秒仍等待，物理结束后回滚/关闭、队列封闭、迟到回调抑制均通过。未发现生产缺陷，产品源码未改。测试5b3d7172、证据8acdb188、main集成cf8a4390；分支/main各新定向184、全量4013通过/3明确live跳过、buildSrc8、jpackageImage/183文件零连接镜像审计通过，三产物SHA一致。378份worker raw/Git及含报告的原件清单均复核，夹具失败和报告换行归档诊断保留。详见[独立审查记录](../verification/2026-10-07-sql-inflight-shutdown-review.md)。非可取消COMMIT在途、真驱动取消/事务、原生/OS缩放、终态恢复、无Gate启动、安装升级签名及完整M8仍待验；最终main推送和精确SHA CI以交付回执核对，v3.2.9与PAUSED跟进不动。下方“最新”均按历史轮次解读。
+
 **2026-10-07 退出等待可见反馈（最新产品）：** 关闭进入在途后即时显示等待与对话框指引；取消/可恢复异常清除、成功关闭清除、partial互斥切换保护说明，保留事务/资源/关闭时限。GPT-6.1-sol开发、root独立审核；源码6ef4b3e、证据b6cd398d、main集成f94c102。分支/main各新定向40、全量4009通过/3明确live跳过、buildSrc8、jpackageImage及镜像零连接审计通过，三产物SHA一致；366份worker原件Git字节复核。详见[独立审查记录](../verification/2026-10-07-shutdown-pending-feedback-review.md)。首红与调度诊断保留。仅工程与合成FX交付；原生输入/OS缩放、完整在途/终态恢复、无Gate启动、安装升级签名及完整M8仍待验。最终main推送与精确SHA CI以交付回执核对；v3.2.9不动，datacube保持PAUSED。下方各“最新”按历史轮次解读。
 
 **2026-10-07 退出部分失败可见反馈（最新产品）：** FAILED_PARTIAL后现在在禁用工作区之外持续显示原因与核对/手动结束指引，保持终态隔离、不重试事务、不自动强杀/重启。GPT-6.1-sol开发、root独立审核；源码33e7773、证据210574a、main集成84dd0c0。分支/main各新定向32、全量4005通过/3明确live跳过、buildSrc8、jpackageImage和镜像零连接审计通过；三产物SHA一致，375份worker原件Git字节复核。详见[独立审查记录](../verification/2026-10-07-shutdown-failure-feedback-review.md)。首红/夹具及归档诊断保留。仅工程与合成FX交付；终态进程内恢复、原生输入/系统缩放、无Gate启动、安装升级/签名及完整M8仍待验。最终main推送和精确SHA CI以交付回执核对；v3.2.9不动，datacube不恢复。下方各“最新”按历史轮次解读。

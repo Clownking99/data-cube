@@ -39,3 +39,25 @@ root 独立 Audit-Worker 重新统计实际任务和新鲜 XML：定向17套184�
 两份新增测试已提交5b3d7172c5e6b61d49cba166ae37bd60d16625ab；生产src/resources/build脚本/workflow未改。root镜像审计passed：183文件、模块与cfg没有测试类/profile或测试JVM选项；仅Oracle/PG driverFor发现，connectCalls=0，未调用connect/open。exe595968字节、cfg369、modules102405401；SHA分别6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F、E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D、06D4956F06D5B54C4EB6D7633C735BBADFDDA20F30D4B243C2B4D14BEA5D160D。probe与driverFor源码再次独立读取确认无连接。
 
 378项worker原件/报告清单已逐项长度和SHA独立复核，包含两次失败及其源码，待进一步冻结Git原字节。当前只是分支验证，main复验、推送和精确SHA CI尚待；不把mock组合结论扩张到真实驱动、非可取消COMMIT、原生或完整M8。
+
+## S5：main 合并与独立复验
+
+证据提交8acdb18817cabaa39c12966958253707232352f3；378份worker与23份协调原件通过实际Git字节审计。重新核对main仍为57b04449且范围内干净后no-ff合并至cf8a43902ac683f4cc7d528473e9e928c6d852af。main再次独立核验401原件字节，src/test/resources/buildSrc/build/workflow树与已审5b3d7172一致。
+
+main现开始新UUID profile/8.3 temp的184项定向，后续新全量、buildSrc和image；不能复用分支通过作为main证据。tag/PAUSED跟进不动，原生/真库/非可取消COMMIT等仍未验。最终main推送与精确SHA CI尚待。
+
+### S5a：报告字节归档修正
+
+main复验期间额外核对worker证据清单中的报告本体：原件8080字节，main checkout被Git文本换行转换为8140字节，导致SHA不匹配；378份raw目录原件此前均匹配，问题只在目录外worker报告。已从哈希核实的C worktree恢复原8080字节，并在verification/.gitattributes仅为该报告设-text。诊断和前后SHA见report-byte-restoration.json。没有修改报告内容、测试或产品；最终还要核对该报告实际Git blob字节，不能仅凭工作区恢复宣称归档完成。
+
+## S6：main 完整本地复验与限定交付
+
+main cf8a4390 上新执行：定向17套184/184；全量315套4016总项/4013通过/3live跳过；强制root buildSrc8/8，均0failure/error。分别1m20、4m30、11s。jpackageImage强制14任务执行成功1m，每次新UUID profile/真实8.3临时目录。原XML/command/exit/Task和三项跳过具体理由均归档，跳过不计通过。
+
+main新镜像审计通过：183文件，模块/cfg无测试/profile/JVM测试参数；仅driverFor发现Oracle/PG，connectCalls=0。exe/cfg/modules三产物长度与SHA均和分支相同。main受验树仍与5b3d7172一致。378份worker raw/Git字节再次验证；另按worker原始378项清单逐项核对（包含已恢复的原报告）全部长度/SHA一致。报告的Git字节还将在最终暂存时独立验证。
+
+本轮补齐四个mock SQL执行在途整窗退出组合：实际关闭请求一次；取消已响应但未物理结束时等待与资源仍保留；物理完成后才回滚，0隐式提交、连接唯一次数和顺序正确；排队/第三条SQL不执行，迟到progress与terminal分别由UI/queue抑制。未发现需要修改生产源码的缺陷，仅新增真实集成测试与证据。
+
+边界保持：非可取消COMMIT在途、真实驱动取消/事务、原生输入/OS缩放、终态进程内恢复、正式无Gate启动、安装升级回退/生产签名和完整M8仍待验。此次工程交付不替代这些结论。交付后不自动扩功能；tag v3.2.9不移动，datacube保持PAUSED。最后只推送最终main并核对其精确SHA Verify，实际回执保存在独占build/owned-ci-UUID，本记录不预报CI成功。
+
+最终归档：378份worker原始文件与383 份协调原件均冻结并通过实际Git字节审计；单独worker报告恢复原8080字节后，SHA与Git blob同时核验一致。最终文档提交不改变受验产品/测试树。最终CI结论见实际交付回执。

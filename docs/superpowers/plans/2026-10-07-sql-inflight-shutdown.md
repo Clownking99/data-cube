@@ -29,3 +29,7 @@ mock只替换JDBC与DatabaseProvider的连接工厂/metadata探针；sqlRunner/d
 ## 边界和未验
 
 .testagent禁读改枚举暂存清理；禁止原凭据/连接/profile/SQL历史/业务文件、真库、剪贴板、原生输入、安装更新、外部联系；仅mock合成独占temp，不fetch/push/tag/PR/新线程/子代理。v3.2.9和PAUSED自动跟进不动。原生键盘/鼠标、OS缩放、真库驱动取消/事务、非可取消COMMIT在途、终态进程内恢复、无Gate启动、安装升级回退/签名及完整M8未验。本轮只给合成整窗实际链路证据，不宣称完成全部发布验收。
+
+S5：两测试提交5b3d7172、证据8acdb188，main集成cf8a4390；分支新定向184/全量4013通过+3live跳过/buildSrc8/image与零连接镜像审计通过。root独立审查及401原件Git字节核验完成；main新复验进行中，尚不预报main或CI通过。生产源码未改，完整M8和边界未验保持。
+
+S6：main cf8a4390 新定向184/全量4013通过+3live跳过/buildSrc8/jpackageImage及183文件零连接镜像审计均通过，分支/main三产物SHA一致。原报告换行归档问题已恢复原字节并设单文件-text；原件清单重新核对通过。限定mock组合本地完成，无生产代码改动；非可取消COMMIT/真驱动/原生/完整M8等保持待验。最终main推送及精确SHA CI以实际回执为准。
