@@ -158,30 +158,57 @@ class SchemaObjectCopyTest {
 
     @ParameterizedTest @ValueSource(strings = {"dark", "light"})
     void narrowThemesKeepCopyFeedbackAndConfirmationWithinViewport(String theme) throws Exception {
-        FxUiTestSupport.call(() -> {
-            try (var f = new Fixture(DbType.POSTGRESQL)) {
-                var pane = f.picker.dialog().getDialogPane();
-                pane.getStylesheets().addAll(getClass().getResource("theme-base.css").toExternalForm(),
-                        getClass().getResource("theme-" + theme + ".css").toExternalForm());
-                f.loadAndSelect(); f.mode = "false"; f.copy().fire();
-                pane.resize(480, 548); pane.applyCss(); pane.layout();
-                for (String id : List.of("copy", "copy-status", "reload", "confirm", "preview", "query")) {
-                    var node = pane.lookup("#schema-object-" + id); var bounds = node.localToScene(node.getBoundsInLocal());
-                    assertTrue(bounds.getMinX() >= 0 && bounds.getMaxX() <= 480, id + ": " + bounds);
-                    assertTrue(bounds.getMinY() >= 0 && bounds.getMaxY() <= 548, id + ": " + bounds);
-                }
-                for (String id : List.of("target", "preview")) {
-                    TextArea area = (TextArea) pane.lookup("#schema-object-" + id);
-                    assertTrue(area.getHeight() >= area.prefHeight(area.getWidth()) - 1,
-                            id + " must retain its configured visible rows when copy feedback appears");
-                }
-                assertTrue(f.feedback().isVisible()); assertFalse(f.copy().isDisabled());
-                assertFalse(f.copy().isDefaultButton()); assertTrue(f.feedback().getText().contains("请重试"));
-            }
-            return null;
+        var f=FxUiTestSupport.call(() -> {
+            var fixture=new Fixture(DbType.POSTGRESQL);var pane=fixture.picker.dialog().getDialogPane();
+            fixture.picker.dialog().show();fixture.publish();fixture.list().getSelectionModel().selectFirst();
+            pane.getScene().getStylesheets().setAll(getClass().getResource("theme-base.css").toExternalForm(),
+                    getClass().getResource("theme-"+theme+".css").toExternalForm());
+            fixture.mode="false";fixture.copy().fire();
+            var stage=(javafx.stage.Stage)pane.getScene().getWindow();stage.setWidth(480);stage.setHeight(548);return fixture;
         });
+        try {
+            awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                var pane=f.picker.dialog().getDialogPane();pane.applyCss();pane.layout();
+                assertTrue(pane.getScene().getWindow().getWidth()<=481);assertTrue(pane.getScene().getWindow().getHeight()<=549);
+                for(String id:List.of("copy","copy-status","reload","preview","query")) assertReachable(pane,pane.lookup("#schema-object-"+id));
+                assertExternalButtonsVisible(pane);
+                for(String id:List.of("target","preview")) {
+                    TextArea area=(TextArea)pane.lookup("#schema-object-"+id);
+                    assertTrue(area.getHeight()>=area.prefHeight(area.getWidth())-1,id+" retains its configured visible rows");
+                }
+                assertTrue(f.feedback().isVisible());assertFalse(f.copy().isDisabled());assertFalse(f.copy().isDefaultButton());
+                assertTrue(f.feedback().getText().contains("请重试"));assertEquals(1,f.loads);assertEquals(1,f.copyCalls);assertEquals(1,f.writes.size());
+                assertNull(f.picker.dialog().getResult());return null;
+            });
+        } finally {FxUiTestSupport.call(() -> {f.close();return null;});}
     }
-
+    private static void awaitLayoutPulses() throws Exception {
+        var ready=new java.util.concurrent.CountDownLatch(1);
+        FxUiTestSupport.call(() -> {
+            new javafx.animation.AnimationTimer() {
+                int frames;
+                @Override public void handle(long now) {if(++frames>=3){stop();ready.countDown();}}
+            }.start();return null;
+        });
+        assertTrue(ready.await(5,java.util.concurrent.TimeUnit.SECONDS));
+    }
+    private static void assertReachable(DialogPane pane, javafx.scene.Node node) {
+        var scroll=(ScrollPane)pane.lookup("#schema-object-scroll");
+        if(node instanceof Control control) control.requestFocus(); else scroll.setVvalue(1);
+        pane.layout();
+        var visible=scroll.lookup(".viewport").localToScene(scroll.lookup(".viewport").getBoundsInLocal());
+        var bounds=node.localToScene(node.getBoundsInLocal());
+        assertTrue(bounds.getMinX()>=visible.getMinX()-1 && bounds.getMaxX()<=visible.getMaxX()+1
+                && bounds.getMinY()>=visible.getMinY()-1 && bounds.getMaxY()<=visible.getMaxY()+1,node.getId()+": "+bounds+" viewport "+visible);
+    }
+    private static void assertExternalButtonsVisible(DialogPane pane) {
+        for(String id:List.of("confirm","cancel")) {
+            var node=pane.lookup("#schema-object-"+id);var bounds=node.localToScene(node.getBoundsInLocal());
+            assertTrue(bounds.getMinX()>=0 && bounds.getMaxX()<=pane.getScene().getWidth()+1
+                    && bounds.getMinY()>=0 && bounds.getMaxY()<=pane.getScene().getHeight()+1,id+": "+bounds);
+        }
+    }
     private static KeyEvent key(KeyCode key) { return new KeyEvent(KeyEvent.KEY_PRESSED, "", "", key, false, false, false, false); }
     private static final class Fixture implements AutoCloseable {
         static final String SCHEMA = " Sales\" ";
