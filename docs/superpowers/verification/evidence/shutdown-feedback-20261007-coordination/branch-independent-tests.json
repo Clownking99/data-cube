@@ -1,0 +1,63 @@
+{
+  "imageRun": "007-jpackage-image",
+  "imageExecuted": true,
+  "sourceFilesVerified": 4,
+  "utc": "2026-10-07T09:31:06.0777669Z",
+  "tests": [
+    {
+      "name": "004-final-targeted-reviewed",
+      "task": ":test",
+      "head": "5fd42ce02a621a4b8070447ebe8defc36d15b11e",
+      "tests": 32,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 5,
+      "skips": [],
+      "freshXml": true,
+      "passed": 32
+    },
+    {
+      "name": "005-full-clean-test",
+      "task": ":test",
+      "head": "5fd42ce02a621a4b8070447ebe8defc36d15b11e",
+      "tests": 4008,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "suites": 314,
+      "skips": [
+        {
+          "class": "com.datacube.redis.RedisLiveIntegrationTest",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test",
+          "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()"
+        },
+        {
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set",
+          "name": "oracleSafeDeploymentConvergesInDisposableSchemas()"
+        },
+        {
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set",
+          "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()"
+        }
+      ],
+      "freshXml": true,
+      "passed": 4005
+    },
+    {
+      "name": "006-buildsrc-forced",
+      "task": ":buildSrc:test",
+      "head": "5fd42ce02a621a4b8070447ebe8defc36d15b11e",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 1,
+      "skips": [],
+      "freshXml": true,
+      "passed": 8
+    }
+  ]
+}
