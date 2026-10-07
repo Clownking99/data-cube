@@ -1,5 +1,7 @@
 # DataCube 产品成熟度推进计划
 
+**2026-10-07 退出等待可见反馈（最新产品）：** 关闭进入在途后即时显示等待与对话框指引；取消/可恢复异常清除、成功关闭清除、partial互斥切换保护说明，保留事务/资源/关闭时限。GPT-6.1-sol开发、root独立审核；源码6ef4b3e、证据b6cd398d、main集成f94c102。分支/main各新定向40、全量4009通过/3明确live跳过、buildSrc8、jpackageImage及镜像零连接审计通过，三产物SHA一致；366份worker原件Git字节复核。详见[独立审查记录](../verification/2026-10-07-shutdown-pending-feedback-review.md)。首红与调度诊断保留。仅工程与合成FX交付；原生输入/OS缩放、完整在途/终态恢复、无Gate启动、安装升级签名及完整M8仍待验。最终main推送与精确SHA CI以交付回执核对；v3.2.9不动，datacube保持PAUSED。下方各“最新”按历史轮次解读。
+
 **2026-10-07 退出部分失败可见反馈（最新产品）：** FAILED_PARTIAL后现在在禁用工作区之外持续显示原因与核对/手动结束指引，保持终态隔离、不重试事务、不自动强杀/重启。GPT-6.1-sol开发、root独立审核；源码33e7773、证据210574a、main集成84dd0c0。分支/main各新定向32、全量4005通过/3明确live跳过、buildSrc8、jpackageImage和镜像零连接审计通过；三产物SHA一致，375份worker原件Git字节复核。详见[独立审查记录](../verification/2026-10-07-shutdown-failure-feedback-review.md)。首红/夹具及归档诊断保留。仅工程与合成FX交付；终态进程内恢复、原生输入/系统缩放、无Gate启动、安装升级/签名及完整M8仍待验。最终main推送和精确SHA CI以交付回执核对；v3.2.9不动，datacube不恢复。下方各“最新”按历史轮次解读。
 
 2026-10-07 CI 跟进：收藏小窗口最终证据 bdf274c 已推送；Verify 37593098366 首次 Windows 旧概览排序测试发生 5 秒 FX 等待超时，Windows linked image 跳过，其他三任务成功。独立审查无确定根因；保留失败原件，同 SHA 失败任务只重跑一次，不改 timeout/断言。同 SHA 唯一一次重跑 attempt 2 四任务成功，Windows 单元测试和 linked image 实际通过；首次超时未复现但根因未知，仍为待诊断项。源码/测试/timeout未改。本次证据提交合并后的最终 SHA 另以新 Verify 回执核对，不预报结果。
@@ -297,7 +299,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 | M5 | 本地工程完成 | 实现 76dd221、修正 c62e86c；main 最终合并 0e7ca79；[G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)，main 全量 3724 passed/3 live skips、fresh buildSrc 8、镜像通过 | G5 交付；原生桌面/真库及明确降级单列 |
 | M6 | 本地工程完成 | 实现 d4b02de；main 合并 c182128；[G6 账本](../verification/2026-09-24-datacube-g6-discovery-library.md)，main 全量 3753 passed/3 live skips、fresh buildSrc 8、镜像及 14 张合成桌面截图 | G6 交付；原生模态输入/完整壳流程、真库等单列待验 |
 | M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | G8 已补合成迁移原生预检查/确认/取消/在途关闭；真库事务/权限/一致性与发布仍待验 |
-| M8 | 本地工程与部分原生验收已交付，v3.2.9自动打包已发布；完整M8未完成 | 最新[退出部分失败反馈](../verification/2026-10-07-shutdown-failure-feedback-review.md)：分支/main各定向32、全量4005通过/3 live跳过、buildSrc8、image/零连接镜像审计；此前收藏/查找小窗与旧原生工作区/启动器记录保持历史运行时身份 | 原生收藏/名称字段输入与完整下游动作、完整在途/终态恢复、OS缩放/多屏、无Gate启动/闪屏、安装升级/回退/生产签名仍待验；datacube保持PAUSED |
+| M8 | 本地工程与部分原生验收已交付，v3.2.9自动打包已发布；完整M8未完成 | 最新[退出等待反馈](../verification/2026-10-07-shutdown-pending-feedback-review.md)：分支/main各定向40、全量4009通过/3 live跳过、buildSrc8、image/零连接镜像审计；此前失败反馈/收藏/查找小窗及原生工作区/启动器记录保持历史运行时身份 | 原生收藏/名称字段输入与完整下游动作、完整在途/终态恢复、OS缩放/多屏、无Gate启动/闪屏、安装升级/回退/生产签名仍待验；datacube保持PAUSED |
 
 ## 16. 参考与历史记录
 

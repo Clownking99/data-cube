@@ -39,3 +39,19 @@ root独立Audit-Worker实算冻结4文件、实际Task/exit/新鲜XML：定向40
 源码4文件已提交6ef4b3eee757f79f46499bd483579b71fa777104。root镜像审计passed：模块/183文件/cfg无测试或profile/测试JVM选项混入；已独立审查外置probe及driverFor源码，只做Oracle/PG驱动发现，connectCalls=0，未调用connect/open。模块102405401字节、SHA06D4956F06D5B54C4EB6D7633C735BBADFDDA20F30D4B243C2B4D14BEA5D160D，exe/cfg/modules完整身份归档。
 
 worker最终报告末尾多余空行仅规范为一个EOF换行，原始证据不改；raw目录起始-text属性保留。准备冻结Git字节、证据提交与main合并/新复验。当前本地分支通过不能代替main或最终CI通过，全部原生/完整M8等边界保持。
+
+## S5 main集成与新复验启动
+
+证据提交b6cd398ddccc2058274282fe4d1eb8ef03b898ab；366份worker与21份协调原件Git实际字节一致。main98e6d07与范围内干净核对后no-ff合并为f94c102223c52b69a91881df99792604445cd9ac。main再次独立核验387原件及产品树与已审6ef4b3e一致。开始新UUID profile的main定向、全量、buildSrc和镜像；当前不借分支通过替代main结论，最终远端SHA/CI仍待。
+
+## S6 main完整复验与本地交付
+
+main集成f94c102上新执行定向40/40、全量314套4012总数/4009执行通过/3live跳过、强制root buildSrc8/8，均0failure/error；jpackageImage强制实际执行成功。每次新UUID profile/真实8.3独占temp、实际Task/exit/新鲜XML逐次归档。三跳过仍为Redis standalone与Oracle/PG SchemaDiff live，不计通过；没有使用真实连接。统计helper返回成功后调度误读遗留native LASTEXITCODE，曾在全量启动前被拒；原40项通过未变，保存main-dispatch-diagnostic后首次启动全量，不是测试失败或复跑。
+
+main镜像183文件隔离审计与仅驱动发现通过，Oracle/PG connectCalls=0；exe/cfg/modules三项长度与SHA均和分支相同，modules102405401字节、SHA06D4956F06D5B54C4EB6D7633C735BBADFDDA20F30D4B243C2B4D14BEA5D160D。main产品树与已审6ef4b3e一致；366份worker原件再次通过原始/Git字节审计。详见results.json和各原始运行目录。
+
+本限定等待反馈目标本地完成：关闭已进入等待时持续可见、主体外可读；取消/可恢复异常/null清除并恢复交互，成功清除并关闭，partial替换已有保护说明；反复关闭不重复清理，生产workspace Alert仍可决策，旧资源所有权和5秒/15秒均保留。纯合成Scene及实际handler/modal不是原生输入或正式Application.start。原生、完整在途/终态恢复、系统缩放多屏、无Gate启动、安装升级回退/生产签名和完整M8仍待验；旧孤立FX超时根因未知。
+
+最终只按既有授权推送main，精确最终SHA Verify和远端refs由Push-Verify-Main.ps1保存在独占build/owned-ci-UUID；这里不预报CI结论。v3.2.9不移动、datacube不恢复，交付后不自动扩展下一功能。
+
+最终归档：366份worker原件与369 份协调原件冻结并通过实际Git字节审计；最终记录提交不改变受验产品树。main定向1m25、全量4m45、buildSrc8s、image38s。

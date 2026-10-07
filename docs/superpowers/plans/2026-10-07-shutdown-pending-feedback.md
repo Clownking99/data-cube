@@ -21,3 +21,5 @@ WindowShutdownController 当前 begin 后仅禁用 body，只有 FAILED_PARTIAL 
 仅mock、合成profile及独占temp；.testagent禁读改枚举暂存清理，不读原连接/profile/凭据/历史SQL/业务文件，不真库/剪贴板/原生输入/安装更新/外部联系，不fetch/push/tag/PR/新线程/新代理。tag v3.2.9和PAUSED跟进不动。合成Scene截图不是原生桌面；原生键盘/鼠标、OS缩放矩阵、原生确认、终态进程内恢复、无Gate启动、安装升级回退、生产签名和完整M8单列未验。旧5秒FX超时不归因、不改timeout。本轮结束不扩展下一功能。
 
 S4：源码6ef4b3e，root独立定向40/全量4009通过+3live跳过/buildSrc8/image与365原件审查通过；183文件镜像隔离及零连接驱动发现通过。准备证据归档/main集成复验，不预报main/CI/原生结论。
+
+S6：main f94c102 新定向40/全量4009通过+3live跳过/buildSrc8/image及183文件镜像隔离/零连接审计通过；分支/main三产物SHA一致，366份worker原件Git字节复核。本地限定交付完成，原生/完整在途与终态恢复/安装签名/完整M8仍待；最终提交、main推送及精确SHA CI以实际回执为准。

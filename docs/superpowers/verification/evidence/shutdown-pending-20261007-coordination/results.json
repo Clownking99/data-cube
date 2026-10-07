@@ -1,0 +1,104 @@
+{
+  "scope": {
+    "tag": "v3.2.9 object and target must remain unchanged",
+    "pending": [
+      "native keyboard/mouse and migration confirmation on current runtime",
+      "OS scaling and multiple monitors",
+      "remaining full in-flight workflow acceptance",
+      "FAILED_PARTIAL in-process recovery",
+      "formal startup without acceptance gate",
+      "installation, upgrade, rollback and production signatures",
+      "complete M8 release acceptance"
+    ],
+    "historicalPending": "Prior isolated five-second FX timeout cause unknown; timeout unchanged",
+    "remoteStatus": "Pending final main push and exact-SHA Verify; final receipts under exclusive build/owned-ci-UUID",
+    "mainMerge": "f94c102223c52b69a91881df99792604445cd9ac",
+    "branchEvidenceCommit": "b6cd398ddccc2058274282fe4d1eb8ef03b898ab",
+    "sourceCommit": "6ef4b3eee757f79f46499bd483579b71fa777104"
+  },
+  "imageFiles": 183,
+  "sourceTreeMatchesReviewed": true,
+  "imageComparison": [
+    {
+      "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F",
+      "bytes": 595968,
+      "identical": true,
+      "path": "DataCube.exe"
+    },
+    {
+      "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D",
+      "bytes": 369,
+      "identical": true,
+      "path": "app/DataCube.cfg"
+    },
+    {
+      "sha256": "06D4956F06D5B54C4EB6D7633C735BBADFDDA20F30D4B243C2B4D14BEA5D160D",
+      "bytes": 102405401,
+      "identical": true,
+      "path": "runtime/lib/modules"
+    }
+  ],
+  "utc": "2026-10-07T10:39:39.2836050Z",
+  "imageTaskExecuted": true,
+  "imageAuditPassed": true,
+  "tests": [
+    {
+      "run": "main-directed",
+      "source": "f94c102223c52b69a91881df99792604445cd9ac",
+      "task": ":test",
+      "exitCode": 0,
+      "suites": 6,
+      "tests": 40,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 40,
+      "skips": [],
+      "freshXml": true
+    },
+    {
+      "run": "main-full",
+      "source": "f94c102223c52b69a91881df99792604445cd9ac",
+      "task": ":test",
+      "exitCode": 0,
+      "suites": 314,
+      "tests": 4012,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "passed": 4009,
+      "skips": [
+        {
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test",
+          "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "class": "com.datacube.redis.RedisLiveIntegrationTest"
+        },
+        {
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set",
+          "name": "oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest"
+        },
+        {
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set",
+          "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest"
+        }
+      ],
+      "freshXml": true
+    },
+    {
+      "run": "main-buildsrc",
+      "source": "f94c102223c52b69a91881df99792604445cd9ac",
+      "task": ":buildSrc:test",
+      "exitCode": 0,
+      "suites": 1,
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 8,
+      "skips": [],
+      "freshXml": true
+    }
+  ]
+}
