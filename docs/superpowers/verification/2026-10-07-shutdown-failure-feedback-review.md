@@ -43,3 +43,24 @@ root独立Audit-Worker核对实际Task/command/exit、新鲜XML与冻结4文件�
 本阶段分支工程与独立审查通过，尚未main复验/最终CI。新镜像不复用旧原生证据；真实Application.start/原生迁移确认/OS缩放/终态进程内恢复/安装签名及完整M8仍未验。下一步冻结证据Git原字节、提交、合并main并新跑完整矩阵。
 
 S3归档诊断：首轮Git字节审计拒绝worker首红XML，原因是worker证据目录缺少局部-text属性，暂存发生换行规范化。未修改原始日志/XML；保留首次manifest副本，补该独占证据目录.gitattributes后重新冻结/暂存和审计。此前373原件摘要再次核对；不是产品或测试失败，不以规范化后字节冒充原件。
+
+## S4 main集成与新复验启动
+
+证据提交210574ae3472e890d9fc61f7d53c7d9a4100ed9e，375份worker与22份根原件Git实际字节审计通过；首次换行转换拒绝保留诊断和旧manifest。worker说明末尾多余空行经diff --check提示后移除，未改原始证据。main基线5fd42ce及授权范围干净核实后no-ff合并为84dd0c0613393315135164175a94b35ee1080fba。
+
+合并后独立Verify-Archived再次核对全部397原件长度/哈希/Git字节，产品树与33e7773一致。开始main新profile强制定向，后续全量、root buildSrc/image及镜像身份比较，当前不将分支结果替代main通过。最终main推送/精确SHA CI仍待。真实数据库和原生/完整M8等边界保持。
+
+## S5 main新完整复验与本地交付
+
+main集成84dd0c0上新执行：定向32/32（1m18，0skip）；全量314套/4008总数，4005执行通过、0失败/错误、3live跳过（4m36）；root buildSrc强制8/8（8s）；jpackageImage强制14任务执行成功（36s）。每次新UUID profile/实际8.3 temp，原命令/退出码/本次XML分别归档，不借分支或UP-TO-DATE充当新测试。Redis standalone和Oracle/PG SchemaDiff三项仍未验，原因不变。
+
+main镜像审计通过：183文件，无测试类/探针/profile/测试JVM参数；外置driverFor仅发现Oracle/PG，connectCalls=0。exe、cfg、runtime/modules三项长度与SHA均和分支完全相同，modules102404721字节、SHA7FC8A42EE0A67DB2FE84D24682D4465A84D5F9FBE143043DB70F57393CEF8095；受验产品树与源码33e7773相同。375份worker原件再次通过实际Git字节审计，详见results.json与main-worker-raw-audit.json。
+
+本限定目标本地交付完成：退出部分失败现在有持续可读的固定说明；应用主体仍隔离、不重复退出/清理，不自动结束或重启进程。正式DataCubeFx接同一受验生产handler；提示不泄露异常/SQL/路径，不承诺已保存或回滚。原窗口大小/布局与主题、取消/前置异常恢复和成功关闭行为保留。原状态机、15秒资源等待和全局5秒测试超时未改。
+
+所有首红、002排版假设错误、root异步等待审查修正、归档换行拒绝与摘要显示修正均保留或说明；没有通过删断言/跳过来制造绿灯。纯合成Scene图像不称原生截图；未启动正式Application.start或访问真库。终态进程内恢复、原生输入/迁移确认/OS缩放多屏、无Gate启动、安装升级回退和生产签名及完整M8仍未验。此前独立旧FX超时根因仍未知，不由本轮改动宣称修复。
+
+最终只按既有授权推送main，精确最终SHA的Verify/远端refs交付回执由Push-Verify-Main.ps1写入独占build/owned-ci-UUID；当前不预报未来CI结论。v3.2.9对象/目标保持，datacube不恢复，本限定交付后不自动启动下一轮。
+
+文档收尾：路线图有计划矩阵和状态矩阵两处M8，唯一行断言先拒绝更新；精确定位本地工程状态行后更新，计划行未动。继续保留原有完整在途与下游动作待验项，不能因本轮提示完成而删去。
+最终归档：375份worker原件与367份协调原件全部冻结并通过Git实际字节审计；后续提交不改变受验产品树。

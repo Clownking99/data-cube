@@ -1,0 +1,104 @@
+{
+  "imageAuditPassed": true,
+  "utc": "2026-10-07T09:44:12.2359694Z",
+  "imageFiles": 183,
+  "imageComparison": [
+    {
+      "path": "DataCube.exe",
+      "bytes": 595968,
+      "identical": true,
+      "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F"
+    },
+    {
+      "path": "app/DataCube.cfg",
+      "bytes": 369,
+      "identical": true,
+      "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D"
+    },
+    {
+      "path": "runtime/lib/modules",
+      "bytes": 102404721,
+      "identical": true,
+      "sha256": "7FC8A42EE0A67DB2FE84D24682D4465A84D5F9FBE143043DB70F57393CEF8095"
+    }
+  ],
+  "imageTaskExecuted": true,
+  "sourceTreeMatchesReviewed": true,
+  "tests": [
+    {
+      "run": "main-directed",
+      "source": "84dd0c0613393315135164175a94b35ee1080fba",
+      "task": ":test",
+      "exitCode": 0,
+      "suites": 5,
+      "tests": 32,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 32,
+      "skips": [],
+      "freshXml": true
+    },
+    {
+      "run": "main-full",
+      "source": "84dd0c0613393315135164175a94b35ee1080fba",
+      "task": ":test",
+      "exitCode": 0,
+      "suites": 314,
+      "tests": 4008,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "passed": 4005,
+      "skips": [
+        {
+          "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "class": "com.datacube.redis.RedisLiveIntegrationTest",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "name": "oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "freshXml": true
+    },
+    {
+      "run": "main-buildsrc",
+      "source": "84dd0c0613393315135164175a94b35ee1080fba",
+      "task": ":buildSrc:test",
+      "exitCode": 0,
+      "suites": 1,
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 8,
+      "skips": [],
+      "freshXml": true
+    }
+  ],
+  "scope": {
+    "remoteStatus": "Pending exact-final-commit push and Verify; receipts will be under build/owned-ci-UUID",
+    "tag": "v3.2.9 unchanged",
+    "branchEvidenceCommit": "210574ae3472e890d9fc61f7d53c7d9a4100ed9e",
+    "sourceCommit": "33e7773bd3bfbe28f2d7404792a0a05c8ed561d2",
+    "mainMerge": "84dd0c0613393315135164175a94b35ee1080fba",
+    "pending": [
+      "native keyboard/mouse and migration confirmation on current runtime",
+      "OS scaling and multiple monitors",
+      "FAILED_PARTIAL in-process recovery",
+      "formal startup without acceptance gate",
+      "installation, upgrade, rollback and production signatures",
+      "complete M8 release acceptance",
+      "remaining full in-flight workflow acceptance"
+    ],
+    "historicalPending": "previous isolated 5-second JavaFX CI timeout root cause unknown; no timeout change"
+  }
+}

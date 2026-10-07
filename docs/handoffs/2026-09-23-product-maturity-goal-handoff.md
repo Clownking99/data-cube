@@ -1,5 +1,7 @@
 # DataCube 新会话交接：产品成熟度与首个目标
 
+**2026-10-07 退出部分失败可见反馈（最新产品）：** FAILED_PARTIAL后现在在禁用工作区之外持续显示原因与核对/手动结束指引，保持终态隔离、不重试事务、不自动强杀/重启。GPT-6.1-sol开发、root独立审核；源码33e7773、证据210574a、main集成84dd0c0。分支/main各新定向32、全量4005通过/3明确live跳过、buildSrc8、jpackageImage和镜像零连接审计通过；三产物SHA一致，375份worker原件Git字节复核。详见[独立审查记录](../superpowers/verification/2026-10-07-shutdown-failure-feedback-review.md)。首红/夹具及归档诊断保留。仅工程与合成FX交付；终态进程内恢复、原生输入/系统缩放、无Gate启动、安装升级/签名及完整M8仍待验。最终main推送和精确SHA CI以交付回执核对；v3.2.9不动，datacube不恢复。下方各“最新”按历史轮次解读。
+
 2026-10-07 CI 跟进：收藏小窗口最终证据 bdf274c 已推送；Verify 37593098366 首次 Windows 旧概览排序测试发生 5 秒 FX 等待超时，Windows linked image 跳过，其他三任务成功。独立审查无确定根因；保留失败原件，同 SHA 失败任务只重跑一次，不改 timeout/断言。同 SHA 唯一一次重跑 attempt 2 四任务成功，Windows 单元测试和 linked image 实际通过；首次超时未复现但根因未知，仍为待诊断项。源码/测试/timeout未改。本次证据提交合并后的最终 SHA 另以新 Verify 回执核对，不预报结果。
 
 **2026-10-07 SQL收藏小窗口修复（最新产品）：** 真实480×480/640×480双主题窗口已复现并修复取消按钮/说明裁切；新增垂直滚动与焦点显露，同焦点Ctrl+F、长SQL内部滚动和选区保持，保存/删除/恢复/重读及旧写完成状态不变。GPT-6.1-sol开发、root独立审查；源码125f954、证据06fbab9、main集成f5bc602。分支/main各新定向84、全量3997通过/3明确live跳过、buildSrc8、jpackageImage及镜像隔离/零连接检查通过，三产物SHA一致、370份worker原件Git字节复核。详见[独立审查与main复验](../superpowers/verification/2026-10-07-favorites-compact-review.md)。编译/夹具诊断失败原件保留；这是工程与合成FX交付，原生输入、OS缩放/多屏、安装升级和生产签名及完整M8仍待验。最终main按已有授权推送，精确SHA CI由最终回执核对；v3.2.9不移动、无新tag，datacube保持PAUSED。下方“最新”为历史轮次。

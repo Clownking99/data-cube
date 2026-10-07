@@ -31,3 +31,5 @@ S1：保持旧语义的生产handler提取并接入DataCubeFx后，真实shown S
 S2：root审查真实handler、终态资源接入和两合成Scene截图；修正后台结算/FX提示排队的测试时序后，004新定向32/32、0skip，实际PG/Oracle15秒守卫保留。4文件源码冻结，批准串行全量/buildSrc/image。核心关闭状态机未改，本轮仍不是终态进程内恢复或原生/完整M8。
 
 S3：分支源码33e7773已提交。root独立新XML/源hash/373原件校验通过：32定向、4005全量通过+3明确live跳过、buildSrc8、image/183文件镜像隔离与零连接发现；新modules SHA7FC8A42E…已绑定。准备证据冻结与main集成复验，不提前宣称CI/原生通过。
+
+S5：main84dd0c0新定向32、全量4005执行通过/3live跳过、buildSrc8、jpackageImage/183文件镜像隔离与零连接审计均通过。三实际产物SHA/长度与分支相同，375份worker原件Git字节复核。本限定反馈目标本地完成，终态进程内恢复/原生/安装签名/完整M8继续未验；收尾仅提交记录、推送main并检查精确最终SHA Verify，旧tag与PAUSED不动。
