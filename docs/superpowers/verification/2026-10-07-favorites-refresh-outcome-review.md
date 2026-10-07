@@ -55,3 +55,21 @@ Audit-Branch-Tests独立核查实际Task行、command/exit、314套完整XML及�
 源码提交3b34183ac75b017b1ffc3475a1941c5c5452d799，仅SqlFavoritesDialog及其测试。branch-image-audit用当前实际镜像列出类/文件/cfg，无测试类、探针、profile、fixture或测试JVM选项泄漏；外置探针只调用已读源码的driverFor，Oracle/PG驱动发现成功，connectCalls=0。三产物及SHA/字节详见audit.json，runtime modules SHA A1FDB3C1D145A062DD6FE95503FE70D84DB1D2E0EC524394EC8A7DD7765D29C0。旧原生证据不自动绑定新runtime。
 
 root复核源码范围、空白检查通过。接下来精确冻结/暂存原件并验证Git实际字节，合并main后再新执行同一验证矩阵；此检查点尚无main复验/推送/CI完成声明。
+
+## S3 main集成检查点
+
+分支证据提交9fca371，冻结397份worker原件和18份分支协调原件，暂存SHA/长度/Git blob逐一吻合；受保护目录未读改/暂存。main基线a9d255a及授权范围干净复核后，以no-ff合并为00527dd828e64964cf55afc2591e6ea735e81d7c。合并后实际复核397+18原件与Git字节，产品树与源码提交3b34183一致。
+
+main-directed强制新执行6组61项，0失败/错误/跳过，实际XML/退出码与本次合并身份绑定。main-full使用新的专用profile执行中；完整main/buildSrc/image、最终推送和精确SHA托管CI尚待。原生桌面/安装签名等限制不变。
+
+## S4 main独立复验完成
+
+main00527dd828e64964cf55afc2591e6ea735e81d7c新执行main-directed61/61、main-full3974通过/3明确live跳过（3977总数）、main-buildsrc实际root :buildSrc:test8/8、main-image实际jpackageImage，均exit0。命令/原始日志/新鲜XML及summary完整归档，没有借用分支报告或UP-TO-DATE充当新执行。
+
+main-image-audit检查实际当前183个镜像文件及模块类、cfg；无测试类/探针/profile/fixture/JVM测试选项泄漏，外置Oracle/PG驱动发现connectCalls=0。DataCube.exe、cfg和runtime/modules三项SHA/长度与分支全部相同；受验产品树与3b34183一致。再次验证397份worker原件的原字节与Git，结果在main-final-worker-raw-audit.json。整体实际值见results.json。
+
+本限定产品增量本地交付完成：保存/删除/恢复已完成而列表读取失败的状态明确，避免重复新建和旧快照动作；真正写失败保留编辑/显式重试，关闭/取消/迟到行为保留。真实临时盘红绿与合成FX工程证据充分。最初真实重复UUID红灯、direct-show夹具诊断失败、弃用监听器绿灯及full-final通道中断原件保留；后两类不误归因于最终产品。没有新真库、原生操作或签名验收。
+
+原生收藏/名称字段键盘与完整下游动作、OS缩放/多屏、完整在途/FAILED_PARTIAL恢复、无Gate启动/闪屏、安装升级回退及生产签名继续待验。旧原生/Oracle记录绑定旧镜像，完整M8不称完成。datacube维持PAUSED，不自动扩展下一轮或打新tag。
+
+下一步只按现有授权推送最终main、用精确最终SHA核对Verify四任务并读取远端refs。推送/CI原始回执写入独占build/owned-ci-UUID（由版本化Push-Verify-Main.ps1生成），最终用户交付消息提供对应run链接与SHA；本提交不预报尚未发生的托管结果，也不通过额外文档提交循环触发CI。v3.2.9继续绑定原0f6ba02656fcf3752b180514c72e79151a3320df。
