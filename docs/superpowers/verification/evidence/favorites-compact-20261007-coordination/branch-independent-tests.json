@@ -1,0 +1,87 @@
+{
+  "utc": "2026-10-07T08:07:44.5275358Z",
+  "sourceHashes": [
+    {
+      "path": "src/com/datacube/fx/SqlFavoritesDialog.java",
+      "sha256": "72987E021CEF9E0E5FAEAA81A7F84F4D7FC50C3B9F687DA37781B5F2DFD2072B"
+    },
+    {
+      "path": "test/com/datacube/fx/SqlFavoritesDialogTest.java",
+      "sha256": "02FD27C6186ED9ECE644A1EFD300372932A281C3EBC4CE58AD4B49F1F9A2122A"
+    },
+    {
+      "path": "docs\\superpowers\\verification\\evidence\\favorites-compact-20261007-worker\\final.patch",
+      "sha256": "A1A02A1D55FD33BFD52ED85B70AC4C151768D1535418FB7533036F62E2F1F6AE"
+    },
+    {
+      "path": "docs\\superpowers\\verification\\evidence\\favorites-compact-20261007-worker\\Run-Main.ps1",
+      "sha256": "FC3C6632A6149BBBE245B013C857388A688B97E2D432E2C36C79425D912D0F25"
+    }
+  ],
+  "imageSuccess": true,
+  "imageRun": "010-image-forced",
+  "tests": [
+    {
+      "run": "007-final-targeted",
+      "task": ":test",
+      "baseHead": "f5b2b7dff4fd2000a234a1b12fbee863f84efd34",
+      "commandUtc": "2026-10-07T07:55:02.0311863Z",
+      "exitUtc": "2026-10-07T07:56:27.0014964Z",
+      "suites": 6,
+      "tests": 84,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 84,
+      "skips": [],
+      "freshXml": true
+    },
+    {
+      "run": "008-full-reviewed",
+      "task": ":test",
+      "baseHead": "f5b2b7dff4fd2000a234a1b12fbee863f84efd34",
+      "commandUtc": "2026-10-07T07:59:45.2169775Z",
+      "exitUtc": "2026-10-07T08:04:13.7626496Z",
+      "suites": 314,
+      "tests": 4000,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "passed": 3997,
+      "skips": [
+        {
+          "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "class": "com.datacube.redis.RedisLiveIntegrationTest",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "name": "oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "freshXml": true
+    },
+    {
+      "run": "009-buildsrc-forced",
+      "task": ":buildSrc:test",
+      "baseHead": "f5b2b7dff4fd2000a234a1b12fbee863f84efd34",
+      "commandUtc": "2026-10-07T08:04:53.627585Z",
+      "exitUtc": "2026-10-07T08:05:01.7215742Z",
+      "suites": 1,
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 8,
+      "skips": [],
+      "freshXml": true
+    }
+  ],
+  "sourceStable": true
+}

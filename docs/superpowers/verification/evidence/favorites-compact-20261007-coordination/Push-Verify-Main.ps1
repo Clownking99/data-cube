@@ -1,0 +1,52 @@
+param([Parameter(Mandatory)][string]$Commit,[Parameter(Mandatory)][string]$OutputDirectory)
+$ErrorActionPreference='Stop'
+Set-Location -LiteralPath 'D:/Projects/朝花夕拾'
+$receiptDir=[IO.Path]::GetFullPath($OutputDirectory,(Get-Location).Path)
+$expectedRoot=Join-Path (Get-Location) 'build'
+if((Split-Path -Parent $receiptDir) -ne $expectedRoot -or (Split-Path -Leaf $receiptDir) -notmatch '^owned-ci-[a-f0-9]{32}$'){throw 'Receipts require dedicated build/owned-ci-UUID directory'}
+if(Test-Path -LiteralPath $receiptDir){throw 'CI receipt directory must be new'}
+New-Item -ItemType Directory -Path $receiptDir|Out-Null
+if((git branch --show-current) -ne 'main' -or (git rev-parse HEAD) -ne $Commit){throw 'Unexpected main head'}
+if(@(git status --porcelain -- . ':(exclude).testagent' ':(exclude).testagent/**').Count -ne 0){throw 'Main must be clean'}
+if((git remote get-url origin) -ne 'https://github.com/Clownking99/data-cube.git'){throw 'Unexpected remote target'}
+@{utc=[datetime]::UtcNow.ToString('o');commit=$Commit;operation='push main only; preserve v3.2.9';proxy='http://127.0.0.1:7897'}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $receiptDir 'intent.json') -Encoding utf8
+git -c http.proxy=http://127.0.0.1:7897 push origin 'main:refs/heads/main' 2>&1|Tee-Object -FilePath (Join-Path $receiptDir 'push.log')
+if($LASTEXITCODE -ne 0){throw 'Main push failed; no force attempted'}
+$gh='C:/Program Files/GitHub CLI/gh.exe'
+$oldHttp=$env:HTTP_PROXY;$oldHttps=$env:HTTPS_PROXY
+try{
+ $env:HTTP_PROXY='http://127.0.0.1:7897';$env:HTTPS_PROXY=$env:HTTP_PROXY
+ $found=$null
+ for($attempt=0;$attempt -lt 24;$attempt++){
+  $raw=& $gh run list --repo Clownking99/data-cube --workflow verify.yml --commit $Commit --limit 5 --json databaseId,status,conclusion,headSha,url
+  if($LASTEXITCODE -ne 0){throw 'CI list failed'}
+  $found=@($raw|ConvertFrom-Json)|Where-Object {$_.headSha -eq $Commit}|Select-Object -First 1
+  if($found){break};Start-Sleep -Seconds 10
+ }
+ if(!$found){throw 'No exact-commit Verify run within bounded wait'}
+ $found|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $receiptDir 'workflow-detected.json') -Encoding utf8
+ $prior=''
+ for($attempt=0;$attempt -lt 100;$attempt++){
+  $raw=& $gh run view $found.databaseId --repo Clownking99/data-cube --json headSha,status,conclusion,jobs,url,workflowName
+  if($LASTEXITCODE -ne 0){throw 'CI read failed'}
+  $run=$raw|ConvertFrom-Json
+  if($run.headSha -ne $Commit){throw 'CI source mismatch'}
+  $progress=$run.status+': '+(($run.jobs|ForEach-Object{$_.name+'='+$_.status+'/'+$_.conclusion}) -join '; ')
+  if($progress -ne $prior){$progress;$prior=$progress}
+  if($run.status -eq 'completed'){
+   $raw|Set-Content -LiteralPath (Join-Path $receiptDir 'workflow-complete.json') -Encoding utf8
+   if($run.conclusion -ne 'success'){throw ('Verify concluded '+$run.conclusion)}
+   $refs=@(git -c http.proxy=http://127.0.0.1:7897 ls-remote origin 'refs/heads/main' 'refs/tags/v3.2.9' 'refs/tags/v3.2.9^{}')
+   if($LASTEXITCODE -ne 0){throw 'Remote refs read failed'}
+   $refs|Set-Content -LiteralPath (Join-Path $receiptDir 'remote-refs.txt') -Encoding utf8
+   if(!($refs -match ('^'+$Commit+'\s+refs/heads/main$'))){throw 'Remote main mismatch'}
+   if(!($refs -match '^0f6ba02656fcf3752b180514c72e79151a3320df\s+refs/tags/v3\.2\.9\^\{\}$')){throw 'Published tag changed'}
+   if((git rev-parse HEAD) -ne $Commit -or @(git status --porcelain -- . ':(exclude).testagent' ':(exclude).testagent/**').Count -ne 0){throw 'Local state changed'}
+   @{utc=[datetime]::UtcNow.ToString('o');commit=$Commit;remoteMainMatches=$true;localScopeClean=$true;preservedTag='v3.2.9';verifyUrl=$run.url;verifyConclusion=$run.conclusion;jobs=$run.jobs|Select-Object name,status,conclusion}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $receiptDir 'delivery-verified.json') -Encoding utf8
+   'DELIVERED '+$run.url
+   exit 0
+  }
+  Start-Sleep -Seconds 15
+ }
+ throw 'Bounded Verify watch expired; outcome not assumed'
+}finally{$env:HTTP_PROXY=$oldHttp;$env:HTTPS_PROXY=$oldHttps}
