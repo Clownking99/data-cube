@@ -123,6 +123,9 @@ public final class SqlEditorPane implements AutoCloseable {
     private final FxTaskScope tasks;
     private final FxSerialTaskQueue metadataTasks;
     private final SerialSessionOperationQueue sessionOperations;
+    /** FX-owned physical transaction attempts remain until their terminal result is presented. */
+    private final List<TransactionAttempt> pendingTransactionAttempts = new ArrayList<>();
+    private ApplicationCloseCapture applicationCloseTransactions;
     private final StrictCleanupRetryChannel sessionCleanup;
     private final ChangeListener<CommentMode> commentModeListener;
     private final ChangeListener<ConnConfig> activeConnectionListener;
@@ -559,14 +562,26 @@ public final class SqlEditorPane implements AutoCloseable {
         return root;
     }
 
-    private static final Object FAVORITE_SOURCE = new Object();
+    private static final Object SQL_EDITOR_OWNER = new Object();
     static String favoriteText(Node content) {
-        Object source=content==null ? null : content.getProperties().get(FAVORITE_SOURCE);
+        Object source=content==null ? null : content.getProperties().get(SQL_EDITOR_OWNER);
         if (!(source instanceof SqlEditorPane pane) || pane.draftEditingBlocked() || pane.admission.closing()
                 || pane.resourcesClosing.get() || pane.uiFinalized.get() || pane.tasks.isClosed()
                 || pane.root.isDisabled() || pane.fileController!=null && pane.fileController.isBusy()) return null;
         String text=pane.editorArea.getText();
         return text.isBlank() ? null : text;
+    }
+
+    /** Captures every SQL tab before the application's asynchronous workspace freeze can run. */
+    static Runnable captureApplicationCloseTransactions(Node content) {
+        Object owner = content == null ? null : content.getProperties().get(SQL_EDITOR_OWNER);
+        if (!(owner instanceof SqlEditorPane pane)) return () -> {};
+        ApplicationCloseCapture captured = new ApplicationCloseCapture(
+                List.copyOf(pane.pendingTransactionAttempts));
+        pane.applicationCloseTransactions = captured;
+        return () -> {
+            if (pane.applicationCloseTransactions == captured) pane.applicationCloseTransactions = null;
+        };
     }
 
     @Override
@@ -723,6 +738,12 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private CompletionStage<CloseGuardOutcome> startMandatoryCloseAttempt() {
         CompletableFuture<CloseGuardOutcome> result = new CompletableFuture<>();
+        List<TransactionAttempt> transactions = new ArrayList<>();
+        if (applicationCloseTransactions != null) transactions.addAll(applicationCloseTransactions.transactions());
+        for (TransactionAttempt pending : pendingTransactionAttempts) {
+            if (!transactions.contains(pending)) transactions.add(pending);
+        }
+        List<TransactionAttempt> capturedTransactions = List.copyOf(transactions);
         if (draftBinding != null) draftBinding.freeze();
         if (autoComplete != null) autoComplete.hide();
         ClosePlan plan;
@@ -738,7 +759,7 @@ public final class SqlEditorPane implements AutoCloseable {
             sessionOperations.stopAcceptingAndCancelQueued();
             continueAfterDraftFlush(true, result, () -> {
                 sessionOperations.suppressCallbacks();
-                Thread.startVirtualThread(() -> result.complete(closeMandatoryInBackground(plan)));
+                Thread.startVirtualThread(() -> result.complete(closeMandatoryInBackground(plan, capturedTransactions)));
             });
         } catch (Throwable failure) {
             reportMandatoryCloseFailure(failure);
@@ -943,11 +964,18 @@ public final class SqlEditorPane implements AutoCloseable {
                 () -> runDestructiveClose(snapshot));
     }
 
-    private CloseGuardOutcome closeMandatoryInBackground(ClosePlan snapshot) {
+    private CloseGuardOutcome closeMandatoryInBackground(
+            ClosePlan snapshot, List<TransactionAttempt> transactions) {
         if (resourcesClosed.get()) return CloseGuardOutcome.APPROVED;
         try {
             cancelCancellableCurrentSession();
             awaitSessionOperationsIdle();
+            for (TransactionAttempt transaction : transactions) {
+                if (transaction.failure != null) {
+                    reportMandatoryCloseFailure(transaction.failure);
+                    return CloseGuardOutcome.FAILED_PARTIAL;
+                }
+            }
         } catch (Throwable failure) {
             reportMandatoryCloseFailure(failure);
             return CloseGuardOutcome.FAILED_PARTIAL;
@@ -1029,7 +1057,7 @@ public final class SqlEditorPane implements AutoCloseable {
     }
 
     private Node toolbar() {
-        root.getProperties().put(FAVORITE_SOURCE,this);
+        root.getProperties().put(SQL_EDITOR_OWNER,this);
         FlowPane primary = new FlowPane(12, 6);
         primary.setId("sql-primary-toolbar");
         primary.setAlignment(Pos.CENTER_LEFT);
@@ -1708,23 +1736,45 @@ public final class SqlEditorPane implements AutoCloseable {
         }
     }
 
+    private record ApplicationCloseCapture(List<TransactionAttempt> transactions) {}
+
+    private static final class TransactionAttempt {
+        private volatile Throwable failure;
+    }
+
     private <T> void submitSessionOperation(
             SerialSessionOperationQueue.OperationKind kind,
             Callable<T> operation,
             Consumer<? super T> success,
             Consumer<? super Throwable> failure) {
+        TransactionAttempt transaction = switch (kind) {
+            case COMMIT, ROLLBACK, SET_MODE -> new TransactionAttempt();
+            default -> null;
+        };
+        if (transaction != null) pendingTransactionAttempts.add(transaction);
         setButtonsRunning(true);
         setTransactionControlsDisabled(true);
         cancelBtn.setDisable(!kind.cancellable());
         try {
-            sessionOperations.submit(kind, operation, value -> {
+            sessionOperations.submit(kind, () -> {
+                try {
+                    return operation.call();
+                } catch (Exception | Error error) {
+                    // Rejected submission or queued cancellation never enters this physical operation.
+                    if (transaction != null) transaction.failure = error;
+                    throw error;
+                }
+            }, value -> {
                 success.accept(value);
+                pendingTransactionAttempts.remove(transaction);
                 refreshOperationControls();
             }, error -> {
                 failure.accept(error);
+                pendingTransactionAttempts.remove(transaction);
                 refreshOperationControls();
             });
         } catch (RuntimeException rejected) {
+            pendingTransactionAttempts.remove(transaction);
             refreshOperationControls();
             throw rejected;
         }
