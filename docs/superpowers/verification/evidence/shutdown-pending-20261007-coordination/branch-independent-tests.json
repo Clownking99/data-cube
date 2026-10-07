@@ -1,0 +1,63 @@
+{
+  "utc": "2026-10-07T10:27:31.4087540Z",
+  "imageExecuted": true,
+  "imageRun": "006-jpackage-image",
+  "tests": [
+    {
+      "name": "003-expanded-targeted",
+      "task": ":test",
+      "head": "98e6d0797f6890aa8e971455eee567b19de28c33",
+      "tests": 40,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 6,
+      "skips": [],
+      "freshXml": true,
+      "passed": 40
+    },
+    {
+      "name": "004-full-clean-test",
+      "task": ":test",
+      "head": "98e6d0797f6890aa8e971455eee567b19de28c33",
+      "tests": 4012,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "suites": 314,
+      "skips": [
+        {
+          "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+          "class": "com.datacube.redis.RedisLiveIntegrationTest",
+          "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test"
+        },
+        {
+          "name": "oracleSafeDeploymentConvergesInDisposableSchemas()",
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        },
+        {
+          "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+          "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+          "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set"
+        }
+      ],
+      "freshXml": true,
+      "passed": 4009
+    },
+    {
+      "name": "005-buildsrc-forced",
+      "task": ":buildSrc:test",
+      "head": "98e6d0797f6890aa8e971455eee567b19de28c33",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 1,
+      "skips": [],
+      "freshXml": true,
+      "passed": 8
+    }
+  ],
+  "sourceFilesVerified": 4
+}
