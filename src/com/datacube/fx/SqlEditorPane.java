@@ -160,6 +160,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private final Map<SqlBatchResults.Choice, BatchView> batchViews = new IdentityHashMap<>();
     private SqlBatchResults.Choice displayedChoice;
     private volatile SqlProgressMailbox scriptProgress;
+    private volatile ScriptErrorQuestionGate scriptErrorGate;
     private boolean incrementalBrowsing;
     private boolean scriptProgressCancelled;
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
@@ -919,7 +920,10 @@ public final class SqlEditorPane implements AutoCloseable {
 
     private void cancelCurrentSession() {
         JdbcEditorSession editorSession = currentEditorSession();
-        if (editorSession != null) editorSession.cancel();
+        ScriptErrorQuestionGate gate = scriptErrorGate;
+        if (gate != null) gate.seal();
+        try {if (editorSession != null) editorSession.cancel();}
+        finally {if (gate != null) gate.finish();}
     }
 
     private void cancelCancellableCurrentSession() {
@@ -1652,10 +1656,13 @@ public final class SqlEditorPane implements AutoCloseable {
         final boolean oracle = active.type() == DbType.ORACLE;
         var progress = new SqlProgressMailbox(Platform::runLater,
                 event -> renderScriptProgress(event, effectiveSchema));
+        var errorGate = new ScriptErrorQuestionGate(tasks::isClosed,
+                () -> root.getScene() == null ? null : root.getScene().getWindow());
         var request = ensureEditorSession().prepareScript(sql, effectiveSchema,
-                settings.getMaxResultRows(), this::askScriptError, oracle, progress::offer);
+                settings.getMaxResultRows(), errorGate, oracle, progress::offer);
         var confirmation = WriteSafetyDialog.confirm(request, false);
-        if (confirmation == null || tasks.isClosed() || admission.closing()) return;
+        if (confirmation == null || tasks.isClosed() || admission.closing()) {errorGate.finish();return;}
+        scriptErrorGate = errorGate;
         HistorySnapshot historySnapshot = captureHistory(sql, active, schema);
 
         if (scriptProgress != null) scriptProgress.close();
@@ -1671,10 +1678,11 @@ public final class SqlEditorPane implements AutoCloseable {
         statusLabel.setText("执行中...");
         statusLabel.setStyle("-fx-text-fill: -brand-fg-muted; -fx-font-size: 12px;");
 
-        submitSessionOperation(SerialSessionOperationQueue.OperationKind.EXECUTE, () -> {
-            recordHistory(historySnapshot);
-            return request.execute(confirmation);
+        try {submitSessionOperation(SerialSessionOperationQueue.OperationKind.EXECUTE, () -> {
+            try {recordHistory(historySnapshot);return request.execute(confirmation);}
+            finally {errorGate.finish();}
         }, batch -> {
+            if (scriptErrorGate == errorGate) scriptErrorGate = null;
             if (scriptProgress != progress) return;
             progress.close();
             running = false;
@@ -1694,6 +1702,7 @@ public final class SqlEditorPane implements AutoCloseable {
             scriptProgress = null;
             renderResultFilterToolbar(refreshDatabaseFilterAvailability());
         }, failure -> {
+            if (scriptErrorGate == errorGate) scriptErrorGate = null;
             if (scriptProgress != progress) return;
             progress.close(); scriptProgress = null; incrementalBrowsing = false;
             running = false;
@@ -1701,7 +1710,9 @@ public final class SqlEditorPane implements AutoCloseable {
             if (editorSession != null) renderSessionSnapshot(editorSession.snapshot());
             else setButtonsRunning(false);
             showError(message(failure), 0);
-        });
+        });} catch (RuntimeException | Error rejected) {
+            errorGate.finish();if (scriptErrorGate == errorGate) scriptErrorGate = null;throw rejected;
+        }
     }
 
     private void renderScriptProgress(com.datacube.spi.SqlScriptProgress event, String schema) {
@@ -1792,44 +1803,6 @@ public final class SqlEditorPane implements AutoCloseable {
         }
     }
 
-    /**
-     * 脚本遇错处置回调：在 worker 线程被 runner 调用，切到 FX 线程弹三按钮框
-     * （继续 / 全部继续 / 取消）并以 {@link CountDownLatch} 阻塞等待用户选择。
-     */
-    private ScriptErrorPolicy.Decision askScriptError(int index, String sql, String message) {
-        if (tasks.isClosed()) return ScriptErrorPolicy.Decision.ABORT;
-        final java.util.concurrent.atomic.AtomicReference<ScriptErrorPolicy.Decision> ref =
-                new java.util.concurrent.atomic.AtomicReference<>(ScriptErrorPolicy.Decision.ABORT);
-        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
-        Platform.runLater(() -> {
-            try {
-                if (tasks.isClosed()) return;
-                ButtonType cont = new ButtonType("继续");
-                ButtonType contAll = new ButtonType("全部继续");
-                ButtonType abort = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
-                Alert a = new Alert(Alert.AlertType.ERROR,
-                        "第 " + index + " 条语句失败：\n" + truncate(message, 300)
-                                + "\n\n是否继续执行剩余语句？",
-                        cont, contAll, abort);
-                a.setHeaderText(null);
-                a.setTitle("执行遇错");
-                ButtonType chosen = a.showAndWait().orElse(abort);
-                if (chosen == cont) ref.set(ScriptErrorPolicy.Decision.CONTINUE);
-                else if (chosen == contAll) ref.set(ScriptErrorPolicy.Decision.CONTINUE_ALL);
-                else ref.set(ScriptErrorPolicy.Decision.ABORT);
-            } finally {
-                latch.countDown();
-            }
-        });
-        try {
-            latch.await();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return ScriptErrorPolicy.Decision.ABORT;
-        }
-        return ref.get();
-    }
-
     private void onTransactionModeChanged() {
         if (updatingTransactionMode) return;
         JdbcEditorSession.TransactionMode selected = transactionModeBox.getValue();
@@ -1913,6 +1886,23 @@ public final class SqlEditorPane implements AutoCloseable {
         if (scriptProgress != null) { scriptProgressCancelled = true; scriptProgress.close(); }
         cancelBtn.setDisable(true);
         transactionStatus.setText("正在取消...");
+        ScriptErrorQuestionGate gate = scriptErrorGate;
+        if (gate != null) {
+            gate.seal();
+            try {
+                var cancellation = tasks.submit(() -> {
+                    try {return editorSession.cancel();}
+                    finally {gate.finish();}
+                }, outcome -> {
+                    if (scriptErrorGate == gate) renderCancelled(outcome, editorSession.snapshot());
+                }, failure -> {
+                    if (scriptErrorGate != gate) return;
+                    renderSessionSnapshot(editorSession.snapshot());showError(message(failure), 0);
+                });
+                if (cancellation.isCancelled()) gate.finish();
+            } catch (RuntimeException | Error rejected) {gate.finish();throw rejected;}
+            return;
+        }
         tasks.submit(editorSession::cancel,
                 outcome -> renderCancelled(outcome, editorSession.snapshot()),
                 failure -> {
