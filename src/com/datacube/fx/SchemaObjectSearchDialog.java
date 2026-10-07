@@ -55,6 +55,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     private final Button copy = new Button("复制限定名称");
     private final Button metadataSearch = new Button("按字段 / 注释查找…");
     private Runnable closeMetadata = () -> {};
+    private Runnable removeFocusListener = () -> {};
     private final Label copyStatus = new Label();
     private Function<TableRef, ConnectionTreeClipboard.CopyResult> copyAction;
     private final Button confirm;
@@ -119,7 +120,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
         HBox filters = new HBox(8, kindLabel, kindFilter, status); filters.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         HBox.setHgrow(status, Priority.ALWAYS); filters.setMinHeight(Region.USE_PREF_SIZE);
         placeholder.setWrapText(true);
-        list.setId("schema-object-list"); list.setMinWidth(0); list.setPrefHeight(200); list.setPlaceholder(placeholder);
+        list.setId("schema-object-list"); list.setMinWidth(0); list.setPrefHeight(200); list.setMinHeight(120); list.setPlaceholder(placeholder);
         list.setAccessibleText("表和视图候选，选择后按 Enter 生成未执行的 SELECT");
         list.setCellFactory(view -> new ListCell<>() {
             private final Label name = new Label();
@@ -146,8 +147,29 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
         Label hint = new Label("读取仅限此 Schema 的名称和类型，筛选不再请求数据库。\n复制写入系统剪贴板，不自动粘贴；粘贴前请核对目标连接。\n确认生成 SELECT 脚本，不自动执行。↓ 选择 · Enter 确认 · Ctrl+F 筛选 · Esc 取消");
         hint.setWrapText(true); hint.setMinHeight(Region.USE_PREF_SIZE);
         VBox content = new VBox(8, target, search, filters, list, preview, tools, copyStatus, hint);
-        content.setPadding(new Insets(12)); content.setPrefSize(640, 500); content.setMinWidth(0);
-        VBox.setVgrow(list, Priority.ALWAYS); dialog.getDialogPane().setContent(content);
+        content.setPadding(new Insets(12)); content.setPrefWidth(640); content.setMinWidth(0);
+        VBox.setVgrow(list, Priority.ALWAYS);
+        // Keep complete candidate rows while allowing the rest of the content to scroll.
+        content.setMinHeight(Region.USE_PREF_SIZE);
+        ScrollPane scroll = new ScrollPane(content);
+        scroll.setId("schema-object-scroll"); scroll.setFitToWidth(true); scroll.setFitToHeight(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.setPrefViewportWidth(640); scroll.setPrefViewportHeight(500);
+        dialog.getDialogPane().setContent(scroll);
+        dialog.setOnShowing(event -> {
+            var scene=dialog.getDialogPane().getScene();
+            javafx.beans.value.ChangeListener<javafx.scene.Node> listener=(obs,before,focused) -> reveal(scroll,content,focused);
+            removeFocusListener.run(); scene.focusOwnerProperty().addListener(listener);
+            removeFocusListener=() -> scene.focusOwnerProperty().removeListener(listener);
+        });
+        Runnable revealAfterLayout=() -> Platform.runLater(() -> {
+            if (!closed.get() && scroll.getScene()!=null) reveal(scroll,content,scroll.getScene().getFocusOwner());
+        });
+        scroll.viewportBoundsProperty().addListener((obs,before,after) -> {
+            if (before.getWidth()!=after.getWidth() || before.getHeight()!=after.getHeight()) revealAfterLayout.run();
+        });
+        // Copy feedback and wrapped filtering status can move an already focused control.
+        content.heightProperty().addListener((obs,before,after) -> revealAfterLayout.run());
         ButtonType selectType = new ButtonType("生成 SELECT（不执行）", ButtonBar.ButtonData.OK_DONE);
         ButtonType cancelType = new ButtonType("取消", ButtonBar.ButtonData.CANCEL_CLOSE);
         dialog.getDialogPane().getButtonTypes().addAll(selectType, cancelType);
@@ -184,7 +206,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
             }
             else if (event.getCode() == KeyCode.F && event.isControlDown() && !event.isShiftDown()
                     && !event.isAltDown() && !event.isMetaDown()) {
-                query.requestFocus(); query.selectAll(); event.consume();
+                query.requestFocus(); query.selectAll(); reveal(scroll,content,query); event.consume();
             }
         });
         dialog.setOnShown(event -> { query.requestFocus(); reload(); });
@@ -192,6 +214,23 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
         status.setText("打开后读取当前 Schema 的名称和类型"); updateConfirm();
     }
 
+    private static void reveal(ScrollPane scroll, VBox content, javafx.scene.Node focused) {
+        if (focused==null || !isWithin(focused,content)) return;
+        scroll.layout();
+        var viewport=scroll.lookup(".viewport");
+        if (viewport==null) return;
+        var bounds=focused.localToScene(focused.getBoundsInLocal());
+        var visible=viewport.localToScene(viewport.getBoundsInLocal());
+        double range=content.getHeight()-visible.getHeight();
+        if (range<=0) return;
+        double delta=bounds.getMinY()<visible.getMinY() ? bounds.getMinY()-visible.getMinY()
+                : bounds.getMaxY()>visible.getMaxY() ? bounds.getMaxY()-visible.getMaxY() : 0;
+        scroll.setVvalue(Math.max(0,Math.min(1,scroll.getVvalue()+delta/range)));
+    }
+    private static boolean isWithin(javafx.scene.Node node, javafx.scene.Node ancestor) {
+        for(var current=node;current!=null;current=current.getParent()) if(current==ancestor) return true;
+        return false;
+    }
     Dialog<TableRef> dialog() { return dialog; }
     Optional<TableRef> showAndWait() { return dialog.showAndWait(); }
     /** FX completion after hiding and physical work return, including cancellation before start. */
@@ -339,7 +378,7 @@ final class SchemaObjectSearchDialog implements AutoCloseable {
     @Override public void close() {
         if (!closed.compareAndSet(false, true)) return;
         try { cancelActive(); closeScope.run(); }
-        finally { onFx(() -> { closeMetadata.run(); dialog.close(); closeCleaned=true; completeDisposal(); }); }
+        finally { onFx(() -> { removeFocusListener.run(); closeMetadata.run(); dialog.close(); closeCleaned=true; completeDisposal(); }); }
     }
     private static final class Pending {
         final AtomicInteger phase=new AtomicInteger(); // queued=0, running=1, physically returned=2

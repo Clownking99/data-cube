@@ -192,6 +192,9 @@ class SchemaObjectSearchLifecycleTest {
         }
     }
     @SuppressWarnings("unchecked") private static ListView<TableInfo> list(SchemaObjectSearchDialog picker) {
-        return (ListView<TableInfo>) picker.dialog().getDialogPane().lookup("#schema-object-list");
+        // Before showing, ScrollPane content is not yet attached by its skin.
+        var content=picker.dialog().getDialogPane().getContent();
+        if(content instanceof javafx.scene.control.ScrollPane scroll) content=scroll.getContent();
+        return (ListView<TableInfo>) content.lookup("#schema-object-list");
     }
 }

@@ -203,32 +203,62 @@ class SchemaObjectKindFilterTest {
 
     @ParameterizedTest @ValueSource(strings = {"dark", "light"})
     void narrowThemesKeepTypeCountAndIdentityVisibleWithCopyFeedback(String theme) throws Exception {
-        FxUiTestSupport.call(() -> {
-            var names = java.util.stream.IntStream.range(0, 201).mapToObj(i -> item("view_" + i, TableInfo.Kind.VIEW)).toList();
-            try (var f = new Fixture(names)) {
-                var pane = f.picker.dialog().getDialogPane();
-                pane.getStylesheets().addAll(getClass().getResource("theme-base.css").toExternalForm(),
-                        getClass().getResource("theme-" + theme + ".css").toExternalForm());
-                f.load(); f.kind().getSelectionModel().select(2); f.list().getSelectionModel().selectFirst(); f.button("copy").fire();
-                pane.resize(480, 548); pane.applyCss(); pane.layout();
-                for (String id : List.of("kind", "status", "list", "target", "preview", "copy-status", "confirm")) {
-                    var node = pane.lookup("#schema-object-" + id); var bounds = node.localToScene(node.getBoundsInLocal());
-                    assertTrue(bounds.getMinX() >= 0 && bounds.getMaxX() <= 480, id + ": " + bounds);
-                    assertTrue(bounds.getMinY() >= 0 && bounds.getMaxY() <= 548, id + ": " + bounds);
-                    assertTrue(bounds.getHeight() > 0, id + " must remain visible");
-                }
-                for (String id : List.of("target", "preview")) {
-                    TextArea area = (TextArea) pane.lookup("#schema-object-" + id);
-                    assertTrue(area.getHeight() >= area.prefHeight(area.getWidth()) - 1);
-                }
-                Label status = (Label) pane.lookup("#schema-object-status");
-                assertTrue(status.getHeight() >= status.prefHeight(status.getWidth()) - 1, "cap warning must wrap without clipping");
-                assertTrue(f.feedback().isVisible()); assertEquals("匹配 201 / 201 个对象 · 仅显示前 200 个，请继续缩小范围", f.status());
-            }
-            return null;
+        var f=FxUiTestSupport.call(() -> {
+            var names=java.util.stream.IntStream.range(0,201).mapToObj(i -> item("view_"+i,TableInfo.Kind.VIEW)).toList();
+            var fixture=new Fixture(names);var pane=fixture.picker.dialog().getDialogPane();
+            fixture.picker.dialog().show();fixture.jobs.getLast().publish();
+            pane.getScene().getStylesheets().setAll(getClass().getResource("theme-base.css").toExternalForm(),
+                    getClass().getResource("theme-"+theme+".css").toExternalForm());
+            fixture.kind().getSelectionModel().select(2);fixture.list().getSelectionModel().selectFirst();fixture.button("copy").fire();
+            var stage=(javafx.stage.Stage)pane.getScene().getWindow();stage.setWidth(480);stage.setHeight(548);return fixture;
         });
+        try {
+            awaitLayoutPulses();
+            FxUiTestSupport.call(() -> {
+                var pane=f.picker.dialog().getDialogPane();pane.applyCss();pane.layout();
+                assertTrue(pane.getScene().getWindow().getWidth()<=481);assertTrue(pane.getScene().getWindow().getHeight()<=549);
+                for(String id:List.of("kind","list","target","preview","copy-status")) assertReachable(pane,pane.lookup("#schema-object-"+id));
+                ((ScrollPane)pane.lookup("#schema-object-scroll")).setVvalue(0);pane.layout();
+                Label status=(Label)pane.lookup("#schema-object-status");
+                var visible=pane.lookup(".viewport").localToScene(pane.lookup(".viewport").getBoundsInLocal());
+                var bounds=status.localToScene(status.getBoundsInLocal());
+                assertTrue(bounds.getMinY()>=visible.getMinY()-1 && bounds.getMaxY()<=visible.getMaxY()+1);
+                assertTrue(status.getHeight()>=status.prefHeight(status.getWidth())-1,"cap warning wraps completely");
+                assertExternalButtonsVisible(pane);
+                for(String id:List.of("target","preview")) {
+                    TextArea area=(TextArea)pane.lookup("#schema-object-"+id);assertTrue(area.getHeight()>=area.prefHeight(area.getWidth())-1);
+                }
+                assertTrue(f.feedback().isVisible());assertEquals("匹配 201 / 201 个对象 · 仅显示前 200 个，请继续缩小范围",f.status());
+                assertEquals(1,f.loads);assertEquals(1,f.jobs.size());assertEquals(1,f.copies.size());assertNull(f.picker.dialog().getResult());return null;
+            });
+        } finally {FxUiTestSupport.call(() -> {f.close();return null;});}
     }
-
+    private static void awaitLayoutPulses() throws Exception {
+        var ready=new java.util.concurrent.CountDownLatch(1);
+        FxUiTestSupport.call(() -> {
+            new javafx.animation.AnimationTimer() {
+                int frames;
+                @Override public void handle(long now) {if(++frames>=3){stop();ready.countDown();}}
+            }.start();return null;
+        });
+        assertTrue(ready.await(5,java.util.concurrent.TimeUnit.SECONDS));
+    }
+    private static void assertReachable(DialogPane pane, javafx.scene.Node node) {
+        var scroll=(ScrollPane)pane.lookup("#schema-object-scroll");
+        if(node instanceof Control control) control.requestFocus(); else scroll.setVvalue(1);
+        pane.layout();
+        var visible=scroll.lookup(".viewport").localToScene(scroll.lookup(".viewport").getBoundsInLocal());
+        var bounds=node.localToScene(node.getBoundsInLocal());
+        assertTrue(bounds.getMinX()>=visible.getMinX()-1 && bounds.getMaxX()<=visible.getMaxX()+1
+                && bounds.getMinY()>=visible.getMinY()-1 && bounds.getMaxY()<=visible.getMaxY()+1,node.getId()+": "+bounds+" viewport "+visible);
+    }
+    private static void assertExternalButtonsVisible(DialogPane pane) {
+        for(String id:List.of("confirm","cancel")) {
+            var node=pane.lookup("#schema-object-"+id);var bounds=node.localToScene(node.getBoundsInLocal());
+            assertTrue(bounds.getMinX()>=0 && bounds.getMaxX()<=pane.getScene().getWidth()+1
+                    && bounds.getMinY()>=0 && bounds.getMaxY()<=pane.getScene().getHeight()+1,id+": "+bounds);
+        }
+    }
     private static TableInfo item(String name, TableInfo.Kind type) { return new TableInfo("s", name, type, null); }
     private static List<TableInfo> seed() { return List.of(item("same", TableInfo.Kind.TABLE), item("same", TableInfo.Kind.VIEW),
             item("report", TableInfo.Kind.VIEW), item(".* 中😀", TableInfo.Kind.TABLE)); }
