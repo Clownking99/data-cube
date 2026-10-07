@@ -45,3 +45,21 @@ root另独立检查实际镜像：测试类/夹具/profile/JVM测试选项泄漏
 首full与尺寸诊断原件完整保留；最终worker使用仅实际任务XML归档，无binary缓存。原件将冻结raw-manifest并按实际Git blob逐个验证，不用旧测试报告或skip冒充通过。当前main尚未合并；下一步归档提交、合并后新profile复验。原生输入/OS缩放/多屏、真实安装升级和签名仍待验，旧原生证据不移植为当前镜像证据。
 
 归档首轮字节审计拒绝：仓库既有*.log忽略规则使git add目录未暂存原始日志，非原件变更或换行损坏。已精确check-ignore/check-attr确认text unset且日志缺失；改用raw-manifest列出的精确NUL路径强制暂存，不修改原件或仓库忽略规则，再重新执行实际Git blob审计。
+
+## S3 main 集成与新验证
+
+分支原件提交c41d117ea804b159d0b12fc6d0677e875ff5ee7a经719份worker/17份coordination raw与实际Git blob逐一审计。合并前main仍b4484c6且授权范围干净，--no-ff合并为53d2dc6e1300ed1d70f7cf26edf5835c07602fca。main再独立核验719份worker原件与Git字节相同，受验src/test/resources/build/workflow树与74517f6一致。
+
+当前新profile强制定向七组已实际启动；随后clean全量、强制buildSrc及jpackageImage都需新执行，不能借分支通过替代main证据。原生/OS缩放、真库、安装升级和签名仍未取得本轮证据。下一步按实际main结果决定推送；不创建或移动tag。
+
+## S4 main 本地交付完成
+
+main53d2dc6在新的独占profile分别执行并通过：七组160/160、0skip（8任务实际执行）；clean全量314 suites、3957总=3954通过+3明确live skip、0失败/error；强制buildSrc8/8（4任务实际执行）；jpackageImage成功（14任务实际执行）。只保留各命令实际执行测试任务的XML，image目录没有旧测试报告副本；原始command/log/exit均保留。既有unchecked测试编译提示和JEP493说明不当失败或隐藏。
+
+root独立main镜像检查通过：无test/fixture/profile或JVM测试选项混入；外置驱动发现不打开连接。exe/cfg/modules三项长度及SHA与分支逐项一致，modules33BD7B27D4EEEE21E8D13E8E584A21F679C4677236F4A770381E9F16CC02596A。main受验src/test/resources/build/workflow树仍等同74517f6，719份worker原件与Git字节一致；实际汇总见本轮coordination/results.json。
+
+本轮产品目标完成：真实480×480名称候选行不再裁切，目标/筛选/列表/预览/复制/字段入口可滚动到达，焦点在窗口缩小及反馈变化后保持可见；手动滚动和外部确认/取消不强拉，已有焦点Ctrl+F可返回查询。现有只读快照/本地筛选、明确候选Enter生成未执行SELECT、取消关闭和配置失效语义保留。开发由GPT-6.1-sol实施，root独立审核源码、四次有限测试适配与全部最终证据，不重复实现其他功能。
+
+证据等级仅mock与真实JavaFX Stage的程序化几何/事件。仍待验：名称/字段完整原生键盘及下游动作、OS缩放/多屏、完整AppShell在途/FAILED_PARTIAL恢复原生矩阵、默认无Gate启动与闪屏视觉、真实安装升级/回退、生产签名；完整M8不称完成。旧原生/Oracle证据保持原镜像身份，本轮未访问真库、原配置/历史/业务内容或系统实际剪贴板，没有安装/PR/外部联系。
+
+下一步仅为最终文档和原件提交，按既有授权推送main并检查精确提交的Verify。托管结果以本线程独占临时回执及最终交付答复中的实际GitHub run为准；本地通过不预判托管通过。只文档/原件收尾不改变已复验源码，不重复测试。v3.2.9继续指向发布时0f6ba02，无新tag或发布；datacube保持PAUSED，不自动开启下一轮。

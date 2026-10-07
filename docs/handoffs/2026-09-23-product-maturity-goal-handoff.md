@@ -1,8 +1,10 @@
 # DataCube 新会话交接：产品成熟度与首个目标
 
+**2026-10-07 表/视图查找小窗口修复（最新产品）：** 真实480×480窗口已复现并修复候选行裁切，新增滚动与动态焦点可见性，保留快照/本地筛选/明确Enter及取消关闭契约。GPT-6.1-sol实施、root独立审核；产品74517f6、本地main集成53d2dc6。分支/main各新定向160、全量3954通过/3明确live跳过、强制buildSrc8、jpackageImage及镜像隔离/零连接审计通过，三产物SHA一致，719份worker原件Git字节复验。首full四旧尺寸夹具失败及诊断保留，未充当通过。详见[本轮独立账本](../superpowers/verification/2026-10-07-schema-object-compact-review.md)。本次为工程与合成FX交付，原生名称/字段键盘、OS缩放、多屏、安装升级/生产签名和完整M8仍待验；main按既有授权推送，实际CI以最终交付回执为准。v3.2.9保持原发布内容，无新tag，datacube保持PAUSED。
+
 编写日期：2026-09-23。此文档旨在让新会话不依赖旧聊天全文即可接手。
 
-**2026-10-06 字段查找小窗口修复（最新产品）：** 真实640×480 JavaFX窗口复现按钮裁切及同焦点Ctrl+F无法回到查询；GPT-6.1-sol实现、root独立审核返工，新增滚动与焦点可见性，保留目标绑定/明确动作/取消关闭。产品58278f7、main集成194371a；分支/main各新定向103、全量3944 passed/3 live skipped、强制buildSrc8、jpackageImage/镜像零连接审计通过，三产物SHA一致，1040份worker原件字节复核。见[本轮独立账本](../superpowers/verification/2026-10-06-metadata-search-compact-review.md)。这是工程与合成FX交付，原生字段键盘/OS缩放、完整在途恢复、安装升级与签名仍待验；完整M8不称完成。v3.2.9保持原发布内容，本轮仅更新main，datacube保持PAUSED。
+**2026-10-06 字段查找小窗口修复（上一轮产品）：** 真实640×480 JavaFX窗口复现按钮裁切及同焦点Ctrl+F无法回到查询；GPT-6.1-sol实现、root独立审核返工，新增滚动与焦点可见性，保留目标绑定/明确动作/取消关闭。产品58278f7、main集成194371a；分支/main各新定向103、全量3944 passed/3 live skipped、强制buildSrc8、jpackageImage/镜像零连接审计通过，三产物SHA一致，1040份worker原件字节复核。见[本轮独立账本](../superpowers/verification/2026-10-06-metadata-search-compact-review.md)。这是工程与合成FX交付，原生字段键盘/OS缩放、完整在途恢复、安装升级与签名仍待验；完整M8不称完成。v3.2.9保持原发布内容，本轮仅更新main，datacube保持PAUSED。
 
 **2026-10-06 正式发布读回：** 维护者已明确授权推送、删除旧验收 tag 并以正式版本 tag 触发自动打包；v3.2.9 指向 main 0f6ba02656fcf3752b180514c72e79151a3320df，GitHub [Build and Release 37448530784](https://github.com/Clownking99/data-cube/actions/runs/37448530784) 成功，[Release](https://github.com/Clownking99/data-cube/releases/tag/v3.2.9) 已发布 ZIP 和 EXE。本轮只读再次核实两资产 uploaded、远端 main/tag 指向一致。下方“不推送/不打 tag/未发布”是各轮历史边界，已被维护者后续明确授权覆盖；自动打包发布成功不代替安装升级、生产签名或完整 M8 验收。
 
