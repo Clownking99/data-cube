@@ -1,0 +1,107 @@
+{
+  "utc": "2026-10-08T14:31:27.357159+00:00",
+  "worker": "C:\\Users\\hetia\\.codex\\worktrees\\aed5\\朝花夕拾",
+  "run": "p1b-001-baseline-red",
+  "commandHead": "b81923f29e0a6b6603710a589504aab490995491",
+  "exitCode": 1,
+  "counts": {
+    "tests": 4,
+    "failures": 4,
+    "errors": 0,
+    "skipped": 0
+  },
+  "actualTestcaseCounts": {
+    "tests": 4,
+    "failures": 4,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frozenSources": [
+    {
+      "path": "src/com/datacube/export/PgDumpRunner.java",
+      "bytes": 3683,
+      "sha256": "79A66E5D8B6C478303BBCAA0970A6F7B00C1690D592A96E357E364819E790D80",
+      "matches": true
+    },
+    {
+      "path": "src/com/datacube/export/TableExporter.java",
+      "bytes": 5652,
+      "sha256": "0247236A923251C8FFBF6B1A793D0DF0047F546BC66F2B8292AEF2FC7820BEE2",
+      "matches": true
+    },
+    {
+      "path": "test/com/datacube/export/PgDumpRunnerBaselineRedTest.java",
+      "bytes": 4395,
+      "sha256": "FBEE7B3EE425CCB9C07A2332D1354EED38CF3561919242A0B3FBD85069B41533",
+      "matches": true
+    },
+    {
+      "path": "test/com/datacube/export/PgDumpProcessHelper.java",
+      "bytes": 2051,
+      "sha256": "4883042B4FB12BAB09A9AEB4FE9218EE19016C46F3E297BE6C6256714F1ACFF9",
+      "matches": true
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-pgdump-20261008-worker/Run-P1b.ps1",
+      "bytes": 4179,
+      "sha256": "39D96EA8245F9195B014F9F0C65499B92653B9759DA24EA7AC0CA9BFB1EBDF64",
+      "matches": true
+    }
+  ],
+  "runFiles": [
+    {
+      "path": "command.json",
+      "bytes": 707,
+      "sha256": "58740D4D2C590487724C49BBB5DDFCCE0210C49F6968EBAFEF86F8C17A5C91EC"
+    },
+    {
+      "path": "exit.json",
+      "bytes": 65,
+      "sha256": "E71C151B166591CB85D9311AD21D1B4E27499C2159886039E537DB3C79D0579B"
+    },
+    {
+      "path": "stdout.log",
+      "bytes": 5076,
+      "sha256": "8D4C7BA5AB55C898AFC9E2633EC4807C8CF862F73863D307C2C06802FE8D6AFF"
+    },
+    {
+      "path": "stderr.log",
+      "bytes": 849,
+      "sha256": "7542BD3AF9589D1E7348EC3CDA5F1E58E0E32248C9799DB39B039C5330B5DC5E"
+    },
+    {
+      "path": "source-at-run/manifest.json",
+      "bytes": 920,
+      "sha256": "115350EDB2A7053E63FF747C3107B952DF8D9B4D2BDB3E14E8A80ACFE8BA4D03"
+    },
+    {
+      "path": "xml/TEST-com.datacube.export.PgDumpRunnerBaselineRedTest.xml",
+      "bytes": 14636,
+      "sha256": "3BDEEB148BA9ED3BA94672B2C5700B5F97A6BB81CB6F7262387A5685F46ADE06"
+    }
+  ],
+  "tableExporterMatchesAcceptedP1a": true,
+  "failedCases": [
+    {
+      "name": "[1] hang",
+      "message": "org.opentest4j.AssertionFailedError: Unexpected exception type thrown, expected: <java.util.concurrent.ExecutionException> but was: <java.util.concurrent.TimeoutException>"
+    },
+    {
+      "name": "[2] flood",
+      "message": "org.opentest4j.AssertionFailedError: Unexpected exception type thrown, expected: <java.util.concurrent.ExecutionException> but was: <java.util.concurrent.TimeoutException>"
+    },
+    {
+      "name": "argvAndEnvironmentMustBindLiteralDatabaseAndExcludeInheritedJvmSettings()",
+      "message": "org.opentest4j.AssertionFailedError: expected: <true> but was: <false>"
+    },
+    {
+      "name": "nonzeroOutputContentMustNeverBecomeReportedExceptionText()",
+      "message": "org.opentest4j.AssertionFailedError: expected: <false> but was: <true>"
+    }
+  ],
+  "helperReceipt": "RED_HELPER pid=53100 alive=false mode=hang\nRED_HELPER pid=41072 alive=false mode=flood\n",
+  "helperReceiptMeaning": "Fixture finally forced and observed root exit; not product cleanup proof",
+  "argvRedScope": "First format flag assertion failed; later assertions and database literal binding were not proven by this RED",
+  "rootRanGradle": false,
+  "result": "Baseline RED audit only; P1b GREEN not accepted"
+}

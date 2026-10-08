@@ -151,3 +151,21 @@ send_message_to_thread 已成功向同一正式线程下发 P1b；先在 worker 
 下一步：跟进 P1b 设计及真实实现，独立审核源码和原始资源结算证据；发现问题直接下发具体修正。datacube-g9 保持 ACTIVE，交付 P3 后暂停；不自动扩展下一目标。
 
 下发后的 wait_threads 回执：正式线程 active/inProgress，新 turn `01a11bda-327f-79b0-9dc3-d0e33042dd9a` 已确认开始 P1b，先核对进程与主窗关闭调用链、补设计，再实施；G9c 明确未启动。协调方仅提交文档和独立审核回执，不把此 dispatch 当 P1b 产品验证。
+
+## C2.1：P1b 首红与资源初稿预审（未冻结）
+
+当前目标：2026-10-08 14:28 UTC 跟进，main 为 37c16147、范围内干净；开发仍在 b81923f2 的独立分支实施 P1b。已读 worker 第12节设计、真实 PgDumpRunner 最小首红 seam、helper/launcher、命令/退出/日志/XML。设计采用无文本缓存的固定缓冲计数、总期限、物理 pending 保留 BUSY，并在 BestEffortCloseSequence 前等待导出结算；此方向符合 C2，不需维护者额外确认。
+
+独立核验 [p1b-001-baseline-red](evidence/g9-table-export-20261008-coordination/p1b-001-red-review/root-p1b-red-verification.json)：5 份运行冻结源码 SHA/长度全部相符，6 份运行原件记录哈希，TableExporter 与已验收 P1a 相符；实际 `:test`、退出1，XML套件和testcase均为 **4 tests / 4 failures / 0 errors / 0 skipped**。旧进程代码仅添加 starter/期限注入，默认仍保持10分钟，readLine顺序/未排stdout/原异常文本行为未修复。两个超时断言得到 TimeoutException，参数例首先因缺少 format 参数失败，非零退出例证明合成 stderr 标记进入异常。协调会话未运行 Gradle。
+
+证据边界与补验已下发：参数例第一个断言即失败，后续 no-password/JAVA_TOOL_OPTIONS 和 dbname 字面绑定不能据此宣称已分别验证。RED_HELPER 的 alive=false 是夹具 finally 强制终止后的状态，不是旧产品会回收的证明。后续 GREEN 必须用 ready/实际输出计数与可控时序证明进入静默/持续输出场景，避免50ms期限在JVM启动前耗尽而空过排空验证。参数/环境各项独立断言；最终定向加入真实 AppShell/shutdown/事务回归，而非只运行当前导出过滤器。
+
+刚出现的未冻结 PgDumpRunner 初稿预审另下发三项具体修正：
+
+1. supervisor 的停止分支仍直接 `signalHandles(forceSent)`，可能被物理 destroy 调用阻塞，妨碍 observation/pending/force/后代观察。要求监督器只做观察与请求，后台物理控制有明确所有权且不能每轮创建无界worker；可控阻塞/异常用例验证迟到结算。
+2. 新 Prepared scratch 清理直接 deleteIfExists，未复核目录/空passfile/service是否已被替换。要求只清理本次且仍匹配的对象，明确缺失与metadata失败分开；目录/文件替换时保留外部项、报告残留，不递归扫删未知内容。继续保留 JDK verify→unlink 竞争窗口限制。
+3. prepare 清理失败会覆盖原始 Error。要求沿 P1a 契约保留原Error并附固定suppressed cleanup，检查Session/监督器建立和启动等更早路径；已取得资源仍须结算，不能提前抛出而遗失所有权。
+
+上游静态核对：针对隔离不存在SSL文件是否必然导致连接失败的疑虑，阅读 [PostgreSQL REL_16_STABLE fe-secure-openssl.c](https://github.com/postgres/postgres/blob/REL_16_STABLE/src/interfaces/libpq/fe-secure-openssl.c)，client cert 不存在的分支允许继续连接；未据此要求改变隔离政策。这只是上游源码证据，不是本机 pg_dump/真实SSL兼容通过，不读取用户证书或运行客户端。
+
+失败/未验：只有首红得到独立确认；新代码仍在编写，P1b 无冻结 GREEN、无阶段验收。G9c/P2/P3、真库/原生/完整发布仍未完成。下一步等待开发修正和新冻结，再审核实际源码及物理资源证据；不并发Gradle，不合产品 main，不扩展范围。
