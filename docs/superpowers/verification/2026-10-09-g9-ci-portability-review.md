@@ -26,3 +26,11 @@
 原command/exit/stdout及suite/testcase双重统计：001受影响6 suites/81 passed/0 skip，002强制headless 1 suite/16 skipped/0 passed，003完整G9定向85 suites/1182 passed/0 skip；三轮均0 failure/error、实际test、exit0、新独占UUID。002 stderr明确headless=true，包含ui-error的全部16项均为available display Assumption，明确skip而不是UI实测通过。新平台路径检查已执行；Linux实际helper仍需新精确CI证明。
 
 本检查点只接受这三轮证据；Windows首次FX初始化超时类的一次复验、clean全量、最终源码/原件冻结和本地提交尚待开发完成，不预报通过，不合main或接管Gradle。旧P2/P3证据身份不改；下一步继续核对完整交付，再决定准入。
+
+## C9：测试修正冻结审核通过，接管main复验
+
+2026-10-08 18:40 UTC收到同一worker停写交付6b8ceb93c7413b3882137d322d88b9a1cb14ef5c，范围内干净。根会话重新独立读取最终报告/提交diff并执行[verify-ci-final.py](evidence/g9-ci-20261009-coordination/verify-ci-final.py)，[final-001回执](evidence/g9-ci-20261009-coordination/final-001/root-ci-final-verification.json)确认526份raw/Git原件全部相同，旧P2 3516份冻结原件未变，846普通/847身份单跑输入当前与每次前后清单匹配；实际仅3测试改变，src/构建/README与e7950123相同。
+
+五轮独立XML：受影响81通过；headless16全部跳过/0通过；完整G9 1182通过；cancel identity完整类单次4通过；clean全量4667项、4664通过/3live跳过，全部0 failure/error、exit0、新UUID隔离、实际test执行。全量345份当前XML与归档同字节，物理摘要43/0/135/20/157行逐项存在于对应XML原system-out。首次WindowsFX初始化超时在单类和全量该类4项均未复现，仍标根因未知，不据此声称修复。Linux真实helper仍待新CI证明。
+
+裁决：本地测试修正通过审核，根会话接回唯一Gradle执行权。下一步合main，新受影响测试（包括cancel identity类）、强制headless与clean全量；产品/构建树未变，既有buildSrc/image身份仍有效，但clean会移除main当前镜像，根会话将重建镜像并重新执行审计，同时强制buildSrc作完整工程收尾。保留所有旧CI失败，不在旧SHA重跑；main复验通过后再推新SHA核对四任务。G9仍待最终CI，不暂停跟进、不扩展目标。
