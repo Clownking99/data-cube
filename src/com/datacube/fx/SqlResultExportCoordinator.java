@@ -165,6 +165,7 @@ final class SqlResultExportCoordinator implements AutoCloseable {
                 case PREPARE -> "无法安全保存：请选择本地普通文件";
                 case TARGET_CHANGED -> "目标文件已改变，请重新选择并确认";
                 case TARGET_BUSY -> "目标文件正在导出，请稍后重试";
+                case XML_CHARACTER -> "XML 无法表示部分字符，原目标文件未修改";
                 case WRITE -> "导出写入失败，原目标文件未修改";
                 case PUBLISH -> "无法原子发布导出文件，原目标文件未修改";
                 case CLEANUP -> "导出未完成，临时文件清理失败，请手动处理: " + safe.temporaryPath();

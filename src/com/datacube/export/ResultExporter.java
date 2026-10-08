@@ -101,17 +101,22 @@ public final class ResultExporter {
 
     // ---------- XML ----------
 
+    /** XML 1.0 cannot represent these characters, including unpaired UTF-16 surrogates. */
+    public static final class InvalidXmlCharacterException extends IOException {
+        private InvalidXmlCharacterException() { super("XML contains an unrepresentable character"); }
+    }
+
     /**
      * PL/SQL Developer 风格：{@code <ROWSET><ROW><列名>值</列名></ROW></ROWSET>}。
      * 列名含 XML 非法字符时净化为 {@code _}（净化后与原名不同则以 {@code name}
      * 属性保留原名）；{@code null} 列省略元素。
      */
+
     public static void writeXml(Writer w, List<String> columns, List<List<Object>> rows) throws IOException {
-        w.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ROWSET>\n");
+        org.w3c.dom.Document names = nameValidator();
         String[] tags = new String[columns.size()];
-        for (int i = 0; i < columns.size(); i++) {
-            tags[i] = xmlName(columns.get(i));
-        }
+        for (int i = 0; i < columns.size(); i++) tags[i] = xmlName(columns.get(i), names);
+        w.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ROWSET>\n");
         for (List<Object> row : rows) {
             w.write(" <ROW>\n");
             for (int i = 0; i < columns.size(); i++) {
@@ -120,48 +125,102 @@ public final class ResultExporter {
                 String tag = tags[i];
                 String open = tag.equals(columns.get(i))
                         ? "<" + tag + ">"
-                        : "<" + tag + " name=\"" + xml(columns.get(i)) + "\">";
-                w.write("  " + open + xml(v.toString()) + "</" + tag + ">\n");
+                        : "<" + tag + " name=\"" + xml(columns.get(i), true) + "\">";
+                w.write("  " + open + xml(v.toString(), false) + "</" + tag + ">\n");
             }
             w.write(" </ROW>\n");
         }
         w.write("</ROWSET>\n");
     }
 
-    /** 列名 → 合法 XML 元素名：非法字符替换为 {@code _}，首字符非法时加前缀 {@code C}。 */
-    private static String xmlName(String name) {
+    /** Sanitizes markup names while the name attribute preserves the complete original label. */
+    private static String xmlName(String name, org.w3c.dom.Document names) throws InvalidXmlCharacterException {
         if (name == null || name.isEmpty()) return "COLUMN";
-        StringBuilder sb = new StringBuilder(name.length());
-        for (int i = 0; i < name.length(); i++) {
-            char c = name.charAt(i);
-            boolean ok = i == 0
-                    ? (Character.isLetter(c) || c == '_')
-                    : (Character.isLetterOrDigit(c) || c == '_' || c == '-' || c == '.');
-            sb.append(ok ? c : '_');
+        for (int offset = 0; offset < name.length();) {
+            int code = name.codePointAt(offset);
+            requireXmlCharacter(code);
+            offset += Character.charCount(code);
         }
-        // 首字符被替换成 _ 之外的非法形态（如数字开头）时统一加前缀
-        char first = sb.charAt(0);
-        if (!Character.isLetter(first) && first != '_') sb.insert(0, 'C');
-        return sb.toString();
+        // Preserve the existing char-based tag mapping, restricted to legal XML names.
+        StringBuilder result = new StringBuilder(name.length());
+        for (int index = 0; index < name.length(); index++) {
+            char code = name.charAt(index);
+            boolean allowed = index == 0
+                    ? (Character.isLetter(code) || code == '_') && nameStart(code)
+                    : (Character.isLetterOrDigit(code) || code == '_' || code == '-' || code == '.')
+                            && namePart(code);
+            result.append(allowed ? code : '_');
+        }
+        String tag = result.toString();
+        if (acceptedName(names, tag)) return tag;
+        // The JDK reader accepts fewer names than XML 1.0 fifth edition. Keep every
+        // accepted original tag and replace only characters rejected by the same JDK DOM.
+        for (int index = 0; index < tag.length(); index++) {
+            if (!acceptedName(names, (index == 0 ? "" : "C") + tag.charAt(index)))
+                result.setCharAt(index, '_');
+        }
+        return result.toString();
     }
 
-    private static String xml(String s) {
-        StringBuilder sb = new StringBuilder(s.length() + 16);
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '&' -> sb.append("&amp;");
-                case '<' -> sb.append("&lt;");
-                case '>' -> sb.append("&gt;");
-                case '"' -> sb.append("&quot;");
-                default -> {
-                    // 剔除 XML 1.0 非法控制字符
-                    if (c >= 0x20 || c == '\t' || c == '\n' || c == '\r') {
-                        sb.append(c);
-                    }
-                }
-            }
+    private static org.w3c.dom.Document nameValidator() throws IOException {
+        try {
+            // No parsing, custom providers, external entities, or shared mutable document.
+            return javax.xml.parsers.DocumentBuilderFactory.newDefaultInstance()
+                    .newDocumentBuilder().newDocument();
+        } catch (javax.xml.parsers.ParserConfigurationException unavailable) {
+            throw new IOException("XML name validation unavailable");
         }
-        return sb.toString();
+    }
+
+    private static boolean acceptedName(org.w3c.dom.Document names, String tag) {
+        try {
+            names.createElement(tag);
+            return true;
+        } catch (org.w3c.dom.DOMException invalid) {
+            if (invalid.code != org.w3c.dom.DOMException.INVALID_CHARACTER_ERR) throw invalid;
+            return false;
+        }
+    }
+
+    private static boolean nameStart(int code) {
+        // Keep names namespace-neutral; colons are represented through the name attribute.
+        return code == '_' || code >= 'A' && code <= 'Z' || code >= 'a' && code <= 'z'
+                || code >= 0xC0 && code <= 0xD6 || code >= 0xD8 && code <= 0xF6
+                || code >= 0xF8 && code <= 0x2FF || code >= 0x370 && code <= 0x37D
+                || code >= 0x37F && code <= 0x1FFF || code >= 0x200C && code <= 0x200D
+                || code >= 0x2070 && code <= 0x218F || code >= 0x2C00 && code <= 0x2FEF
+                || code >= 0x3001 && code <= 0xD7FF || code >= 0xF900 && code <= 0xFDCF
+                || code >= 0xFDF0 && code <= 0xFFFD || code >= 0x10000 && code <= 0xEFFFF;
+    }
+
+    private static boolean namePart(int code) {
+        return nameStart(code) || code == '-' || code == '.' || code >= '0' && code <= '9'
+                || code == 0xB7 || code >= 0x300 && code <= 0x36F || code >= 0x203F && code <= 0x2040;
+    }
+
+    private static void requireXmlCharacter(int code) throws InvalidXmlCharacterException {
+        if (!(code == 9 || code == 10 || code == 13 || code >= 0x20 && code <= 0xD7FF
+                || code >= 0xE000 && code <= 0xFFFD || code >= 0x10000 && code <= 0x10FFFF))
+            throw new InvalidXmlCharacterException();
+    }
+
+    private static String xml(String value, boolean attribute) throws InvalidXmlCharacterException {
+        StringBuilder result = new StringBuilder(value.length() + 16);
+        for (int offset = 0; offset < value.length();) {
+            int code = value.codePointAt(offset);
+            requireXmlCharacter(code);
+            switch (code) {
+                case '&' -> result.append("&amp;");
+                case '<' -> result.append("&lt;");
+                case '>' -> result.append("&gt;");
+                case '"' -> result.append("&quot;");
+                case '\r' -> result.append("&#13;");
+                case '\t' -> result.append(attribute ? "&#9;" : "\t");
+                case '\n' -> result.append(attribute ? "&#10;" : "\n");
+                default -> result.appendCodePoint(code);
+            }
+            offset += Character.charCount(code);
+        }
+        return result.toString();
     }
 }

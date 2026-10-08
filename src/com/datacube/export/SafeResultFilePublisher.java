@@ -12,7 +12,7 @@ import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 public final class SafeResultFilePublisher {
-    public enum Stage { PREPARE, TARGET_CHANGED, TARGET_BUSY, WRITE, PUBLISH, CLEANUP }
+    public enum Stage { PREPARE, TARGET_CHANGED, TARGET_BUSY, WRITE, XML_CHARACTER, PUBLISH, CLEANUP }
 
     public static final class Failure extends IOException {
         private final Stage stage;
@@ -109,6 +109,8 @@ public final class SafeResultFilePublisher {
             return target.path;
         } catch (CancellationException cancelled) {
             throw cancelled;
+        } catch (ResultExporter.InvalidXmlCharacterException invalidXml) {
+            throw new Failure(Stage.XML_CHARACTER, null);
         } catch (Failure safe) {
             throw safe;
         } catch (Exception failure) {
