@@ -18,3 +18,11 @@
 源码预审：开发目前仅修改3个测试文件，主helper与子孙共用当前JDK的平台路径（Windows用java.exe、其他用java），新增两分支/当前真实可执行文件检查；UI参数化测试在合成资源前先执行FxUiTestSupport空动作门禁，后续Error/listener/目标字节断言不变。本会话已直接读完整diff并允许继续验证；预计新增1例，尚未以此宣布GREEN。开发turn为01a11cbb-c091-7f40-91fa-ff17e5880545，当前仍独占Gradle。
 
 首次CI现已完整结束：Windows实际4666 tests、1 failed、3 skipped，linked image skipped；Linux失败维持，wrapper/CI Redis成功。已保存[完整失败原件](evidence/g9-ci-20261009-coordination/initial-complete-failure/manifest.json)。Windows唯一失败为既有AppShellSqlCancelIdentityTest PostgreSQL参数，栈在Fixture构造第91行的FxUiTestSupport.call/FutureTask.get，发生于FX初始化、尚未进入被验取消行为。本会话已读源码，根因未知，不能据此推定取消产品回归或放宽5秒门禁。已要求开发在新受影响定向加入该类一次，既定clean全量自然覆盖；复现再诊断，未复现也不抹去首次失败。旧SHA不重跑，修正后的新SHA必须重新通过精确CI。
+
+## C8.1：修正后已完成定向的独立核验
+
+2026-10-08 18:25 UTC跟进，main为78a3af7f且范围内干净，开发仍active且唯一持有Gradle。根会话读取两个新launcher并执行[verify-ci-progress.py](evidence/g9-ci-20261009-coordination/verify-ci-progress.py)，[progress-001回执](evidence/g9-ci-20261009-coordination/progress-001/root-progress-verification.json)独立确认846输入当前哈希与已完成三轮前后绑定相符，旧src/test中仅预审的3份测试改变。
+
+原command/exit/stdout及suite/testcase双重统计：001受影响6 suites/81 passed/0 skip，002强制headless 1 suite/16 skipped/0 passed，003完整G9定向85 suites/1182 passed/0 skip；三轮均0 failure/error、实际test、exit0、新独占UUID。002 stderr明确headless=true，包含ui-error的全部16项均为available display Assumption，明确skip而不是UI实测通过。新平台路径检查已执行；Linux实际helper仍需新精确CI证明。
+
+本检查点只接受这三轮证据；Windows首次FX初始化超时类的一次复验、clean全量、最终源码/原件冻结和本地提交尚待开发完成，不预报通过，不合main或接管Gradle。旧P2/P3证据身份不改；下一步继续核对完整交付，再决定准入。
