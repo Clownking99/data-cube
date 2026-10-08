@@ -24,6 +24,13 @@ import java.util.zip.ZipOutputStream;
  */
 public final class XlsxWriter {
 
+    /** A fixed, value-free failure for text that is not well-formed UTF-16. */
+    public static final class InvalidTextCharacterException extends IOException {
+        private InvalidTextCharacterException() {
+            super("XLSX text contains an unpaired UTF-16 surrogate");
+        }
+    }
+
     private XlsxWriter() {
     }
 
@@ -107,15 +114,11 @@ public final class XlsxWriter {
         int[] rowCounter = {rowNum};
         feed.forEach(values -> {
             int r = ++rowCounter[0];
-            try {
-                w.write("<row r=\"" + r + "\">");
-                for (int c = 0; c < values.size(); c++) {
-                    writeCell(w, cellRef(c, r), values.get(c), layout != null);
-                }
-                w.write("</row>");
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+            w.write("<row r=\"" + r + "\">");
+            for (int c = 0; c < values.size(); c++) {
+                writeCell(w, cellRef(c, r), values.get(c), layout != null);
             }
+            w.write("</row>");
         });
 
         w.write("</sheetData></worksheet>");
@@ -136,7 +139,7 @@ public final class XlsxWriter {
 
     private static void writeInlineString(Writer w, String ref, String text, String style) throws IOException {
         w.write("<c r=\"" + ref + "\"" + style + " t=\"inlineStr\"><is><t xml:space=\"preserve\">");
-        w.write(xml(text == null ? "" : text));
+        w.write(xstring(text == null ? "" : text));
         w.write("</t></is></c>");
     }
 
@@ -176,24 +179,52 @@ public final class XlsxWriter {
         return sb.append(row).toString();
     }
 
-    private static String xml(String s) {
+    /** Encodes inline text for XML plus one-pass OOXML ST_Xstring decoding. */
+    private static String xstring(String s) throws InvalidTextCharacterException {
         StringBuilder sb = new StringBuilder(s.length() + 16);
         for (int i = 0; i < s.length(); i++) {
             char ch = s.charAt(i);
+            if (Character.isHighSurrogate(ch)) {
+                if (i + 1 >= s.length() || !Character.isLowSurrogate(s.charAt(i + 1))) {
+                    throw new InvalidTextCharacterException();
+                }
+                sb.append(ch).append(s.charAt(++i));
+                continue;
+            }
+            if (Character.isLowSurrogate(ch)) throw new InvalidTextCharacterException();
+            // Inspect each original underscore so shared/adjacent escapes are protected too.
+            if (ch == '_' && isXstringEscape(s, i)) {
+                sb.append("_x005F_");
+                continue;
+            }
+            if ((ch < 0x20 && ch != '\t' && ch != '\n') || ch == 0xFFFE || ch == 0xFFFF) {
+                String hex = "0123456789ABCDEF";
+                sb.append("_x").append(hex.charAt(ch >>> 12)).append(hex.charAt((ch >>> 8) & 15))
+                        .append(hex.charAt((ch >>> 4) & 15)).append(hex.charAt(ch & 15)).append('_');
+                continue;
+            }
             switch (ch) {
                 case '&' -> sb.append("&amp;");
                 case '<' -> sb.append("&lt;");
                 case '>' -> sb.append("&gt;");
                 case '"' -> sb.append("&quot;");
-                default -> {
-                    // 剔除 XML 1.0 非法控制字符，避免 Excel 打不开
-                    if (ch >= 0x20 || ch == '\t' || ch == '\n' || ch == '\r') {
-                        sb.append(ch);
-                    }
-                }
+                default -> sb.append(ch);
             }
         }
         return sb.toString();
+    }
+
+    private static boolean isXstringEscape(String text, int start) {
+        if (start + 6 >= text.length() || text.charAt(start + 1) != 'x' || text.charAt(start + 6) != '_') {
+            return false;
+        }
+        for (int i = start + 2; i < start + 6; i++) {
+            char ch = text.charAt(i);
+            if (!(ch >= '0' && ch <= '9' || ch >= 'A' && ch <= 'F' || ch >= 'a' && ch <= 'f')) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void putEntry(ZipOutputStream zip, String name, String content) throws IOException {
