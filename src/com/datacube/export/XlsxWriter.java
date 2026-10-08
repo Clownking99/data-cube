@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.io.OutputStream;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -56,9 +57,19 @@ public final class XlsxWriter {
 
     private static void writePackage(File out, List<String> columns, RowFeed feed,
                                      XlsxLayout layout) throws Exception {
+        writePackage(new FileOutputStream(out), columns, feed, layout);
+    }
+
+    /** Caller supplies a destination stream; package serialization owns and closes it. */
+    static void write(OutputStream out, List<String> columns, RowFeed feed) throws Exception {
+        writePackage(out, columns, feed, null);
+    }
+
+    private static void writePackage(OutputStream out, List<String> columns, RowFeed feed,
+                                     XlsxLayout layout) throws Exception {
         boolean styled = layout != null;
         try (ZipOutputStream zip = new ZipOutputStream(
-                new BufferedOutputStream(new FileOutputStream(out)))) {
+                new BufferedOutputStream(out))) {
             String types = contentTypes();
             String relationships = workbookRels();
             String workbookXml = workbook();

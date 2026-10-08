@@ -7,6 +7,7 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
+import java.io.OutputStream;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -40,8 +41,14 @@ public final class SqlScriptExporter {
      */
     public static void write(File out, TableRef t, ExportContent content, String ddl,
                              List<String> columns, RowFeed feed, SqlDialect dialect) throws Exception {
+        write(new FileOutputStream(out), t, content, ddl, columns, feed, dialect);
+    }
+
+    /** Caller supplies a destination stream; this writer always owns and closes it. */
+    static void write(OutputStream out, TableRef t, ExportContent content, String ddl,
+                      List<String> columns, RowFeed feed, SqlDialect dialect) throws Exception {
         try (Writer w = new BufferedWriter(new OutputStreamWriter(
-                new FileOutputStream(out), StandardCharsets.UTF_8))) {
+                out, StandardCharsets.UTF_8))) {
 
             w.write("-- DataCube 导出\n");
             w.write("-- 表: " + t.qualified() + "\n");

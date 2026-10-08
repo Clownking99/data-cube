@@ -74,6 +74,7 @@ public interface SqlDialect {
      * 使 {@code export.SqlScriptExporter} 不出现任何数据库专属语法。
      */
     String sqlLiteral(Object v);
+    default boolean supportsBinaryLiteral(){return false;}
 
     /**
      * 查询指定表的列注释（列名 → 注释）；无注释或不支持时返回空 Map。

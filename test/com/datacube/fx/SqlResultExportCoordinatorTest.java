@@ -40,6 +40,33 @@ class SqlResultExportCoordinatorTest {
         }
         @Override public boolean confirmOverwrite(Path path) { return overwrite; }
     }
+    @Test void queryPublicationReportsAuxiliaryCleanupWarningWithActualResidualPath() throws Exception {
+        try (FxTaskRunner runner = new FxTaskRunner()) {
+            FxTaskScope tasks = runner.scope();
+            var message = new AtomicReference<String>();
+            var warning = new AtomicBoolean();
+            var done = new CountDownLatch(1);
+            var coordinator = new SqlResultExportCoordinator(tasks, this::snapshot, () -> 0L,
+                    (text, error) -> { message.set(text); warning.set(error); if (!text.equals("导出中...")) done.countDown(); },
+                    text -> true, new Ui(), (request, operation) -> TableExportTestJobs.cleanupWarningPublisher().publish(
+                            request.target(), operation, (temporary, token) -> QueryResultFileWriter.write(temporary,
+                                    request.format(), request.snapshot(), request.selection().scope(),
+                                    request.selection().displayConfirmed(), request.table(), token)));
+            try {
+                Future<?> future = FxUiTestSupport.call(() -> coordinator.export(QueryResultFileWriter.Format.CSV));
+                future.get(5, TimeUnit.SECONDS); assertTrue(done.await(5, TimeUnit.SECONDS));
+                assertTrue(Files.readString(directory.resolve("result.csv")).contains("2"));
+                Path residue;
+                try (var entries = Files.list(directory)) {
+                    residue = entries.filter(path -> path.getFileName().toString().endsWith(".identity")).findFirst().orElseThrow();
+                }
+                assertTrue(Files.isSameFile(directory.resolve("result.csv"), residue));
+                assertTrue(message.get().contains("已发布，但辅助临时文件清理失败"));
+                assertTrue(message.get().contains(residue.toRealPath().toString())); assertTrue(warning.get());
+                assertFalse(message.get().contains("synthetic witness"));
+            } finally { coordinator.close(); tasks.close(); }
+        }
+    }
     @Test void cancellingEitherDialogDoesNotSubmitAndInsertUsesCapturedScope() throws Exception {
         try (FxTaskRunner runner = new FxTaskRunner()) {
             FxTaskScope tasks = runner.scope();

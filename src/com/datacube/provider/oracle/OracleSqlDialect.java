@@ -76,6 +76,7 @@ public final class OracleSqlDialect implements SqlDialect {
         String s = v.toString();
         return "'" + s.replace("'", "''") + "'";
     }
+    @Override public boolean supportsBinaryLiteral(){return true;}
 
     @Override
     public Map<String, String> columnComments(Connection conn, String schema, String table) throws SQLException {

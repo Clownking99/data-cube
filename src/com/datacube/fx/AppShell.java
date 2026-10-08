@@ -74,6 +74,7 @@ public final class AppShell {
     private final TableDesignService designSvc = new TableDesignService(connMgr);
     private final SessionContext session = new SessionContext();
     private final FxTaskRunner tasks = new FxTaskRunner();
+    private final TableExportTasks tableExports = new TableExportTasks();
     private final FxTaskScope fileOpenTasks = tasks.scope();
     private final SqlScriptFileStore sqlScriptFileStore = new SqlScriptFileStore();
     private final RecentSqlFiles recentSqlFiles = new RecentSqlFiles(
@@ -272,6 +273,7 @@ public final class AppShell {
             return result;
         }
         if (shutdownAttempt != null) return shutdownAttempt.copy();
+        tableExports.freeze();
         sqlFileEntry.suspend();
         var attempt = new java.util.concurrent.CompletableFuture<ShutdownOutcome>();
         shutdownAttempt = attempt;
@@ -285,6 +287,7 @@ public final class AppShell {
             }
             if (failure != null || outcome == ShutdownOutcome.CANCELLED) {
                 sqlFileEntry.resume();
+                tableExports.resume();
                 shutdownAttempt = null;
             }
             if (failure != null) attempt.completeExceptionally(failure);
@@ -300,6 +303,7 @@ public final class AppShell {
     }
 
     private void shutdownRemaining() {
+        tableExports.stopAndAwait();
         BestEffortCloseSequence.run(
                 this::closeSqlFilesOnFx,
                 () -> sqlDrafts.ifInitialized(SqlDraftUi::closeFromBackground),
@@ -308,6 +312,18 @@ public final class AppShell {
                 () -> updateService.ifInitialized(UpdateService::close),
                 tasks::close,
                 connMgr::closeAll);
+    }
+
+    ExportDialog.ExportTask startTableExport(String connId, TableRef table,
+            com.datacube.export.ExportContent content, com.datacube.export.ExportFormat format,
+            Path chosen, ExportDialog.ExportUi ui, ExportDialog.ExportJob job) {
+        return ExportDialog.startExport(connId, table, content, format, chosen, tasks, ui, job, tableExports);
+    }
+    ExportDialog.ExportTask startTableExport(com.datacube.export.TableExporter.Selection selection,
+            String connId, TableRef table, com.datacube.export.ExportContent content,
+            com.datacube.export.ExportFormat format, Path chosen, ExportDialog.ExportUi ui,
+            ExportDialog.ExportJob job) {
+        return ExportDialog.startExport(selection, connId, table, content, format, chosen, tasks, ui, job, tableExports);
     }
 
     private void closeSqlFilesOnFx() {
@@ -845,7 +861,7 @@ public final class AppShell {
         @Override
         public void exportTable(String connId, TableRef table) {
             ExportDialog.show(connMgr, connId, table,
-                    root.getScene() == null ? null : root.getScene().getWindow(), tasks);
+                    root.getScene() == null ? null : root.getScene().getWindow(), tasks, tableExports);
         }
 
         @Override

@@ -38,6 +38,8 @@ public final class ConnectionManager {
     private final Map<String, Long> configVersions = new HashMap<>();
     private long nextConfigVersion;
     private final Map<String, java.util.Set<Runnable>> configListeners = new HashMap<>();
+    private final Map<String, DatabaseProvider> exportProviders = new HashMap<>();
+    private final Map<String, java.util.Set<Runnable>> exportListeners = new HashMap<>();
 
     public ConnectionManager(CredentialCipher cipher) {
         this(cipher, ProviderRegistry::forType);
@@ -59,20 +61,56 @@ public final class ConnectionManager {
     /** 注册/更新连接配置（供 acquire 惰性建连使用）。 */
     public synchronized void register(ConnConfig cfg) {
         ConnConfig previous = configs.get(cfg.id());
-        if (!cfg.equals(previous)) configVersions.put(cfg.id(), ++nextConfigVersion);
+        DatabaseProvider recorded = exportProviders.get(cfg.id());
+        boolean providerChanged = recorded != null && (cfg.type() == DbType.REDIS
+                || recorded != providerResolver.apply(cfg.type()));
+        boolean changed = !cfg.equals(previous) || providerChanged;
+        if (changed) {
+            configVersions.put(cfg.id(), ++nextConfigVersion);
+            exportProviders.remove(cfg.id());
+            // Intent only; wake export cancellation before a legacy shared close can block.
+            notifyExportChanged(cfg.id());
+        }
         if (previous != null && !previous.equals(cfg)) release(cfg.id());
         configs.put(cfg.id(), cfg);
         if (cfg.type() == DbType.REDIS) redis.register(cfg);
-        if (!cfg.equals(previous)) notifyConfigChanged(cfg.id());
+        if (changed) notifyConfigChanged(cfg.id());
     }
 
     /** 移除配置并关闭其活动连接。 */
     public synchronized void unregister(String connId) {
+        configVersions.put(connId, ++nextConfigVersion);
+        exportProviders.remove(connId);
+        notifyExportChanged(connId);
         release(connId);
         redis.unregister(connId);
         configs.remove(connId);
-        configVersions.put(connId, ++nextConfigVersion);
         notifyConfigChanged(connId);
+    }
+
+    public synchronized ExportTarget captureExport(String connId) {
+        ConnConfig cfg=requireConfig(connId);
+        DatabaseProvider snapshot=provider(cfg);
+        exportProviders.put(connId,snapshot);
+        return new ExportTarget(this,cfg,snapshot,configVersions.getOrDefault(connId,-1L));
+    }
+    synchronized boolean exportCurrent(ExportTarget target) {
+        if(!target.belongsTo(this))return false;
+        ConnConfig cfg=target.config();
+        return cfg.equals(configs.get(cfg.id())) && target.version()==configVersions.getOrDefault(cfg.id(),-1L)
+                && target.provider()==providerResolver.apply(cfg.type());
+    }
+    synchronized AutoCloseable subscribeExport(ExportTarget target,Runnable intent) {
+        Objects.requireNonNull(intent);
+        if(!target.belongsTo(this))throw new IllegalArgumentException("Export target authority changed");
+        String id=target.config().id();
+        exportListeners.computeIfAbsent(id,ignored->new java.util.HashSet<>()).add(intent);
+        if(!exportCurrent(target))intent.run(); // Closes the capture/subscribe window while still under the same lock.
+        var removed=new java.util.concurrent.atomic.AtomicBoolean();
+        return ()->{if(removed.compareAndSet(false,true))synchronized(ConnectionManager.this){
+            var listeners=exportListeners.get(id);
+            if(listeners!=null){listeners.remove(intent);if(listeners.isEmpty())exportListeners.remove(id);}
+        }};
     }
 
     public synchronized ConnConfig config(String connId) {
@@ -113,6 +151,12 @@ public final class ConnectionManager {
         for (Runnable callback : java.util.List.copyOf(configListeners.getOrDefault(id, java.util.Set.of()))) {
             try { callback.run(); }
             catch (RuntimeException ignored) { LOG.fine("连接安全状态通知失败"); }
+        }
+    }
+    private void notifyExportChanged(String id) {
+        for (Runnable intent : java.util.List.copyOf(exportListeners.getOrDefault(id, java.util.Set.of()))) {
+            try { intent.run(); }
+            catch (RuntimeException ignored) { LOG.fine("导出目标通知失败"); }
         }
     }
 
@@ -290,7 +334,7 @@ public final class ConnectionManager {
                 cfg.database(), cfg.username(), cfg.encryptedPassword(), props);
     }
 
-    Connection openDedicated(ConnConfig cfg, DatabaseProvider provider) throws SQLException {
+    public Connection openDedicated(ConnConfig cfg, DatabaseProvider provider) throws SQLException {
         return provider.connectionFactory().open(withPlainPassword(cfg));
     }
 
@@ -306,7 +350,7 @@ public final class ConnectionManager {
         try {
             c.close();
         } catch (SQLException e) {
-            LOG.fine("关闭连接异常: " + e.getMessage());
+            LOG.fine("关闭连接异常");
         }
     }
 }

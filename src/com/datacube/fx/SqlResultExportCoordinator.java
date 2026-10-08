@@ -107,8 +107,12 @@ final class SqlResultExportCoordinator implements AutoCloseable {
                 try { return job.write(request, operation); }
                 finally { session.finish(operation); }
             }, published -> {
-                if (ownsStatus(operation, completionRevision))
-                    status.accept("已导出: " + published, false);
+                if (ownsStatus(operation, completionRevision)) {
+                    var residues = operation.cleanupResidues();
+                    status.accept(residues.isEmpty() ? "已导出: " + published
+                            : "已发布，但辅助临时文件清理失败，请核对: " + residues + "；结果文件: " + published,
+                            !residues.isEmpty());
+                }
             }, failure -> {
                 if (ownsStatus(operation, completionRevision))
                     status.accept(failureMessage(failure), true);
@@ -168,7 +172,7 @@ final class SqlResultExportCoordinator implements AutoCloseable {
                 case XML_CHARACTER -> "XML 无法表示部分字符，原目标文件未修改";
                 case WRITE -> "导出写入失败，原目标文件未修改";
                 case PUBLISH -> "无法原子发布导出文件，原目标文件未修改";
-                case CLEANUP -> "导出未完成，临时文件清理失败，请手动处理: " + safe.temporaryPath();
+                case CLEANUP -> "导出未完成，临时文件清理失败，请手动处理: " + safe.residualPaths();
             };
         }
         return "导出失败，未发布结果文件";
