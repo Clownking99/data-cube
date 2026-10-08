@@ -1,0 +1,88 @@
+package com.datacube.config;
+
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
+
+/**
+ * 应用可自定义的快捷键动作清单：作为“说明 + 设置”的唯一数据源。
+ *
+ * <p>每个动作含持久化键、分组、说明文案与默认组合键。用户覆盖值由
+ * {@link ShortcutSettings} 持久化；消费端在按键事件里用
+ * {@link KeyCombination#match} 实时判定，改绑即时生效，无需重新注册。
+ *
+ * <p>仅收录可重新绑定的“动作类”快捷键；情境/鼠标类（Ctrl+点击、树内键入检索、
+ * 数据表格 Enter/Delete/Esc 等）由 UI 固定处理，仅在设置面板中只读展示说明。
+ */
+public enum ShortcutAction {
+
+    SQL_FIND("sql.find", "SQL 编辑器", "查找 SQL 文本 / 当前查询结果",
+            new KeyCodeCombination(KeyCode.F, KeyCombination.CONTROL_DOWN)),
+    SQL_REPLACE("sql.replace", "SQL 编辑器", "替换 SQL 文本",
+            new KeyCodeCombination(KeyCode.H, KeyCombination.CONTROL_DOWN)),
+    SQL_FORMAT("sql.format", "SQL 编辑器", "美化选中 SQL 或全文",
+            new KeyCodeCombination(KeyCode.L, KeyCombination.CONTROL_DOWN, KeyCombination.ALT_DOWN)),
+    SQL_GO_TO_LINE("sql.goToLine", "SQL 编辑器", "跳转到行",
+            new KeyCodeCombination(KeyCode.G, KeyCombination.CONTROL_DOWN)),
+    SQL_INDENT("sql.indent", "SQL 编辑器", "缩进当前行或选中行",
+            new KeyCodeCombination(KeyCode.CLOSE_BRACKET, KeyCombination.CONTROL_DOWN)),
+    SQL_OUTDENT("sql.outdent", "SQL 编辑器", "反缩进当前行或选中行",
+            new KeyCodeCombination(KeyCode.OPEN_BRACKET, KeyCombination.CONTROL_DOWN)),
+    SQL_DUPLICATE_LINES("sql.duplicateLines", "SQL 编辑器", "向下重复当前行或选中行",
+            new KeyCodeCombination(KeyCode.D, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN)),
+    SQL_MOVE_LINES_UP("sql.moveLinesUp", "SQL 编辑器", "上移当前行或选中行",
+            new KeyCodeCombination(KeyCode.UP, KeyCombination.ALT_DOWN)),
+    SQL_MOVE_LINES_DOWN("sql.moveLinesDown", "SQL 编辑器", "下移当前行或选中行",
+            new KeyCodeCombination(KeyCode.DOWN, KeyCombination.ALT_DOWN)),
+
+    SQL_EXECUTE("sql.execute", "SQL 编辑器", "执行 SQL",
+            new KeyCodeCombination(KeyCode.F5)),
+    SQL_EXECUTE_CURRENT("sql.executeCurrent", "SQL 编辑器", "执行当前语句",
+            new KeyCodeCombination(KeyCode.ENTER, KeyCombination.CONTROL_DOWN)),
+    SQL_COMPLETE("sql.complete", "SQL 编辑器", "触发自动补全",
+            new KeyCodeCombination(KeyCode.SPACE, KeyCombination.CONTROL_DOWN)),
+    SQL_LINE_COMMENT("sql.lineComment", "SQL 编辑器", "行注释切换",
+            new KeyCodeCombination(KeyCode.SLASH, KeyCombination.CONTROL_DOWN)),
+    SQL_BLOCK_COMMENT("sql.blockComment", "SQL 编辑器", "块注释切换",
+            new KeyCodeCombination(KeyCode.SLASH, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN)),
+    SQL_HISTORY("sql.history", "全局", "找回近期 SQL",
+            new KeyCodeCombination(KeyCode.H, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN)),
+    SQL_OPEN_FILE("sql.openFile", "SQL 文件", "打开 SQL 文件",
+            new KeyCodeCombination(KeyCode.O, KeyCombination.CONTROL_DOWN)),
+    SQL_SAVE_FILE("sql.saveFile", "SQL 文件", "保存 SQL 文件",
+            new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN)),
+    SQL_SAVE_AS("sql.saveAs", "SQL 文件", "SQL 文件另存为",
+            new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN));
+
+    private final String persistKey;
+    private final String category;
+    private final String label;
+    private final KeyCombination defaultCombo;
+
+    ShortcutAction(String persistKey, String category, String label, KeyCombination defaultCombo) {
+        this.persistKey = persistKey;
+        this.category = category;
+        this.label = label;
+        this.defaultCombo = defaultCombo;
+    }
+
+    /** 持久化键（写入 {@code shortcuts.properties}）。 */
+    public String persistKey() {
+        return persistKey;
+    }
+
+    /** 分组名（用于设置面板归类展示）。 */
+    public String category() {
+        return category;
+    }
+
+    /** 说明文案（用于设置面板展示动作含义）。 */
+    public String label() {
+        return label;
+    }
+
+    /** 出厂默认组合键。 */
+    public KeyCombination defaultCombo() {
+        return defaultCombo;
+    }
+}

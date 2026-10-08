@@ -1,0 +1,113 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :cleanTest
+> Task :compileJava
+> Task :generateBrandIcons UP-TO-DATE
+> Task :generateVersionProperties UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes
+
+> Task :compileTestJava
+
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+AppShellTableExportJdbcShutdownTest > selectionSubscriptionsReleaseAcrossEveryActualUiAdmissionAndCompletionPath(String) > [5] queued-cancel FAILED
+    org.opentest4j.AssertionFailedError: expected: <0> but was: <1>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:145)
+        at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:531)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.selectionSubscriptionsReleaseAcrossEveryActualUiAdmissionAndCompletionPath(AppShellTableExportJdbcShutdownTest.java:54)
+
+AppShellTableExportJdbcShutdownTest > selectionSubscriptionsReleaseAcrossEveryActualUiAdmissionAndCompletionPath(String) > [7] ui-error FAILED
+    org.opentest4j.AssertionFailedError: Unexpected exception type thrown, expected: <java.lang.AssertionError> but was: <java.util.concurrent.ExecutionException>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:67)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:35)
+        at app//org.junit.jupiter.api.Assertions.assertThrows(Assertions.java:3128)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.selectionSubscriptionsReleaseAcrossEveryActualUiAdmissionAndCompletionPath(AppShellTableExportJdbcShutdownTest.java:53)
+
+        Caused by:
+        java.util.concurrent.ExecutionException: java.lang.AssertionError: SYNTHETIC_UI_ERROR
+            at java.base/java.util.concurrent.FutureTask.report(FutureTask.java:124)
+            at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:207)
+            at com.datacube.fx.FxUiTestSupport.call(FxUiTestSupport.java:32)
+            at com.datacube.fx.AppShellTableExportJdbcShutdownTest.lambda$selectionSubscriptionsReleaseAcrossEveryActualUiAdmissionAndCompletionPath$2(AppShellTableExportJdbcShutdownTest.java:53)
+            at org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:53)
+            ... 3 more
+
+            Caused by:
+            java.lang.AssertionError: SYNTHETIC_UI_ERROR
+                at com.datacube.fx.AppShellTableExportJdbcShutdownTest$1.running(AppShellTableExportJdbcShutdownTest.java:49)
+                at com.datacube.fx.ExportDialog.startExport(ExportDialog.java:175)
+                at com.datacube.fx.AppShellTableExportJdbcShutdownTest.lambda$selectionSubscriptionsReleaseAcrossEveryActualUiAdmissionAndCompletionPath$0(AppShellTableExportJdbcShutdownTest.java:52)
+
+AppShellTableExportJdbcShutdownTest > actualMainWindowRetainsJdbcOwnerUntilPhysicalSettlementAndSuppressesHiddenCallbacks(String, boolean) > [1] open, false FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.eventually(AppShellTableExportJdbcShutdownTest.java:16)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.actualMainWindowRetainsJdbcOwnerUntilPhysicalSettlementAndSuppressesHiddenCallbacks(AppShellTableExportJdbcShutdownTest.java:27)
+
+AppShellTableExportJdbcShutdownTest > actualMainWindowRetainsJdbcOwnerUntilPhysicalSettlementAndSuppressesHiddenCallbacks(String, boolean) > [2] getter, false FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.eventually(AppShellTableExportJdbcShutdownTest.java:16)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.actualMainWindowRetainsJdbcOwnerUntilPhysicalSettlementAndSuppressesHiddenCallbacks(AppShellTableExportJdbcShutdownTest.java:27)
+
+AppShellTableExportJdbcShutdownTest > actualMainWindowRetainsJdbcOwnerUntilPhysicalSettlementAndSuppressesHiddenCallbacks(String, boolean) > [3] rollback, false FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.eventually(AppShellTableExportJdbcShutdownTest.java:16)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.actualMainWindowRetainsJdbcOwnerUntilPhysicalSettlementAndSuppressesHiddenCallbacks(AppShellTableExportJdbcShutdownTest.java:27)
+
+AppShellTableExportJdbcShutdownTest > actualMainWindowRetainsJdbcOwnerUntilPhysicalSettlementAndSuppressesHiddenCallbacks(String, boolean) > [4] conn-close, false FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.eventually(AppShellTableExportJdbcShutdownTest.java:16)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.actualMainWindowRetainsJdbcOwnerUntilPhysicalSettlementAndSuppressesHiddenCallbacks(AppShellTableExportJdbcShutdownTest.java:27)
+
+AppShellTableExportJdbcShutdownTest > actualMainWindowRetainsJdbcOwnerUntilPhysicalSettlementAndSuppressesHiddenCallbacks(String, boolean) > [5] getter, true FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.eventually(AppShellTableExportJdbcShutdownTest.java:16)
+        at app//com.datacube.fx.AppShellTableExportJdbcShutdownTest.actualMainWindowRetainsJdbcOwnerUntilPhysicalSettlementAndSuppressesHiddenCallbacks(AppShellTableExportJdbcShutdownTest.java:27)
+
+> Task :test FAILED
+
+[Incubating] Problems report is available at: file:///C:/Users/hetia/.codex/worktrees/aed5/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/problems/problems-report.html
+9 actionable tasks: 4 executed, 5 up-to-date

@@ -1,0 +1,220 @@
+package com.datacube.fx;
+
+import com.datacube.schemadiff.RenameSuggestion;
+import com.datacube.schemadiff.SchemaChangePlan;
+import com.datacube.schemadiff.SchemaChangePlanner;
+import com.datacube.schemadiff.SchemaDiffResult;
+import com.datacube.spi.model.DbType;
+import com.datacube.spi.schemadiff.AutomationLevel;
+import com.datacube.spi.schemadiff.ChangeKind;
+import com.datacube.spi.schemadiff.ObjectKey;
+import com.datacube.spi.schemadiff.ObjectType;
+import com.datacube.spi.schemadiff.QualifiedName;
+import com.datacube.spi.schemadiff.RiskLevel;
+import com.datacube.spi.schemadiff.SchemaChange;
+import com.datacube.spi.schemadiff.SchemaSnapshot;
+import com.datacube.spi.schemadiff.SnapshotCompleteness;
+import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class SchemaDiffSelectionModelTest {
+
+    @Test
+    void destructiveIsDefaultOffAndManualOrBlockedChangesNeverBecomeExecutable() {
+        SchemaDiffSelectionModel model = model();
+
+        assertEquals(Set.of("safe"), model.selectedChangeIds());
+        assertFalse(model.entry("destructive").selected());
+        assertFalse(model.entry("manual").executable());
+
+        assertFalse(model.setSelected("manual", true));
+        assertTrue(model.setSelected("dependent", true));
+        assertFalse(model.entry("dependent").selected());
+        assertTrue(model.entry("dependent").blocked());
+        assertFalse(model.entry("dependent").executable());
+
+        assertTrue(model.setSelected("dependency", true));
+        assertTrue(model.entry("dependent").selected());
+        assertTrue(model.entry("dependent").executable());
+    }
+
+    @Test
+    void manualAndBlockedEntriesAreNotSelectableAndDestructiveNeedsOnePerItemOptIn() {
+        SchemaDiffSelectionModel model = model();
+
+        assertFalse(model.entry("manual").selectable());
+        assertTrue(model.setSelected("dependent", true));
+        assertFalse(model.entry("dependent").selectable());
+        assertTrue(model.requiresDestructiveConfirmation("destructive", true));
+        assertFalse(model.setSelected("destructive", true, false));
+        assertFalse(model.entry("destructive").selected());
+
+        assertTrue(model.setSelected("destructive", true, true));
+        assertTrue(model.entry("destructive").selected());
+        assertFalse(model.requiresDestructiveConfirmation("destructive", true));
+        assertTrue(model.setSelected("destructive", false, false));
+        assertTrue(model.setSelected("destructive", true, false),
+                "the fixed risk prompt is required only for the first opt-in in this compare");
+    }
+
+    @Test
+    void groupingAndFilteringAreStableAndFollowPlannerOrder() {
+        SchemaDiffSelectionModel model = model();
+
+        assertEquals(List.of(ObjectType.VIEW, ObjectType.TABLE, ObjectType.FUNCTION,
+                        ObjectType.SEQUENCE),
+                model.groups(SchemaDiffSelectionModel.Filter.all()).stream()
+                        .map(SchemaDiffSelectionModel.Group::objectType).toList());
+        assertEquals(List.of("destructive", "safe", "manual", "dependency", "dependent"),
+                model.groups(SchemaDiffSelectionModel.Filter.all()).stream()
+                        .flatMap(group -> group.entries().stream())
+                        .map(entry -> entry.change().id()).toList());
+
+        SchemaDiffSelectionModel.Filter filtered = new SchemaDiffSelectionModel.Filter(
+                Set.of(ObjectType.TABLE, ObjectType.SEQUENCE),
+                Set.of(RiskLevel.LOW),
+                Set.of(AutomationLevel.SAFE_AUTOMATIC),
+                SchemaDiffSelectionModel.SelectedState.SELECTED);
+        assertEquals(List.of("safe"), model.groups(filtered).stream()
+                .flatMap(group -> group.entries().stream())
+                .map(entry -> entry.change().id()).toList());
+    }
+
+    @Test
+    void objectSearchIsLocaleStableAndComposesWithEveryExistingFilter() {
+        SchemaDiffSelectionModel model = model();
+        Locale before = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            SchemaDiffSelectionModel.Filter filtered = new SchemaDiffSelectionModel.Filter(
+                    Set.of(ObjectType.TABLE), Set.of(RiskLevel.LOW),
+                    Set.of(AutomationLevel.SAFE_AUTOMATIC),
+                    SchemaDiffSelectionModel.SelectedState.SELECTED, "  SAFE  ");
+
+            assertEquals(List.of("safe"), model.groups(filtered).stream()
+                    .flatMap(group -> group.entries().stream())
+                    .map(entry -> entry.change().id()).toList());
+            assertEquals(List.of("safe"), model.groups(new SchemaDiffSelectionModel.Filter(
+                            Set.of(), Set.of(), Set.of(),
+                            SchemaDiffSelectionModel.SelectedState.ALL, "table"))
+                    .stream().flatMap(group -> group.entries().stream())
+                    .map(entry -> entry.change().id()).toList());
+            assertEquals(model.entries().size(), model.groups(
+                            new SchemaDiffSelectionModel.Filter(Set.of(), Set.of(), Set.of(),
+                                    SchemaDiffSelectionModel.SelectedState.ALL, "   "))
+                    .stream().mapToInt(group -> group.entries().size()).sum());
+        } finally {
+            Locale.setDefault(before);
+        }
+    }
+
+    @Test
+    void objectSearchNeverUsesCanonicalComparisonKeyOrRoutineSignature() {
+        ObjectKey displayOnly = new ObjectKey(ObjectType.FUNCTION,
+                new QualifiedName("Visible\"Function", "canonical-secret-token", true),
+                "signature-secret-token");
+        SchemaDiffResult diff = new SchemaDiffResult(
+                snapshot("source", "source-search"), snapshot("target", "target-search"),
+                List.of(), List.of());
+        SchemaChange change = new SchemaChange("search", ChangeKind.CREATE, displayOnly,
+                null, null, null, RiskLevel.LOW, AutomationLevel.SAFE_AUTOMATIC,
+                true, Set.of(), "fixed explanation");
+        SchemaDiffSelectionModel model = new SchemaDiffSelectionModel(
+                new SchemaChangePlan(diff, List.of(change), Set.of("search"), Set.of(), "search"),
+                new SchemaChangePlanner());
+
+        assertEquals(List.of("search"), model.groups(new SchemaDiffSelectionModel.Filter(
+                        Set.of(), Set.of(), Set.of(), SchemaDiffSelectionModel.SelectedState.ALL,
+                        "visible\"function")).stream().flatMap(group -> group.entries().stream())
+                .map(entry -> entry.change().id()).toList());
+        for (String internal : List.of("canonical-secret-token", "signature-secret-token")) {
+            assertTrue(model.groups(new SchemaDiffSelectionModel.Filter(
+                    Set.of(), Set.of(), Set.of(), SchemaDiffSelectionModel.SelectedState.ALL,
+                    internal)).isEmpty());
+        }
+    }
+
+    @Test
+    void selectionChangeUpdatesDigestAndInvalidatesConfirmationToken() {
+        SchemaDiffSelectionModel model = model();
+        String before = model.selectionDigest();
+        model.markConfirmed("rendered-plan-token");
+
+        assertTrue(model.confirmationToken().isPresent());
+        assertTrue(model.setSelected("destructive", true, true));
+
+        assertNotEquals(before, model.selectionDigest());
+        assertTrue(model.confirmationToken().isEmpty());
+    }
+
+    @Test
+    void renameSuggestionFocusIsDisplayOnlyAndCannotCreateExecutableSelection() {
+        SchemaDiffSelectionModel model = model();
+        Set<String> before = model.selectedChangeIds();
+        RenameSuggestion suggestion = model.renameSuggestions().getFirst();
+
+        model.focusRenameSuggestion(suggestion);
+
+        assertEquals(suggestion, model.focusedRenameSuggestion().orElseThrow());
+        assertEquals(before, model.selectedChangeIds());
+        assertFalse(model.entries().stream()
+                .anyMatch(entry -> entry.change().kind().name().contains("RENAME")));
+    }
+
+    private static SchemaDiffSelectionModel model() {
+        ObjectKey oldView = key(ObjectType.VIEW, "old_view");
+        ObjectKey newView = key(ObjectType.VIEW, "new_view");
+        SchemaDiffResult diff = new SchemaDiffResult(
+                snapshot("source", "source-fingerprint"),
+                snapshot("target", "target-fingerprint"),
+                List.of(),
+                List.of(new RenameSuggestion(oldView, newView, 0.9, "display only")));
+        List<SchemaChange> changes = List.of(
+                change("destructive", ChangeKind.DROP, ObjectType.VIEW, RiskLevel.CRITICAL,
+                        AutomationLevel.DESTRUCTIVE_OPT_IN, false, Set.of()),
+                change("safe", ChangeKind.CREATE, ObjectType.TABLE, RiskLevel.LOW,
+                        AutomationLevel.SAFE_AUTOMATIC, true, Set.of()),
+                change("manual", ChangeKind.MANUAL, ObjectType.FUNCTION, RiskLevel.HIGH,
+                        AutomationLevel.MANUAL_ONLY, false, Set.of()),
+                change("dependency", ChangeKind.CREATE, ObjectType.SEQUENCE, RiskLevel.MEDIUM,
+                        AutomationLevel.SAFE_AUTOMATIC, false, Set.of()),
+                change("dependent", ChangeKind.CREATE, ObjectType.SEQUENCE, RiskLevel.MEDIUM,
+                        AutomationLevel.SAFE_AUTOMATIC, false, Set.of("dependency")));
+        SchemaChangePlan plan = new SchemaChangePlan(
+                diff, changes, Set.of("safe"), Set.of(), "initial");
+        return new SchemaDiffSelectionModel(plan, new SchemaChangePlanner());
+    }
+
+    private static SchemaChange change(
+            String id,
+            ChangeKind kind,
+            ObjectType type,
+            RiskLevel risk,
+            AutomationLevel automation,
+            boolean selected,
+            Set<String> dependencies) {
+        return new SchemaChange(id, kind, key(type, id), null, null, null,
+                risk, automation, selected, dependencies, "fixed explanation");
+    }
+
+    private static ObjectKey key(ObjectType type, String name) {
+        return new ObjectKey(type, new QualifiedName(name, name, false), "");
+    }
+
+    private static SchemaSnapshot snapshot(String connectionId, String fingerprint) {
+        return new SchemaSnapshot(DbType.POSTGRESQL, connectionId,
+                new QualifiedName("public", "public", false), Instant.EPOCH,
+                new SnapshotCompleteness(true, new TreeMap<>()), new TreeMap<>(), fingerprint);
+    }
+}

@@ -1,0 +1,612 @@
+package com.datacube.migration;
+
+import com.datacube.cli.ConsoleLogger;
+import com.datacube.core.*;
+
+import java.io.*;
+import java.nio.file.Path;
+import java.sql.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+
+public class OracleExporter {
+
+    private static final int TABLE_TIMEOUT_SEC = 600;
+    private static final int MAX_RETRY = 2;
+
+    private final MigrationLogger logger;
+    private int maxConcurrency = 20;
+    private boolean convertBool = false;
+    private final MigrationCancellation cancellation;
+    private final Path baseDirectory;
+    private final MigrationConnections connections;
+
+    public OracleExporter(MigrationLogger logger) {
+        this(logger, new MigrationCancellation());
+    }
+
+    public OracleExporter(MigrationLogger logger, MigrationCancellation cancellation) {
+        this(logger,cancellation,Path.of("pg_migration"),MigrationConnections::connect);
+    }
+
+    public OracleExporter(MigrationLogger logger, MigrationCancellation cancellation, Path baseDirectory, MigrationConnections connections) {
+        this.logger = logger;
+        this.cancellation = Objects.requireNonNull(cancellation, "cancellation");
+        this.baseDirectory=Objects.requireNonNull(baseDirectory);
+        this.connections=Objects.requireNonNull(connections);
+    }
+
+    public void setMaxConcurrency(int concurrency) {
+        if (concurrency < 1) concurrency = 1;
+        if (concurrency > 100) concurrency = 100;
+        this.maxConcurrency = concurrency;
+    }
+    public void setConvertBool(boolean convert) { this.convertBool = convert; }
+
+    /** 请求取消导出（幂等，调用后下个检查点会中断） */
+    public void cancel() { cancellation.cancel(); }
+
+    /** 重置取消标志（在重新调用 exportDDL/exportData 前需调用） */
+    public void resetCancel() { cancellation.reset(); }
+
+    public boolean isCancelled() { return cancellation.isCancelled(); }
+
+    // ==================== DDL 导出 ====================
+
+    public void exportDDL(Connection conn, String owner, String pgSchema) throws SQLException, IOException {
+        validateScope(owner,pgSchema);
+        cancellation.checkCancelled();
+        logger.logSection("导出参考 DDL（不自动执行，须人工完成转换）：" + owner + " → " + pgSchema);
+
+        String outputDir = baseDirectory.resolve(pgSchema).resolve("reference-ddl").resolve(UUID.randomUUID().toString()).toString();
+        MigrationFiles.checkParents(Path.of(outputDir)); java.nio.file.Files.createDirectories(Path.of(outputDir));
+
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("序列",          exportSequences(conn, owner, outputDir));
+        cancellation.checkCancelled();
+        stats.put("表",            exportTables(conn, owner, outputDir));
+        cancellation.checkCancelled();
+        stats.put("索引",          exportIndexes(conn, owner, outputDir));
+        cancellation.checkCancelled();
+        stats.put("约束",          exportConstraints(conn, owner, outputDir));
+        cancellation.checkCancelled();
+        stats.put("存储过程/函数", exportFunctions(conn, owner, outputDir));
+        cancellation.checkCancelled();
+        stats.put("包",            exportPackages(conn, owner, outputDir));
+        cancellation.checkCancelled();
+        stats.put("触发器",        exportTriggers(conn, owner, outputDir));
+
+        if (cancellation.isCancelled()) {
+            logger.logWarn("DDL 导出已被取消");
+        } else {
+            logger.logOk("脚本已输出到 " + outputDir + "/");
+        }
+    }
+
+    private PrintWriter referenceWriter(Path file) throws IOException {
+        MigrationFiles.checkParents(file);
+        PrintWriter writer=new PrintWriter(java.nio.file.Files.newBufferedWriter(file,java.nio.charset.StandardCharsets.UTF_8,java.nio.file.StandardOpenOption.CREATE_NEW));
+        writer.println("-- 仅供人工审阅的参考 DDL；不完整且不保证语义等价，禁止直接作为自动迁移结果。");
+        return writer;
+    }
+
+    // ==================== 序列 ====================
+
+    private int exportSequences(Connection conn, String owner, String dir) throws SQLException, IOException {
+        PrintWriter w = referenceWriter(Path.of(dir + "/01_sequences.sql"));
+        try {
+            SqlUtils.header(w, "序列");
+
+        String sql = "SELECT SEQUENCE_NAME, MIN_VALUE, MAX_VALUE, INCREMENT_BY, CYCLE_FLAG, CACHE_SIZE " +
+                "FROM ALL_SEQUENCES WHERE SEQUENCE_OWNER = ? ORDER BY SEQUENCE_NAME";
+
+        int count = 0;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, owner);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    count++;
+                    String name = rs.getString("SEQUENCE_NAME").toLowerCase();
+                    w.println("CREATE SEQUENCE IF NOT EXISTS " + name);
+                    w.println("    INCREMENT BY " + rs.getString("INCREMENT_BY"));
+                    w.println("    MINVALUE " + rs.getString("MIN_VALUE"));
+                    w.println("    MAXVALUE " + rs.getString("MAX_VALUE"));
+                    w.println("    START WITH 1");
+                    if ("Y".equals(rs.getString("CYCLE_FLAG"))) w.println("    CYCLE");
+                    w.println("    CACHE " + rs.getString("CACHE_SIZE") + ";");
+                    w.println();
+                    w.println("CREATE OR REPLACE FUNCTION " + name + "_nextval()");
+                    w.println("RETURNS BIGINT AS $$");
+                    w.println("BEGIN");
+                    w.println("    RETURN NEXTVAL('" + name + "');");
+                    w.println("END;");
+                    w.println("$$ LANGUAGE plpgsql;");
+                    w.println();
+                }
+            }
+        }
+            logger.logOk("序列: " + count + " 个");
+            return count;
+        } finally {
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
+        }
+    }
+
+    // ==================== 表 ====================
+
+    private int exportTables(Connection conn, String owner, String dir) throws SQLException, IOException {
+        PrintWriter w = referenceWriter(Path.of(dir + "/02_tables.sql"));
+        try {
+            SqlUtils.header(w, "表结构");
+
+        Map<String, String> tableComments = getTableComments(conn, owner);
+        Map<String, Map<String, String>> colComments = getColumnComments(conn, owner);
+
+        String sql = "SELECT TABLE_NAME FROM ALL_TABLES WHERE OWNER = ? " +
+                "ORDER BY TABLE_NAME";
+
+        List<String> tables = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, owner);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) { cancellation.checkCancelled(); if(tables.size()>=1000)throw new SQLException("Migration table limit exceeded","DC002"); String table=rs.getString("TABLE_NAME");if(!MigrationPreflight.simpleName(table))throw new IOException("Source table requires manual name mapping"); tables.add(table); }
+            }
+        }
+
+        int total = tables.size();
+        for (int i = 0; i < total; i++) {
+            writeTable(conn, owner, tables.get(i), w, tableComments, colComments);
+            logger.logProgress("导出表结构", i + 1, total);
+        }
+            logger.logOk("表: " + total + " 个");
+            return total;
+        } finally {
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
+        }
+    }
+
+    private void writeTable(Connection conn, String owner, String table, PrintWriter w,
+                            Map<String, String> tableComments,
+                            Map<String, Map<String, String>> colComments) throws SQLException {
+        String tc = tableComments.get(table);
+        if (tc != null) w.println("-- " + tc);
+
+        w.println("CREATE TABLE IF NOT EXISTS " + table.toLowerCase() + " (");
+
+        String sql = "SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, " +
+                "NULLABLE, DATA_DEFAULT FROM ALL_TAB_COLUMNS WHERE OWNER = ? AND TABLE_NAME = ? ORDER BY COLUMN_ID";
+
+        List<String> cols = new ArrayList<>();
+        Map<String, String> cc = colComments.getOrDefault(table, new HashMap<>());
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, owner);
+            ps.setString(2, table);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String colName  = rs.getString("COLUMN_NAME");
+                    String type     = rs.getString("DATA_TYPE");
+                    int len         = rs.getInt("DATA_LENGTH");
+                    int prec        = rs.getInt("DATA_PRECISION");
+                    int scale       = rs.getInt("DATA_SCALE");
+                    String nullable = rs.getString("NULLABLE");
+                    String defVal   = rs.getString("DATA_DEFAULT");
+
+                    StringBuilder col = new StringBuilder("    " + colName.toLowerCase() + " "
+                            + TypeConverter.convertType(type, len, prec, scale));
+                    if ("N".equals(nullable)) col.append(" NOT NULL");
+                    if (defVal != null && !defVal.trim().isEmpty())
+                        col.append(" DEFAULT ").append(TypeConverter.convertDefault(defVal.trim()));
+
+                    String comment = cc.get(colName);
+                    if (comment != null) col.append(" /* ").append(TypeConverter.escapeComment(comment)).append(" */");
+
+                    cols.add(col.toString());
+                }
+            }
+        }
+
+        w.println(String.join(",\n", cols));
+        w.println(");");
+        w.println();
+
+        if (tc != null) w.println("COMMENT ON TABLE " + table.toLowerCase() + " IS '" + SqlUtils.escapeSql(tc) + "';");
+        for (Map.Entry<String, String> e : cc.entrySet()) {
+            w.println("COMMENT ON COLUMN " + table.toLowerCase() + "." + e.getKey().toLowerCase()
+                    + " IS '" + SqlUtils.escapeSql(e.getValue()) + "';");
+        }
+        w.println();
+    }
+
+    // ==================== 索引 ====================
+
+    private int exportIndexes(Connection conn, String owner, String dir) throws SQLException, IOException {
+        PrintWriter w = referenceWriter(Path.of(dir + "/03_indexes.sql"));
+        try {
+            SqlUtils.header(w, "索引");
+
+        String sql = "SELECT INDEX_NAME, TABLE_NAME, UNIQUENESS FROM ALL_INDEXES " +
+                "WHERE OWNER = ? ORDER BY INDEX_NAME";
+
+        int count = 0;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, owner);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    count++;
+                    String idx = rs.getString("INDEX_NAME").toLowerCase();
+                    String tbl = rs.getString("TABLE_NAME").toLowerCase();
+                    String uni = rs.getString("UNIQUENESS");
+                    List<String> cols = indexColumns(conn, owner, rs.getString("INDEX_NAME"));
+
+                    w.println(("UNIQUE".equals(uni) ? "CREATE UNIQUE INDEX IF NOT EXISTS " : "CREATE INDEX IF NOT EXISTS ")
+                            + idx + " ON " + tbl + " (" + SqlUtils.joinLower(cols) + ");");
+                    w.println();
+                }
+            }
+        }
+            logger.logOk("索引: " + count + " 个");
+            return count;
+        } finally {
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
+        }
+    }
+
+    // ==================== 约束 ====================
+
+    private int exportConstraints(Connection conn, String owner, String dir) throws SQLException, IOException {
+        PrintWriter w = referenceWriter(Path.of(dir + "/04_constraints.sql"));
+        try {
+            SqlUtils.header(w, "约束");
+
+        String sql = "SELECT CONSTRAINT_NAME, TABLE_NAME, CONSTRAINT_TYPE FROM ALL_CONSTRAINTS " +
+                "WHERE OWNER = ? AND CONSTRAINT_TYPE IN ('P','U') ORDER BY CONSTRAINT_NAME";
+
+        int count = 0;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, owner);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    count++;
+                    String cname = rs.getString("CONSTRAINT_NAME").toLowerCase();
+                    String tname = rs.getString("TABLE_NAME").toLowerCase();
+                    String type  = rs.getString("CONSTRAINT_TYPE");
+                    List<String> cols = constraintColumns(conn, owner, rs.getString("CONSTRAINT_NAME"));
+
+                    w.println("ALTER TABLE " + tname);
+                    w.println("    ADD CONSTRAINT " + cname + " " +
+                            ("P".equals(type) ? "PRIMARY KEY" : "UNIQUE") + " (" + SqlUtils.joinLower(cols) + ");");
+                    w.println();
+                }
+            }
+        }
+            logger.logOk("约束: " + count + " 个");
+            return count;
+        } finally {
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
+        }
+    }
+
+    // ==================== 函数 ====================
+
+    private int exportFunctions(Connection conn, String owner, String dir) throws SQLException, IOException {
+        PrintWriter w = referenceWriter(Path.of(dir + "/05_functions.sql"));
+        try {
+            SqlUtils.header(w, "存储过程/函数");
+
+        String sql = "SELECT OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS " +
+                "WHERE OWNER = ? AND OBJECT_TYPE IN ('PROCEDURE','FUNCTION') AND STATUS = 'VALID' ORDER BY OBJECT_NAME";
+
+        int count = 0;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, owner);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    count++;
+                    writeSource(conn, owner, rs.getString("OBJECT_NAME"), rs.getString("OBJECT_TYPE"), w);
+                }
+            }
+        }
+            logger.logOk("存储过程/函数: " + count + " 个");
+            return count;
+        } finally {
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
+        }
+    }
+
+    // ==================== 包 ====================
+
+    private int exportPackages(Connection conn, String owner, String dir) throws SQLException, IOException {
+        PrintWriter w = referenceWriter(Path.of(dir + "/06_packages.sql"));
+        try {
+            SqlUtils.header(w, "包");
+
+        String sql = "SELECT OBJECT_NAME FROM ALL_OBJECTS " +
+                "WHERE OWNER = ? AND OBJECT_TYPE = 'PACKAGE' AND STATUS = 'VALID' ORDER BY OBJECT_NAME";
+
+        int count = 0;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, owner);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    count++;
+                    writePackage(conn, owner, rs.getString("OBJECT_NAME"), w);
+                }
+            }
+        }
+            logger.logOk("包: " + count + " 个");
+            return count;
+        } finally {
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
+        }
+    }
+
+    // ==================== 触发器 ====================
+
+    private int exportTriggers(Connection conn, String owner, String dir) throws SQLException, IOException {
+        PrintWriter w = referenceWriter(Path.of(dir + "/07_triggers.sql"));
+        try {
+            SqlUtils.header(w, "触发器");
+
+        String sql = "SELECT TRIGGER_NAME, TABLE_NAME, TRIGGER_TYPE, TRIGGERING_EVENT FROM ALL_TRIGGERS " +
+                "WHERE OWNER = ? AND STATUS = 'ENABLED' ORDER BY TRIGGER_NAME";
+
+        int count = 0;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, owner);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    count++;
+                    String tname  = rs.getString("TRIGGER_NAME").toLowerCase();
+                    String tbl    = rs.getString("TABLE_NAME").toLowerCase();
+                    String timing = rs.getString("TRIGGER_TYPE").contains("BEFORE") ? "BEFORE" : "AFTER";
+                    String event  = rs.getString("TRIGGERING_EVENT");
+
+                    w.println("-- " + tname + " -> " + tbl);
+                    w.println("CREATE OR REPLACE FUNCTION " + tname + "_func() RETURNS TRIGGER AS $$");
+                    w.println("BEGIN");
+                    w.println("    -- TODO: 转换 :NEW -> NEW, :OLD -> OLD");
+                    w.println("    RETURN NEW;");
+                    w.println("END;");
+                    w.println("$$ LANGUAGE plpgsql;");
+                    w.println();
+                    w.println("CREATE TRIGGER " + tname);
+                    w.println("    " + timing + " " + event + " ON " + tbl);
+                    w.println("    FOR EACH ROW EXECUTE FUNCTION " + tname + "_func();");
+                    w.println();
+                }
+            }
+        }
+            logger.logOk("触发器: " + count + " 个");
+            return count;
+        } finally {
+            w.close(); if(w.checkError())throw new IOException("Reference DDL output incomplete");
+        }
+    }
+
+    // ==================== 数据导出（虚拟线程） ====================
+
+    public void exportData(Connection conn, String oraUrl, String oraUser, String oraPass, String pgSchema) throws SQLException, IOException {
+        exportData(conn,oraUrl,oraUser,oraPass,oraUser,pgSchema);
+    }
+
+    public void exportData(Connection conn,String oraUrl,String oraUser,String oraPass,String owner,String pgSchema) throws SQLException,IOException {
+        validateScope(owner,pgSchema);
+        if(convertBool)throw new IOException("Heuristic boolean conversion requires manual review");
+        cancellation.checkCancelled();
+        logger.logSection("导出数据：" + oraUser + "（虚拟线程, 并发上限 " + maxConcurrency + ", 超时 " + TABLE_TIMEOUT_SEC + "s/表）");
+
+        String dataDir = baseDirectory.resolve(pgSchema).resolve("data").toString();
+        MigrationFiles.checkParents(Path.of(dataDir)); java.nio.file.Files.createDirectories(Path.of(dataDir));
+
+        String sql = "SELECT TABLE_NAME FROM ALL_TABLES WHERE OWNER = ? " +
+                "ORDER BY TABLE_NAME";
+
+        List<String> tables = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, owner);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) { cancellation.checkCancelled(); if(tables.size()>=1000)throw new SQLException("Migration table limit exceeded","DC002"); String table=rs.getString("TABLE_NAME");if(!MigrationPreflight.simpleName(table))throw new IOException("Source table requires manual name mapping"); tables.add(table); }
+            }
+        }
+
+        int total = tables.size();
+        logger.logInfo("共 " + total + " 张表，启动虚拟线程并行导出...");
+
+        AtomicInteger ok = new AtomicInteger(0);
+        AtomicInteger empty = new AtomicInteger(0);
+        AtomicInteger fail = new AtomicInteger(0);
+        AtomicLong totalRows = new AtomicLong(0);
+        AtomicLong totalBytes = new AtomicLong(0);
+        AtomicInteger done = new AtomicInteger(0);
+
+        Semaphore semaphore = new Semaphore(maxConcurrency);
+        ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
+        List<Future<?>> futures = new ArrayList<>();
+
+        for (String table : tables) {
+            if (cancellation.isCancelled()) break;
+            futures.add(pool.submit(() -> {
+                boolean acquired = false;
+                try {
+                    semaphore.acquire();
+                    acquired = true;
+                    cancellation.checkCancelled();
+                    boolean success = false;
+                    for (int attempt = 1; attempt <= MAX_RETRY; attempt++) {
+                        if (cancellation.isCancelled()) break;
+                        Connection threadConn = null;
+                        try {
+                            threadConn = cancellation.register(
+                                    connections.open(oraUrl, oraUser, oraPass));
+                            synchronized (logger) {
+                                logger.logInfo(">> 导出: " + table + (attempt > 1 ? " (重试 " + attempt + ")" : ""));
+                            }
+
+                            long[] result = exportTableData(threadConn, owner, table, dataDir);
+                            if (result[0] > 0) {
+                                ok.incrementAndGet();
+                                totalRows.addAndGet(result[0]);
+                                totalBytes.addAndGet(result[1]);
+                                synchronized (logger) {
+                                    logger.logOk(table + ": " + result[0] + " 行, " + ConsoleLogger.formatBytes(result[1]));
+                                }
+                            } else {
+                                empty.incrementAndGet();
+                            }
+                            success = true;
+                            break;
+                        } catch (CancellationException cancelled) {
+                            break;
+                        } catch (Exception e) {
+                            logger.logToFile("[ERR] 导出表任务失败 (attempt " + attempt + ")；类型/权限/读取/文件错误，未保存原始异常");
+                            if (attempt < MAX_RETRY) {
+                                synchronized (logger) {
+                                    logger.logWarn(table + " 失败，重试中...");
+                                }
+                            }
+                        } finally {
+                            cancellation.release(threadConn);
+                        }
+                    }
+                    if (!success && !cancellation.isCancelled()) {
+                        fail.incrementAndGet();
+                        synchronized (logger) {
+                            logger.logErr(table + ": " + MAX_RETRY + " 次尝试均失败，跳过");
+                        }
+                    }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    if (acquired) semaphore.release();
+                }
+
+                if (!cancellation.isCancelled()) {
+                    int d = done.incrementAndGet();
+                    logger.logProgress("导出进度", d, total);
+                }
+            }));
+        }
+
+        boolean completed = MigrationTaskCoordinator.awaitAll(futures, pool, cancellation,
+                java.time.Duration.ofSeconds(TABLE_TIMEOUT_SEC * 2L));
+        if (!completed) {
+            logger.logWarn("数据导出已取消，已停止剩余表任务");
+            return;
+        }
+
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("成功", ok.get());
+        stats.put("空表", empty.get());
+        stats.put("失败", fail.get());
+        stats.put("总行数", totalRows.get());
+        stats.put("总大小", ConsoleLogger.formatBytes(totalBytes.get()));
+        logger.logSummary("数据导出统计", stats);
+        if(fail.get()>0)throw new IOException("Some source tables were not exported; import was not started");
+    }
+
+    private long[] exportTableData(Connection conn, String owner, String table, String dataDir) throws SQLException, IOException {
+        var exported=new MigrationTableExporter(cancellation).export(conn,owner,table,Path.of(dataDir).getParent());
+        return new long[]{exported.rows(),exported.bytes()};
+    }
+
+    private void validateScope(String owner,String schema) throws IOException {
+        if(!MigrationPreflight.simpleName(owner) || !MigrationPreflight.simpleName(schema))throw new IOException("Migration scope requires manual name mapping");
+        MigrationFiles.checkParents(baseDirectory.toAbsolutePath().resolve(schema));
+    }
+
+    // ==================== 元数据查询 ====================
+
+    private Map<String, String> getTableComments(Connection conn, String owner) throws SQLException {
+        Map<String, String> m = new HashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT TABLE_NAME, COMMENTS FROM ALL_TAB_COMMENTS WHERE OWNER = ? AND COMMENTS IS NOT NULL")) {
+            ps.setString(1, owner);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) m.put(rs.getString(1), rs.getString(2));
+            }
+        }
+        return m;
+    }
+
+    private Map<String, Map<String, String>> getColumnComments(Connection conn, String owner) throws SQLException {
+        Map<String, Map<String, String>> m = new HashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT TABLE_NAME, COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS WHERE OWNER = ? AND COMMENTS IS NOT NULL")) {
+            ps.setString(1, owner);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    m.computeIfAbsent(rs.getString("TABLE_NAME"), k -> new HashMap<>())
+                            .put(rs.getString("COLUMN_NAME"), rs.getString("COMMENTS"));
+                }
+            }
+        }
+        return m;
+    }
+
+    private List<String> indexColumns(Connection conn, String owner, String idx) throws SQLException {
+        return colList(conn, "SELECT COLUMN_NAME FROM ALL_IND_COLUMNS WHERE INDEX_OWNER=? AND INDEX_NAME=? ORDER BY COLUMN_POSITION", owner, idx);
+    }
+
+    private List<String> constraintColumns(Connection conn, String owner, String cname) throws SQLException {
+        return colList(conn, "SELECT COLUMN_NAME FROM ALL_CONS_COLUMNS WHERE OWNER=? AND CONSTRAINT_NAME=? ORDER BY POSITION", owner, cname);
+    }
+
+    private List<String> colList(Connection conn, String sql, String p1, String p2) throws SQLException {
+        List<String> list = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, p1); ps.setString(2, p2);
+            try (ResultSet rs = ps.executeQuery()) { while (rs.next()) list.add(rs.getString(1)); }
+        }
+        return list;
+    }
+
+    private List<ColumnInfo> getColumns(Connection conn, String owner, String table) throws SQLException {
+        List<ColumnInfo> list = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT COLUMN_NAME, DATA_TYPE, DATA_PRECISION, DATA_SCALE FROM ALL_TAB_COLUMNS WHERE OWNER=? AND TABLE_NAME=? ORDER BY COLUMN_ID")) {
+            ps.setString(1, owner); ps.setString(2, table);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    ColumnInfo c = new ColumnInfo();
+                    c.table = table;
+                    c.name = rs.getString("COLUMN_NAME");
+                    c.type = rs.getString("DATA_TYPE");
+                    c.precision = rs.getInt("DATA_PRECISION");
+                    c.scale = rs.getInt("DATA_SCALE");
+                    list.add(c);
+                }
+            }
+        }
+        return list;
+    }
+
+    private void writeSource(Connection conn, String owner, String name, String type, PrintWriter w) throws SQLException {
+        StringBuilder sb = new StringBuilder();
+        try (PreparedStatement ps = conn.prepareStatement("SELECT TEXT FROM ALL_SOURCE WHERE OWNER=? AND NAME=? AND TYPE=? ORDER BY LINE")) {
+            ps.setString(1, owner); ps.setString(2, name); ps.setString(3, type);
+            try (ResultSet rs = ps.executeQuery()) { while (rs.next()) sb.append(rs.getString("TEXT")); }
+        }
+        w.println("-- " + type + ": " + name);
+        w.println("/*");
+        w.println(sb);
+        w.println("*/");
+        w.println("-- TODO: 转换为 PL/pgSQL");
+        w.println();
+    }
+
+    private void writePackage(Connection conn, String owner, String name, PrintWriter w) throws SQLException {
+        StringBuilder spec = new StringBuilder(), body = new StringBuilder();
+        try (PreparedStatement ps = conn.prepareStatement("SELECT TEXT FROM ALL_SOURCE WHERE OWNER=? AND NAME=? AND TYPE=? ORDER BY LINE")) {
+            ps.setString(1, owner); ps.setString(2, name);
+            ps.setString(3, "PACKAGE");      try (ResultSet rs = ps.executeQuery()) { while (rs.next()) spec.append(rs.getString("TEXT")); }
+            ps.setString(3, "PACKAGE BODY"); try (ResultSet rs = ps.executeQuery()) { while (rs.next()) body.append(rs.getString("TEXT")); }
+        }
+        w.println("-- 包: " + name);
+        w.println("-- 声明:\n/*\n" + spec + "\n*/");
+        w.println("-- 包体:\n/*\n" + body + "\n*/");
+        w.println("-- TODO: 拆分为独立函数，前缀: " + name.toLowerCase() + "_");
+        w.println();
+    }
+}

@@ -1,0 +1,111 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :cleanTest
+> Task :compileJava UP-TO-DATE
+> Task :generateBrandIcons UP-TO-DATE
+> Task :generateVersionProperties UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :compileTestJava
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test FAILED
+
+TableExportJdbcBaselineRedTest > xlsxNumericPrecisionLossMustFailInsteadOfPublishingSixteenDigits() FAILED
+    org.opentest4j.AssertionFailedError: Expected java.lang.Exception to be thrown, but nothing was thrown.
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:152)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:73)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:35)
+        at app//org.junit.jupiter.api.Assertions.assertThrows(Assertions.java:3128)
+        at app//com.datacube.export.TableExportJdbcBaselineRedTest.xlsxNumericPrecisionLossMustFailInsteadOfPublishingSixteenDigits(TableExportJdbcBaselineRedTest.java:39)
+
+TableExportJdbcBaselineRedTest > exportOwnsDedicatedSingleCursorAndNeverRollsBackSharedTransaction(ExportFormat) > [1] SQL FAILED
+    org.gradle.internal.exceptions.DefaultMultiCauseException: Multiple Failures (3 failures)
+    	org.opentest4j.AssertionFailedError: Dedicated connection required ==> expected: <2> but was: <1>
+    	org.opentest4j.AssertionFailedError: No paged accessor or first-row probe ==> expected: <0> but was: <3>
+    	org.opentest4j.AssertionFailedError: One data SELECT ==> expected: <1> but was: <0>
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:80)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:44)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:38)
+        at app//org.junit.jupiter.api.Assertions.assertAll(Assertions.java:2944)
+        at app//com.datacube.export.TableExportJdbcBaselineRedTest.exportOwnsDedicatedSingleCursorAndNeverRollsBackSharedTransaction(TableExportJdbcBaselineRedTest.java:23)
+
+        Caused by:
+        org.opentest4j.AssertionFailedError: Dedicated connection required ==> expected: <2> but was: <1>
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+            at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+            at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+            at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+            at app//com.datacube.export.TableExportJdbcBaselineRedTest.lambda$exportOwnsDedicatedSingleCursorAndNeverRollsBackSharedTransaction$0(TableExportJdbcBaselineRedTest.java:23)
+            at app//org.junit.jupiter.api.AssertAll.lambda$assertAll$0(AssertAll.java:68)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+            at java.base@25.0.1/java.util.Spliterators$ArraySpliterator.forEachRemaining(Spliterators.java:1024)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+            at java.base@25.0.1/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:921)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:723)
+            at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:77)
+            ... 4 more
+
+TableExportJdbcBaselineRedTest > exportOwnsDedicatedSingleCursorAndNeverRollsBackSharedTransaction(ExportFormat) > [2] XLSX FAILED
+    org.gradle.internal.exceptions.DefaultMultiCauseException: Multiple Failures (3 failures)
+    	org.opentest4j.AssertionFailedError: Dedicated connection required ==> expected: <2> but was: <1>
+    	org.opentest4j.AssertionFailedError: No paged accessor or first-row probe ==> expected: <0> but was: <3>
+    	org.opentest4j.AssertionFailedError: One data SELECT ==> expected: <1> but was: <0>
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:80)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:44)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:38)
+        at app//org.junit.jupiter.api.Assertions.assertAll(Assertions.java:2944)
+        at app//com.datacube.export.TableExportJdbcBaselineRedTest.exportOwnsDedicatedSingleCursorAndNeverRollsBackSharedTransaction(TableExportJdbcBaselineRedTest.java:23)
+
+        Caused by:
+        org.opentest4j.AssertionFailedError: Dedicated connection required ==> expected: <2> but was: <1>
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+            at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+            at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+            at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+            at app//com.datacube.export.TableExportJdbcBaselineRedTest.lambda$exportOwnsDedicatedSingleCursorAndNeverRollsBackSharedTransaction$0(TableExportJdbcBaselineRedTest.java:23)
+            at app//org.junit.jupiter.api.AssertAll.lambda$assertAll$0(AssertAll.java:68)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+            at java.base@25.0.1/java.util.Spliterators$ArraySpliterator.forEachRemaining(Spliterators.java:1024)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+            at java.base@25.0.1/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:921)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:723)
+            at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:77)
+            ... 4 more
+
+TableExportJdbcBaselineRedTest > oracleTableDdlExceptionCannotBecomeSuccessfulSensitiveComment() FAILED
+    org.opentest4j.AssertionFailedError: Expected java.lang.Exception to be thrown, but nothing was thrown.
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:152)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:73)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:35)
+        at app//org.junit.jupiter.api.Assertions.assertThrows(Assertions.java:3128)
+        at app//com.datacube.export.TableExportJdbcBaselineRedTest.oracleTableDdlExceptionCannotBecomeSuccessfulSensitiveComment(TableExportJdbcBaselineRedTest.java:45)
+
+TableExportJdbcBaselineRedTest > unknownProviderValueNeverReachesToStringOrPublishedOutput(ExportFormat) > [1] SQL FAILED
+    org.opentest4j.AssertionFailedError: Expected java.lang.Exception to be thrown, but nothing was thrown.
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:152)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:73)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:35)
+        at app//org.junit.jupiter.api.Assertions.assertThrows(Assertions.java:3128)
+        at app//com.datacube.export.TableExportJdbcBaselineRedTest.unknownProviderValueNeverReachesToStringOrPublishedOutput(TableExportJdbcBaselineRedTest.java:33)
+
+TableExportJdbcBaselineRedTest > unknownProviderValueNeverReachesToStringOrPublishedOutput(ExportFormat) > [2] XLSX FAILED
+    org.opentest4j.AssertionFailedError: Expected java.lang.Exception to be thrown, but nothing was thrown.
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:152)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:73)
+        at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:35)
+        at app//org.junit.jupiter.api.Assertions.assertThrows(Assertions.java:3128)
+        at app//com.datacube.export.TableExportJdbcBaselineRedTest.unknownProviderValueNeverReachesToStringOrPublishedOutput(TableExportJdbcBaselineRedTest.java:33)
+9 actionable tasks: 3 executed, 6 up-to-date

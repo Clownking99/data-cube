@@ -1,0 +1,39 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :cleanTest UP-TO-DATE
+> Task :compileJava UP-TO-DATE
+> Task :generateBrandIcons UP-TO-DATE
+> Task :generateVersionProperties UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :compileTestJava
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+TableExporterReliabilityTest > dialectFailureBeforeWriterOwnershipNeverOpensOutputOrPublishes(boolean) > [1] false FAILED
+    org.opentest4j.AssertionFailedError: Provider preparation must finish before output stream ownership starts ==> expected: <0> but was: <1>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+        at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+        at app//com.datacube.export.TableExporterReliabilityTest.dialectFailureBeforeWriterOwnershipNeverOpensOutputOrPublishes(TableExporterReliabilityTest.java:62)
+
+TableExporterReliabilityTest > dialectFailureBeforeWriterOwnershipNeverOpensOutputOrPublishes(boolean) > [2] true FAILED
+    org.opentest4j.AssertionFailedError: Provider preparation must finish before output stream ownership starts ==> expected: <0> but was: <1>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+        at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+        at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+        at app//com.datacube.export.TableExporterReliabilityTest.dialectFailureBeforeWriterOwnershipNeverOpensOutputOrPublishes(TableExporterReliabilityTest.java:62)
+
+> Task :test FAILED
+9 actionable tasks: 2 executed, 7 up-to-date

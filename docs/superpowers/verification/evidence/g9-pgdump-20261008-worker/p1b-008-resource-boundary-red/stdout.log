@@ -1,0 +1,81 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :cleanTest
+> Task :compileJava UP-TO-DATE
+> Task :generateBrandIcons UP-TO-DATE
+> Task :generateVersionProperties UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :compileTestJava
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+PgDumpRunnerArgumentsTest > failedInitialRootIdentityCannotDeleteAnEmptyForeignReplacement() FAILED
+    org.opentest4j.AssertionFailedError: Unproved empty replacement root must survive ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//com.datacube.export.PgDumpRunnerArgumentsTest.failedInitialRootIdentityCannotDeleteAnEmptyForeignReplacement(PgDumpRunnerArgumentsTest.java:149)
+
+PgDumpRunnerArgumentsTest > confirmedMissingScratchRootNeedsNoDeletionOrCleanupFailure() FAILED
+    org.opentest4j.AssertionFailedError: Unexpected exception thrown: java.nio.file.NoSuchFileException: C:\Users\hetia\AppData\Local\Temp\DAEB68~1\temp\junit-9362302979063577643\.datacube-pgdump-1260055607153905255
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:152)
+        at app//org.junit.jupiter.api.AssertDoesNotThrow.createAssertionFailedError(AssertDoesNotThrow.java:84)
+        at app//org.junit.jupiter.api.AssertDoesNotThrow.assertDoesNotThrow(AssertDoesNotThrow.java:53)
+        at app//org.junit.jupiter.api.AssertDoesNotThrow.assertDoesNotThrow(AssertDoesNotThrow.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertDoesNotThrow(Assertions.java:3199)
+        at app//com.datacube.export.PgDumpRunnerArgumentsTest.confirmedMissingScratchRootNeedsNoDeletionOrCleanupFailure(PgDumpRunnerArgumentsTest.java:156)
+
+        Caused by:
+        java.nio.file.NoSuchFileException: C:\Users\hetia\AppData\Local\Temp\DAEB68~1\temp\junit-9362302979063577643\.datacube-pgdump-1260055607153905255
+            at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:85)
+            at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:103)
+            at java.base/sun.nio.fs.WindowsException.rethrowAsIOException(WindowsException.java:108)
+            at java.base/sun.nio.fs.WindowsFileAttributeViews$Basic.readAttributes(WindowsFileAttributeViews.java:52)
+            at java.base/sun.nio.fs.WindowsFileAttributeViews$Basic.readAttributes(WindowsFileAttributeViews.java:38)
+            at java.base/sun.nio.fs.WindowsFileSystemProvider.readAttributes(WindowsFileSystemProvider.java:195)
+            at java.base/java.nio.file.Files.readAttributes(Files.java:1702)
+            at com.datacube.export.PgDumpRunner.lambda$prepare$0(PgDumpRunner.java:139)
+            at com.datacube.export.PgDumpRunner$Prepared.close(PgDumpRunner.java:224)
+            at org.junit.jupiter.api.AssertDoesNotThrow.assertDoesNotThrow(AssertDoesNotThrow.java:49)
+            ... 3 more
+
+PgDumpRunnerReliabilityTest > scratchCleanupResidueSurvivesNormalAndFatalStartFailureThroughActualPublisher(boolean) > [1] false FAILED
+    org.opentest4j.AssertionFailedError: Actual UI reads the operation residue list, including fatal cleanup failures ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//com.datacube.export.PgDumpRunnerReliabilityTest.scratchCleanupResidueSurvivesNormalAndFatalStartFailureThroughActualPublisher(PgDumpRunnerReliabilityTest.java:248)
+
+PgDumpRunnerReliabilityTest > scratchCleanupResidueSurvivesNormalAndFatalStartFailureThroughActualPublisher(boolean) > [2] true FAILED
+    org.opentest4j.AssertionFailedError: Actual UI reads the operation residue list, including fatal cleanup failures ==> expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+        at app//com.datacube.export.PgDumpRunnerReliabilityTest.scratchCleanupResidueSurvivesNormalAndFatalStartFailureThroughActualPublisher(PgDumpRunnerReliabilityTest.java:248)
+
+PgDumpRunnerReliabilityTest > closeFailureWhileUnderlyingStreamRemainsOpenCannotBecomePhysicalSettlement() FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.export.PgDumpRunnerReliabilityTest.closeFailureWhileUnderlyingStreamRemainsOpenCannotBecomePhysicalSettlement(PgDumpRunnerReliabilityTest.java:263)
+
+> Task :test FAILED
+9 actionable tasks: 3 executed, 6 up-to-date

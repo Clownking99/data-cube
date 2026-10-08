@@ -1,0 +1,69 @@
+/*
+ * SQL 编辑器语法高亮样式（RichTextFX CodeArea）。
+ *
+ * 样式类名与 SqlHighlighter 计算 StyleSpans 时写入的类名一一对应；
+ * 通过 codeArea.getStylesheets() 加载。CodeArea 文本着色使用 -fx-fill。
+ *
+ * 颜色以查找色（looked-up color）引用，具体色值由场景根上的
+ * theme-light.css / theme-dark.css 提供，从而随明暗主题切换。
+ */
+
+.code-area {
+    -fx-background-color: -code-bg;
+    -fx-font-family: 'Consolas', 'Courier New', monospace;
+    -fx-font-size: 14px;
+    -fx-highlight-fill: -brand-accent-solid;
+    -fx-highlight-text-fill: white;
+}
+
+/* 未着色的普通文本（跟随主题前景色） */
+.code-area .text {
+    -fx-fill: -code-fg;
+}
+
+/* 光标 */
+.code-area .caret {
+    -fx-stroke: -brand-fg;
+}
+
+/*
+ * 高亮 span 选择器统一限定在 .code-area .text 之下，使其特指度(0,3,0)
+ * 高于上面的基准规则 .code-area .text(0,2,0)，否则基准前景色 -code-fg 会
+ * 覆盖各 span 的 -fx-fill，导致只余加粗/斜体而无着色（RichTextFX 常见坑）。
+ */
+
+/* 关键字：加粗 */
+.code-area .text.sql-keyword {
+    -fx-fill: -code-keyword;
+    -fx-font-weight: bold;
+}
+
+/* 字符串字面量 */
+.code-area .text.sql-string {
+    -fx-fill: -code-string;
+}
+
+/* 注释：斜体 */
+.code-area .text.sql-comment {
+    -fx-fill: -code-comment;
+    -fx-font-style: italic;
+}
+
+/* 数字字面量 */
+.code-area .text.sql-number {
+    -fx-fill: -code-number;
+}
+
+/* 括号 */
+.code-area .text.sql-paren {
+    -fx-fill: -code-paren;
+}
+
+/* 行号栏 */
+.lineno {
+    -fx-background-color: -code-gutter-bg;
+    -fx-text-fill: -code-gutter-fg;
+    -fx-font-family: 'Consolas', 'Courier New', monospace;
+    -fx-font-size: 13px;
+    -fx-padding: 0 6px 0 6px;
+}
