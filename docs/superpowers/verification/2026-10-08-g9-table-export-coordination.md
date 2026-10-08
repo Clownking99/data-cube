@@ -340,3 +340,5 @@ DataCube.exe为595968字节、SHA256 `6C32DDB83447C5754B5484B7D0C0F501CF48AD5159
 本地审查无剩余阻断项。交接/路线按G9实际范围更新，归档脚本逐项raw/index/commit验证。最终只推main、不fetch/tag/PR/发布；精确受验SHA的GitHub Verify及远端main身份由[delivery-intent.json](evidence/g9-main-20261009/delivery-intent.json)指向的独占 `build/owned-g9-ci-d92a6be3db81469f9fd8118cc8fd8be5/delivery-result.json` 记录。只接受该文件实际passed=true、同SHA四任务成功及Windows Unit tests/buildSrc/jlink实际日志，不预报CI成功。回执不再提交以避免改变受验SHA，Delivery.py保存每次命令、退出、原始响应/日志和最终哈希清单。P3最终交付及暂停跟进以这份回执与自动化实际状态为准。
 
 仍未验/局限：真实Oracle/PostgreSQL驱动、MVCC/undo及取消/网络；真实pg_dump/libpq16+兼容与认证；原生桌面/文件chooser/Excel、OS缩放、多屏；慢/网络文件系统、原子替换能力与属性验证到move/unlink的竞争窗口；永久阻塞或close失败可能保持pending，进程后代仅覆盖实际捕获家族；真实驱动内部大值分配不是硬内存上限；SQL结构的保守类型准入、仅列与PK及DDL/数据不构成整个Schema原子快照。安装升级/回退、生产签名及完整M8仍未完成。v3.2.9保持原样、旧datacube保持PAUSED，不扩展Redis/功能或下一轮；P3回执成功后按授权将datacube-g9设PAUSED。
+
+归档补记：main新证据9f87f76f的561份raw/index/commit核验通过。批量更新交接脚本在路线图不同标题处匹配失败，先完成交接、未更新另两份计划；首归档未把此工具退出当测试通过。已按实际标题补正路线图与G9计划，并以final-documentation-binding.json记录三份可读文档的新字节和旧冻结提交身份；原raw-manifest及运行原件不改写。产品/测试仍与受验5b9dfeca相同，不需要因文档纠正重跑工程测试。

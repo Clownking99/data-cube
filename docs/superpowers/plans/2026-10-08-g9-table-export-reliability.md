@@ -80,6 +80,6 @@ JDK 基线 `D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8`，优先离线复用已有�
 
 ## 当前检查点
 
-P3 / P2已独立通过，根会话接管Gradle：开发产品e7950123、证据b76b75c已停写；3565份Git原始字节、844份输入、三组XML和183份镜像文件均复核。开发新定向1181、clean全量4663通过/3 live跳过、强制buildSrc8、jpackageImage和linked mock探针通过；首次镜像环境失败及便捷汇总漏skip保留，独立计数纠正。见[协调账本C5](../verification/2026-10-08-g9-table-export-coordination.md)。下一步本地合main、新隔离环境复验、更新交接和待验，再按授权推main/核对精确SHA CI。G9尚未交付，外部/原生限制不变。
+P3 / 本地工程验收完成：产品e7950123、开发证据b76b75c已独立审核并合main 5b9dfeca。main新定向1181通过、clean全量4663通过/3 live跳过、强制buildSrc8、jpackageImage及新183文件镜像/外置linked探针通过；844输入前后稳定，三核心镜像SHA与P2一致。证据、失败、保守类型及外部待验见[协调账本C7](../verification/2026-10-08-g9-table-export-coordination.md)。最终main推送和同SHA Verify四任务结果以[delivery-intent](../verification/evidence/g9-main-20261009/delivery-intent.json)指向的实际回执为准，不用旧CI代替；P3最终回执成功后暂停datacube-g9并交付，不扩展下一轮。真实库、原生桌面/chooser/Excel、慢磁盘/文件系统局限、安装签名及完整M8仍未验。
 
 为落实持续下发和验收，新增当前会话的 `datacube-g9` 跟进，每 15 分钟检查同一开发线程并在有结果时继续审查；无实质变化保持安静，P3 实际交付后暂停，不自动启动下一目标。旧 `datacube` 仍为 PAUSED。本地跟进依赖电脑和应用运行，不替代任何工程或外部验收。
