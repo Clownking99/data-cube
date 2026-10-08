@@ -169,3 +169,16 @@ send_message_to_thread 已成功向同一正式线程下发 P1b；先在 worker 
 上游静态核对：针对隔离不存在SSL文件是否必然导致连接失败的疑虑，阅读 [PostgreSQL REL_16_STABLE fe-secure-openssl.c](https://github.com/postgres/postgres/blob/REL_16_STABLE/src/interfaces/libpq/fe-secure-openssl.c)，client cert 不存在的分支允许继续连接；未据此要求改变隔离政策。这只是上游源码证据，不是本机 pg_dump/真实SSL兼容通过，不读取用户证书或运行客户端。
 
 失败/未验：只有首红得到独立确认；新代码仍在编写，P1b 无冻结 GREEN、无阶段验收。G9c/P2/P3、真库/原生/完整发布仍未完成。下一步等待开发修正和新冻结，再审核实际源码及物理资源证据；不并发Gradle，不合产品 main，不扩展范围。
+
+## C2.2：整窗链路预审、早期归属与流关闭边界
+
+当前目标：2026-10-08 15:13 UTC 跟进，main e80aa7ee 范围内干净，开发仍在同一 b81923f2 分支。已直接阅读新增 AppShellTableExportShutdownTest、TableExportTasks 和当前 PgDumpRunner 修正。实际 AppShell/原 mandatory workspace decision/主窗 controller 参与测试，覆盖退出取消恢复、冻结准入、真实helper仍活、force-survivor pending、owner隐藏与发布先赢；不是只测试一个登记集合。监督器的后代终止已移入固定数量后台worker，scratch清理和Error保留已有实现。`p1b-005-affected-targeted` exit0 已观察，尚未冻结或独立重算全部 XML/哈希，因此本检查点不新增通过计数。
+
+冻结前另已下发两项具体边界：
+
+1. scratch 根身份和 owned 文件到两次创建之后才统一捕获；rootCreated为空时清理允许跳过身份比较。要求在取得每项后及时登记，无法证明归属时不授权删除；补首次属性失败、部分创建失败以及根变为空替换目录的用例，明确根 NoSuchFileException 与未知状态的区别。
+2. 流 close 抛 IOException 目前可能只更新 reason，结算仅检查进程/后代/线程退出。要求区分“底层确实关闭后抛错”和“关闭失败且仍打开”，不能以线程退出证明流已关闭；仍未解决时保持 pending/BUSY/主窗等待，迟到真实结算才释放，后台资源数量有界。需要其他技术处理时先提出明确证据与限制，不自行放宽契约。
+
+客户端兼容裁决：新 `require_auth='!gss,!sspi'` 与 `gssencmode=disable` 避免静默使用操作系统环境认证。[PostgreSQL 16 发布说明](https://www.postgresql.org/docs/release/16.0/)明确 require_auth 为16新增，[参数文档](https://www.postgresql.org/docs/16/libpq-connect.html)说明否定认证方法的语义。原 `2026-07-08-data-export-design.md:115` 仅要求使用者保证客户端与目标库兼容，未发现承诺旧客户端版本。协调允许将此路径能力门槛明确为 pg_dump/libpq 16+，最小导出说明/README和固定错误指引需可见；禁止静默移除隔离作为旧版回退。无需新增安装、升级、通用客户端管理或版本探测进程，不运行真实pg_dump；合成argv与上游文档不当作客户端实测。
+
+验证/失败/未验：这是未冻结源码与实际调用链预审，两个边界尚待新测试确认；P1b 不称验收通过。开发继续唯一 Gradle 执行权，P1c/P2/P3未启动。下一步等待修正与新原件，独立审核后再决定阶段准入；main只保存本会话审查记录。
