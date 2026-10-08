@@ -308,3 +308,35 @@ SQL/XLSX的501行用例均实际只开1条共享连接、调用3次分页accesso
 失败/诊断原件保留：Run-P2便捷PowerShell汇总将空skipped节点判为false，full便捷skipped=0不采用；独立ElementTree同时核对suite属性和实际节点，确认3跳过。首次005镜像wrapper清空TEMP后落入C:/WINDOWS，目录拒绝、exit1且尚未运行探针；006先建立独占wrapper临时环境，再完整成功，005不覆写。jpackageImage stderr中的12条javac failed与12条java failed伴随Picked up JAVA_TOOL_OPTIONS保留；不按文字误判整个任务失败，也不抹去，实际任务exit0且产物新审计/linked子进程成功。首次Git ls-tree不支持exclude命令诊断保留，改精确cat-file字节核验后成功。原stdout尾空格不修剪。
 
 裁决：P2通过，根会话接管P3及唯一Gradle执行权；下一步本地合并b76b75c，再用新隔离环境定向、clean全量、强制buildSrc/image和新镜像外置探针复验；通过后更新交接、推main并核对精确SHA CI。此时G9尚未交付、没有新main测试。原生chooser/桌面、真库/pg_dump、MVCC/undo、真实driver取消/内部分配、慢/网络磁盘、文件身份校验至move/unlink竞争窗口、永久阻塞资源pending和已捕获进程家族边界继续保留。无tag/发布/新目标，datacube-g9保持ACTIVE至P3实际交付。
+
+## C6：main合并与新定向通过
+
+当前目标：根会话审核归档提交8c4b8f7f后，本地合并开发分支，main集成为5b9dfeca42a1cdb93091261a69f7510a792c7a36；产品/测试/README Git树与e7950123完全一致。3518份开发原件在main重新校验SHA/长度及Git blob相符，见[合并原件核对](evidence/g9-main-20261009/merged-worker-archive.json)。不存在冲突或额外产品修改。
+
+本会话从P2已审核脚本复制建立新[g9-main-20261009](evidence/g9-main-20261009/)证据根，保留来源SHA。root launcher仅更名/独占目录前缀和修正空skipped节点判断；镜像审计使用新目录及新wrapper，外置探针保持P2字节。843原构建输入+新launcher共844项冻结；241项检出换行差异逐项记录，除CRLF/LF以外完全相同。没有重写worker原件或产品源码。
+
+新001-targeted实际重新编译并运行test，2m15s、9任务全部executed、exit0；独立ElementTree读取85 suites/1181 tests，全部通过，0 failure/error/skip。main测试使用全新UUID profile/temp，外部环境清空。当前002-clean-full正在执行；全量、buildSrc/image/linked审计及最终SHA CI尚未在main结算，不预报通过。
+
+协调工具诊断：首次raw暂存新编计划文档保留CRLF，diff-check将CR判为行尾空白，提交前停止；只将本会话新编prose/scripts统一LF后检查成功，复制的原日志/JSON/报告不动。此为归档检查纠正，不计产品失败。下一步等待main完整复验，最终通过才提交交接并推main/核对CI；真实服务/原生/文件系统局限继续按C5单列。
+
+## C7：main本地复验通过，最终推送与CI回执
+
+当前目标：完成已授权G9 P3工程验收。main受验集成5b9dfeca42a1cdb93091261a69f7510a792c7a36，产品提交e7950123，开发证据b76b75c。根会话保持唯一Gradle执行，四轮新隔离运行均结束；后续提交只更新审核文档与证据，不改产品/测试树。
+
+独立[Verify-Main.py](evidence/g9-main-20261009/Verify-Main.py)检查新command/exit/stdout、suite属性与实际testcase、当前XML及844输入前后身份，结果见[main-verification.json](evidence/g9-main-20261009/main-verification.json)：
+
+| main新验证 | 实际结果 |
+| --- | --- |
+| 001完整G9定向 | 85 suites，1181 passed，0 failure/error/skip；2m15s，9任务executed，exit0 |
+| 002 clean全量 | 345 suites，4666 tests：4663 passed、3 live skipped，0 failure/error；5m35s，9任务executed，exit0 |
+| 003强制buildSrc:test | 1 suite，8 passed，0 failure/error/skip；8s，4任务executed，exit0 |
+| 004强制jpackageImage | 38s，14任务executed，exit0；不是测试计数 |
+| 005新镜像审计与外置linked probes | 183文件，0测试类/profile/验收选项污染，7子命令exit0；XML7组、XLSX20包/40单元格独立解码、6非法UTF16拒绝、SQL/XLSX各501行成功及中途失败原目标保留通过 |
+
+三项live跳过ID/原因与P2相同，清空环境后未进入Redis或Oracle/PostgreSQL SchemaDiff真服务测试，不能算通过。PowerShell便捷计数已修正，独立XML计数仍为权威；main当前345份XML及buildSrc XML与新归档字节相同。受控物理结算输出另按原XML逐行保存[physical-xml-receipts.json](evidence/g9-main-20261009/physical-xml-receipts.json)，逻辑取消不替代实际资源断言。main无产品失败或新增修正，原P1/P2红灯与工具失败均保留。
+
+DataCube.exe为595968字节、SHA256 `6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F`；cfg为369字节、`E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D`；modules为102622232字节、`62AB89F099650151039E7122ADF86EBFB7BB19EB4B5D1565BA79E1D6FCFF60C4`。三者与P2完全相同，183文件均重算SHA/长度。镜像构建同样保留JAVA_TOOL_OPTIONS相关javac/java failed字样诊断；实际任务、外置编译及linked执行exit0，不删除原stderr或把字符串当作整轮失败。
+
+本地审查无剩余阻断项。交接/路线按G9实际范围更新，归档脚本逐项raw/index/commit验证。最终只推main、不fetch/tag/PR/发布；精确受验SHA的GitHub Verify及远端main身份由[delivery-intent.json](evidence/g9-main-20261009/delivery-intent.json)指向的独占 `build/owned-g9-ci-d92a6be3db81469f9fd8118cc8fd8be5/delivery-result.json` 记录。只接受该文件实际passed=true、同SHA四任务成功及Windows Unit tests/buildSrc/jlink实际日志，不预报CI成功。回执不再提交以避免改变受验SHA，Delivery.py保存每次命令、退出、原始响应/日志和最终哈希清单。P3最终交付及暂停跟进以这份回执与自动化实际状态为准。
+
+仍未验/局限：真实Oracle/PostgreSQL驱动、MVCC/undo及取消/网络；真实pg_dump/libpq16+兼容与认证；原生桌面/文件chooser/Excel、OS缩放、多屏；慢/网络文件系统、原子替换能力与属性验证到move/unlink的竞争窗口；永久阻塞或close失败可能保持pending，进程后代仅覆盖实际捕获家族；真实驱动内部大值分配不是硬内存上限；SQL结构的保守类型准入、仅列与PK及DDL/数据不构成整个Schema原子快照。安装升级/回退、生产签名及完整M8仍未完成。v3.2.9保持原样、旧datacube保持PAUSED，不扩展Redis/功能或下一轮；P3回执成功后按授权将datacube-g9设PAUSED。
