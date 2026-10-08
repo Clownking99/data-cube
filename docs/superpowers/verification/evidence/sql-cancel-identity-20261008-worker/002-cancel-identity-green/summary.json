@@ -1,0 +1,32 @@
+{
+  "exitCode": 0,
+  "actualTasks": [
+    ":compileJava",
+    ":compileTestJava",
+    ":test"
+  ],
+  "gradleStopped": true,
+  "B": "Both providers refused new execution while old physical cancel remained in flight; queue EXECUTE/session running+cancelling and original connection open. Old late cancel error closes only connection1 before idle. Actual next execution then opens connection2 and returns normal update97 with Statement.cancel0.",
+  "buildSeconds": 17,
+  "A": "Both providers allowed next execution before old scheduled request; next control not cancelled, next Statement.cancel0, shared connection closes0 before fixture cleanup; second terminal normal1/failed0/cancelled0/update97.",
+  "cleanup": "All four fixture cleanup BEGIN/END completed; every Connection/Statement closes once, global close once; no product recovery claimed.",
+  "sourceStable": true,
+  "suites": [
+    {
+      "tests": 4,
+      "time": 2.997,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "name": "com.datacube.fx.AppShellSqlCancelIdentityTest"
+    },
+    {
+      "tests": 10,
+      "time": 0.051,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "name": "com.datacube.service.JdbcEditorSessionCancellationIdentityTest"
+    }
+  ]
+}

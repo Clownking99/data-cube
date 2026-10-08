@@ -1,0 +1,265 @@
+package com.datacube.fx;
+
+import org.junit.jupiter.api.Test;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class SqlEditorSessionContractTest {
+
+    @Test
+    void routesSqlExecutionThroughDedicatedSafetyAwareSession() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("JdbcEditorSession"));
+        assertTrue(source.contains("ensureEditorSession().prepareScript"));
+        assertTrue(source.contains("WriteSafetyDialog.confirm(request"));
+        assertTrue(source.contains("request.execute(confirmation)"));
+        String policy = Files.readString(Path.of("src/com/datacube/service/WriteOperation.java"));
+        assertTrue(policy.contains("SqlSafetyAnalyzer.analyze"));
+        assertTrue(policy.contains("SqlSafetyPolicy.decide"));
+        assertFalse(source.contains("connections.acquire(connId)"));
+        assertTrue(source.contains("tasks.submit"));
+    }
+
+    @Test
+    void recordsBlockingSessionOwnershipImmediatelyAfterOpeningIt() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+        String open = "connections.openEditorSession(editorConnection)";
+        String own = "construction.ownBlocking(this::awaitStrictSessionCleanup)";
+
+        int openings = 0;
+        for (int openIndex = source.indexOf(open); openIndex >= 0;
+                openIndex = source.indexOf(open, openIndex + open.length())) {
+            int ownIndex = source.indexOf(own, openIndex);
+            assertTrue(ownIndex > openIndex,
+                    "every opened JDBC session must immediately gain strict blocking ownership");
+            assertEquals(";", source.substring(openIndex + open.length(), ownIndex).trim(),
+                    "only the opening statement terminator may precede ownBlocking");
+            openings++;
+        }
+        assertEquals(2, openings, "constructor and lazy admission must both own the session");
+        assertFalse(source.contains("construction.ownBlocking(jdbcSession::close)"),
+                "construction cleanup must not use the compatibility API that swallows failures");
+        assertFalse(source.contains("openEditorSession(editorConnection.id())"),
+                "the session must consume the immutable pinned config rather than reread by id");
+    }
+
+    @Test
+    void pinnedEditorStopsFollowingLaterTreeSelections() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+        int listener = source.indexOf("this.activeConnectionListener");
+        int pinnedGuard = source.indexOf("if (admission.pinned() == null)", listener);
+        int prewarm = source.indexOf("resetCompletionContext(connection)", listener);
+
+        assertTrue(listener >= 0 && pinnedGuard > listener);
+        assertTrue(prewarm > pinnedGuard,
+                "tree selection metadata may only be followed while the editor remains unbound");
+    }
+
+    @Test
+    void cancelCloseRollsBackOnlyAManualPendingTransaction() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+        int resolver = source.indexOf("private static void resolveCloseTransaction",
+                source.indexOf("private static void resolveCloseTransaction") + 1);
+        int nextMethod = source.indexOf("\n    private ", resolver + 1);
+        String method = source.substring(resolver, nextMethod);
+
+        assertTrue(method.contains("snapshot.transactionMode()"
+                + " == JdbcEditorSession.TransactionMode.MANUAL"));
+        assertTrue(method.contains("snapshot.hasPendingTransaction()"));
+    }
+
+    @Test
+    void explainSplittingUsesThePinnedConnectionsOracleMode() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains(
+                "SqlScriptSplitter.split(text, active.type() == DbType.ORACLE)"));
+    }
+
+    @Test
+    void fxAdmissionPinsBeforeSafetyAndClosingPreventsSessionPublication() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        int execute = source.indexOf("private void onExecute()");
+        int pin = source.indexOf("admitCurrentConnection()", execute);
+        int safety = source.indexOf("ensureEditorSession().prepareScript", execute);
+        assertTrue(pin > execute && pin < safety,
+                "execution must pin before safety analysis and background submission");
+        assertTrue(source.contains("admission.beginClosing()"));
+        assertTrue(source.contains("sessionOperations.stopAcceptingAndCancelQueued()"));
+        assertTrue(source.contains("admission.requireOpenPinned()"));
+        assertTrue(source.contains("existing.snapshot().connectionId().equals(connection.id())"));
+    }
+
+    @Test
+    void closeWaitsForSessionQueueAndUsesStrictFinalResources() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("awaitSessionOperationsIdle"));
+        assertTrue(source.contains("currentEditorSession()"));
+        assertFalse(source.contains("ClosePlan(\n            String connectionName,\n"
+                + "            String schema,\n            String sql,\n"
+                + "            JdbcEditorSession editorSession"));
+        assertTrue(source.contains("history.recordStrict"));
+        assertTrue(source.contains("editorSession.closeStrict()"));
+        assertTrue(source.contains("running = sessionOperations.snapshot().pending()"));
+        assertTrue(source.contains(
+                "submitSessionOperation(SerialSessionOperationQueue.OperationKind.EXECUTE"));
+        assertTrue(source.contains("tasks.submit(editorSession::cancel"));
+    }
+
+    @Test
+    void closeWaitsForNonCancellableCurrentOperationBeforeFreshFxDecision() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("operationSnapshot.running()"
+                + " && !operationSnapshot.currentCancellable()"));
+        assertTrue(source.contains("continueCloseDecisionOnFx"));
+        assertTrue(source.contains("sessionOperations.suppressCallbacks()"));
+        assertTrue(source.contains("operationSnapshot.currentCancellable()"));
+        assertTrue(source.contains("!operationSnapshot.accepting()"),
+                "terminal callbacks must not re-enable controls while close admission is active");
+    }
+
+    @Test
+    void normalAndMandatoryCloseShareObservableStrictCleanupSettlement() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("StrictCleanupRetryChannel sessionCleanup"));
+        assertTrue(source.contains("awaitStrictSessionCleanup"));
+        assertTrue(source.contains("sessionCleanup.start()"));
+    }
+
+    @Test
+    void transactionResolutionGatesHistoryScopesAndStrictCleanup() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("SqlEditorCloseSequence.run("));
+        int closeMethod = source.indexOf("private void closeInBackground");
+        int nextMethod = source.indexOf("\n    private ", closeMethod + 1);
+        String body = source.substring(closeMethod, nextMethod);
+        int gate = body.indexOf("resolveCloseTransaction");
+        int destructive = body.indexOf("runDestructiveClose");
+
+        int destructiveMethod = source.indexOf("private void runDestructiveClose");
+        int afterDestructive = source.indexOf("\n    private ", destructiveMethod + 1);
+        String destructiveBody = source.substring(destructiveMethod, afterDestructive);
+        int history = destructiveBody.indexOf("persistCloseSnapshot");
+        int metadata = destructiveBody.indexOf("metadataTasks::close");
+        int strict = destructiveBody.indexOf("awaitStrictSessionCleanup");
+
+        assertTrue(gate >= 0 && gate < destructive,
+                "transaction gate must precede every destructive close step");
+        assertTrue(history >= 0 && history < metadata && metadata < strict,
+                "destructive close must retain history, scope, and strict-cleanup order");
+    }
+
+    @Test
+    void mandatoryCloseIsDialogFreeAndAlwaysChoosesRollback() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("public CompletionStage<CloseGuardOutcome> requestMandatoryClose()"));
+        int start = source.indexOf("private CompletionStage<CloseGuardOutcome> startMandatoryCloseAttempt");
+        int nextMethod = source.indexOf("\n    private ", start + 1);
+        String body = source.substring(start, nextMethod);
+        assertTrue(body.contains("CloseDecision.CANCEL_ROLLBACK"));
+        assertFalse(body.contains("showAndWait"));
+        assertFalse(body.contains("requestTransactionClose"));
+        assertFalse(body.contains("requestCancelRollbackClose"));
+    }
+
+    @Test
+    void interactiveTransactionFailureAlwaysSettlesAfterSafeUserFeedback() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        int finish = source.indexOf("private void finishRetryableCloseFailure");
+        int afterFinish = source.indexOf("\n    private ", finish + 1);
+        String finishBody = source.substring(finish, afterFinish);
+        assertTrue(finishBody.contains("SqlEditorCloseSequence.finishRetryableFailure"));
+        assertTrue(finishBody.contains("this::showCloseTransactionFailure"));
+
+        int feedback = source.indexOf("private void showCloseTransactionFailure()");
+        int afterFeedback = source.indexOf("\n    private ", feedback + 1);
+        String feedbackBody = source.substring(feedback, afterFeedback);
+        assertTrue(feedbackBody.contains("提交或回滚失败"));
+        assertTrue(feedbackBody.contains("事务已保留"));
+        assertFalse(feedbackBody.contains("Throwable"));
+        assertFalse(feedbackBody.contains("message("));
+        assertFalse(feedbackBody.contains("sql"));
+        assertFalse(feedbackBody.contains("password"));
+    }
+
+    @Test
+    void databaseResultFilterRetainsExecuteQueueAndOwnedPreparedSessionContract() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+        int apply = source.indexOf("private void onApplyDatabaseFilter()");
+        assertTrue(apply >= 0, "database filter action must be wired into SqlEditorPane");
+        int nextMethod = source.indexOf("\n    private ", apply + 1);
+        String body = source.substring(apply, nextMethod);
+
+        assertTrue(body.contains("admission.requireOpenPinned()"));
+        assertTrue(body.contains("ensureEditorSession().executePrepared("));
+        assertTrue(body.contains("SerialSessionOperationQueue.OperationKind.EXECUTE"));
+        assertFalse(body.contains("openDedicated"));
+        assertFalse(body.contains("DriverManager"));
+    }
+
+    @Test
+    void sqlFileToolbarStartsDisabledAndBindsToTheInstalledController() throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+
+        assertTrue(source.contains("saveSqlFileBtn.setId(\"sql-file-save\")"));
+        assertTrue(source.contains("saveAsSqlFileBtn.setId(\"sql-file-save-as\")"));
+        assertTrue(source.contains("saveSqlFileBtn.setDisable(true)"));
+        assertTrue(source.contains("saveAsSqlFileBtn.setDisable(true)"));
+        assertTrue(source.contains("fileController.busyProperty()"));
+        assertTrue(source.contains("public void installSqlScriptFileController("));
+        assertTrue(source.contains("new SqlScriptFileController("));
+    }
+
+    @Test
+    void interactiveCloseUsesFileGuardBeforeExistingSessionGuardButMandatoryCloseBypassesIt()
+            throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+        int interactive = source.indexOf("public CompletionStage<CloseGuardOutcome> requestClose()");
+        int mandatory = source.indexOf("public CompletionStage<CloseGuardOutcome> requestMandatoryClose()");
+        String interactiveBody = source.substring(interactive, mandatory);
+        int afterMandatory = source.indexOf("\n    /**", mandatory + 1);
+        String mandatoryBody = source.substring(mandatory, afterMandatory);
+
+        assertTrue(interactiveBody.contains("fileController.guardClose(closeGuard::requestClose)"));
+        assertTrue(interactiveBody.indexOf("fileController.guardClose")
+                < interactiveBody.indexOf("closeGuard::requestClose"));
+        assertFalse(mandatoryBody.contains("fileController"));
+        assertTrue(mandatoryBody.contains("mandatoryCloseGuard.requestClose()"));
+    }
+
+    @Test
+    void resourceCloseInvalidatesFileControllerBeforeSharedTasksAndUiCloseDetachesListener()
+            throws Exception {
+        String source = Files.readString(Path.of("src/com/datacube/fx/SqlEditorPane.java"));
+        int closeResources = source.indexOf("void closeResources()");
+        int finalize = source.indexOf("void finalizeCloseOnFx()", closeResources);
+        String resourceBody = source.substring(closeResources, finalize);
+        int nextMethod = source.indexOf("\n    private ", finalize);
+        String uiBody = source.substring(finalize, nextMethod);
+
+        assertTrue(resourceBody.indexOf("fileController.close()")
+                < resourceBody.indexOf("tasks::close"));
+        int destructive = source.indexOf("private void runDestructiveClose");
+        int afterDestructive = source.indexOf("\n    private ", destructive + 1);
+        String destructiveBody = source.substring(destructive, afterDestructive);
+        assertTrue(destructiveBody.contains("fileController.close()"));
+        assertTrue(destructiveBody.indexOf("fileController.close()")
+                < destructiveBody.indexOf("tasks::close"));
+        assertTrue(uiBody.contains("fileController.detachUi()"));
+        assertFalse(source.contains("SqlWorkspace(") && source.contains("fileController.path()"));
+        assertFalse(source.contains("SqlDraft(") && source.contains("fileController.path()"));
+    }
+}
