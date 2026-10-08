@@ -127,3 +127,27 @@ P1a 追加返工已下发：ExportDialog 从 FxTaskScope.submit 改用 runner.su
 失败/未验：001/002 启动失败、004 的 Windows 身份假设失败、007 残留反馈 RED、008 严重异常及夹具路径失败全部保留；373 仅为 009 的通过。P1a 尚待新修正验收；P1b/P1c、全量、buildSrc:test、image、main 复验均未完成。既有真库/原生/外部文件竞争和完整发布边界不变。
 
 下一步：核验新冻结；通过后下发 P1b 进程所有权与整窗退出接线。后续 P1c 严格 PG DDL 查询另需检查完整表身份：当前 `primaryKeyClause` 的 join 只绑定 constraint_name/table_schema，新的整表严格路径应避免同 schema 不同表同名约束串入；先核对真实查询契约再做最小修正，不扩张 Schema Diff 或全库 DDL 功能。
+
+## C2：P1a 阶段验收通过，P1b 已下发
+
+当前目标/改动：最后的 SQL 方言和 SQL/XLSX 行源准备均移至开流之前；保持开流前取消检查及原 writer 格式。真实 TableExporter 的新异常测试不代替产品关闭流：RED 中仅在断言记录后收尾夹具持有的流，GREEN 则断言根本没有打开流。
+
+本会话直接审核新源码/测试与原件，并执行新 [012 独立回执](evidence/g9-table-export-20261008-coordination/p1a-012-review/root-p1a-verification.json)：**17 份冻结文件、375 份证据文件、15 份运行时源码** SHA/长度全部匹配，当前工作字节与冻结也全部一致；20 份 XML 的套件与 testcase 双重计数确认 **375 tests / 0 failures / 0 errors / 0 skipped**，实际 `:test`、退出 0。这里 375 份文件与 375 个测试是两个不同计数。009 全部原件保留，源码新测试结果不借用旧绿灯。
+
+新增失败证据：010 为夹具泛型编译失败、无测试；011 实际 375 tests 中两条新回归失败，错误均为期望 open=0、实际1。其 TableExporter 与 009 旧产品 SHA 相同，两份夹具与 012 相同，已在[独立 RED 回执](evidence/g9-table-export-20261008-coordination/p1a-012-review/root-dialect-red-verification.json)核实。012 对两例修正后通过，Error 对象保留、0 move、旧目标/邻居不变且无临时残留。
+
+裁决：**P1a/G9a 阶段通过**。不等于 G9 完成或产品可合 main；P1b 的旧进程路径和 P1c 的共享 acquire/OFFSET、配置快照、严格 DDL、完整值约束仍未完成。无全量/buildSrc:test/image/main 新复验，无真库/原生桌面证据。本会话一直未运行 Gradle，开发继续独占。
+
+### P1b 已授权的实施与退出条件
+
+send_message_to_thread 已成功向同一正式线程下发 P1b；先在 worker 报告补充短的资源及整窗退出接线设计，然后自主实现，不要求维护者再次确认。不启动 P1c/P2、不新增线程。实施采用 P0 第6节、C1.1 的精确连接参数与受控凭据来源、C1.5 的整窗关闭约束：
+
+1. 从 start 前建立默认10分钟单调总期限，覆盖启动、所有输出形态、drain/wait及迟到 exit0。固定缓冲/有界统计，不输出原 stdout/stderr/敏感 cause；精确 table pattern 和连接字面参数，显式 format/no-password，隔离默认 pgpass/profile 等来源。
+2. 所有权包括返回 root、已捕获后代、三路流、drainers/watchdog 与迟到 start。取消只发意图，后台物理结算；超回收预算仍在写或持有资源时维持 BUSY/pending，不发布或提前清理。只操作自有 handles，真实受控 helper 验证邻居不受影响；任意快速脱离后代仍不作强保证。
+3. 允许最小 AppShell 导出任务注册/结算接线。关闭冻结后拒绝新导出；既有 SQL mandatory guard 尚未同意时不提前破坏导出，取消关闭应恢复准入。真正退出需等待导出物理结算或明确 FAILED_PARTIAL/pending，不以 tasks.close 的三秒返回/owner隐藏作为完成证据。保持 BestEffortCloseSequence、事务与终态隔离规则，不重构全局 runner/关闭框架。
+4. 保留 B1/B2 的真实 RED 和 GREEN：静默/超量/不换行输出、启动失败/迟到、非零/drain失败、期限边界、取消双序、父退出子持pipe、已捕获子孙与独立邻居、force仍活fake。补实际 AppShell→导出→runner→helper/mock 的取消关闭恢复、pending/一次结算/迟到回调验收，不能只测注册器。
+5. 开发只运行 P1b 定向及受影响的 P1a/query/task/shutdown/事务回归，冻结代码/命令/退出/XML/helper源码和物理状态后停写。旧原件不覆盖，无 stage/commit/全量/buildSrc:test/image/main/外部操作。P1c 的接口需求可以保留，实际专用 JDBC/单cursor/严格DDL实现另行下发。
+
+下一步：跟进 P1b 设计及真实实现，独立审核源码和原始资源结算证据；发现问题直接下发具体修正。datacube-g9 保持 ACTIVE，交付 P3 后暂停；不自动扩展下一目标。
+
+下发后的 wait_threads 回执：正式线程 active/inProgress，新 turn `01a11bda-327f-79b0-9dc3-d0e33042dd9a` 已确认开始 P1b，先核对进程与主窗关闭调用链、补设计，再实施；G9c 明确未启动。协调方仅提交文档和独立审核回执，不把此 dispatch 当 P1b 产品验证。

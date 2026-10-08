@@ -1,6 +1,6 @@
 # DataCube 产品成熟度推进计划
 
-**2026-10-08 新目标 G9 已授权启动：** [整表导出可靠性计划](2026-10-08-g9-table-export-reliability.md)。范围为旧文件保护、pg_dump 超时/取消与进程回收、独占连接下完整一致的流式读取；当前会话规划/审核/验收，新 GPT-6.1-sol 独立 worktree 实施。P0 已审、P1a 实施及返工中，实际首红与审查意见见[协调账本](../verification/2026-10-08-g9-table-export-coordination.md)；最终定向/完整工程/main 验收未完成。datacube-g9 每 15 分钟继续本会话审查，交付后暂停，旧 datacube 不恢复。Redis 资源预算、G8/M2 外部验收和其他功能各自保留，不混入 G9；原 G1–G8 历史编号不变。
+**2026-10-08 新目标 G9 已授权启动：** [整表导出可靠性计划](2026-10-08-g9-table-export-reliability.md)。范围为旧文件保护、pg_dump 超时/取消与进程回收、独占连接下完整一致的流式读取；当前会话规划/审核/验收，新 GPT-6.1-sol 独立 worktree 实施。P0/P1a 已独立审核通过，012 最新定向375通过且无失败/错误/跳过，原始证据及首红/返工见[协调账本 C2](../verification/2026-10-08-g9-table-export-coordination.md)；P1b 进程监督及最小整窗退出接线已下发并开始，P1c/完整工程/main 验收未完成，产品未合 main。datacube-g9 每 15 分钟继续本会话审查，交付后暂停，旧 datacube 不恢复。Redis 资源预算、G8/M2 外部验收和其他功能各自保留，不混入 G9；原 G1–G8 历史编号不变。
 
 **2026-10-08 最新产品：[XLSX 文本保真](../verification/2026-10-08-xlsx-text-fidelity-review.md)** 已完成源码 ce2a096a、证据 5f176b0b、main 集成 8fb039c 与新复验。控制字符、回车和字面转义外观精确回读，孤立 UTF16 明确拒绝；真实查询结果发布保留旧文件并可重试。新增 142 项测试，分支/main 各定向 286、全量 4303 通过/3 live 跳过、强制 buildSrc 8、jpackageImage/183 文件隔离审计通过；镜像 20 包/40 单元格独立解码及 6 项无效文本拒绝，三产物 SHA 相同。518 份开发原件 Git 字节核验，失败与跳过保留。最终 main 推送/精确 SHA CI 以本轮 delivery-intent 所指回执为准；原生 Excel/桌面、真库、慢磁盘、整表原目标失败保护、安装签名及完整 M8 仍待验，前轮 CI 助手超时根因未知。v3.2.9 与 PAUSED 跟进不变；下方各“最新”为历史。
 
