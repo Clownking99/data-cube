@@ -91,3 +91,27 @@ P0 审查额外关注：Windows 正常 8.3 路径别名不能误判为非法链�
 3. 第二次取消返回 false 后，UI 会把已接受取消的等待状态显示为“正在发布”。应区分既有取消意图和提交已赢，重复取消反馈保持幂等，实际任务返回前不得假报完成。
 
 验证/失败：结论来自当前源码控制流和 API 行为，要求开发补可控回归验证；本会话未运行测试、未接受 GREEN、未合 main。下一步等待修正后的冻结源码和新定向原件，再独立审核。
+
+## C1.4：Windows 身份能力失败后的兼容裁决
+
+开发定向发现本机 JDK25 的普通文件 BasicFileAttributes.fileKey 为 null，初稿对 fileKey 的强制检查误拒绝正常 Windows 文件；开发已保留失败回执及源码。当前只读预审可见改为 `isSameFile` 检查活动目标的硬链接别名，并在缺少 fileKey 时建立同目录独占硬链接见证验证本次临时文件。此项尚待最终原件核验和通过，不能把设计写成实测通过。
+
+协调裁决已成功下发：允许继续最小纯 Java 见证方案，不引入 FFM 文件框架或 Job Object。由于产生额外自有文件，发布后见证清理失败必须如实呈现“文件已发布，但辅助文件清理失败”与残留路径，不能误报未发布，也不能仅记录日志而给 UI 普通成功。授权必要的最小警告接口及查询导出协调器局部接线，保持原取值、格式、会话规则。真实 JDBC/进程尚未停止仍然禁止发布，这一裁决只涉及完成发布后的辅助身份文件残留。
+
+缺少 fileKey 且不支持同目录硬链接是新的文件系统能力限制，需明确失败、保留原目标，资源/实际 writer 尚未启动，已创建 temp 的归属和残留需可见。开发必须补见证创建失败、见证替换/移动、父目录变化与多个残留错误的断言；不能删替换项，或用后一个见证清理异常遮住先前 temp 的残留信息。NTFS 定向不能替代其他文件系统或原生慢盘验收。
+
+下一步：开发修正后再次冻结定向证据，本会话继续审查；P1a 未验收，P1b/G9c 仍未启动。相关 Java API 边界参见 [Files.exists](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Files.html#exists(java.nio.file.Path,java.nio.file.LinkOption...))、[Path.normalize](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Path.html#normalize())。
+
+## C1.5：错误传播与后续整窗关闭审查点
+
+P1a 追加返工已下发：ExportDialog 从 FxTaskScope.submit 改用 runner.submit 并忽略 Future 后，局部 catch(Error) 的 rethrow 会被 Future 捕获，绕过原 ScopedFuture.done 的 fatalErrorHandler。要求在局部执行/结算路径保留一次严重异常报告，完成自有资源结算和固定 UI 反馈；补实际 submit 路径的 Error 用例，不改全局 task runner。
+
+后续 P1b/G9c 审查准备（尚未下发实现）：已核对 AppShell.shutdownRemaining → tasks.close 的全窗退出路径。FxTaskRunner.close 等待约 3 秒后 shutdownNow 并返回，没有证明自有导出进程/专用连接已实际结束；仅在进度窗口 onHidden 请求取消可能晚于主窗的成功退出判定。因此后续设计必须说明导出任务如何接入既有异步整窗关闭结算：在后台请求停止、等待自有物理资源/发布胜负结算；仍 pending 时不能由 runner.close 返回就宣称退出完成。可审查最小 AppShell/导出注册接线，不扩大全局 shutdown 重构，保持现有 SQL 标签、取消关闭及 FAILED_PARTIAL 隔离规则。尚无新运行结论。
+
+## C1.6：持续跟进已建立
+
+为落实维护者要求的持续下发、审核、修正推进，已通过应用工具创建 `datacube-g9`（DataCube G9 审核推进），ACTIVE、每 15 分钟返回当前协调会话；create 返回成功，随后 view 成功。只跟进同一 GPT-6.1-sol 开发线程，不创建额外线程，不自动扩展功能，P3 实际交付后暂停。旧 `datacube` 的 automation.toml 已只读核实为 PAUSED，未更新它。无新变化时保持安静，仅在实质进展、阻断或需维护者决定时通知。
+
+采用 OpenAI Docs 技能核对方式；[官方定时任务说明](https://learn.chatgpt.com/docs/automations?surface=app)确认当前聊天跟进可使用分钟间隔，本地任务需要电脑和应用运行。跟进本身不构成产品通过，不赋予真库、发布、tag 或其他外部新权限。
+
+当前交付给后续协调的状态：P1a 修正进行中，开发最近自报曾有 357/357 定向，但其后源码已修改，又用 362 项中的两例失败复现 UI 隐去清理残留；这些均不充当最终通过。待最终冻结后重新独立核对源码和当次 XML/命令/哈希，不能复用旧绿色。本会话尚未接管 Gradle；先完成 P1a 审核，再下发 P1b，沿计划到 P2/P3。

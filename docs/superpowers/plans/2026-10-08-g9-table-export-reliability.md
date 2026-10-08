@@ -80,4 +80,6 @@ JDK 基线 `D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8`，优先离线复用已有�
 
 ## 当前检查点
 
-P0 / 计划建立：已核对 main 与工作区；维护者已授权新 GPT-6.1-sol 线程实施、当前会话审查验收。计划提交后从更新后的 main 创建独立开发 worktree，记录正式线程 ID、路径与基线，首先下发 P0。G9 尚未实现或通过验收。
+P1a / 实施与独立审查：P0 已审，开发线程为 `01a11b86-2026-7ed3-86c5-1ec232640653`，独立 worktree `C:/Users/hetia/.codex/worktrees/aed5/朝花夕拾`、分支 `codex/g9-table-export-reliability-20261008`、基线 b81923f2。协调会话已独立核对 P0 身份和 4 项真实首红，并对 P1a 初稿下发路径、清理、重复取消、Windows 身份见证反馈及 fatal Error 传播修正。详见[协调验收账本](../verification/2026-10-08-g9-table-export-coordination.md)。开发尚未冻结最终 P1a；G9b/G9c 和完整工程/main 复验仍未启动，G9 不称完成。
+
+为落实持续下发和验收，新增当前会话的 `datacube-g9` 跟进，每 15 分钟检查同一开发线程并在有结果时继续审查；无实质变化保持安静，P3 实际交付后暂停，不自动启动下一目标。旧 `datacube` 仍为 PAUSED。本地跟进依赖电脑和应用运行，不替代任何工程或外部验收。
