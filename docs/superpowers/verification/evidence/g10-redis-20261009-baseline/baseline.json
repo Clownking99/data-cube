@@ -1,0 +1,48 @@
+{
+  "head": "b6622c95d5efc0b240dc7ae4b788f44542c87b5a",
+  "utc": "2026-10-08T23:44:15.647774+00:00",
+  "owned": "D:\\Projects\\朝花夕拾\\build\\owned-g10-baseline-7e8641d86fa04681bab5b33dd199b341",
+  "inputs": [
+    {
+      "path": "src/com/datacube/redis/RespCodec.java",
+      "bytes": 4263,
+      "sha256": "17BD31B075F13B577BC4B7C5D18007866003454B6B735E1519EE8D0BCBD72329"
+    },
+    {
+      "path": "src/com/datacube/redis/RedisException.java",
+      "bytes": 346,
+      "sha256": "565994901284CC0CA46083EF848D49164554409DD2C3423AD032E0BE2D5E52E7"
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g10-redis-20261009-baseline/RedisBudgetBaselineProbe.java",
+      "bytes": 1540,
+      "sha256": "2F53E04F0E6B1D90B1EAA9949B2531845F864E692A9167637E0B48A95513DC4D"
+    }
+  ],
+  "results": [
+    {
+      "case": "array-header",
+      "outcome": "OutOfMemoryError",
+      "networkCalls": 0,
+      "heapMiB": 32,
+      "stackKiB": 256
+    },
+    {
+      "case": "deep-array",
+      "outcome": "StackOverflowError",
+      "networkCalls": 0,
+      "heapMiB": 32,
+      "stackKiB": 256
+    },
+    {
+      "case": "long-line",
+      "outcome": "accepted-100000-bytes",
+      "networkCalls": 0,
+      "heapMiB": 32,
+      "stackKiB": 256
+    }
+  ],
+  "productChanged": false,
+  "newBaselineOnly": true,
+  "note": "Expected unsafe baseline observed; these are not passing G10 acceptance tests"
+}

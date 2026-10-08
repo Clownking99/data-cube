@@ -1,0 +1,488 @@
+﻿2026-10-08T18:56:47.6026772Z Current runner version: '2.337.0'
+2026-10-08T18:56:47.6041564Z ##[group]Runner Image Provisioner
+2026-10-08T18:56:47.6042053Z Hosted Compute Agent
+2026-10-08T18:56:47.6042445Z Version: 20261002.596
+2026-10-08T18:56:47.6042812Z Commit: c3d12f3313a95f25162a1503be624f3b0617f8c0
+2026-10-08T18:56:47.6043491Z Build Date: 2026-10-02T22:28:27Z
+2026-10-08T18:56:47.6043907Z Worker ID: {8154044f-e6ad-4bd9-a97b-9227bc48e4e7}
+2026-10-08T18:56:47.6044294Z Region: southcentralus
+2026-10-08T18:56:47.6044673Z Cloud: Azure
+2026-10-08T18:56:47.6044983Z ##[endgroup]
+2026-10-08T18:56:47.6045707Z ##[group]Operating System
+2026-10-08T18:56:47.6046092Z Ubuntu
+2026-10-08T18:56:47.6046395Z 24.04.5
+2026-10-08T18:56:47.6046744Z LTS
+2026-10-08T18:56:47.6047055Z ##[endgroup]
+2026-10-08T18:56:47.6047419Z ##[group]Runner Image
+2026-10-08T18:56:47.6047794Z Image: ubuntu-24.04
+2026-10-08T18:56:47.6048120Z Version: 20261004.327.1
+2026-10-08T18:56:47.6048857Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261004.327/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-08T18:56:47.6049851Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261004.327
+2026-10-08T18:56:47.6050432Z ##[endgroup]
+2026-10-08T18:56:47.6051041Z ##[group]GITHUB_TOKEN Permissions
+2026-10-08T18:56:47.6052324Z Contents: read
+2026-10-08T18:56:47.6052653Z Metadata: read
+2026-10-08T18:56:47.6053048Z ##[endgroup]
+2026-10-08T18:56:47.6054237Z Secret source: Actions
+2026-10-08T18:56:47.6054815Z Cache mode: write
+2026-10-08T18:56:47.6055207Z Prepare workflow directory
+2026-10-08T18:56:47.6242308Z Prepare all required actions
+2026-10-08T18:56:47.6274625Z Getting action download info
+2026-10-08T18:56:47.8514813Z Download action repository 'actions/checkout@v6' (SHA:d23441a48e516b6c34aea4fa41551a30e30af803)
+2026-10-08T18:56:47.9455231Z Download action repository 'actions/setup-java@v5' (SHA:b6effb05e454b25005698d916606bdc6ffcbf961)
+2026-10-08T18:56:48.7729813Z Download action repository 'gradle/actions@v6' (SHA:3f5f9adaf7d9fecd50b5935e54106014257a94e6)
+2026-10-08T18:56:50.7390618Z Complete job name: Test (ubuntu-latest)
+2026-10-08T18:56:50.8229750Z ##[group]Run actions/checkout@v6
+2026-10-08T18:56:50.8230095Z with:
+2026-10-08T18:56:50.8230244Z   repository: Clownking99/data-cube
+2026-10-08T18:56:50.8231626Z   token: ***
+2026-10-08T18:56:50.8231765Z   ssh-strict: true
+2026-10-08T18:56:50.8231904Z   ssh-user: git
+2026-10-08T18:56:50.8232047Z   persist-credentials: true
+2026-10-08T18:56:50.8232202Z   clean: true
+2026-10-08T18:56:50.8232352Z   sparse-checkout-cone-mode: true
+2026-10-08T18:56:50.8232519Z   fetch-depth: 1
+2026-10-08T18:56:50.8232656Z   fetch-tags: false
+2026-10-08T18:56:50.8232800Z   show-progress: true
+2026-10-08T18:56:50.8232940Z   lfs: false
+2026-10-08T18:56:50.8233074Z   submodules: false
+2026-10-08T18:56:50.8233214Z   set-safe-directory: true
+2026-10-08T18:56:50.8233372Z   allow-unsafe-pr-checkout: false
+2026-10-08T18:56:50.8233608Z ##[endgroup]
+2026-10-08T18:56:50.8828528Z Syncing repository: Clownking99/data-cube
+2026-10-08T18:56:50.8829783Z ##[group]Getting Git version info
+2026-10-08T18:56:50.8830180Z Working directory is '/home/runner/work/data-cube/data-cube'
+2026-10-08T18:56:50.8830723Z [command]/usr/bin/git version
+2026-10-08T18:56:50.9343662Z git version 2.55.0
+2026-10-08T18:56:50.9356253Z ##[endgroup]
+2026-10-08T18:56:50.9367305Z Temporarily overriding HOME='/home/runner/work/_temp/8c783ab7-1b5d-488c-8895-1a3d67efb9da' before making global git config changes
+2026-10-08T18:56:50.9368001Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-08T18:56:50.9371603Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/data-cube/data-cube
+2026-10-08T18:56:50.9413587Z Deleting the contents of '/home/runner/work/data-cube/data-cube'
+2026-10-08T18:56:50.9416272Z ##[group]Determining repository object format
+2026-10-08T18:56:50.9417891Z ##[endgroup]
+2026-10-08T18:56:50.9418267Z ##[group]Initializing the repository
+2026-10-08T18:56:50.9421427Z [command]/usr/bin/git init /home/runner/work/data-cube/data-cube
+2026-10-08T18:56:50.9584238Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-08T18:56:50.9584797Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-08T18:56:50.9585245Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-08T18:56:50.9585593Z hint: call:
+2026-10-08T18:56:50.9585784Z hint:
+2026-10-08T18:56:50.9586055Z hint: 	git config --global init.defaultBranch <name>
+2026-10-08T18:56:50.9586359Z hint:
+2026-10-08T18:56:50.9586589Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-08T18:56:50.9586872Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-08T18:56:50.9587095Z hint:
+2026-10-08T18:56:50.9587232Z hint: 	git branch -m <name>
+2026-10-08T18:56:50.9587494Z hint:
+2026-10-08T18:56:50.9587797Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-08T18:56:50.9591505Z Initialized empty Git repository in /home/runner/work/data-cube/data-cube/.git/
+2026-10-08T18:56:50.9596890Z [command]/usr/bin/git remote add origin https://github.com/Clownking99/data-cube
+2026-10-08T18:56:50.9683431Z ##[endgroup]
+2026-10-08T18:56:50.9683819Z ##[group]Disabling automatic garbage collection
+2026-10-08T18:56:50.9684152Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-08T18:56:50.9708915Z ##[endgroup]
+2026-10-08T18:56:50.9709542Z ##[group]Setting up auth
+2026-10-08T18:56:50.9709833Z Removing SSH command configuration
+2026-10-08T18:56:50.9713442Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-08T18:56:50.9737830Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-08T18:56:51.0183407Z Removing HTTP extra header
+2026-10-08T18:56:51.0191476Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-08T18:56:51.0211156Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-08T18:56:51.0370146Z Removing includeIf entries pointing to credentials config files
+2026-10-08T18:56:51.0373984Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-08T18:56:51.0400530Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-08T18:56:51.0562648Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-08T18:56:51.0789041Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/data-cube/data-cube/.git.path /home/runner/work/_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:56:51.1289395Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/data-cube/data-cube/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:56:51.2087904Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:56:51.2184658Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:56:51.2280970Z ##[endgroup]
+2026-10-08T18:56:51.2281416Z ##[group]Fetching the repository
+2026-10-08T18:56:51.2284433Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +b6622c95d5efc0b240dc7ae4b788f44542c87b5a:refs/remotes/origin/main
+2026-10-08T18:57:04.2637974Z From https://github.com/Clownking99/data-cube
+2026-10-08T18:57:04.2638633Z  * [new ref]           b6622c95d5efc0b240dc7ae4b788f44542c87b5a -> origin/main
+2026-10-08T18:57:04.2648068Z [command]/usr/bin/git branch --list --remote origin/main
+2026-10-08T18:57:04.2672774Z   origin/main
+2026-10-08T18:57:04.2678814Z [command]/usr/bin/git rev-parse refs/remotes/origin/main
+2026-10-08T18:57:04.2698807Z b6622c95d5efc0b240dc7ae4b788f44542c87b5a
+2026-10-08T18:57:04.2701961Z ##[endgroup]
+2026-10-08T18:57:04.2702321Z ##[group]Determining the checkout info
+2026-10-08T18:57:04.2702818Z ##[endgroup]
+2026-10-08T18:57:04.2706173Z [command]/usr/bin/git sparse-checkout disable
+2026-10-08T18:57:04.2747988Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-08T18:57:04.2769952Z ##[group]Checking out the ref
+2026-10-08T18:57:04.2772085Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-10-08T18:57:05.2985447Z Updating files:  78% (21449/27301)
+2026-10-08T18:57:05.3118103Z Updating files:  79% (21568/27301)
+2026-10-08T18:57:05.3302531Z Updating files:  80% (21841/27301)
+2026-10-08T18:57:05.3454143Z Updating files:  81% (22114/27301)
+2026-10-08T18:57:05.3633603Z Updating files:  82% (22387/27301)
+2026-10-08T18:57:05.3754878Z Updating files:  83% (22660/27301)
+2026-10-08T18:57:05.3890962Z Updating files:  84% (22933/27301)
+2026-10-08T18:57:05.4062809Z Updating files:  85% (23206/27301)
+2026-10-08T18:57:05.4226104Z Updating files:  86% (23479/27301)
+2026-10-08T18:57:05.4410184Z Updating files:  87% (23752/27301)
+2026-10-08T18:57:05.4507933Z Updating files:  88% (24025/27301)
+2026-10-08T18:57:05.4631356Z Updating files:  89% (24298/27301)
+2026-10-08T18:57:05.4756885Z Updating files:  90% (24571/27301)
+2026-10-08T18:57:05.4872073Z Updating files:  91% (24844/27301)
+2026-10-08T18:57:05.4979878Z Updating files:  92% (25117/27301)
+2026-10-08T18:57:05.5079175Z Updating files:  93% (25390/27301)
+2026-10-08T18:57:05.5198711Z Updating files:  94% (25663/27301)
+2026-10-08T18:57:05.5330316Z Updating files:  95% (25936/27301)
+2026-10-08T18:57:06.0128451Z Updating files:  96% (26209/27301)
+2026-10-08T18:57:06.0270801Z Updating files:  97% (26482/27301)
+2026-10-08T18:57:06.0386797Z Updating files:  98% (26755/27301)
+2026-10-08T18:57:06.0553567Z Updating files:  99% (27028/27301)
+2026-10-08T18:57:06.0553820Z Updating files: 100% (27301/27301)
+2026-10-08T18:57:06.0554046Z Updating files: 100% (27301/27301), done.
+2026-10-08T18:57:06.0917923Z Switched to a new branch 'main'
+2026-10-08T18:57:06.0932884Z branch 'main' set up to track 'origin/main'.
+2026-10-08T18:57:06.1011913Z ##[endgroup]
+2026-10-08T18:57:06.1059960Z [command]/usr/bin/git log -1 --format=%H
+2026-10-08T18:57:06.1073885Z b6622c95d5efc0b240dc7ae4b788f44542c87b5a
+2026-10-08T18:57:06.1343271Z ##[group]Run actions/setup-java@v5
+2026-10-08T18:57:06.1343413Z with:
+2026-10-08T18:57:06.1343522Z   distribution: temurin
+2026-10-08T18:57:06.1343639Z   java-version: 25
+2026-10-08T18:57:06.1343753Z   java-package: jdk
+2026-10-08T18:57:06.1343863Z   check-latest: false
+2026-10-08T18:57:06.1343983Z   set-default: true
+2026-10-08T18:57:06.1344095Z   verify-signature: false
+2026-10-08T18:57:06.1344215Z   server-id: github
+2026-10-08T18:57:06.1344330Z   server-username: GITHUB_ACTOR
+2026-10-08T18:57:06.1344466Z   server-password: GITHUB_TOKEN
+2026-10-08T18:57:06.1344601Z   overwrite-settings: true
+2026-10-08T18:57:06.1344723Z   job-status: success
+2026-10-08T18:57:06.1345983Z   token: ***
+2026-10-08T18:57:06.1346100Z   show-download-progress: false
+2026-10-08T18:57:06.1346232Z ##[endgroup]
+2026-10-08T18:57:06.2242789Z ##[group]Installed distributions
+2026-10-08T18:57:06.2281141Z Resolved Java 25.0.4+1 from tool-cache
+2026-10-08T18:57:06.2281399Z Setting Java 25.0.4+1 as the default
+2026-10-08T18:57:06.2288031Z Creating toolchains.xml for JDK version 25 from temurin
+2026-10-08T18:57:06.2327859Z Writing to /home/runner/.m2/toolchains.xml
+2026-10-08T18:57:06.2328145Z 
+2026-10-08T18:57:06.2328317Z Java configuration:
+2026-10-08T18:57:06.2328511Z   Distribution: temurin
+2026-10-08T18:57:06.2328908Z   Version: 25.0.4+1
+2026-10-08T18:57:06.2329174Z   Path: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25.0.4-1/x64
+2026-10-08T18:57:06.2329564Z 
+2026-10-08T18:57:06.2329826Z ##[endgroup]
+2026-10-08T18:57:06.2356789Z Creating settings.xml with server-id: github
+2026-10-08T18:57:06.2357084Z Writing to /home/runner/.m2/settings.xml
+2026-10-08T18:57:06.2357655Z Configured MAVEN_ARGS to include -ntp to suppress Maven transfer progress logs. Set 'show-download-progress: true' to keep the download progress output.
+2026-10-08T18:57:06.2565293Z ##[group]Run gradle/actions/setup-gradle@v6
+2026-10-08T18:57:06.2565456Z with:
+2026-10-08T18:57:06.2565569Z   cache-provider: enhanced
+2026-10-08T18:57:06.2565696Z   cache-disabled: false
+2026-10-08T18:57:06.2565818Z   cache-read-only: false
+2026-10-08T18:57:06.2565944Z   cache-write-only: false
+2026-10-08T18:57:06.2566079Z   cache-overwrite-existing: false
+2026-10-08T18:57:06.2566223Z   cache-cleanup: on-success
+2026-10-08T18:57:06.2566377Z   gradle-home-cache-includes: caches
+notifications
+
+2026-10-08T18:57:06.2566557Z   add-job-summary: always
+2026-10-08T18:57:06.2566693Z   add-job-summary-as-pr-comment: never
+2026-10-08T18:57:06.2566847Z   dependency-graph: disabled
+2026-10-08T18:57:06.2567017Z   dependency-graph-report-dir: dependency-graph-reports
+2026-10-08T18:57:06.2567212Z   dependency-graph-continue-on-failure: true
+2026-10-08T18:57:06.2567375Z   build-scan-publish: false
+2026-10-08T18:57:06.2567509Z   validate-wrappers: true
+2026-10-08T18:57:06.2567681Z   allow-snapshot-wrappers: false
+2026-10-08T18:57:06.2567830Z   gradle-home-cache-strict-match: false
+2026-10-08T18:57:06.2568036Z   workflow-job-context: {
+  "os": "ubuntu-latest",
+  "gradle": "./gradlew"
+}
+2026-10-08T18:57:06.2569614Z   github-token: ***
+2026-10-08T18:57:06.2569723Z env:
+2026-10-08T18:57:06.2569879Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25.0.4-1/x64
+2026-10-08T18:57:06.2570130Z   JAVA_HOME_25_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25.0.4-1/x64
+2026-10-08T18:57:06.2570341Z   MAVEN_ARGS: -ntp
+2026-10-08T18:57:06.2570453Z ##[endgroup]
+2026-10-08T18:57:07.9231411Z Merged default JDK locations into /home/runner/.m2/toolchains.xml
+2026-10-08T18:57:07.9234579Z Enhanced Caching: This build is using the proprietary 'gradle-actions-caching' provider for optimized caching support. See https://github.com/gradle/actions/blob/main/DISTRIBUTION.md for terms of use and opt-out instructions.
+2026-10-08T18:57:07.9718009Z ##[group]Restore Gradle state from cache
+2026-10-08T18:57:08.1338167Z Cache hit for restore-key: gradle-home-v2|Linux-X64|test[132029f8ce19c67e495fde5357b90696]-f634f7f4b5ec95d91ce9d8ed544c2b8920963b85
+2026-10-08T18:57:08.7662342Z Received 7226859 of 7226859 (100.0%), 13.9 MBs/sec
+2026-10-08T18:57:08.7664037Z Cache Size: ~7 MB (7226859 B)
+2026-10-08T18:57:08.7763084Z [command]/usr/bin/tar -xf /home/runner/work/_temp/3e24184b-f673-4412-b9aa-f05e0fa8b99c/cache.tzst -P -C /home/runner/work/data-cube/data-cube --use-compress-program unzstd
+2026-10-08T18:57:08.8171530Z Cache restored successfully
+2026-10-08T18:57:08.8177053Z Restored cache entry with key gradle-home-v2|Linux-X64|test[132029f8ce19c67e495fde5357b90696]-b6622c95d5efc0b240dc7ae4b788f44542c87b5a in 845ms
+2026-10-08T18:57:08.9755411Z Cache hit for: gradle-instrumented-jars-v2-19e07cc0856aa9893bc45bafdd0cf920
+2026-10-08T18:57:08.9790287Z Cache hit for: gradle-wrapper-zips-v2-889283e8efdc35d60983ea39dc2829d0
+2026-10-08T18:57:08.9809798Z Cache hit for: gradle-groovy-dsl-v2-80fe258ed8ea10562bf5aee065381b4c
+2026-10-08T18:57:08.9980516Z Cache hit for: gradle-dependencies-v2-4586703575ddccc964bb7e76ac23708f
+2026-10-08T18:57:08.9993919Z Cache hit for: gradle-generated-gradle-jars-v2-6a07800ae0d4914b0ad73d4d6010da28
+2026-10-08T18:57:09.0074830Z Cache hit for: gradle-transforms-v2-c1238e9e894cbf0f573989bed3e0e410
+2026-10-08T18:57:09.3006343Z Received 80650 of 80650 (100.0%), 0.4 MBs/sec
+2026-10-08T18:57:09.3006622Z Cache Size: ~0 MB (80650 B)
+2026-10-08T18:57:09.3019377Z [command]/usr/bin/tar -xf /home/runner/work/_temp/a6f06c06-f99a-4e5a-bda0-9c8e7234e87b/cache.tzst -P -C /home/runner/work/data-cube/data-cube --use-compress-program unzstd
+2026-10-08T18:57:09.3104246Z Cache restored successfully
+2026-10-08T18:57:09.3107377Z Restored cache entry with key gradle-instrumented-jars-v2-19e07cc0856aa9893bc45bafdd0cf920 in 492ms
+2026-10-08T18:57:09.3285521Z Received 124449 of 124449 (100.0%), 0.6 MBs/sec
+2026-10-08T18:57:09.3285829Z Cache Size: ~0 MB (124449 B)
+2026-10-08T18:57:09.3296250Z [command]/usr/bin/tar -xf /home/runner/work/_temp/cfecfb7d-c478-4cd1-854f-7a5b49fc6641/cache.tzst -P -C /home/runner/work/data-cube/data-cube --use-compress-program unzstd
+2026-10-08T18:57:09.3414516Z Cache restored successfully
+2026-10-08T18:57:09.3416450Z Restored cache entry with key gradle-groovy-dsl-v2-80fe258ed8ea10562bf5aee065381b4c in 523ms
+2026-10-08T18:57:09.5102697Z Received 457091 of 457091 (100.0%), 1.2 MBs/sec
+2026-10-08T18:57:09.5103148Z Cache Size: ~0 MB (457091 B)
+2026-10-08T18:57:09.5223733Z [command]/usr/bin/tar -xf /home/runner/work/_temp/266722a8-7c12-4042-9087-568edc38f1d1/cache.tzst -P -C /home/runner/work/data-cube/data-cube --use-compress-program unzstd
+2026-10-08T18:57:09.5441614Z Cache restored successfully
+2026-10-08T18:57:09.5442488Z Restored cache entry with key gradle-transforms-v2-c1238e9e894cbf0f573989bed3e0e410 in 725ms
+2026-10-08T18:57:10.0730545Z Received 10752204 of 10752204 (100.0%), 18.8 MBs/sec
+2026-10-08T18:57:10.0730915Z Cache Size: ~10 MB (10752204 B)
+2026-10-08T18:57:10.0854748Z [command]/usr/bin/tar -xf /home/runner/work/_temp/e9dde191-4f20-47f0-95b8-a28be22c57b3/cache.tzst -P -C /home/runner/work/data-cube/data-cube --use-compress-program unzstd
+2026-10-08T18:57:10.1130515Z Cache restored successfully
+2026-10-08T18:57:10.1135070Z Received 79691776 of 134888512 (59.1%), 76.0 MBs/sec
+2026-10-08T18:57:10.1135567Z Restored cache entry with key gradle-dependencies-v2-4586703575ddccc964bb7e76ac23708f in 1291ms
+2026-10-08T18:57:10.1387957Z Received 29360128 of 41615178 (70.6%), 28.0 MBs/sec
+2026-10-08T18:57:10.5186186Z Received 41615178 of 41615178 (100.0%), 28.8 MBs/sec
+2026-10-08T18:57:10.5220121Z Cache Size: ~40 MB (41615178 B)
+2026-10-08T18:57:10.5285550Z [command]/usr/bin/tar -xf /home/runner/work/_temp/e66a0e92-6924-4df0-8760-74b30036b05b/cache.tzst -P -C /home/runner/work/data-cube/data-cube --use-compress-program unzstd
+2026-10-08T18:57:10.6734389Z Received 134888512 of 134888512 (100.0%), 82.1 MBs/sec
+2026-10-08T18:57:10.6735257Z Cache Size: ~129 MB (134888512 B)
+2026-10-08T18:57:10.6763052Z [command]/usr/bin/tar -xf /home/runner/work/_temp/f2220da6-5004-48e3-b134-4cbadb852934/cache.tzst -P -C /home/runner/work/data-cube/data-cube --use-compress-program unzstd
+2026-10-08T18:57:10.6998798Z Cache restored successfully
+2026-10-08T18:57:10.7018383Z Restored cache entry with key gradle-generated-gradle-jars-v2-6a07800ae0d4914b0ad73d4d6010da28 in 1883ms
+2026-10-08T18:57:10.8162450Z Cache restored successfully
+2026-10-08T18:57:10.8213477Z Restored cache entry with key gradle-wrapper-zips-v2-889283e8efdc35d60983ea39dc2829d0 in 2003ms
+2026-10-08T18:57:10.8384372Z ##[endgroup]
+2026-10-08T18:57:11.0414014Z ##[group]All Gradle Wrapper jars are valid
+2026-10-08T18:57:11.0414764Z ✓ Found known Gradle Wrapper JAR files:
+2026-10-08T18:57:11.0415276Z   423cb469ccc0ecc31f0e4e1c309976198ccb734cdcbb7029d4bda0f18f57e8d9 docs/superpowers/verification/evidence/g9-p2-20261008-worker/input-snapshot/gradle/wrapper/gradle-wrapper.jar
+2026-10-08T18:57:11.0415853Z   423cb469ccc0ecc31f0e4e1c309976198ccb734cdcbb7029d4bda0f18f57e8d9 gradle/wrapper/gradle-wrapper.jar
+2026-10-08T18:57:11.0416226Z ##[endgroup]
+2026-10-08T18:57:11.0902808Z ##[group]Run ./gradlew clean :buildSrc:test test --no-daemon --console=plain
+2026-10-08T18:57:11.0903209Z [36;1m./gradlew clean :buildSrc:test test --no-daemon --console=plain[0m
+2026-10-08T18:57:11.1296215Z shell: /usr/bin/bash -e {0}
+2026-10-08T18:57:11.1296388Z env:
+2026-10-08T18:57:11.1296587Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25.0.4-1/x64
+2026-10-08T18:57:11.1297036Z   JAVA_HOME_25_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25.0.4-1/x64
+2026-10-08T18:57:11.1297260Z   MAVEN_ARGS: -ntp
+2026-10-08T18:57:11.1297424Z   GRADLE_ACTION_ID: gradle/actions/setup-gradle
+2026-10-08T18:57:11.1297617Z   GRADLE_USER_HOME: /home/runner/.gradle
+2026-10-08T18:57:11.1297801Z   GRADLE_BUILD_ACTION_SETUP_COMPLETED: true
+2026-10-08T18:57:11.1298066Z   DEVELOCITY_INJECTION_INIT_SCRIPT_NAME: gradle-actions.inject-develocity.init.gradle
+2026-10-08T18:57:11.1298342Z   DEVELOCITY_INJECTION_CUSTOM_VALUE: gradle-actions
+2026-10-08T18:57:11.1298580Z   GITHUB_DEPENDENCY_GRAPH_ENABLED: false
+2026-10-08T18:57:11.1298751Z ##[endgroup]
+2026-10-08T18:57:12.5900827Z To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+2026-10-08T18:57:13.7897554Z Daemon will be stopped at the end of the build 
+2026-10-08T18:57:17.9942736Z > Task :buildSrc:compileJava
+2026-10-08T18:57:18.0000024Z > Task :buildSrc:compileGroovy NO-SOURCE
+2026-10-08T18:57:18.0009949Z > Task :buildSrc:processResources NO-SOURCE
+2026-10-08T18:57:18.0010454Z > Task :buildSrc:classes
+2026-10-08T18:57:18.0010831Z > Task :buildSrc:jar
+2026-10-08T18:57:22.6904325Z > Task :clean UP-TO-DATE
+2026-10-08T18:57:23.0900089Z > Task :buildSrc:compileTestJava
+2026-10-08T18:57:23.0904548Z > Task :buildSrc:compileTestGroovy NO-SOURCE
+2026-10-08T18:57:23.0950022Z > Task :buildSrc:processTestResources NO-SOURCE
+2026-10-08T18:57:23.0951383Z > Task :buildSrc:testClasses
+2026-10-08T18:57:26.4897990Z > Task :buildSrc:test
+2026-10-08T18:57:28.3898083Z > Task :compileJava
+2026-10-08T18:57:28.7897842Z > Task :generateBrandIcons
+2026-10-08T18:57:28.7898417Z > Task :generateVersionProperties
+2026-10-08T18:57:28.7898896Z > Task :processResources
+2026-10-08T18:57:28.7899613Z > Task :classes
+2026-10-08T18:57:34.4907311Z Note: Some input files use unchecked or unsafe operations.
+2026-10-08T18:57:34.4907641Z Note: Recompile with -Xlint:unchecked for details.
+2026-10-08T18:57:34.4921239Z 
+2026-10-08T18:57:34.4929827Z > Task :compileTestJava
+2026-10-08T18:57:34.6896666Z 
+2026-10-08T18:57:34.6899543Z > Task :processTestResources NO-SOURCE
+2026-10-08T18:57:34.6899909Z > Task :testClasses
+2026-10-08T18:57:57.2897704Z > Task :test
+2026-10-08T18:57:57.3722866Z gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1791485835335.json
+2026-10-08T18:57:57.3734621Z 
+2026-10-08T18:57:57.3735349Z [Incubating] Problems report is available at: file:///home/runner/work/data-cube/data-cube/build/reports/problems/problems-report.html
+2026-10-08T18:57:57.3736188Z 
+2026-10-08T18:57:57.3737087Z BUILD SUCCESSFUL in 46s
+2026-10-08T18:57:57.3737530Z 11 actionable tasks: 10 executed, 1 up-to-date
+2026-10-08T18:57:57.3748791Z Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.2.0/userguide/configuration_cache_enabling.html
+2026-10-08T18:57:57.4837642Z Post job cleanup.
+2026-10-08T18:57:57.6392103Z In post-action step
+2026-10-08T18:57:57.6397214Z Enhanced Caching: This build is using the proprietary 'gradle-actions-caching' provider for optimized caching support. See https://github.com/gradle/actions/blob/main/DISTRIBUTION.md for terms of use and opt-out instructions.
+2026-10-08T18:57:57.6872416Z ##[group]Stopping Gradle daemons
+2026-10-08T18:57:57.6873459Z Stopping Gradle daemons for /home/runner/.gradle/wrapper/dists/gradle-9.2.0-bin/11i5gvueggl8a5cioxuftxrik/gradle-9.2.0
+2026-10-08T18:57:57.6887714Z [command]/home/runner/.gradle/wrapper/dists/gradle-9.2.0-bin/11i5gvueggl8a5cioxuftxrik/gradle-9.2.0/bin/gradle --stop
+2026-10-08T18:57:58.0938883Z No Gradle daemons are running.
+2026-10-08T18:57:58.1008461Z ##[endgroup]
+2026-10-08T18:57:58.1008995Z ##[group]Performing cache cleanup
+2026-10-08T18:57:58.1839959Z Removed 17 files excluded from the cache (e.g. locks)
+2026-10-08T18:57:58.1840522Z Removing Gradle User Home content that was not used during the build
+2026-10-08T18:57:58.2009675Z Active Gradle versions: 9.2.0
+2026-10-08T18:57:58.2016714Z ##[endgroup]
+2026-10-08T18:57:58.2017090Z ##[group]Caching Gradle state
+2026-10-08T18:57:58.3707636Z [command]/usr/bin/tar --posix -cf cache.tzst --exclude cache.tzst -P -C /home/runner/work/data-cube/data-cube --files-from manifest.txt --use-compress-program zstdmt
+2026-10-08T18:57:59.0471193Z Sent 7226779 of 7226779 (100.0%), 14.4 MBs/sec
+2026-10-08T18:57:59.2348915Z Saved cache entry with key gradle-home-v2|Linux-X64|test[132029f8ce19c67e495fde5357b90696]-b6622c95d5efc0b240dc7ae4b788f44542c87b5a from /home/runner/.gradle/caches,/home/runner/.gradle/notifications,/home/runner/.gradle/.setup-gradle in 872ms
+2026-10-08T18:57:59.2350183Z ##[endgroup]
+2026-10-08T18:57:59.2352592Z ##[group]Generating Job Summary
+2026-10-08T18:57:59.2356950Z 
+2026-10-08T18:57:59.2357069Z 
+2026-10-08T18:57:59.2357270Z <table>
+2026-10-08T18:57:59.2357656Z     <tr>
+2026-10-08T18:57:59.2357998Z         <th>Gradle Root Project</th>
+2026-10-08T18:57:59.2358330Z         <th>Requested Tasks</th>
+2026-10-08T18:57:59.2358634Z         <th>Gradle Version</th>
+2026-10-08T18:57:59.2358993Z         <th>Build Outcome</th>
+2026-10-08T18:57:59.2369008Z         <th>Build&nbsp;Scan®</th>
+2026-10-08T18:57:59.2369392Z     </tr>
+2026-10-08T18:57:59.2369559Z     <tr>
+2026-10-08T18:57:59.2369689Z         <td>DataCube</td>
+2026-10-08T18:57:59.2369953Z         <td>clean :buildSrc:test test</td>
+2026-10-08T18:57:59.2370266Z         <td align='center'>9.2.0 :information_source:</td>
+2026-10-08T18:57:59.2370587Z         <td align='center'>:white_check_mark:</td>
+2026-10-08T18:57:59.2371249Z         <td><a href="https://scans.gradle.com" rel="nofollow" target="_blank"><img src="https://img.shields.io/badge/Not%20published-lightgrey" alt="Build Scan not published" /></a></td>
+2026-10-08T18:57:59.2371651Z     </tr>
+2026-10-08T18:57:59.2371773Z </table>
+2026-10-08T18:57:59.2371843Z 
+2026-10-08T18:57:59.2372303Z <p>:information_source: Gradle version is out of date — consider upgrading. See <a href="https://docs.gradle.org/current/userguide/feature_lifecycle.html#eol_support">Gradle release lifecycle</a></p>
+2026-10-08T18:57:59.2372677Z 
+2026-10-08T18:57:59.2372769Z ============================
+2026-10-08T18:57:59.2372988Z <h4>Gradle State Caching - ⚡ Enhanced</h4>
+2026-10-08T18:57:59.2373107Z 
+2026-10-08T18:57:59.2373631Z **[Enhanced Caching](https://github.com/gradle/actions/blob/main/docs/setup-gradle.md#enhanced-caching)** uses the proprietary `gradle-actions-caching` provider. See [DISTRIBUTION.md](https://github.com/gradle/actions/blob/main/DISTRIBUTION.md) for terms of use and opt-out instructions.
+2026-10-08T18:57:59.2374176Z 
+2026-10-08T18:57:59.2374233Z <details>
+2026-10-08T18:57:59.2374448Z <summary>Entries: 7 restored (186Mb), 1 saved (7Mb) - Expand for more details</summary>
+2026-10-08T18:57:59.2374639Z 
+2026-10-08T18:57:59.2375274Z [Cache was enabled](https://github.com/gradle/actions/blob/main/docs/setup-gradle.md#caching-build-state-between-jobs) — Gradle User Home was restored from the cache and saved for use by subsequent jobs.
+2026-10-08T18:57:59.2375659Z 
+2026-10-08T18:57:59.2375942Z [Cache cleanup](https://github.com/gradle/actions/blob/main/docs/setup-gradle.md#configuring-cache-cleanup) purged stale files from Gradle User Home before saving.
+2026-10-08T18:57:59.2376260Z 
+2026-10-08T18:57:59.2376314Z <table>
+2026-10-08T18:57:59.2376505Z     <tr><td></td><th>Count</th><th>Total Size (Mb)</th><th>Total Time (ms)</th></tr>
+2026-10-08T18:57:59.2376732Z     <tr><td>Entries Restored</td>
+2026-10-08T18:57:59.2376899Z         <td>7</td>
+2026-10-08T18:57:59.2377033Z         <td>186</td>
+2026-10-08T18:57:59.2377169Z         <td>7762</td>
+2026-10-08T18:57:59.2377301Z     </tr>
+2026-10-08T18:57:59.2377428Z     <tr><td>Entries Saved</td>
+2026-10-08T18:57:59.2377580Z         <td>1</td>
+2026-10-08T18:57:59.2377707Z         <td>7</td>
+2026-10-08T18:57:59.2377833Z         <td>872</td>
+2026-10-08T18:57:59.2377963Z     </tr>
+2026-10-08T18:57:59.2378088Z </table>
+2026-10-08T18:57:59.2378264Z 
+2026-10-08T18:57:59.2378318Z <pre>
+2026-10-08T18:57:59.2378446Z Entry: Gradle User Home
+2026-10-08T18:57:59.2378741Z     Requested Key : gradle-home-v2|Linux-X64|test[132029f8ce19c67e495fde5357b90696]-b6622c95d5efc0b240dc7ae4b788f44542c87b5a
+2026-10-08T18:57:59.2379186Z     Restored  Key : gradle-home-v2|Linux-X64|test[132029f8ce19c67e495fde5357b90696]-f634f7f4b5ec95d91ce9d8ed544c2b8920963b85
+2026-10-08T18:57:59.2379885Z               Size: 7 MB (7226859 B)
+2026-10-08T18:57:59.2380139Z               Time: 845 ms
+2026-10-08T18:57:59.2380405Z               (Entry restored: partial match found)
+2026-10-08T18:57:59.2380723Z     Saved     Key : gradle-home-v2|Linux-X64|test[132029f8ce19c67e495fde5357b90696]-b6622c95d5efc0b240dc7ae4b788f44542c87b5a
+2026-10-08T18:57:59.2381060Z               Size: 7 MB (7226779 B)
+2026-10-08T18:57:59.2381238Z               Time: 872 ms
+2026-10-08T18:57:59.2381416Z               (Entry saved)
+2026-10-08T18:57:59.2381584Z ---
+2026-10-08T18:57:59.2381771Z Entry: caches/9.2.0/generated-gradle-jars/gradle-api-9.2.0.jar
+2026-10-08T18:57:59.2382102Z     Requested Key : gradle-generated-gradle-jars-v2-6a07800ae0d4914b0ad73d4d6010da28
+2026-10-08T18:57:59.2382458Z     Restored  Key : gradle-generated-gradle-jars-v2-6a07800ae0d4914b0ad73d4d6010da28
+2026-10-08T18:57:59.2382714Z               Size: 40 MB (41615178 B)
+2026-10-08T18:57:59.2382875Z               Time: 1883 ms
+2026-10-08T18:57:59.2383041Z               (Entry restored: exact match found)
+2026-10-08T18:57:59.2383214Z     Saved     Key : 
+2026-10-08T18:57:59.2383350Z               Size: 
+2026-10-08T18:57:59.2383483Z               Time: 
+2026-10-08T18:57:59.2383636Z               (Entry not saved: contents unchanged)
+2026-10-08T18:57:59.2383806Z ---
+2026-10-08T18:57:59.2383981Z Entry: wrapper/dists/gradle-9.2.0-bin/11i5gvueggl8a5cioxuftxrik
+2026-10-08T18:57:59.2384264Z     Requested Key : gradle-wrapper-zips-v2-889283e8efdc35d60983ea39dc2829d0
+2026-10-08T18:57:59.2384634Z     Restored  Key : gradle-wrapper-zips-v2-889283e8efdc35d60983ea39dc2829d0
+2026-10-08T18:57:59.2384891Z               Size: 129 MB (134888512 B)
+2026-10-08T18:57:59.2385058Z               Time: 2003 ms
+2026-10-08T18:57:59.2385221Z               (Entry restored: exact match found)
+2026-10-08T18:57:59.2385393Z     Saved     Key : 
+2026-10-08T18:57:59.2385525Z               Size: 
+2026-10-08T18:57:59.2385657Z               Time: 
+2026-10-08T18:57:59.2385811Z               (Entry not saved: contents unchanged)
+2026-10-08T18:57:59.2385981Z ---
+2026-10-08T18:57:59.2386103Z Entry: dependencies
+2026-10-08T18:57:59.2386310Z     Requested Key : gradle-dependencies-v2-4586703575ddccc964bb7e76ac23708f
+2026-10-08T18:57:59.2386605Z     Restored  Key : gradle-dependencies-v2-4586703575ddccc964bb7e76ac23708f
+2026-10-08T18:57:59.2386831Z               Size: 10 MB (10752204 B)
+2026-10-08T18:57:59.2386994Z               Time: 1291 ms
+2026-10-08T18:57:59.2387160Z               (Entry restored: exact match found)
+2026-10-08T18:57:59.2387461Z     Saved     Key : 
+2026-10-08T18:57:59.2387598Z               Size: 
+2026-10-08T18:57:59.2387730Z               Time: 
+2026-10-08T18:57:59.2387880Z               (Entry not saved: contents unchanged)
+2026-10-08T18:57:59.2388046Z ---
+2026-10-08T18:57:59.2388176Z Entry: instrumented-jars
+2026-10-08T18:57:59.2388410Z     Requested Key : gradle-instrumented-jars-v2-19e07cc0856aa9893bc45bafdd0cf920
+2026-10-08T18:57:59.2388727Z     Restored  Key : gradle-instrumented-jars-v2-19e07cc0856aa9893bc45bafdd0cf920
+2026-10-08T18:57:59.2388971Z               Size: 0 MB (80650 B)
+2026-10-08T18:57:59.2389138Z               Time: 492 ms
+2026-10-08T18:57:59.2389459Z               (Entry restored: exact match found)
+2026-10-08T18:57:59.2389646Z     Saved     Key : 
+2026-10-08T18:57:59.2389780Z               Size: 
+2026-10-08T18:57:59.2389912Z               Time: 
+2026-10-08T18:57:59.2390062Z               (Entry not saved: contents unchanged)
+2026-10-08T18:57:59.2390227Z ---
+2026-10-08T18:57:59.2390347Z Entry: groovy-dsl
+2026-10-08T18:57:59.2390553Z     Requested Key : gradle-groovy-dsl-v2-80fe258ed8ea10562bf5aee065381b4c
+2026-10-08T18:57:59.2390934Z     Restored  Key : gradle-groovy-dsl-v2-80fe258ed8ea10562bf5aee065381b4c
+2026-10-08T18:57:59.2391155Z               Size: 0 MB (124449 B)
+2026-10-08T18:57:59.2391318Z               Time: 523 ms
+2026-10-08T18:57:59.2391478Z               (Entry restored: exact match found)
+2026-10-08T18:57:59.2391649Z     Saved     Key : 
+2026-10-08T18:57:59.2391781Z               Size: 
+2026-10-08T18:57:59.2391912Z               Time: 
+2026-10-08T18:57:59.2392062Z               (Entry not saved: contents unchanged)
+2026-10-08T18:57:59.2392230Z ---
+2026-10-08T18:57:59.2392349Z Entry: transforms
+2026-10-08T18:57:59.2392547Z     Requested Key : gradle-transforms-v2-c1238e9e894cbf0f573989bed3e0e410
+2026-10-08T18:57:59.2392828Z     Restored  Key : gradle-transforms-v2-c1238e9e894cbf0f573989bed3e0e410
+2026-10-08T18:57:59.2393049Z               Size: 0 MB (457091 B)
+2026-10-08T18:57:59.2393210Z               Time: 725 ms
+2026-10-08T18:57:59.2393382Z               (Entry restored: exact match found)
+2026-10-08T18:57:59.2393549Z     Saved     Key : 
+2026-10-08T18:57:59.2393680Z               Size: 
+2026-10-08T18:57:59.2393813Z               Time: 
+2026-10-08T18:57:59.2393962Z               (Entry not saved: contents unchanged)
+2026-10-08T18:57:59.2394132Z </pre>
+2026-10-08T18:57:59.2394250Z </details>
+2026-10-08T18:57:59.2394321Z 
+2026-10-08T18:57:59.2394508Z ##[endgroup]
+2026-10-08T18:57:59.2405657Z ##[notice]Gradle 9.2.0 is out of date: consider updating to the latest Gradle version. See https://docs.gradle.org/current/userguide/feature_lifecycle.html#eol_support
+2026-10-08T18:57:59.2410776Z Completed post-action step
+2026-10-08T18:57:59.2528862Z Post job cleanup.
+2026-10-08T18:57:59.3440374Z Post job cleanup.
+2026-10-08T18:57:59.3991058Z [command]/usr/bin/git version
+2026-10-08T18:57:59.4021106Z git version 2.55.0
+2026-10-08T18:57:59.4046995Z Temporarily overriding HOME='/home/runner/work/_temp/6e3bb2ed-c51b-4fff-a30a-ba55833d8ce9' before making global git config changes
+2026-10-08T18:57:59.4047681Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-08T18:57:59.4049186Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/data-cube/data-cube
+2026-10-08T18:57:59.4073078Z Removing SSH command configuration
+2026-10-08T18:57:59.4077481Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-08T18:57:59.4102874Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-08T18:57:59.4299116Z Removing HTTP extra header
+2026-10-08T18:57:59.4305113Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-08T18:57:59.4338423Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-08T18:57:59.4572497Z Removing includeIf entries pointing to credentials config files
+2026-10-08T18:57:59.4578129Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-08T18:57:59.4608199Z includeif.gitdir:/home/runner/work/data-cube/data-cube/.git.path
+2026-10-08T18:57:59.4608861Z includeif.gitdir:/home/runner/work/data-cube/data-cube/.git/worktrees/*.path
+2026-10-08T18:57:59.4609546Z includeif.gitdir:/github/workspace/.git.path
+2026-10-08T18:57:59.4610040Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-08T18:57:59.4615702Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/data-cube/data-cube/.git.path
+2026-10-08T18:57:59.4636200Z /home/runner/work/_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:57:59.4650757Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/data-cube/data-cube/.git.path /home/runner/work/_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:57:59.4676184Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/data-cube/data-cube/.git/worktrees/*.path
+2026-10-08T18:57:59.4697474Z /home/runner/work/_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:57:59.4704560Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/data-cube/data-cube/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:57:59.4733833Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-08T18:57:59.4755295Z /github/runner_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:57:59.4761454Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:57:59.4789046Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-08T18:57:59.4807975Z /github/runner_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:57:59.4819100Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config
+2026-10-08T18:57:59.4844166Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-08T18:57:59.5020784Z Removing credentials config '/home/runner/work/_temp/git-credentials-7fc8d6a6-b5e0-4d87-9807-18dcd685f4a2.config'
+2026-10-08T18:57:59.5128997Z Cleaning up orphan processes
