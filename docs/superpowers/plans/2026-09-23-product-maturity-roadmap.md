@@ -1,5 +1,7 @@
 # DataCube 产品成熟度推进计划
 
+**2026-10-09 G9最终CI阻断：尚未结案。** main已推f634f7f4，本地复验通过仍有效；精确Verify 37822449579的Linux14项失败已定位为两处测试兼容缺陷（java.exe硬编码、headless跳过被异常断言误判）。已下发原GPT-6.1-sol线程最小测试修正并交回唯一Gradle执行权，root等待新证据再审查/合并/CI。详见[CI返工C8](../verification/2026-10-09-g9-ci-portability-review.md)。datacube-g9保持ACTIVE；不能把本地通过当P3最终完成。
+
 **2026-10-09 G9 当前检查点：main本地集成和独立复验完成。** 产品e7950123、开发证据b76b75c、main集成5b9dfeca。分支/main分别新定向1181通过、clean全量4663通过/3 live跳过、强制buildSrc8、jpackageImage及183文件镜像/外置SQL-XLSX探针通过，三核心产物SHA一致。开发47代码与既有阶段审核一致，844输入前后绑定、3565开发文件Git字节核验；失败与跳过保留。详细证据及结构保守类型限制见[协调账本C7](../verification/2026-10-08-g9-table-export-coordination.md)。最终main推送/精确SHA Verify以[delivery-intent](../verification/evidence/g9-main-20261009/delivery-intent.json)指向的实际回执为准，成功后暂停datacube-g9，不启动下一目标。真库/pg_dump、原生桌面/chooser/Excel、慢盘与文件系统竞争、安装签名及完整M8仍未验；旧datacube保持PAUSED、v3.2.9不动，G1-G8历史编号不变。
 
 **2026-10-08 最新产品：[XLSX 文本保真](../verification/2026-10-08-xlsx-text-fidelity-review.md)** 已完成源码 ce2a096a、证据 5f176b0b、main 集成 8fb039c 与新复验。控制字符、回车和字面转义外观精确回读，孤立 UTF16 明确拒绝；真实查询结果发布保留旧文件并可重试。新增 142 项测试，分支/main 各定向 286、全量 4303 通过/3 live 跳过、强制 buildSrc 8、jpackageImage/183 文件隔离审计通过；镜像 20 包/40 单元格独立解码及 6 项无效文本拒绝，三产物 SHA 相同。518 份开发原件 Git 字节核验，失败与跳过保留。最终 main 推送/精确 SHA CI 以本轮 delivery-intent 所指回执为准；原生 Excel/桌面、真库、慢磁盘、整表原目标失败保护、安装签名及完整 M8 仍待验，前轮 CI 助手超时根因未知。v3.2.9 与 PAUSED 跟进不变；下方各“最新”为历史。
