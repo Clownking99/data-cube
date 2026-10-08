@@ -1,6 +1,6 @@
 # DataCube 产品成熟度推进计划
 
-**2026-10-09 G9 当前检查点：** [整表导出可靠性计划](2026-10-08-g9-table-export-reliability.md)。P0/P1a/P1b已独立通过；P1c 011冻结49份、证据1033份、运行前48份及当前84份XML核验一致，1104通过、0失败/错误/跳过，旧A/B原件未改。独立审查发现PG严格DDL仍静默丢失identity/generated/domain和类型修饰，已下发同一GPT-6.1-sol线程最小修正；阶段暂不验收，详见[协调账本C3.2](../verification/2026-10-08-g9-table-export-coordination.md)。开发唯一运行Gradle，新RED/冻结后再审，P2完整工程与P3 main验收未启动，产品未合main，G9未完成。datacube-g9保持ACTIVE，交付后暂停；旧datacube/v3.2.9不变。Redis、G8/M2外部验收和其他功能不混入，G1–G8历史编号不变。
+**2026-10-09 G9 当前检查点：P2已授权实施。** [整表导出可靠性计划](2026-10-08-g9-table-export-reliability.md)。P0/P1a/P1b/P1c均已独立通过；严格DDL新增12例首红、014的50冻结/1348证据/49运行快照和85当前XML已核实，1181通过、0失败/错误/跳过，旧011/A/B未变。无法保真的PG列定义明确拒绝，基本列/PK及字符numeric修饰保留，见[协调账本C4](../verification/2026-10-08-g9-table-export-coordination.md)。同一GPT-6.1-sol线程继续唯一Gradle执行者，完成P2新完整定向/clean全量/强制buildSrc/image与新镜像探针后本地提交、停写交根会话P3审查合并复验。P2/P3未完成，G9未交付，main产品未合并。datacube-g9保持ACTIVE至P3交付后暂停；旧datacube/v3.2.9及Redis/G8外部范围不动，G1–G8历史编号不变。
 
 **2026-10-08 最新产品：[XLSX 文本保真](../verification/2026-10-08-xlsx-text-fidelity-review.md)** 已完成源码 ce2a096a、证据 5f176b0b、main 集成 8fb039c 与新复验。控制字符、回车和字面转义外观精确回读，孤立 UTF16 明确拒绝；真实查询结果发布保留旧文件并可重试。新增 142 项测试，分支/main 各定向 286、全量 4303 通过/3 live 跳过、强制 buildSrc 8、jpackageImage/183 文件隔离审计通过；镜像 20 包/40 单元格独立解码及 6 项无效文本拒绝，三产物 SHA 相同。518 份开发原件 Git 字节核验，失败与跳过保留。最终 main 推送/精确 SHA CI 以本轮 delivery-intent 所指回执为准；原生 Excel/桌面、真库、慢磁盘、整表原目标失败保护、安装签名及完整 M8 仍待验，前轮 CI 助手超时根因未知。v3.2.9 与 PAUSED 跟进不变；下方各“最新”为历史。
 

@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 p = argparse.ArgumentParser()
 p.add_argument('--worker', required=True)
 p.add_argument('--out', required=True)
+p.add_argument('--revision', choices=('011', '014'), default='011')
 a = p.parse_args()
 worker = Path(a.worker).resolve()
 evidence = worker / 'docs/superpowers/verification/evidence/g9-jdbc-export-20261008-worker'
@@ -56,7 +57,7 @@ def xml_receipt(run):
         suites.append(dict(name=suite.get('name'), **counts, casesMatch=counts == actual, sha256=sha(path)))
         for node in suite.findall('system-out'):
             for line in (node.text or '').splitlines():
-                if line.startswith(('PGDUMP_PHYSICAL ', 'PGDUMP_FAMILY ', 'TABLE_BASELINE ', 'TABLE_WINDOW ', 'TABLE_CLIENT ', 'JDBC_PHYSICAL ', 'JDBC_DEADLINE ', 'JDBC_CANCEL_WORKER ', 'JDBC_LATE_VALUE ', 'JDBC_LOB_ERROR ', 'JDBC_WINDOW ', 'JDBC_LATE_DRIVER ')):
+                if line.startswith(('PGDUMP_PHYSICAL ', 'PGDUMP_FAMILY ', 'TABLE_BASELINE ', 'TABLE_WINDOW ', 'TABLE_CLIENT ', 'JDBC_PHYSICAL ', 'JDBC_DEADLINE ', 'JDBC_CANCEL_WORKER ', 'JDBC_LATE_VALUE ', 'JDBC_LOB_ERROR ', 'JDBC_WINDOW ', 'JDBC_LATE_DRIVER ', 'JDBC_DDL_METADATA ')):
                     physical.append(dict(suite=suite.get('name'), line=line))
     exit_info = json.loads((run / 'exit.json').read_text(encoding='utf-8-sig'))
     logs = (run / 'stdout.log').read_text(encoding='utf-8-sig', errors='replace')
@@ -65,14 +66,14 @@ def xml_receipt(run):
                 tasks=[line for line in logs.splitlines() if line.startswith('> Task ') or 'BUILD SUCCESSFUL' in line or 'BUILD FAILED' in line],
                 physical=physical)
 
-freeze = evidence / 'p1c-final-freeze-011'
-run = evidence / 'p1c-011-affected-targeted'
+freeze = evidence / ('p1c-final-freeze-' + a.revision)
+run = evidence / ('p1c-011-affected-targeted' if a.revision == '011' else 'p1c-014-ddl-affected-targeted')
 frozen = capture(freeze / 'manifest.json', 'worker-freeze.json')
-artifacts = capture(evidence / 'p1c-artifact-manifest-011.json', 'worker-artifacts.json')
+artifacts = capture(evidence / ('p1c-artifact-manifest-' + a.revision + '.json'), 'worker-artifacts.json')
 sources = capture(run / 'sources-before-run.json', 'worker-run-sources.json')
 command = capture(run / 'command.json', 'worker-command.json')
 capture(run / 'exit.json', 'worker-exit.json')
-physical_claim = capture(evidence / 'p1c-physical-receipts-011.json', 'worker-physical.json')
+physical_claim = capture(evidence / ('p1c-physical-receipts-' + a.revision + '.json'), 'worker-physical.json')
 old_root = worker / 'docs/superpowers/verification/evidence/g9-table-export-20261008-worker'
 old_manifest = capture(old_root / 'p1a-artifact-manifest-012.json', 'worker-old-p1a-artifacts.json')
 verified = dict(frozen=verify(freeze, frozen), artifacts=verify(evidence, artifacts),
@@ -82,6 +83,9 @@ b_manifest = capture(b_root / 'p1b-artifact-manifest-010.json', 'worker-old-p1b-
 b_freeze = capture(b_root / 'p1b-final-freeze-010/manifest.json', 'worker-old-p1b-freeze.json')
 verified['oldP1b'] = verify(b_root, b_manifest)
 verified['oldP1bFrozen'] = verify(b_root / 'p1b-final-freeze-010', b_freeze)
+if a.revision != '011':
+    c_manifest = capture(evidence / 'p1c-artifact-manifest-011.json', 'worker-old-p1c-011-artifacts.json')
+    verified['oldP1c011'] = verify(evidence, c_manifest)
 capture(evidence / 'p1c-driver-static-inspection.json', 'worker-driver-static.json')
 (out / 'worker-frozen-report.md').write_bytes(within(freeze, 'docs/superpowers/verification/2026-10-08-g9-table-export-worker.md').read_bytes())
 current_xml = [dict(path=p.name, archiveSha=sha(p), currentSha=sha(worker / 'build/test-results/test' / p.name))
@@ -94,6 +98,9 @@ history = [xml_receipt(evidence / name) for name in (
     'p1c-001-baseline-red', 'p1c-002-jdbc', 'p1c-003-ownership', 'p1c-004-integrity',
     'p1c-005-targeted', 'p1c-006-cancellation', 'p1c-007-window', 'p1c-008-window-values',
     'p1c-009-affected-targeted', 'p1c-010-late-driver-red', 'p1c-011-affected-targeted')]
+if a.revision == '014':
+    history.extend(xml_receipt(evidence / name) for name in (
+        'p1c-012-ddl-metadata-red', 'p1c-013-ddl-metadata-targeted', 'p1c-014-ddl-affected-targeted'))
 head = subprocess.run(['git', '-C', str(worker), 'rev-parse', 'HEAD'], check=True, capture_output=True, text=True).stdout.strip()
 report_path = 'docs/superpowers/verification/2026-10-08-g9-table-export-worker.md'
 unexpected_binding = [e['path'] for e in bindings if not e['matchesFrozen'] and e['path'] != report_path]

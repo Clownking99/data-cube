@@ -262,3 +262,35 @@ SQL/XLSX的501行用例均实际只开1条共享连接、调用3次分页accesso
 裁决：**011证据真实性通过，P1c阶段暂不通过；已退回具体修正。** 仍由开发唯一运行Gradle，尚不允许P2/full/buildSrc:test/image/stage/commit/main/push。P0/P1a/P1b通过维持；G9未完成。下一步审查新RED、修正源码与新冻结，通过后再下发P2。真实DB/pg_dump、原生chooser/桌面、驱动内部缓冲、永久阻塞、慢盘及文件属性竞争窗口继续单列；datacube-g9保持ACTIVE，旧datacube保持PAUSED，v3.2.9不动。
 
 本会话归档15份独立回执/worker清单与冻结报告，均以raw hash-object和暂存blob逐项复核相同，检查器实际exit0，显式文档范围diff-check通过。本地提交仅保存计划/交接/审查证据，不代表worker产品提交或新工程测试通过。
+
+## C4：P1c 修正独立验收通过，P2 已下发
+
+当前目标：2026-10-08 17:13 UTC心跳跟进严格列定义返工；审查开始main为3674cd98且范围内干净，worker仍b81923f2，完成后停写停测。本会话未运行Gradle，没有产品合并。
+
+### 新RED、冻结和运行身份
+
+通过[专用只读核验器](evidence/g9-table-export-20261008-coordination/verify-p1c-ddl-red.py)核对012：49份运行前快照长度/SHA匹配，其中19份src产品与011冻结逐项相同；真实test exit1，12 tests / 12 failures / 0 errors / 0 skipped。原XML的十二例均在assertThrows因正常返回而失败；其后的move、旧字节及cleanup断言未执行，不能把后置断言当旧源码实测。见[012独立原件与回执](evidence/g9-table-export-20261008-coordination/p1c-012-ddl-red-review-002/root-p1c-ddl-red-verification.json)。核验器首次把length字段误读为bytes而KeyError退出，未生成验收结果；首次捕获保留在p1c-012-ddl-red-review，修正后新目录执行成功。这是协调工具诊断，不是产品测试失败。
+
+014完成后执行[verify-p1c.py --revision 014](evidence/g9-table-export-20261008-coordination/verify-p1c.py)。[独立回执](evidence/g9-table-export-20261008-coordination/p1c-014-review/root-p1c-verification.json)确认：50份冻结、1348份C artifacts、49份运行前快照、旧A375/B355/Bfreeze29以及旧C011的1033份artifacts逐项SHA/长度一致，当前50文件与冻结相同。46份src/test、README和新launcher共48份匹配运行前字节；报告运行后更新、新冻结脚本分别记录。所有前14轮XML仍独立重算并保留失败；新增013为188 tests/9 suites/0 failure,error,skip，exit0；最终014为**1181 tests / 85 suites / 0 failures / 0 errors / 0 skipped**，exit0。
+
+014真实cleanTest、compileJava、compileTestJava、test执行；85份归档XML与[当时当前XML](evidence/g9-table-export-20261008-coordination/p1c-014-review/root-current-xml-binding.json)逐项相同，suite与testcase计数一致，物理摘要逐行等于XML system-out。buildSrc编译UP-TO-DATE仍不算buildSrc:test。原011绿色只对应旧字节；最终014包含原1104及新77条StrictTableDdlMetadataTest。历轮失败/通过与原件保留，不用013代替最后一项RuntimeException修正后的014。
+
+### 源码裁决与限制
+
+本会话已阅读StrictTableDdl相对011的完整diff、新77例的实际断言以及fixture必要字段。产品改动仅此strict reader；读取identity/generated/domain/collation及修饰字段，使用明确基础类型允许集；缺失或未知必要标志、矛盾元数据和不可表示类型在打开输出前固定STRUCTURE失败，保留原Error/先赢取消。字符长度、numeric精度/scale明确保留；基础列、PK、BOTH成功路径仍有真实writer结果断言。失败路径检查outputOpen=0、move=0、旧目标/邻居不变、无临时残留、连接/语句关闭及listeners=0；受控晚返回metadata getter保留BUSY/物理pending直到结算。DATA-only SQL/XLSX/pg_dump不被新增catalog准入扩大，旧DDL展示/迁移/SchemaDiff未改。
+
+按C3.2允许的保守方案，本轮SQL结构明确拒绝identity/generated/domain、非默认collation、bit/bit varying、time/timestamp（含时区）/interval及未知类型；简单字符/numeric与允许的基础类型保留，README已准确注明，不宣称通用恢复或完整Schema。后续扩展这些类型另立范围。该限制已审核，不再为新增格式兼容扩大G9。本地mock不能证明真实库权限、driver缓冲/取消、MVCC/undo或跨版本SQL恢复。
+
+裁决：**P1c/G9c阶段通过，P0/P1a/P1b/P1c均通过独立审查。** G9仍未交付，P2/P3尚未完成，main产品未集成。driver永久阻塞/final-close失败保持pending、已捕获进程家族范围、属性回退及verify→move/unlink窗口、原生chooser/桌面、真实DB/pg_dump/慢盘等限制继续保留。
+
+### P2实施授权
+
+已通过send_message_to_thread向同一GPT-6.1-sol正式线程下发完整P2。开发继续唯一Gradle执行者，在新P2证据根保留全部A/B/C原件；对最终固定源码新跑完整G9定向、真正clean全量、强制buildSrc:test和jpackageImage，逐项核对command/exit/log/XML/产物SHA，live跳过单列。发生失败保留原件、定位最小修正并重验，不放宽断言或加长等待掩盖问题。
+
+新镜像检查不得混入测试类/profile/验收JVM选项；记录exe/cfg/modules身份，外置合成linked-runtime探针做零真实连接验证，可复制已审核XML/XLSX探针并记录来源，旧结果不算新证据。补最小真实TableExporter→SQL/XLSX→publisher mock正常及失败文件保护；进程仅用受控helper。不得启动原生UI、联网更新、真实pg_dump/--version或数据库。
+
+全部通过后允许开发在独立分支明确暂存实现/测试/README/worker报告/本轮证据，逐文件raw与索引/commit blob核验（含明确force-add的ignored日志），本地提交后停写停测，回报精确SHA/未暂存状态/统计/跳过/证据/镜像身份并交回Gradle所有权。开发不合main或push；P3由根会话独立审核、合main、新profile复验，再按已有授权推main及核对精确SHA CI。保护目录及其他安全边界不变，不创建更多线程/代理、不扩展功能或外部验收。datacube-g9仍ACTIVE，完成P3才PAUSED，旧datacube及v3.2.9不动。
+
+接收回执确认同一线程active，P2 turn为01a11c8a-3ecd-7e02-ae50-b661829dac24，游标431e0858-03dc-4a74-84cd-3c2876284d87:61；这是实施接收，不是P2通过。根会话只保存本轮审核文档和原件。归档时两份stdout受*.log忽略；多次add/force返回0仍未入索引，原因未确定。临时目录级忽略例外亦未解决，已删除；最终使用仅允许这两份已知路径、明确拒绝.testagent的raw blob/cacheinfo暂存并逐项读回相同SHA，不改变仓库忽略规则，未将未入库日志误报归档成功。
+
+最终32份本轮原件/回执raw hash与索引blob全部相同；19份产品冻结对比确认只有StrictTableDdl改变，见root-product-change-binding.json。原始Gradle stdout的第2行自带行尾空格，归档diff-check因此报错，原件保持不修剪；本次编写的文档与核验器单独diff-check通过，原件用逐文件字节校验。这不是产品测试失败或跳过。
