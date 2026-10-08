@@ -83,6 +83,77 @@ public final class JdbcEditorSession implements AutoCloseable {
     private final ReentrantLock singleFlight = new ReentrantLock();
     private final AtomicReference<Connection> connection = new AtomicReference<>();
     private final AtomicReference<SqlExecutionControl> activeControl = new AtomicReference<>();
+    private final Object operationMonitor = new Object();
+    private final ThreadLocal<ExecutionHandle> executionContext = new ThreadLocal<>();
+    private ExecutionHandle activeExecution;
+
+    /** One accepted, cancellable invocation; it cannot be rebound to a later execution/session. */
+    public static final class ExecutionHandle {
+        private final JdbcEditorSession owner;
+        private boolean started, finished, cancellationRequested;
+        private SqlExecutionControl control;
+        private int physicalCancellations;
+        private ExecutionHandle(JdbcEditorSession owner) { this.owner = owner; }
+    }
+
+    public ExecutionHandle newExecutionHandle() { return new ExecutionHandle(this); }
+
+    /** Includes work before beginOperation (for example history recording) in the same identity. */
+    public <T> T executeCancellable(ExecutionHandle handle, java.util.concurrent.Callable<T> operation)
+            throws Exception {
+        Objects.requireNonNull(operation, "operation");
+        synchronized (operationMonitor) {
+            requireHandle(handle);
+            if (executionContext.get() != null || handle.started || handle.finished)
+                throw new IllegalStateException("execution handle is already used or nested");
+            handle.started = true;
+            executionContext.set(handle);
+        }
+        try { return operation.call(); }
+        finally {
+            executionContext.remove();
+            synchronized (operationMonitor) { handle.finished = true; }
+        }
+    }
+
+    /** Queue rejection/cancellation before the Callable starts must invalidate its unused identity. */
+    public void abandonExecution(ExecutionHandle handle) {
+        synchronized (operationMonitor) {
+            requireHandle(handle);
+            if (!handle.started) handle.finished = true;
+        }
+    }
+
+    public final class CancellationRequest implements java.util.concurrent.Callable<CancelOutcome> {
+        private final ExecutionHandle handle;
+        private CancellationRequest(ExecutionHandle handle) { this.handle = handle; }
+        @Override public CancelOutcome call() { return handle == null ? CancelOutcome.NOTHING_RUNNING : cancelExecution(handle); }
+    }
+
+    /** An empty snapshot stays empty even if another execution starts before its worker runs. */
+    public CancellationRequest captureCancellation() {
+        synchronized (operationMonitor) {
+            if (!running.get() || activeExecution == null) return new CancellationRequest(null);
+            return captureCancellation(activeExecution);
+        }
+    }
+
+    /** Publishes intent only; JDBC cancellation is delivered later, always to this invocation. */
+    public CancellationRequest captureCancellation(ExecutionHandle handle) {
+        synchronized (operationMonitor) {
+            requireHandle(handle);
+            if (!handle.finished) {
+                handle.cancellationRequested = true;
+                if (handle.control != null) handle.control.requestCancellation();
+            }
+            return new CancellationRequest(handle);
+        }
+    }
+
+    private void requireHandle(ExecutionHandle handle) {
+        if (handle == null || handle.owner != this)
+            throw new IllegalArgumentException("execution handle belongs to another session");
+    }
     private final AtomicBoolean running = new AtomicBoolean();
     private final AtomicBoolean cancelling = new AtomicBoolean();
     private final AtomicBoolean closeRequested = new AtomicBoolean();
@@ -199,6 +270,7 @@ public final class JdbcEditorSession implements AutoCloseable {
             revalidate.run();
             if (transactionCommand(script, oracleMode) == TransactionCommand.COMMIT) requireRevision(revision);
             control = beginOperation();
+            checkCancellation(control);
             if (parentCancellationRequested.getAsBoolean()) {
                 control.cancel();
                 throw new SQLException("SQL execution cancelled");
@@ -258,6 +330,7 @@ public final class JdbcEditorSession implements AutoCloseable {
             ensureOpen();
             revalidate.run();
             control = beginOperation();
+            checkCancellation(control);
             ensureOpen();
             SqlExecutionOptions options =
                     new SqlExecutionOptions(0, safety.queryTimeoutSeconds(), control);
@@ -308,6 +381,7 @@ public final class JdbcEditorSession implements AutoCloseable {
             ensureOpen();
             revalidate.run();
             control = beginOperation();
+            checkCancellation(control);
             ensureOpen();
             SqlExecutionOptions options = new SqlExecutionOptions(
                     maxRows, safety.queryTimeoutSeconds(), control);
@@ -387,18 +461,44 @@ public final class JdbcEditorSession implements AutoCloseable {
         }
     }
 
-    /** Requests cancellation without waiting for the single-flight operation lock. */
-    public CancelOutcome cancel() {
-        if (!running.get()) return CancelOutcome.NOTHING_RUNNING;
-        cancelling.set(true);
-        SqlExecutionControl control = activeControl.get();
-        try {
-            if (control != null && control.cancel()) return CancelOutcome.CANCELLED;
-        } catch (Throwable ignored) {
-            // Fall through to the driver-independent cancellation path.
+    /** Compatibility entry point: capture the active invocation before doing blocking JDBC work. */
+    public CancelOutcome cancel() { return captureCancellation().call(); }
+
+    private CancelOutcome cancelExecution(ExecutionHandle handle) {
+        SqlExecutionControl control;
+        synchronized (operationMonitor) {
+            requireHandle(handle);
+            if (handle.finished) return CancelOutcome.NOTHING_RUNNING;
+            handle.cancellationRequested = true;
+            control = handle.control;
+            // Intent before publication is consumed only by this invocation's beginOperation.
+            if (control == null) return CancelOutcome.CANCELLED;
+            if (activeExecution != handle) return CancelOutcome.NOTHING_RUNNING;
+            // A repeated request must not start fallback while an earlier driver call still owns it.
+            if (handle.physicalCancellations != 0) return CancelOutcome.CANCELLED;
+            handle.physicalCancellations++;
+            cancelling.set(true);
         }
-        breakConnection();
-        return CancelOutcome.CONNECTION_CLOSED;
+        try {
+            try {
+                if (control.cancel()) return CancelOutcome.CANCELLED;
+            } catch (Throwable ignored) {
+                // Keep the existing driver-independent fallback, within this execution's ownership.
+            }
+            Connection target;
+            synchronized (operationMonitor) {
+                if (activeExecution != handle || handle.finished) return CancelOutcome.NOTHING_RUNNING;
+                target = connection.getAndSet(null);
+                if (connectionState != ConnectionState.CLOSED) connectionState = ConnectionState.BROKEN;
+            }
+            closeOrRetain(target);
+            return CancelOutcome.CONNECTION_CLOSED;
+        } finally {
+            synchronized (operationMonitor) {
+                handle.physicalCancellations--;
+                operationMonitor.notifyAll();
+            }
+        }
     }
 
     public void reconnect() throws SQLException {
@@ -521,18 +621,44 @@ public final class JdbcEditorSession implements AutoCloseable {
     private SqlExecutionControl beginOperation() {
         SqlExecutionControl control = new SqlExecutionControl();
         beforeOperationPublish.run();
-        cancelling.set(false);
-        activeControl.set(control);
-        running.set(true);
+        synchronized (operationMonitor) {
+            ExecutionHandle handle = executionContext.get();
+            if (handle == null) { handle = new ExecutionHandle(this); handle.started = true; }
+            if (handle.control != null || handle.finished)
+                throw new IllegalStateException("execution handle already has an operation");
+            handle.control = control;
+            if (handle.cancellationRequested) control.requestCancellation();
+            activeExecution = handle;
+            cancelling.set(false);
+            activeControl.set(control);
+            running.set(true);
+        }
         return control;
+    }
+
+    private void checkCancellation(SqlExecutionControl control) throws SQLException {
+        if (control.cancellationRequested()) throw new SQLException("SQL execution cancelled");
     }
 
     private void finishOperation(SqlExecutionControl control) {
         if (control == null) return;
-        timeoutSupported = timeoutSupported && control.timeoutSupported();
-        running.set(false);
-        activeControl.compareAndSet(control, null);
-        cancelling.set(false);
+        boolean interrupted = false;
+        synchronized (operationMonitor) {
+            ExecutionHandle handle = activeExecution;
+            if (handle == null || handle.control != control) return;
+            // Retain singleFlight until physical cancel/fallback/close has actually settled.
+            while (handle.physicalCancellations != 0) {
+                try { operationMonitor.wait(); }
+                catch (InterruptedException interruption) { interrupted = true; }
+            }
+            timeoutSupported = timeoutSupported && control.timeoutSupported();
+            handle.finished = true;
+            activeExecution = null;
+            running.set(false);
+            activeControl.compareAndSet(control, null);
+            cancelling.set(false);
+        }
+        if (interrupted) Thread.currentThread().interrupt();
     }
 
     private Connection connection(SqlExecutionControl control) throws SQLException {

@@ -111,7 +111,17 @@ class SqlEditorSessionContractTest {
         assertTrue(source.contains("running = sessionOperations.snapshot().pending()"));
         assertTrue(source.contains(
                 "submitSessionOperation(SerialSessionOperationQueue.OperationKind.EXECUTE"));
-        assertTrue(source.contains("tasks.submit(editorSession::cancel"));
+        int cancelStart = source.indexOf("private void onCancelExecution()");
+        int cancelEnd = source.indexOf("private void renderCancelled(", cancelStart);
+        assertTrue(cancelStart >= 0 && cancelEnd > cancelStart);
+        String cancellation = source.substring(cancelStart, cancelEnd);
+        assertFalse(cancellation.contains("tasks.submit(editorSession::cancel"));
+        int capture = cancellation.indexOf("captureCancellation(");
+        int submit = cancellation.indexOf("tasks.submit(");
+        assertTrue(capture >= 0 && capture < submit,
+                "cancellation must capture its execution before asynchronous submission");
+        assertTrue(cancellation.contains("cancellationRequest.call()"));
+        assertTrue(cancellation.contains("tasks.submit(cancellationRequest,"));
     }
 
     @Test
