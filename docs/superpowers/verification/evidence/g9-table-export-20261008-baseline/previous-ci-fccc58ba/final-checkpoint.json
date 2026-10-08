@@ -1,0 +1,208 @@
+{
+  "status": "delivered",
+  "local": {
+    "mainTests": [
+      {
+        "run": "001-main-targeted",
+        "head": "8fb039c000f03116720859cf0df185c37ab8b405",
+        "exitCode": 0,
+        "image": false,
+        "actualTestTask": true,
+        "suites": 15,
+        "tests": 286,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 286,
+        "skips": [],
+        "freshXml": true
+      },
+      {
+        "run": "002-main-full",
+        "head": "8fb039c000f03116720859cf0df185c37ab8b405",
+        "exitCode": 0,
+        "image": false,
+        "actualTestTask": true,
+        "suites": 325,
+        "tests": 4306,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 3,
+        "passed": 4303,
+        "skips": [
+          {
+            "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+            "reason": "Assumption failed: set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test",
+            "class": "com.datacube.redis.RedisLiveIntegrationTest"
+          },
+          {
+            "name": "oracleSafeDeploymentConvergesInDisposableSchemas()",
+            "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set",
+            "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest"
+          },
+          {
+            "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+            "reason": "Assumption failed: Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set",
+            "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest"
+          }
+        ],
+        "freshXml": true
+      },
+      {
+        "run": "003-main-buildsrc",
+        "head": "8fb039c000f03116720859cf0df185c37ab8b405",
+        "exitCode": 0,
+        "image": false,
+        "actualTestTask": true,
+        "suites": 1,
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 8,
+        "skips": [],
+        "freshXml": true
+      },
+      {
+        "run": "004-main-image",
+        "head": "8fb039c000f03116720859cf0df185c37ab8b405",
+        "exitCode": 0,
+        "image": true,
+        "actualTestTask": false,
+        "suites": 0,
+        "tests": 0,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 0,
+        "skips": [],
+        "freshXml": true
+      }
+    ],
+    "malformedUtf16Rejected": 6,
+    "xmlRoundTrips": 7,
+    "utc": "2026-10-08T04:27:45.1226468Z",
+    "xlsxPackages": 20,
+    "remaining": [
+      "Native Excel/LibreOffice and desktop",
+      "OS scaling and multiple monitors",
+      "Real databases and slow/network disks",
+      "TableExporter direct-target failure protection is outside this increment",
+      "Installer upgrade rollback and production signing",
+      "Complete M8 release acceptance",
+      "Historical CI helper timeout root cause remains unknown"
+    ],
+    "main": "8fb039c000f03116720859cf0df185c37ab8b405",
+    "sourceStable": true,
+    "artifacts": [
+      {
+        "path": "DataCube.exe",
+        "bytes": 595968,
+        "sha256": "6C32DDB83447C5754B5484B7D0C0F501CF48AD515993F96143388D2B4A32074F",
+        "matchesWorker": true
+      },
+      {
+        "path": "app/DataCube.cfg",
+        "bytes": 369,
+        "sha256": "E53F0D480A7462920E5D0B6DF5E12BB24BBAA011298317A090CA174FBCC6153D",
+        "matchesWorker": true
+      },
+      {
+        "path": "runtime/lib/modules",
+        "bytes": 102433583,
+        "sha256": "E0BF1CF2D49396301EA26686E751AE6B27086713077DD66EB84169AB6415CA32",
+        "matchesWorker": true
+      }
+    ],
+    "source": "ce2a096a044db6a731774b13a8ae61ea44687953",
+    "independentCells": 40,
+    "mainAndWorkerArtifactsMatch": true,
+    "workerEvidence": "5f176b0b10af9d2de1bd338fe9b1c9518bb4d377"
+  },
+  "utc": "2026-10-08T04:38:38.9639430Z",
+  "goal": "XLSX text fidelity increment",
+  "commit": "fccc58ba95bb0deec19463cd75f2bb32a33dbc8a",
+  "source": "ce2a096a044db6a731774b13a8ae61ea44687953",
+  "changes": "Preserve C0/CR/FFFE/FFFF and literal OOXML escape-looking text; reject unpaired UTF16; preserve query export failure safety",
+  "ci": {
+    "remoteMainMatches": true,
+    "verifyUrl": "https://github.com/Clownking99/data-cube/actions/runs/37727781283",
+    "commit": "fccc58ba95bb0deec19463cd75f2bb32a33dbc8a",
+    "utc": "2026-10-08T04:38:13.9866123Z",
+    "jobs": [
+      {
+        "name": "wrapper-validation",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "redis-integration",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Test (windows-latest)",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "Test (ubuntu-latest)",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ],
+    "localScopeClean": true,
+    "preservedTag": "v3.2.9",
+    "verifyConclusion": "success"
+  },
+  "remaining": [
+    "Native Excel/LibreOffice and desktop",
+    "OS scaling and multiple monitors",
+    "Real databases and slow/network disks",
+    "TableExporter direct-target failure protection is outside this increment",
+    "Installer upgrade rollback and production signing",
+    "Complete M8 release acceptance",
+    "Historical CI helper timeout root cause remains unknown"
+  ],
+  "windowsAudit": {
+    "actualTasks": {
+      ":test": [
+        "Test (windows-latest)\tUnit tests\t2026-10-08T04:31:44.3893456Z > Task :test"
+      ],
+      ":buildSrc:test": [
+        "Test (windows-latest)\tUnit tests\t2026-10-08T04:31:03.0924117Z > Task :buildSrc:test"
+      ],
+      ":jlink": [
+        "Test (windows-latest)\tWindows linked image\t2026-10-08T04:37:34.3841631Z > Task :jlink"
+      ]
+    },
+    "headSha": "fccc58ba95bb0deec19463cd75f2bb32a33dbc8a",
+    "url": "https://github.com/Clownking99/data-cube/actions/runs/37727781283",
+    "logBytes": 75660,
+    "requiredSteps": [
+      {
+        "completedAt": "2026-10-08T04:37:05Z",
+        "conclusion": "success",
+        "name": "Unit tests",
+        "number": 5,
+        "startedAt": "2026-10-08T04:30:38Z",
+        "status": "completed"
+      },
+      {
+        "completedAt": "2026-10-08T04:37:50Z",
+        "conclusion": "success",
+        "name": "Windows linked image",
+        "number": 6,
+        "startedAt": "2026-10-08T04:37:05Z",
+        "status": "completed"
+      }
+    ],
+    "passed": true,
+    "jobId": 113149777638,
+    "utc": "2026-10-08T04:38:28.1892778Z",
+    "runId": 37727781283,
+    "logSha256": "1FE0B1D9FB66708F11D210174DC3B531FE0239569244343B70C60677D97E083D"
+  },
+  "boundaries": "Synthetic profiles and files only; no live database or native Excel acceptance; existing v3.2.9 unchanged",
+  "next": "Stop this increment; no automatic next feature, tag or release"
+}

@@ -1,0 +1,81 @@
+{
+  "head": "fccc58ba95bb0deec19463cd75f2bb32a33dbc8a",
+  "proposedNext": "G9 (proposal only): whole-table export reliability, R1-R3; Redis bounds as a separate increment; G8 remaining acceptance stays open",
+  "safeBoundary": "No protected .testagent, saved configurations, credentials, SQL history, business files, native input or external writes",
+  "existingG9": false,
+  "sourceHashes": [
+    {
+      "path": "src/com/datacube/export/XlsxWriter.java",
+      "sha256": "03B281F8FC22AB1C8426A9D86F4C22148D0994DD65AEEC7010B2D450F4E4EBCB"
+    },
+    {
+      "path": "src/com/datacube/export/SqlScriptExporter.java",
+      "sha256": "32DE71053BDD349F53657C242FBDC198EBD8A26CCC00FFF0BBFFFF8586A66445"
+    },
+    {
+      "path": "src/com/datacube/fx/ExportDialog.java",
+      "sha256": "9DAF260DEABA5CB3F87481737DD2BEC746B30CF4B03CBE77CAE4EEA42E899136"
+    },
+    {
+      "path": "src/com/datacube/export/TableExporter.java",
+      "sha256": "197426289419DC71FF06D703D06587B4384368D8603EBEAEAB99F69578DE2B29"
+    },
+    {
+      "path": "src/com/datacube/export/PgDumpRunner.java",
+      "sha256": "A0EAA7C694D79F5088125E4C8F419B4CD621C948D23C25C030543B266465AC84"
+    },
+    {
+      "path": "src/com/datacube/redis/RespCodec.java",
+      "sha256": "17BD31B075F13B577BC4B7C5D18007866003454B6B735E1519EE8D0BCBD72329"
+    }
+  ],
+  "utc": "2026-10-08T12:30:40.0088189Z",
+  "networkTargets": "Official Java/PostgreSQL documentation only; no database",
+  "findings": [
+    {
+      "finding": "Whole-table export may destroy an existing target on failure",
+      "id": "R1",
+      "recommendation": "Same-directory staging, target binding/revalidation, atomic publish; cleanup owned temporary output only",
+      "source": "src/com/datacube/fx/ExportDialog.java:120-125",
+      "evidence": "Source shows unconditional out.delete() for any export exception, including pre-write failure; actual SQL/XLSX writer diagnostics both replaced existing synthetic bytes before throwing",
+      "priority": "P1"
+    },
+    {
+      "finding": "pg_dump timeout does not cover blocking stderr read",
+      "id": "R2",
+      "recommendation": "Concurrent bounded output drain, deadline beginning at process start, cancellation-owned process cleanup",
+      "source": "src/com/datacube/export/PgDumpRunner.java:69-82",
+      "evidence": "readLine loop must finish before waitFor timeout starts; no source lifecycle cleanup on interruption; not run against a real pg_dump or database",
+      "priority": "P1"
+    },
+    {
+      "finding": "Whole-table export lacks a stable complete-read contract",
+      "id": "R3",
+      "recommendation": "Owned streaming read/snapshot with bounded memory; prove no missing/duplicate rows and preserve cancellation",
+      "source": "src/com/datacube/export/TableExporter.java:60-72",
+      "evidence": "Separate pages use null sorts and offset; provider appends ORDER BY only for nonempty sorts; no dedicated snapshot established here; database runtime not reproduced",
+      "priority": "P1"
+    },
+    {
+      "finding": "Redis decoder has no application-scale total-size/depth limits",
+      "id": "R4",
+      "recommendation": "Bulk/array/line/depth and aggregate response budgets; safe rejection and connection cleanup",
+      "source": "src/com/datacube/redis/RespCodec.java:58-87",
+      "evidence": "Production decoder given a synthetic 13-byte array header raised OutOfMemoryError in isolated 32 MiB JVM; zero network calls",
+      "priority": "P2"
+    },
+    {
+      "finding": "Production update delivery remains incomplete",
+      "id": "R5",
+      "recommendation": "Complete existing G8/M2 release acceptance separately under required key and external authorization",
+      "source": "docs/updates/trusted-update-protocol.md",
+      "evidence": "Bundled public-key file has only comments; release workflow publishes two packages without signed update manifest; installer/upgrade/rollback native acceptance remains pending",
+      "priority": "Acceptance"
+    }
+  ],
+  "productSourceChanged": false,
+  "testSourceFiles": 374,
+  "sourceFiles": 415,
+  "trackedEvidenceFiles": 20662,
+  "scope": "Architecture and critical-path source review plus three isolated synthetic diagnostics, not exhaustive line-by-line or new full/native/live acceptance"
+}

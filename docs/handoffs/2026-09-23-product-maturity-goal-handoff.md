@@ -1,5 +1,7 @@
 # DataCube 新会话交接：产品成熟度与首个目标
 
+**2026-10-08 当前任务：G9 整表导出可靠性。** 维护者已认可整体审阅并授权新 GPT-6.1-sol 线程执行、当前会话规划和验收。main 产品基线 fccc58ba；实施/分工/边界/验收见[G9 计划](../superpowers/plans/2026-10-08-g9-table-export-reliability.md)。仅处理整表 SQL/XLSX/pg_dump 的文件保护、超时取消及完整一致读取；Redis 与 G8 外部验收单列。计划建立阶段，不称 G9 完成；开发线程不得碰 main 或外部服务，当前会话负责审核后集成与既有授权下推送 main。v3.2.9 不变。
+
 **2026-10-08 XLSX 文本保真（最新）：** 修复 XLSX 控制字符丢失、回车改变、字面 `_xHHHH_` 被解码改变及部分字符形成损坏文件；合法 UTF16 保留，孤立代理项明确拒绝，查询结果原目标保护与安全重试通过。GPT-6.1-sol 开发、root 独立审核；源码 ce2a096a、证据 5f176b0b、main 集成 8fb039c。新增 142 项测试，分支/main 各新定向 286、全量 4303 通过/3 live 跳过、强制 buildSrc 8、jpackageImage 及新镜像 20 包/40 单元格独立回读、6 项无效文本拒绝通过，三产物 SHA 一致；518 份开发原件 Git 字节复核。详见[独立审核](../superpowers/verification/2026-10-08-xlsx-text-fidelity-review.md)。最终 main 推送及精确 SHA CI 以本轮 delivery-intent 所指回执为准；前轮 Windows 助手超时及单次重跑原件已归档，原因未知。原生 Excel/桌面、真库、慢/网络磁盘、整表原目标失败保护、安装升级签名及完整 M8 仍待验。v3.2.9 和 PAUSED 跟进不变；下方各“最新”为历史轮次。
 
 **2026-10-08 XML 导出忠实性（最新）：** 修复控制字符静默删除、正文/列名空白回读改变及部分 Unicode 列名无法解析；不可表示内容明确失败并保留原目标，保留原可解析标签映射和重试能力。GPT-6.1-sol 开发、root 独立审核补验；源码 c553e4c5、证据 eda89701、main 集成 33e167b7。新增 86 项回归，分支/main 各新定向 144、全量 4161 通过/3 live 跳过、强制 buildSrc 8、jpackageImage 和镜像 7 组 XML 回读/隔离审计通过，三产物 SHA 一致，525 份开发原件 Git 字节复核。详见[独立审核](../superpowers/verification/2026-10-08-xml-export-fidelity-review.md)。原生桌面、真库、慢/网络磁盘、安装升级/签名和完整 M8 仍待验。最终 main 推送及精确 SHA CI 以本轮 delivery-intent 所指回执为准；上一轮 2b2e004b 的四项 Verify 已成功，其 15 份原件已保存。v3.2.9 不变，跟进仍 PAUSED；下方各“最新”为历史轮次。
