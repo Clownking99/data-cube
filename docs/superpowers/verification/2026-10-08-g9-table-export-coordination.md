@@ -218,3 +218,21 @@ send_message_to_thread 已成功向同一正式线程下发 P1b；先在 worker 
 下一步：等待开发的 P1c 设计/实施与冻结定向，根会话继续只读审查、必要返工。没有授权开发自行进入全量/buildSrc:test/image/P2、stage/commit/main/push；完整工程及P3仍按冻结准入后分步执行。datacube-g9继续ACTIVE，旧datacube保持PAUSED，v3.2.9不动。
 
 下发后的紧凑快照确认同一线程 active，新 turn `01a11c38-8cb6-75a0-b0a8-f6e256b9f28f` 已开始 P1c，先核对快照、专用JDBC、DDL及writer表示能力并补设计；游标 `431e0858-03dc-4a74-84cd-3c2876284d87:45`。这是实施接收回执，不是P1c通过证据。
+
+## C3.1：P1c 首红独立确认与资源顺序预审
+
+当前目标：2026-10-08 16:13 UTC（本地已10月9日）跟进；main为b4040415且范围内干净，worker同一P1c turn仍在实施。读取新增第14节设计，方向为绑定选择、专用单cursor、完整值预算及任务内资源结算，未完成冻结。根会话保持不运行Gradle。
+
+已直接阅读 `TableExportJdbcBaselineRedTest`、合成 `TableExportJdbcMocks`、真实旧TableExporter/writer及Oracle DDL fallback。通过 [verify-p1c-red.py](evidence/g9-table-export-20261008-coordination/verify-p1c-red.py) 独立重算 `p1c-001-baseline-red`：**30份运行前快照 SHA/长度匹配，6份command/exit/清单/log/XML原件哈希记录，6 tests / 6 failures / 0 errors / 0 skipped，exit1**；实际`:test`执行。与已接受P1b清单共有的产品/测试字节均相同，只有worker设计报告改变。详见[独立首红回执](evidence/g9-table-export-20261008-coordination/p1c-001-red-review/root-p1c-red-verification.json)。
+
+SQL/XLSX的501行用例均实际只开1条共享连接、调用3次分页accessor、0次专用数据SELECT；assertAll报告上述三项差异，共享事务未回滚/关闭断言未失败。未知对象两格式、16位XLSX数值与Oracle DDL异常各因“应抛异常却正常返回”失败。后四条首个assertThrows失败后，后续toString计数/旧字节断言未执行，不能把其未执行内容记为实测结论；源码可见风险与实际RED范围分开。没有新GREEN或P1c通过。
+
+已向同一开发线程成功下发三项具体预审纠正：
+
+1. `TableExportValues.row` 在getClob/getNClob/getSQLXML/getBlob返回后先check、再ownValue登记。取消/配置失效期间迟到返回的非null对象可能在登记前抛出而漏free；要求先归属再进行可失败检查，补getter进入→取消/失效→对象返回及关闭阻塞的可控时序，独立Reader/stream/free不能由connection.close替代证明。
+2. text/binary/LOB的finally直接closeValue，后者会抛清理或取消异常，可能覆盖正文原Error，使外层来不及记录其身份。要求保留主Error对象、固定suppressed清理信息并完成物理结算；补读取Error叠加close/free失败及并发取消。此为未冻结源码控制流发现，待新回归确认。
+3. ConnectionManager初稿新增configMutation并在锁外处理旧close/Redis更新，会先公布新configs。SQL→Redis且旧JDBC close阻塞时，另一acquireRedis可看到REDIS配置但Redis内部尚未注册。要求优先保留原register/unregister/shared acquire/Redis的同步行为，只添加导出快照/版本/通知必要接线；原限制是**监听callback**只发意图，不能推导为本阶段必须重构所有配置变更的I/O锁。允许在旧资源关闭前发出失效意图并以可控回归证明；若坚持全局锁改动，应先说明必要性、锁序与状态可见性，不扩展Redis功能。
+
+另核对Oracle readOnly能力疑虑：[Oracle21 JDBC coding tips](https://docs.oracle.com/en/database/oracle/oracle-database/21/jjdbc/JDBC-coding-tips.html)说明驱动支持该标志而服务器连接模式不同；未以旧版本错误码资料要求删去当前设计。具体SET TRANSACTION READ ONLY顺序及真实驱动能力仍待源码/合成测试和外部验收分别核对，网页不作真库通过。
+
+失败/未验：本轮只接受旧缺陷RED，所有新资源/快照/值语义仍实施中。既有P1a/P1b通过不替代C；全量/buildSrc:test/image、P2/P3和main产品集成未开始。下一步由开发修正以上边界并继续定向，根会话等待冻结或可行动新证据；本检查点只本地提交审核文档/原件哈希，不推送或扩大范围。
