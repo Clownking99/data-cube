@@ -1,0 +1,1465 @@
+diff --git a/src/com/datacube/export/ResultExporter.java b/src/com/datacube/export/ResultExporter.java
+index 8aff1cd7..a93d06ac 100644
+--- a/src/com/datacube/export/ResultExporter.java
++++ b/src/com/datacube/export/ResultExporter.java
+@@ -1,117 +1,121 @@
+-package com.datacube.export;
+-
+-import java.io.IOException;
+-import java.io.Writer;
+-import java.util.List;
+-
+-/**
+- * 查询结果多格式文本导出器（CSV / HTML / XML），零第三方依赖。
+- *
+- * <p>与 {@link XlsxWriter} 同风格：纯文本写出、与 UI/数据库完全解耦，便于单测。
+- * SQL(INSERT) 格式由 {@code InsertSqlGenerator} 负责，Excel 由 {@link XlsxWriter}
+- * 负责，本类不重复。
+- *
+- * <p>统一约定：{@code null} 单元格 CSV 写空字段、HTML 写空单元格、XML 省略元素；
+- * 其余值一律 {@code toString()} 后按格式转义。
+- */
+-public final class ResultExporter {
+-
+-    private ResultExporter() {
+-    }
+-
+-    // ---------- CSV ----------
+-
+-    /**
+-     * RFC 4180 风格 CSV：首字符写 UTF-8 BOM（Excel 双击打开不乱码），
+-     * 行尾 CRLF；含逗号/双引号/换行的字段以双引号包裹、内部 {@code "} 双写。
+-     */
+-    public static void writeCsv(Writer w, List<String> columns, List<List<Object>> rows) throws IOException {
+-        w.write('\uFEFF');
+-        writeCsvRow(w, columns, columns.size());
+-        for (List<Object> row : rows) {
+-            writeCsvRow(w, row, columns.size());
+-        }
+-    }
+-
+-    private static void writeCsvRow(Writer w, List<?> cells, int width) throws IOException {
+-        for (int i = 0; i < width; i++) {
+-            if (i > 0) w.write(',');
+-            Object v = i < cells.size() ? cells.get(i) : null;
+-            if (v != null) w.write(csvField(v.toString()));
+-        }
+-        w.write("\r\n");
+-    }
+-
+-    private static String csvField(String s) {
+-        boolean needQuote = s.indexOf(',') >= 0 || s.indexOf('"') >= 0
+-                || s.indexOf('\n') >= 0 || s.indexOf('\r') >= 0;
+-        if (!needQuote) return s;
+-        return '"' + s.replace("\"", "\"\"") + '"';
+-    }
+-
+-    // ---------- HTML ----------
+-
+-    /**
+-     * 完整 HTML 文档：内联基础样式（边框、斑马纹、表头加深），浏览器直接打开
+-     * 可预览/打印。所有文本经 HTML 转义。
+-     */
+-    public static void writeHtml(Writer w, String title, List<String> columns, List<List<Object>> rows)
+-            throws IOException {
+-        String t = html(title == null ? "" : title);
+-        w.write("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>" + t + "</title>\n");
+-        w.write("""
+-                <style>
+-                body { font-family: "Microsoft YaHei", "Segoe UI", sans-serif; font-size: 13px; margin: 16px; }
+-                table { border-collapse: collapse; }
+-                th, td { border: 1px solid #b8b8b8; padding: 4px 10px; text-align: left; white-space: pre-wrap; }
+-                th { background: #dde5ee; }
+-                tr:nth-child(even) td { background: #f4f6f8; }
+-                </style>
+-                """);
+-        w.write("</head>\n<body>\n<h3>" + t + "</h3>\n<table>\n<thead>\n<tr>");
+-        for (String c : columns) {
+-            w.write("<th>" + html(c) + "</th>");
+-        }
+-        w.write("</tr>\n</thead>\n<tbody>\n");
+-        for (List<Object> row : rows) {
+-            w.write("<tr>");
+-            for (int i = 0; i < columns.size(); i++) {
+-                Object v = i < row.size() ? row.get(i) : null;
+-                w.write("<td>" + (v == null ? "" : html(v.toString())) + "</td>");
+-            }
+-            w.write("</tr>\n");
+-        }
+-        w.write("</tbody>\n</table>\n</body>\n</html>\n");
++package com.datacube.export;
++
++import java.io.IOException;
++import java.io.Writer;
++import java.util.List;
++
++/**
++ * 查询结果多格式文本导出器（CSV / HTML / XML），零第三方依赖。
++ *
++ * <p>与 {@link XlsxWriter} 同风格：纯文本写出、与 UI/数据库完全解耦，便于单测。
++ * SQL(INSERT) 格式由 {@code InsertSqlGenerator} 负责，Excel 由 {@link XlsxWriter}
++ * 负责，本类不重复。
++ *
++ * <p>统一约定：{@code null} 单元格 CSV 写空字段、HTML 写空单元格、XML 省略元素；
++ * 其余值一律 {@code toString()} 后按格式转义。
++ */
++public final class ResultExporter {
++
++    private ResultExporter() {
++    }
++
++    // ---------- CSV ----------
++
++    /**
++     * RFC 4180 风格 CSV：首字符写 UTF-8 BOM（Excel 双击打开不乱码），
++     * 行尾 CRLF；含逗号/双引号/换行的字段以双引号包裹、内部 {@code "} 双写。
++     */
++    public static void writeCsv(Writer w, List<String> columns, List<List<Object>> rows) throws IOException {
++        w.write('\uFEFF');
++        writeCsvRow(w, columns, columns.size());
++        for (List<Object> row : rows) {
++            writeCsvRow(w, row, columns.size());
++        }
++    }
++
++    private static void writeCsvRow(Writer w, List<?> cells, int width) throws IOException {
++        for (int i = 0; i < width; i++) {
++            if (i > 0) w.write(',');
++            Object v = i < cells.size() ? cells.get(i) : null;
++            if (v != null) w.write(csvField(v.toString()));
++        }
++        w.write("\r\n");
++    }
++
++    private static String csvField(String s) {
++        boolean needQuote = s.indexOf(',') >= 0 || s.indexOf('"') >= 0
++                || s.indexOf('\n') >= 0 || s.indexOf('\r') >= 0;
++        if (!needQuote) return s;
++        return '"' + s.replace("\"", "\"\"") + '"';
++    }
++
++    // ---------- HTML ----------
++
++    /**
++     * 完整 HTML 文档：内联基础样式（边框、斑马纹、表头加深），浏览器直接打开
++     * 可预览/打印。所有文本经 HTML 转义。
++     */
++    public static void writeHtml(Writer w, String title, List<String> columns, List<List<Object>> rows)
++            throws IOException {
++        String t = html(title == null ? "" : title);
++        w.write("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>" + t + "</title>\n");
++        w.write("""
++                <style>
++                body { font-family: "Microsoft YaHei", "Segoe UI", sans-serif; font-size: 13px; margin: 16px; }
++                table { border-collapse: collapse; }
++                th, td { border: 1px solid #b8b8b8; padding: 4px 10px; text-align: left; white-space: pre-wrap; }
++                th { background: #dde5ee; }
++                tr:nth-child(even) td { background: #f4f6f8; }
++                </style>
++                """);
++        w.write("</head>\n<body>\n<h3>" + t + "</h3>\n<table>\n<thead>\n<tr>");
++        for (String c : columns) {
++            w.write("<th>" + html(c) + "</th>");
++        }
++        w.write("</tr>\n</thead>\n<tbody>\n");
++        for (List<Object> row : rows) {
++            w.write("<tr>");
++            for (int i = 0; i < columns.size(); i++) {
++                Object v = i < row.size() ? row.get(i) : null;
++                w.write("<td>" + (v == null ? "" : html(v.toString())) + "</td>");
++            }
++            w.write("</tr>\n");
++        }
++        w.write("</tbody>\n</table>\n</body>\n</html>\n");
++    }
++
++    private static String html(String s) {
++        StringBuilder sb = new StringBuilder(s.length() + 16);
++        for (int i = 0; i < s.length(); i++) {
++            char c = s.charAt(i);
++            switch (c) {
++                case '&' -> sb.append("&amp;");
++                case '<' -> sb.append("&lt;");
++                case '>' -> sb.append("&gt;");
++                case '"' -> sb.append("&quot;");
++                default -> sb.append(c);
++            }
++        }
++        return sb.toString();
++    }
++
++    // ---------- XML ----------
++
++    /** XML 1.0 cannot represent these characters, including unpaired UTF-16 surrogates. */
++    public static final class InvalidXmlCharacterException extends IOException {
++        private InvalidXmlCharacterException() { super("XML contains an unrepresentable character"); }
+     }
+ 
+-    private static String html(String s) {
+-        StringBuilder sb = new StringBuilder(s.length() + 16);
+-        for (int i = 0; i < s.length(); i++) {
+-            char c = s.charAt(i);
+-            switch (c) {
+-                case '&' -> sb.append("&amp;");
+-                case '<' -> sb.append("&lt;");
+-                case '>' -> sb.append("&gt;");
+-                case '"' -> sb.append("&quot;");
+-                default -> sb.append(c);
+-            }
+-        }
+-        return sb.toString();
+-    }
++    /**
++     * PL/SQL Developer 风格：{@code <ROWSET><ROW><列名>值</列名></ROW></ROWSET>}。
++     * 列名含 XML 非法字符时净化为 {@code _}（净化后与原名不同则以 {@code name}
++     * 属性保留原名）；{@code null} 列省略元素。
++     */
+ 
+-    // ---------- XML ----------
+-
+-    /**
+-     * PL/SQL Developer 风格：{@code <ROWSET><ROW><列名>值</列名></ROW></ROWSET>}。
+-     * 列名含 XML 非法字符时净化为 {@code _}（净化后与原名不同则以 {@code name}
+-     * 属性保留原名）；{@code null} 列省略元素。
+-     */
+     public static void writeXml(Writer w, List<String> columns, List<List<Object>> rows) throws IOException {
+-        w.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ROWSET>\n");
+         String[] tags = new String[columns.size()];
+-        for (int i = 0; i < columns.size(); i++) {
+-            tags[i] = xmlName(columns.get(i));
+-        }
++        for (int i = 0; i < columns.size(); i++) tags[i] = xmlName(columns.get(i));
++        w.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ROWSET>\n");
+         for (List<Object> row : rows) {
+             w.write(" <ROW>\n");
+             for (int i = 0; i < columns.size(); i++) {
+@@ -120,48 +124,74 @@ public final class ResultExporter {
+                 String tag = tags[i];
+                 String open = tag.equals(columns.get(i))
+                         ? "<" + tag + ">"
+-                        : "<" + tag + " name=\"" + xml(columns.get(i)) + "\">";
+-                w.write("  " + open + xml(v.toString()) + "</" + tag + ">\n");
++                        : "<" + tag + " name=\"" + xml(columns.get(i), true) + "\">";
++                w.write("  " + open + xml(v.toString(), false) + "</" + tag + ">\n");
+             }
+             w.write(" </ROW>\n");
+         }
+         w.write("</ROWSET>\n");
+     }
+ 
+-    /** 列名 → 合法 XML 元素名：非法字符替换为 {@code _}，首字符非法时加前缀 {@code C}。 */
+-    private static String xmlName(String name) {
++    /** Sanitizes markup names while the name attribute preserves the complete original label. */
++    private static String xmlName(String name) throws InvalidXmlCharacterException {
+         if (name == null || name.isEmpty()) return "COLUMN";
+-        StringBuilder sb = new StringBuilder(name.length());
+-        for (int i = 0; i < name.length(); i++) {
+-            char c = name.charAt(i);
+-            boolean ok = i == 0
+-                    ? (Character.isLetter(c) || c == '_')
+-                    : (Character.isLetterOrDigit(c) || c == '_' || c == '-' || c == '.');
+-            sb.append(ok ? c : '_');
++        for (int offset = 0; offset < name.length();) {
++            int code = name.codePointAt(offset);
++            requireXmlCharacter(code);
++            offset += Character.charCount(code);
++        }
++        // Preserve the existing char-based tag mapping, restricted to legal XML names.
++        StringBuilder result = new StringBuilder(name.length());
++        for (int index = 0; index < name.length(); index++) {
++            char code = name.charAt(index);
++            boolean allowed = index == 0
++                    ? (Character.isLetter(code) || code == '_') && nameStart(code)
++                    : (Character.isLetterOrDigit(code) || code == '_' || code == '-' || code == '.')
++                            && namePart(code);
++            result.append(allowed ? code : '_');
+         }
+-        // 首字符被替换成 _ 之外的非法形态（如数字开头）时统一加前缀
+-        char first = sb.charAt(0);
+-        if (!Character.isLetter(first) && first != '_') sb.insert(0, 'C');
+-        return sb.toString();
++        return result.toString();
++    }
++
++    private static boolean nameStart(int code) {
++        // Keep names namespace-neutral; colons are represented through the name attribute.
++        return code == '_' || code >= 'A' && code <= 'Z' || code >= 'a' && code <= 'z'
++                || code >= 0xC0 && code <= 0xD6 || code >= 0xD8 && code <= 0xF6
++                || code >= 0xF8 && code <= 0x2FF || code >= 0x370 && code <= 0x37D
++                || code >= 0x37F && code <= 0x1FFF || code >= 0x200C && code <= 0x200D
++                || code >= 0x2070 && code <= 0x218F || code >= 0x2C00 && code <= 0x2FEF
++                || code >= 0x3001 && code <= 0xD7FF || code >= 0xF900 && code <= 0xFDCF
++                || code >= 0xFDF0 && code <= 0xFFFD || code >= 0x10000 && code <= 0xEFFFF;
++    }
++
++    private static boolean namePart(int code) {
++        return nameStart(code) || code == '-' || code == '.' || code >= '0' && code <= '9'
++                || code == 0xB7 || code >= 0x300 && code <= 0x36F || code >= 0x203F && code <= 0x2040;
++    }
++
++    private static void requireXmlCharacter(int code) throws InvalidXmlCharacterException {
++        if (!(code == 9 || code == 10 || code == 13 || code >= 0x20 && code <= 0xD7FF
++                || code >= 0xE000 && code <= 0xFFFD || code >= 0x10000 && code <= 0x10FFFF))
++            throw new InvalidXmlCharacterException();
+     }
+ 
+-    private static String xml(String s) {
+-        StringBuilder sb = new StringBuilder(s.length() + 16);
+-        for (int i = 0; i < s.length(); i++) {
+-            char c = s.charAt(i);
+-            switch (c) {
+-                case '&' -> sb.append("&amp;");
+-                case '<' -> sb.append("&lt;");
+-                case '>' -> sb.append("&gt;");
+-                case '"' -> sb.append("&quot;");
+-                default -> {
+-                    // 剔除 XML 1.0 非法控制字符
+-                    if (c >= 0x20 || c == '\t' || c == '\n' || c == '\r') {
+-                        sb.append(c);
+-                    }
+-                }
++    private static String xml(String value, boolean attribute) throws InvalidXmlCharacterException {
++        StringBuilder result = new StringBuilder(value.length() + 16);
++        for (int offset = 0; offset < value.length();) {
++            int code = value.codePointAt(offset);
++            requireXmlCharacter(code);
++            switch (code) {
++                case '&' -> result.append("&amp;");
++                case '<' -> result.append("&lt;");
++                case '>' -> result.append("&gt;");
++                case '"' -> result.append("&quot;");
++                case '\r' -> result.append("&#13;");
++                case '\t' -> result.append(attribute ? "&#9;" : "\t");
++                case '\n' -> result.append(attribute ? "&#10;" : "\n");
++                default -> result.appendCodePoint(code);
+             }
++            offset += Character.charCount(code);
+         }
+-        return sb.toString();
++        return result.toString();
+     }
+ }
+diff --git a/src/com/datacube/export/SafeResultFilePublisher.java b/src/com/datacube/export/SafeResultFilePublisher.java
+index 31e621e8..ea2afd7f 100644
+--- a/src/com/datacube/export/SafeResultFilePublisher.java
++++ b/src/com/datacube/export/SafeResultFilePublisher.java
+@@ -1,128 +1,130 @@
+-package com.datacube.export;
+-
+-import java.io.IOException;
+-import java.nio.file.*;
+-import java.nio.file.attribute.BasicFileAttributes;
+-import java.nio.file.attribute.FileTime;
+-import java.util.Objects;
+-import java.util.Set;
+-import java.util.concurrent.CancellationException;
+-import java.util.concurrent.ConcurrentHashMap;
+-import java.util.function.Consumer;
+-import java.util.logging.Logger;
+-
+-public final class SafeResultFilePublisher {
+-    public enum Stage { PREPARE, TARGET_CHANGED, TARGET_BUSY, WRITE, PUBLISH, CLEANUP }
+-
+-    public static final class Failure extends IOException {
+-        private final Stage stage;
+-        private final Path temporaryPath;
+-        public Failure(Stage stage, Path temporaryPath) {
+-            super("Result export failed at " + stage);
+-            this.stage = stage;
+-            this.temporaryPath = temporaryPath;
+-        }
+-        public Stage stage() { return stage; }
+-        public Path temporaryPath() { return temporaryPath; }
+-    }
+-
+-    private record Stamp(boolean exists, Object key, long size, FileTime modified, FileTime created) {}
+-
+-    public static final class Target {
+-        private final Path path;
+-        private final Stamp stamp;
+-        private Target(Path path, Stamp stamp) { this.path = path; this.stamp = stamp; }
+-        public Path path() { return path; }
+-        public boolean existed() { return stamp.exists(); }
+-    }
+-
+-    @FunctionalInterface public interface TempWriter {
+-        void write(Path path, ResultExportOperation operation) throws Exception;
+-    }
+-    @FunctionalInterface interface AtomicMover { void move(Path source, Path target) throws IOException; }
+-    @FunctionalInterface interface TempCleaner { void delete(Path path) throws IOException; }
+-
+-    private static final Set<Path> BUSY = ConcurrentHashMap.newKeySet();
+-    private static final Logger LOG = Logger.getLogger(SafeResultFilePublisher.class.getName());
+-    private final AtomicMover mover;
+-    private final TempCleaner cleaner;
+-    private final Consumer<Path> cleanupDiagnostic;
+-
+-    public SafeResultFilePublisher() {
+-        this((source, target) -> Files.move(source, target,
+-                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING),
+-                path -> Files.deleteIfExists(path),
+-                path -> LOG.warning("Result export CLEANUP: " + path));
+-    }
+-
+-    SafeResultFilePublisher(AtomicMover mover, TempCleaner cleaner, Consumer<Path> diagnostic) {
+-        this.mover = Objects.requireNonNull(mover);
+-        this.cleaner = Objects.requireNonNull(cleaner);
+-        this.cleanupDiagnostic = Objects.requireNonNull(diagnostic);
+-    }
+-
+-    public static Target capture(Path chosen) throws Failure {
+-        try {
+-            Path absolute = chosen.toAbsolutePath().normalize();
+-            Path parent = absolute.getParent();
+-            if (parent == null || absolute.getFileName() == null) throw new IOException("Unsupported export path");
+-            Path path = parent.toRealPath().resolve(absolute.getFileName());
+-            return new Target(path, stamp(path));
+-        } catch (IOException | RuntimeException failure) {
+-            throw new Failure(Stage.PREPARE, null);
+-        }
+-    }
+-
+-    private static Stamp stamp(Path path) throws IOException {
+-        try {
+-            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+-            if (!attributes.isRegularFile()) throw new IOException("Unsupported export target");
+-            return new Stamp(true, attributes.fileKey(), attributes.size(), attributes.lastModifiedTime(), attributes.creationTime());
+-        } catch (NoSuchFileException absent) {
+-            return new Stamp(false, null, 0, null, null);
+-        }
+-    }
+-
+-    private static void verify(Target target) throws Failure {
+-        try {
+-            Path parent = target.path.getParent();
+-            if (!parent.toRealPath().equals(parent) || !stamp(target.path).equals(target.stamp))
+-                throw new IOException("Export target changed");
+-        } catch (IOException | RuntimeException changed) {
+-            throw new Failure(Stage.TARGET_CHANGED, null);
+-        }
+-    }
+-
+-    public Path publish(Target target, ResultExportOperation operation, TempWriter writer) throws Exception {
+-        Objects.requireNonNull(target); Objects.requireNonNull(operation); Objects.requireNonNull(writer);
+-        if (!BUSY.add(target.path)) throw new Failure(Stage.TARGET_BUSY, null);
+-        Path temporary = null;
+-        Stage stage = Stage.PREPARE;
+-        try {
+-            operation.check(); verify(target);
+-            temporary = Files.createTempFile(target.path.getParent(), ".datacube-export-", ".tmp");
+-            stage = Stage.WRITE;
+-            operation.check(); writer.write(temporary, operation);
+-            stage = Stage.PUBLISH;
+-            Path ready = temporary;
+-            operation.publish(() -> { verify(target); mover.move(ready, target.path); });
+-            return target.path;
+-        } catch (CancellationException cancelled) {
+-            throw cancelled;
+-        } catch (Failure safe) {
+-            throw safe;
+-        } catch (Exception failure) {
+-            throw new Failure(stage, null);
+-        } finally {
+-            try {
+-                if (temporary != null && !operation.published()) {
+-                    try { cleaner.delete(temporary); }
+-                    catch (IOException | RuntimeException cleanupFailure) {
+-                        try { cleanupDiagnostic.accept(temporary); } catch (RuntimeException ignored) { }
+-                        throw new Failure(Stage.CLEANUP, temporary);
+-                    }
+-                }
+-            } finally { BUSY.remove(target.path); }
+-        }
+-    }
++package com.datacube.export;
++
++import java.io.IOException;
++import java.nio.file.*;
++import java.nio.file.attribute.BasicFileAttributes;
++import java.nio.file.attribute.FileTime;
++import java.util.Objects;
++import java.util.Set;
++import java.util.concurrent.CancellationException;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.function.Consumer;
++import java.util.logging.Logger;
++
++public final class SafeResultFilePublisher {
++    public enum Stage { PREPARE, TARGET_CHANGED, TARGET_BUSY, WRITE, XML_CHARACTER, PUBLISH, CLEANUP }
++
++    public static final class Failure extends IOException {
++        private final Stage stage;
++        private final Path temporaryPath;
++        public Failure(Stage stage, Path temporaryPath) {
++            super("Result export failed at " + stage);
++            this.stage = stage;
++            this.temporaryPath = temporaryPath;
++        }
++        public Stage stage() { return stage; }
++        public Path temporaryPath() { return temporaryPath; }
++    }
++
++    private record Stamp(boolean exists, Object key, long size, FileTime modified, FileTime created) {}
++
++    public static final class Target {
++        private final Path path;
++        private final Stamp stamp;
++        private Target(Path path, Stamp stamp) { this.path = path; this.stamp = stamp; }
++        public Path path() { return path; }
++        public boolean existed() { return stamp.exists(); }
++    }
++
++    @FunctionalInterface public interface TempWriter {
++        void write(Path path, ResultExportOperation operation) throws Exception;
++    }
++    @FunctionalInterface interface AtomicMover { void move(Path source, Path target) throws IOException; }
++    @FunctionalInterface interface TempCleaner { void delete(Path path) throws IOException; }
++
++    private static final Set<Path> BUSY = ConcurrentHashMap.newKeySet();
++    private static final Logger LOG = Logger.getLogger(SafeResultFilePublisher.class.getName());
++    private final AtomicMover mover;
++    private final TempCleaner cleaner;
++    private final Consumer<Path> cleanupDiagnostic;
++
++    public SafeResultFilePublisher() {
++        this((source, target) -> Files.move(source, target,
++                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING),
++                path -> Files.deleteIfExists(path),
++                path -> LOG.warning("Result export CLEANUP: " + path));
++    }
++
++    SafeResultFilePublisher(AtomicMover mover, TempCleaner cleaner, Consumer<Path> diagnostic) {
++        this.mover = Objects.requireNonNull(mover);
++        this.cleaner = Objects.requireNonNull(cleaner);
++        this.cleanupDiagnostic = Objects.requireNonNull(diagnostic);
++    }
++
++    public static Target capture(Path chosen) throws Failure {
++        try {
++            Path absolute = chosen.toAbsolutePath().normalize();
++            Path parent = absolute.getParent();
++            if (parent == null || absolute.getFileName() == null) throw new IOException("Unsupported export path");
++            Path path = parent.toRealPath().resolve(absolute.getFileName());
++            return new Target(path, stamp(path));
++        } catch (IOException | RuntimeException failure) {
++            throw new Failure(Stage.PREPARE, null);
++        }
++    }
++
++    private static Stamp stamp(Path path) throws IOException {
++        try {
++            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
++            if (!attributes.isRegularFile()) throw new IOException("Unsupported export target");
++            return new Stamp(true, attributes.fileKey(), attributes.size(), attributes.lastModifiedTime(), attributes.creationTime());
++        } catch (NoSuchFileException absent) {
++            return new Stamp(false, null, 0, null, null);
++        }
++    }
++
++    private static void verify(Target target) throws Failure {
++        try {
++            Path parent = target.path.getParent();
++            if (!parent.toRealPath().equals(parent) || !stamp(target.path).equals(target.stamp))
++                throw new IOException("Export target changed");
++        } catch (IOException | RuntimeException changed) {
++            throw new Failure(Stage.TARGET_CHANGED, null);
++        }
++    }
++
++    public Path publish(Target target, ResultExportOperation operation, TempWriter writer) throws Exception {
++        Objects.requireNonNull(target); Objects.requireNonNull(operation); Objects.requireNonNull(writer);
++        if (!BUSY.add(target.path)) throw new Failure(Stage.TARGET_BUSY, null);
++        Path temporary = null;
++        Stage stage = Stage.PREPARE;
++        try {
++            operation.check(); verify(target);
++            temporary = Files.createTempFile(target.path.getParent(), ".datacube-export-", ".tmp");
++            stage = Stage.WRITE;
++            operation.check(); writer.write(temporary, operation);
++            stage = Stage.PUBLISH;
++            Path ready = temporary;
++            operation.publish(() -> { verify(target); mover.move(ready, target.path); });
++            return target.path;
++        } catch (CancellationException cancelled) {
++            throw cancelled;
++        } catch (ResultExporter.InvalidXmlCharacterException invalidXml) {
++            throw new Failure(Stage.XML_CHARACTER, null);
++        } catch (Failure safe) {
++            throw safe;
++        } catch (Exception failure) {
++            throw new Failure(stage, null);
++        } finally {
++            try {
++                if (temporary != null && !operation.published()) {
++                    try { cleaner.delete(temporary); }
++                    catch (IOException | RuntimeException cleanupFailure) {
++                        try { cleanupDiagnostic.accept(temporary); } catch (RuntimeException ignored) { }
++                        throw new Failure(Stage.CLEANUP, temporary);
++                    }
++                }
++            } finally { BUSY.remove(target.path); }
++        }
++    }
+ }
+diff --git a/src/com/datacube/fx/SqlResultExportCoordinator.java b/src/com/datacube/fx/SqlResultExportCoordinator.java
+index c5219ffa..f71386e2 100644
+--- a/src/com/datacube/fx/SqlResultExportCoordinator.java
++++ b/src/com/datacube/fx/SqlResultExportCoordinator.java
+@@ -1,214 +1,215 @@
+-package com.datacube.fx;
+-
+-import com.datacube.export.*;
+-import com.datacube.export.QueryResultFileWriter.Format;
+-import com.datacube.fx.task.FxTaskScope;
+-import com.datacube.sqleditor.InsertSqlGenerator;
+-import com.datacube.sqleditor.result.*;
+-import java.io.File;
+-import java.nio.file.Path;
+-import java.util.*;
+-import java.util.concurrent.*;
+-import java.util.function.*;
+-import javafx.scene.control.*;
+-import javafx.stage.FileChooser;
+-import javafx.stage.Window;
+-
+-final class SqlResultExportCoordinator implements AutoCloseable {
+-    interface Ui {
+-        Optional<ResultExportOptionsDialog.Selection> chooseScope(ResultExportSnapshot snapshot, boolean sql);
+-        Path chooseFile(Format format);
+-        String chooseTable(String originalSql);
+-        boolean confirmOverwrite(Path path);
+-    }
+-    record Request(SafeResultFilePublisher.Target target, Format format, ResultExportSnapshot snapshot,
+-                   ResultExportOptionsDialog.Selection selection, String table) {
+-        @Override public String toString() { return "ResultExportRequest[" + format + "]"; }
+-    }
+-    @FunctionalInterface interface FileJob {
+-        Path write(Request request, ResultExportOperation operation) throws Exception;
+-    }
+-    private final FxTaskScope tasks;
+-    private final Supplier<ResultExportSnapshot> capture;
+-    private final LongSupplier revision;
+-    private final BiConsumer<String, Boolean> status;
+-    private final Predicate<String> clipboard;
+-    private final Ui ui;
+-    private final FileJob job;
+-    private final ResultExportSession session = new ResultExportSession();
+-    private ResultExportOperation latest;
+-
+-    SqlResultExportCoordinator(FxTaskScope tasks, Supplier<ResultExportSnapshot> capture,
+-            LongSupplier revision, BiConsumer<String, Boolean> status, Predicate<String> clipboard,
+-            Supplier<Window> owner) {
+-        this(tasks, capture, revision, status, clipboard, new Dialogs(owner),
+-                (request, operation) -> new SafeResultFilePublisher().publish(request.target(), operation,
+-                        (temporary, token) -> QueryResultFileWriter.write(temporary, request.format(),
+-                                request.snapshot(), request.selection().scope(),
+-                                request.selection().displayConfirmed(), request.table(), token)));
+-    }
+-    SqlResultExportCoordinator(FxTaskScope tasks, Supplier<ResultExportSnapshot> capture,
+-            LongSupplier revision, BiConsumer<String, Boolean> status, Predicate<String> clipboard,
+-            Ui ui, FileJob job) {
+-        this.tasks = Objects.requireNonNull(tasks);
+-        this.capture = Objects.requireNonNull(capture);
+-        this.revision = Objects.requireNonNull(revision);
+-        this.status = Objects.requireNonNull(status);
+-        this.clipboard = Objects.requireNonNull(clipboard);
+-        this.ui = Objects.requireNonNull(ui);
+-        this.job = Objects.requireNonNull(job);
+-    }
+-    private boolean open() { return !session.isClosed() && !tasks.isClosed(); }
+-    private boolean ownsStatus(ResultExportOperation operation, long stamp) {
+-        return open() && latest == operation && revision.getAsLong() == stamp;
+-    }
+-    private static boolean permitted(ResultExportSnapshot snapshot,
+-            ResultExportOptionsDialog.Selection selection, boolean sql) {
+-        var rows = snapshot.rows(selection.scope());
+-        if (rows.isEmpty() || snapshot.columns().isEmpty()) return false;
+-        boolean scalar = ResultExportValuePolicy.assess(rows).sqlAllowed();
+-        return scalar || (!sql && selection.displayConfirmed());
+-    }
+-    Future<?> export(Format format) {
+-        if (!open()) return null;
+-        ResultExportOperation operation = session.begin();
+-        if (operation == null) return null;
+-        latest = operation;
+-        boolean submitted = false;
+-        long ownerRevision = revision.getAsLong();
+-        long submissionRevision = Long.MIN_VALUE;
+-        try {
+-            ResultExportSnapshot snapshot = capture.get();
+-            ownerRevision = revision.getAsLong();
+-            if (snapshot == null) {
+-                status.accept("没有可导出的查询结果", true);
+-                return null;
+-            }
+-            var selection = ui.chooseScope(snapshot, format == Format.SQL);
+-            if (selection.isEmpty() || !open()) return null;
+-            if (!permitted(snapshot, selection.get(), format == Format.SQL)) {
+-                if (ownsStatus(operation, ownerRevision)) status.accept("当前范围或值类型不能导出", true);
+-                return null;
+-            }
+-            String table = format == Format.SQL ? ui.chooseTable(snapshot.originalSql()) : null;
+-            if ((format == Format.SQL && table == null) || !open()) return null;
+-            Path chosen = ui.chooseFile(format);
+-            if (chosen == null || !open()) return null;
+-            var target = SafeResultFilePublisher.capture(chosen);
+-            if (target.existed() && !ui.confirmOverwrite(target.path())) return null;
+-            if (!open()) return null;
+-            operation.check();
+-            var request = new Request(target, format, snapshot, selection.get(), table);
+-            boolean statusOwned = ownsStatus(operation, ownerRevision);
+-            if (statusOwned) status.accept("导出中...", false);
+-            submissionRevision = statusOwned ? revision.getAsLong() : Long.MIN_VALUE;
+-            final long completionRevision = submissionRevision;
+-            Future<?> future = tasks.submit(() -> {
+-                try { return job.write(request, operation); }
+-                finally { session.finish(operation); }
+-            }, published -> {
+-                if (ownsStatus(operation, completionRevision))
+-                    status.accept("已导出: " + published, false);
+-            }, failure -> {
+-                if (ownsStatus(operation, completionRevision))
+-                    status.accept(failureMessage(failure), true);
+-            });
+-            submitted = true;
+-            return future;
+-        } catch (RejectedExecutionException rejected) {
+-            if (ownsStatus(operation, submissionRevision))
+-                status.accept("导出任务未能启动，请重试", true);
+-            return null;
+-        } catch (CancellationException cancelled) {
+-            return null;
+-        } catch (Exception failure) {
+-            if (ownsStatus(operation, ownerRevision)) status.accept(failureMessage(failure), true);
+-            return null;
+-        } finally {
+-            if (!submitted) {
+-                operation.cancel();
+-                session.finish(operation);
+-            }
+-        }
+-    }
+-    boolean copyInsert() {
+-        if (!open()) return false;
+-        long ownerRevision = revision.getAsLong();
+-        try {
+-            var snapshot = capture.get();
+-            ownerRevision = revision.getAsLong();
+-            if (snapshot == null) return false;
+-            var selection = ui.chooseScope(snapshot, true);
+-            if (selection.isEmpty() || !open()) return false;
+-            if (!permitted(snapshot, selection.get(), true)) {
+-                if (revision.getAsLong() == ownerRevision) status.accept("当前范围或值类型不能生成 INSERT", true);
+-                return false;
+-            }
+-            String table = ui.chooseTable(snapshot.originalSql());
+-            if (table == null || !open()) return false;
+-            String script = QueryResultFileWriter.insert(snapshot, selection.get().scope(), table);
+-            if (!open()) return false;
+-            boolean written = clipboard.test(script);
+-            if (open() && revision.getAsLong() == ownerRevision)
+-                status.accept(written ? "已复制 " + snapshot.rows(selection.get().scope()).size()
+-                        + " 条 INSERT 语句" : "复制失败：无法写入系统剪贴板", !written);
+-            return written;
+-        } catch (RuntimeException failure) {
+-            if (open() && revision.getAsLong() == ownerRevision)
+-                status.accept("复制失败：无法生成或写入 INSERT", true);
+-            return false;
+-        }
+-    }
+-    private static String failureMessage(Throwable failure) {
+-        if (failure instanceof SafeResultFilePublisher.Failure safe) {
+-            return switch (safe.stage()) {
+-                case PREPARE -> "无法安全保存：请选择本地普通文件";
+-                case TARGET_CHANGED -> "目标文件已改变，请重新选择并确认";
+-                case TARGET_BUSY -> "目标文件正在导出，请稍后重试";
+-                case WRITE -> "导出写入失败，原目标文件未修改";
+-                case PUBLISH -> "无法原子发布导出文件，原目标文件未修改";
+-                case CLEANUP -> "导出未完成，临时文件清理失败，请手动处理: " + safe.temporaryPath();
+-            };
+-        }
+-        return "导出失败，未发布结果文件";
+-    }
+-    @Override public void close() { session.close(); }
+-
+-    private static final class Dialogs implements Ui {
+-        private final Supplier<Window> owner;
+-        private Dialogs(Supplier<Window> owner) { this.owner = owner; }
+-        @Override public Optional<ResultExportOptionsDialog.Selection> chooseScope(
+-                ResultExportSnapshot snapshot, boolean sql) {
+-            return ResultExportOptionsDialog.create(owner.get(), snapshot, sql).showAndWait();
+-        }
+-        @Override public Path chooseFile(Format format) {
+-            FileChooser chooser = new FileChooser();
+-            chooser.setTitle("导出结果 - " + format.label);
+-            File directory = FxFiles.defaultSaveDir();
+-            if (directory != null) chooser.setInitialDirectory(directory);
+-            chooser.setInitialFileName(format.defaultName);
+-            chooser.getExtensionFilters().add(
+-                    new FileChooser.ExtensionFilter(format.filterDesc, format.filterExt));
+-            File chosen = chooser.showSaveDialog(owner.get());
+-            return chosen == null ? null : chosen.toPath();
+-        }
+-        @Override public String chooseTable(String originalSql) {
+-            String table = InsertSqlGenerator.singleTableName(originalSql);
+-            if (table != null) return table;
+-            TextInputDialog dialog = new TextInputDialog();
+-            if (owner.get() != null) dialog.initOwner(owner.get());
+-            dialog.setTitle("指定目标表");
+-            dialog.setHeaderText("无法确定单一来源表，请输入 INSERT 目标表名（可带 schema 前缀）");
+-            dialog.setContentText("表名:");
+-            return dialog.showAndWait().map(String::trim).filter(value -> !value.isEmpty()).orElse(null);
+-        }
+-        @Override public boolean confirmOverwrite(Path path) {
+-            Alert dialog = new Alert(Alert.AlertType.CONFIRMATION,
+-                    "导出成功后替换此文件；失败时保留原文件。\n" + path, ButtonType.OK, ButtonType.CANCEL);
+-            if (owner.get() != null) dialog.initOwner(owner.get());
+-            dialog.setTitle("确认替换文件");
+-            dialog.setHeaderText("目标文件已存在");
+-            return dialog.showAndWait().filter(ButtonType.OK::equals).isPresent();
+-        }
+-    }
++package com.datacube.fx;
++
++import com.datacube.export.*;
++import com.datacube.export.QueryResultFileWriter.Format;
++import com.datacube.fx.task.FxTaskScope;
++import com.datacube.sqleditor.InsertSqlGenerator;
++import com.datacube.sqleditor.result.*;
++import java.io.File;
++import java.nio.file.Path;
++import java.util.*;
++import java.util.concurrent.*;
++import java.util.function.*;
++import javafx.scene.control.*;
++import javafx.stage.FileChooser;
++import javafx.stage.Window;
++
++final class SqlResultExportCoordinator implements AutoCloseable {
++    interface Ui {
++        Optional<ResultExportOptionsDialog.Selection> chooseScope(ResultExportSnapshot snapshot, boolean sql);
++        Path chooseFile(Format format);
++        String chooseTable(String originalSql);
++        boolean confirmOverwrite(Path path);
++    }
++    record Request(SafeResultFilePublisher.Target target, Format format, ResultExportSnapshot snapshot,
++                   ResultExportOptionsDialog.Selection selection, String table) {
++        @Override public String toString() { return "ResultExportRequest[" + format + "]"; }
++    }
++    @FunctionalInterface interface FileJob {
++        Path write(Request request, ResultExportOperation operation) throws Exception;
++    }
++    private final FxTaskScope tasks;
++    private final Supplier<ResultExportSnapshot> capture;
++    private final LongSupplier revision;
++    private final BiConsumer<String, Boolean> status;
++    private final Predicate<String> clipboard;
++    private final Ui ui;
++    private final FileJob job;
++    private final ResultExportSession session = new ResultExportSession();
++    private ResultExportOperation latest;
++
++    SqlResultExportCoordinator(FxTaskScope tasks, Supplier<ResultExportSnapshot> capture,
++            LongSupplier revision, BiConsumer<String, Boolean> status, Predicate<String> clipboard,
++            Supplier<Window> owner) {
++        this(tasks, capture, revision, status, clipboard, new Dialogs(owner),
++                (request, operation) -> new SafeResultFilePublisher().publish(request.target(), operation,
++                        (temporary, token) -> QueryResultFileWriter.write(temporary, request.format(),
++                                request.snapshot(), request.selection().scope(),
++                                request.selection().displayConfirmed(), request.table(), token)));
++    }
++    SqlResultExportCoordinator(FxTaskScope tasks, Supplier<ResultExportSnapshot> capture,
++            LongSupplier revision, BiConsumer<String, Boolean> status, Predicate<String> clipboard,
++            Ui ui, FileJob job) {
++        this.tasks = Objects.requireNonNull(tasks);
++        this.capture = Objects.requireNonNull(capture);
++        this.revision = Objects.requireNonNull(revision);
++        this.status = Objects.requireNonNull(status);
++        this.clipboard = Objects.requireNonNull(clipboard);
++        this.ui = Objects.requireNonNull(ui);
++        this.job = Objects.requireNonNull(job);
++    }
++    private boolean open() { return !session.isClosed() && !tasks.isClosed(); }
++    private boolean ownsStatus(ResultExportOperation operation, long stamp) {
++        return open() && latest == operation && revision.getAsLong() == stamp;
++    }
++    private static boolean permitted(ResultExportSnapshot snapshot,
++            ResultExportOptionsDialog.Selection selection, boolean sql) {
++        var rows = snapshot.rows(selection.scope());
++        if (rows.isEmpty() || snapshot.columns().isEmpty()) return false;
++        boolean scalar = ResultExportValuePolicy.assess(rows).sqlAllowed();
++        return scalar || (!sql && selection.displayConfirmed());
++    }
++    Future<?> export(Format format) {
++        if (!open()) return null;
++        ResultExportOperation operation = session.begin();
++        if (operation == null) return null;
++        latest = operation;
++        boolean submitted = false;
++        long ownerRevision = revision.getAsLong();
++        long submissionRevision = Long.MIN_VALUE;
++        try {
++            ResultExportSnapshot snapshot = capture.get();
++            ownerRevision = revision.getAsLong();
++            if (snapshot == null) {
++                status.accept("没有可导出的查询结果", true);
++                return null;
++            }
++            var selection = ui.chooseScope(snapshot, format == Format.SQL);
++            if (selection.isEmpty() || !open()) return null;
++            if (!permitted(snapshot, selection.get(), format == Format.SQL)) {
++                if (ownsStatus(operation, ownerRevision)) status.accept("当前范围或值类型不能导出", true);
++                return null;
++            }
++            String table = format == Format.SQL ? ui.chooseTable(snapshot.originalSql()) : null;
++            if ((format == Format.SQL && table == null) || !open()) return null;
++            Path chosen = ui.chooseFile(format);
++            if (chosen == null || !open()) return null;
++            var target = SafeResultFilePublisher.capture(chosen);
++            if (target.existed() && !ui.confirmOverwrite(target.path())) return null;
++            if (!open()) return null;
++            operation.check();
++            var request = new Request(target, format, snapshot, selection.get(), table);
++            boolean statusOwned = ownsStatus(operation, ownerRevision);
++            if (statusOwned) status.accept("导出中...", false);
++            submissionRevision = statusOwned ? revision.getAsLong() : Long.MIN_VALUE;
++            final long completionRevision = submissionRevision;
++            Future<?> future = tasks.submit(() -> {
++                try { return job.write(request, operation); }
++                finally { session.finish(operation); }
++            }, published -> {
++                if (ownsStatus(operation, completionRevision))
++                    status.accept("已导出: " + published, false);
++            }, failure -> {
++                if (ownsStatus(operation, completionRevision))
++                    status.accept(failureMessage(failure), true);
++            });
++            submitted = true;
++            return future;
++        } catch (RejectedExecutionException rejected) {
++            if (ownsStatus(operation, submissionRevision))
++                status.accept("导出任务未能启动，请重试", true);
++            return null;
++        } catch (CancellationException cancelled) {
++            return null;
++        } catch (Exception failure) {
++            if (ownsStatus(operation, ownerRevision)) status.accept(failureMessage(failure), true);
++            return null;
++        } finally {
++            if (!submitted) {
++                operation.cancel();
++                session.finish(operation);
++            }
++        }
++    }
++    boolean copyInsert() {
++        if (!open()) return false;
++        long ownerRevision = revision.getAsLong();
++        try {
++            var snapshot = capture.get();
++            ownerRevision = revision.getAsLong();
++            if (snapshot == null) return false;
++            var selection = ui.chooseScope(snapshot, true);
++            if (selection.isEmpty() || !open()) return false;
++            if (!permitted(snapshot, selection.get(), true)) {
++                if (revision.getAsLong() == ownerRevision) status.accept("当前范围或值类型不能生成 INSERT", true);
++                return false;
++            }
++            String table = ui.chooseTable(snapshot.originalSql());
++            if (table == null || !open()) return false;
++            String script = QueryResultFileWriter.insert(snapshot, selection.get().scope(), table);
++            if (!open()) return false;
++            boolean written = clipboard.test(script);
++            if (open() && revision.getAsLong() == ownerRevision)
++                status.accept(written ? "已复制 " + snapshot.rows(selection.get().scope()).size()
++                        + " 条 INSERT 语句" : "复制失败：无法写入系统剪贴板", !written);
++            return written;
++        } catch (RuntimeException failure) {
++            if (open() && revision.getAsLong() == ownerRevision)
++                status.accept("复制失败：无法生成或写入 INSERT", true);
++            return false;
++        }
++    }
++    private static String failureMessage(Throwable failure) {
++        if (failure instanceof SafeResultFilePublisher.Failure safe) {
++            return switch (safe.stage()) {
++                case PREPARE -> "无法安全保存：请选择本地普通文件";
++                case TARGET_CHANGED -> "目标文件已改变，请重新选择并确认";
++                case TARGET_BUSY -> "目标文件正在导出，请稍后重试";
++                case XML_CHARACTER -> "XML 无法表示部分字符，原目标文件未修改";
++                case WRITE -> "导出写入失败，原目标文件未修改";
++                case PUBLISH -> "无法原子发布导出文件，原目标文件未修改";
++                case CLEANUP -> "导出未完成，临时文件清理失败，请手动处理: " + safe.temporaryPath();
++            };
++        }
++        return "导出失败，未发布结果文件";
++    }
++    @Override public void close() { session.close(); }
++
++    private static final class Dialogs implements Ui {
++        private final Supplier<Window> owner;
++        private Dialogs(Supplier<Window> owner) { this.owner = owner; }
++        @Override public Optional<ResultExportOptionsDialog.Selection> chooseScope(
++                ResultExportSnapshot snapshot, boolean sql) {
++            return ResultExportOptionsDialog.create(owner.get(), snapshot, sql).showAndWait();
++        }
++        @Override public Path chooseFile(Format format) {
++            FileChooser chooser = new FileChooser();
++            chooser.setTitle("导出结果 - " + format.label);
++            File directory = FxFiles.defaultSaveDir();
++            if (directory != null) chooser.setInitialDirectory(directory);
++            chooser.setInitialFileName(format.defaultName);
++            chooser.getExtensionFilters().add(
++                    new FileChooser.ExtensionFilter(format.filterDesc, format.filterExt));
++            File chosen = chooser.showSaveDialog(owner.get());
++            return chosen == null ? null : chosen.toPath();
++        }
++        @Override public String chooseTable(String originalSql) {
++            String table = InsertSqlGenerator.singleTableName(originalSql);
++            if (table != null) return table;
++            TextInputDialog dialog = new TextInputDialog();
++            if (owner.get() != null) dialog.initOwner(owner.get());
++            dialog.setTitle("指定目标表");
++            dialog.setHeaderText("无法确定单一来源表，请输入 INSERT 目标表名（可带 schema 前缀）");
++            dialog.setContentText("表名:");
++            return dialog.showAndWait().map(String::trim).filter(value -> !value.isEmpty()).orElse(null);
++        }
++        @Override public boolean confirmOverwrite(Path path) {
++            Alert dialog = new Alert(Alert.AlertType.CONFIRMATION,
++                    "导出成功后替换此文件；失败时保留原文件。\n" + path, ButtonType.OK, ButtonType.CANCEL);
++            if (owner.get() != null) dialog.initOwner(owner.get());
++            dialog.setTitle("确认替换文件");
++            dialog.setHeaderText("目标文件已存在");
++            return dialog.showAndWait().filter(ButtonType.OK::equals).isPresent();
++        }
++    }
+ }
+diff --git a/test/com/datacube/export/ResultExporterTest.java b/test/com/datacube/export/ResultExporterTest.java
+index 73d3d591..a28a5239 100644
+--- a/test/com/datacube/export/ResultExporterTest.java
++++ b/test/com/datacube/export/ResultExporterTest.java
+@@ -1,106 +1,108 @@
+-package com.datacube.export;
+-
+-import org.junit.jupiter.api.Test;
+-
+-import java.io.StringWriter;
+-import java.util.Arrays;
+-import java.util.List;
+-
+-import static org.junit.jupiter.api.Assertions.*;
+-
+-/** ResultExporter CSV/HTML/XML 导出格式单元测试。 */
+-class ResultExporterTest {
+-
+-    private static final List<String> COLS = List.of("ID", "NAME");
+-
+-    private static List<List<Object>> rows(Object[]... rows) {
+-        return Arrays.stream(rows).map(Arrays::asList).toList();
+-    }
+-
+-    // ---------- CSV ----------
+-
+-    @Test
+-    void csvHasBomHeaderAndCrlf() throws Exception {
+-        StringWriter w = new StringWriter();
+-        ResultExporter.writeCsv(w, COLS, rows(new Object[]{1, "Tom"}));
+-        String out = w.toString();
+-        assertEquals('\uFEFF', out.charAt(0));
+-        assertEquals("ID,NAME\r\n1,Tom\r\n", out.substring(1));
+-    }
+-
+-    @Test
+-    void csvQuotesSpecialsAndDoublesQuote() throws Exception {
+-        StringWriter w = new StringWriter();
+-        ResultExporter.writeCsv(w, COLS, rows(new Object[]{"a,b", "say \"hi\"\nok"}));
+-        String out = w.toString().substring(1);
+-        assertEquals("ID,NAME\r\n\"a,b\",\"say \"\"hi\"\"\nok\"\r\n", out);
+-    }
+-
+-    @Test
+-    void csvNullAndShortRowAsEmptyField() throws Exception {
+-        StringWriter w = new StringWriter();
+-        ResultExporter.writeCsv(w, COLS, rows(new Object[]{null, "x"}, new Object[]{2}));
+-        String out = w.toString().substring(1);
+-        assertEquals("ID,NAME\r\n,x\r\n2,\r\n", out);
+-    }
+-
+-    // ---------- HTML ----------
+-
+-    @Test
+-    void htmlEscapesAndContainsStructure() throws Exception {
+-        StringWriter w = new StringWriter();
+-        ResultExporter.writeHtml(w, "查询结果", List.of("A<B"), rows(new Object[]{"x&\"y\""}));
+-        String out = w.toString();
+-        assertTrue(out.startsWith("<!DOCTYPE html>"));
+-        assertTrue(out.contains("<meta charset=\"utf-8\">"));
+-        assertTrue(out.contains("<title>查询结果</title>"));
+-        assertTrue(out.contains("<th>A&lt;B</th>"));
+-        assertTrue(out.contains("<td>x&amp;&quot;y&quot;</td>"));
+-    }
+-
+-    @Test
+-    void htmlNullCellRendersEmpty() throws Exception {
+-        StringWriter w = new StringWriter();
+-        ResultExporter.writeHtml(w, null, COLS, rows(new Object[]{null, "v"}));
+-        assertTrue(w.toString().contains("<td></td><td>v</td>"));
+-    }
+-
+-    // ---------- XML ----------
+-
+-    @Test
+-    void xmlRowsetRowStructure() throws Exception {
+-        StringWriter w = new StringWriter();
+-        ResultExporter.writeXml(w, COLS, rows(new Object[]{1, "a<b"}));
+-        String out = w.toString();
+-        assertTrue(out.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+-        assertTrue(out.contains("<ROWSET>"));
+-        assertTrue(out.contains("<ROW>"));
+-        assertTrue(out.contains("<ID>1</ID>"));
+-        assertTrue(out.contains("<NAME>a&lt;b</NAME>"));
+-    }
+-
+-    @Test
+-    void xmlSanitizesIllegalColumnNameKeepingOriginal() throws Exception {
+-        StringWriter w = new StringWriter();
+-        ResultExporter.writeXml(w, List.of("COUNT(*)", "user id"), rows(new Object[]{5, "u"}));
+-        String out = w.toString();
+-        assertTrue(out.contains("<COUNT___ name=\"COUNT(*)\">5</COUNT___>"));
+-        assertTrue(out.contains("<user_id name=\"user id\">u</user_id>"));
+-    }
+-
+-    @Test
+-    void xmlNullColumnOmitted() throws Exception {
+-        StringWriter w = new StringWriter();
+-        ResultExporter.writeXml(w, COLS, rows(new Object[]{null, "v"}));
+-        String out = w.toString();
+-        assertFalse(out.contains("<ID>"));
+-        assertTrue(out.contains("<NAME>v</NAME>"));
+-    }
+-
+-    @Test
+-    void xmlStripsIllegalControlChars() throws Exception {
+-        StringWriter w = new StringWriter();
+-        ResultExporter.writeXml(w, List.of("C"), rows(new Object[]{"a\u0000b\tc"}));
+-        assertTrue(w.toString().contains("<C>ab\tc</C>"));
+-    }
++package com.datacube.export;
++
++import org.junit.jupiter.api.Test;
++
++import java.io.StringWriter;
++import java.util.Arrays;
++import java.util.List;
++
++import static org.junit.jupiter.api.Assertions.*;
++
++/** ResultExporter CSV/HTML/XML 导出格式单元测试。 */
++class ResultExporterTest {
++
++    private static final List<String> COLS = List.of("ID", "NAME");
++
++    private static List<List<Object>> rows(Object[]... rows) {
++        return Arrays.stream(rows).map(Arrays::asList).toList();
++    }
++
++    // ---------- CSV ----------
++
++    @Test
++    void csvHasBomHeaderAndCrlf() throws Exception {
++        StringWriter w = new StringWriter();
++        ResultExporter.writeCsv(w, COLS, rows(new Object[]{1, "Tom"}));
++        String out = w.toString();
++        assertEquals('\uFEFF', out.charAt(0));
++        assertEquals("ID,NAME\r\n1,Tom\r\n", out.substring(1));
++    }
++
++    @Test
++    void csvQuotesSpecialsAndDoublesQuote() throws Exception {
++        StringWriter w = new StringWriter();
++        ResultExporter.writeCsv(w, COLS, rows(new Object[]{"a,b", "say \"hi\"\nok"}));
++        String out = w.toString().substring(1);
++        assertEquals("ID,NAME\r\n\"a,b\",\"say \"\"hi\"\"\nok\"\r\n", out);
++    }
++
++    @Test
++    void csvNullAndShortRowAsEmptyField() throws Exception {
++        StringWriter w = new StringWriter();
++        ResultExporter.writeCsv(w, COLS, rows(new Object[]{null, "x"}, new Object[]{2}));
++        String out = w.toString().substring(1);
++        assertEquals("ID,NAME\r\n,x\r\n2,\r\n", out);
++    }
++
++    // ---------- HTML ----------
++
++    @Test
++    void htmlEscapesAndContainsStructure() throws Exception {
++        StringWriter w = new StringWriter();
++        ResultExporter.writeHtml(w, "查询结果", List.of("A<B"), rows(new Object[]{"x&\"y\""}));
++        String out = w.toString();
++        assertTrue(out.startsWith("<!DOCTYPE html>"));
++        assertTrue(out.contains("<meta charset=\"utf-8\">"));
++        assertTrue(out.contains("<title>查询结果</title>"));
++        assertTrue(out.contains("<th>A&lt;B</th>"));
++        assertTrue(out.contains("<td>x&amp;&quot;y&quot;</td>"));
++    }
++
++    @Test
++    void htmlNullCellRendersEmpty() throws Exception {
++        StringWriter w = new StringWriter();
++        ResultExporter.writeHtml(w, null, COLS, rows(new Object[]{null, "v"}));
++        assertTrue(w.toString().contains("<td></td><td>v</td>"));
++    }
++
++    // ---------- XML ----------
++
++    @Test
++    void xmlRowsetRowStructure() throws Exception {
++        StringWriter w = new StringWriter();
++        ResultExporter.writeXml(w, COLS, rows(new Object[]{1, "a<b"}));
++        String out = w.toString();
++        assertTrue(out.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
++        assertTrue(out.contains("<ROWSET>"));
++        assertTrue(out.contains("<ROW>"));
++        assertTrue(out.contains("<ID>1</ID>"));
++        assertTrue(out.contains("<NAME>a&lt;b</NAME>"));
++    }
++
++    @Test
++    void xmlSanitizesIllegalColumnNameKeepingOriginal() throws Exception {
++        StringWriter w = new StringWriter();
++        ResultExporter.writeXml(w, List.of("COUNT(*)", "user id"), rows(new Object[]{5, "u"}));
++        String out = w.toString();
++        assertTrue(out.contains("<COUNT___ name=\"COUNT(*)\">5</COUNT___>"));
++        assertTrue(out.contains("<user_id name=\"user id\">u</user_id>"));
++    }
++
++    @Test
++    void xmlNullColumnOmitted() throws Exception {
++        StringWriter w = new StringWriter();
++        ResultExporter.writeXml(w, COLS, rows(new Object[]{null, "v"}));
++        String out = w.toString();
++        assertFalse(out.contains("<ID>"));
++        assertTrue(out.contains("<NAME>v</NAME>"));
++    }
++
++    @Test
++    void xmlRejectsUnrepresentableCharactersWithoutExposingTheValue() throws Exception {
++        StringWriter w = new StringWriter();
++        var failure = assertThrows(ResultExporter.InvalidXmlCharacterException.class,
++                () -> ResultExporter.writeXml(w, List.of("C"), rows(new Object[]{"a\u0000b\tc"})));
++        assertEquals("XML contains an unrepresentable character", failure.getMessage());
++        assertNull(failure.getCause());
++    }
+ }
+diff --git a/test/com/datacube/export/XmlResultExportFidelityTest.java b/test/com/datacube/export/XmlResultExportFidelityTest.java
+new file mode 100644
+index 00000000..f707742f
+--- /dev/null
++++ b/test/com/datacube/export/XmlResultExportFidelityTest.java
+@@ -0,0 +1,129 @@
++package com.datacube.export;
++
++import com.datacube.spi.model.QueryResult;
++import com.datacube.sqleditor.result.*;
++import java.nio.file.*;
++import java.util.*;
++import java.util.concurrent.atomic.AtomicReference;
++import java.util.stream.Stream;
++import javax.xml.XMLConstants;
++import javax.xml.parsers.DocumentBuilderFactory;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.io.TempDir;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.Arguments;
++import org.junit.jupiter.params.provider.MethodSource;
++import org.w3c.dom.Element;
++import org.xml.sax.SAXParseException;
++import org.xml.sax.helpers.DefaultHandler;
++import static org.junit.jupiter.api.Assertions.*;
++
++class XmlResultExportFidelityTest {
++    @TempDir Path directory;
++
++    private ResultExportSnapshot snapshot(String column, Object value) {
++        return ResultExportSnapshot.capture(QueryResult.query(List.of(column),
++                List.of(Collections.singletonList(value)), 1), "select synthetic_value", List.of(0),
++                List.of(new ResultExportSnapshot.Column(0, column)));
++    }
++
++    private void write(Path temporary, ResultExportOperation operation, String column, Object value)
++            throws Exception {
++        QueryResultFileWriter.write(temporary, QueryResultFileWriter.Format.XML,
++                snapshot(column, value), ResultExportScope.CURRENT_FILTERED, false, null, operation);
++    }
++
++    private Element cell(Path target) throws Exception {
++        var factory = DocumentBuilderFactory.newInstance();
++        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
++        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
++        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
++        var parser = factory.newDocumentBuilder();
++        parser.setErrorHandler(new DefaultHandler() {
++            @Override public void fatalError(SAXParseException failure) throws SAXParseException {
++                throw failure;
++            }
++        });
++        var document = parser.parse(target.toFile());
++        assertEquals("ROWSET", document.getDocumentElement().getTagName());
++        var children = document.getElementsByTagName("ROW").item(0).getChildNodes();
++        for (int i = 0; i < children.getLength(); i++) {
++            if (children.item(i) instanceof Element element) return element;
++        }
++        return null;
++    }
++
++    private Element publish(String column, Object value) throws Exception {
++        Path target = directory.resolve("result.xml");
++        var operation = new ResultExportOperation();
++        new SafeResultFilePublisher().publish(SafeResultFilePublisher.capture(target), operation,
++                (temporary, token) -> write(temporary, token, column, value));
++        assertTrue(operation.published());
++        return cell(target);
++    }
++
++    static Stream<Arguments> validValues() {
++        return Stream.of("中文<&\"\t\n", "a\rb\r\nc", "\u0020\u007F\u0085\uD7FF\uE000\uFFFD",
++                "\uD800\uDC00\uD83D\uDE00\uDBFF\uDFFF").map(Arguments::of);
++    }
++
++    @ParameterizedTest @MethodSource("validValues")
++    void validUnicodeAndTextLineEndsRoundTrip(String value) throws Exception {
++        assertEquals(value, publish("C", value).getTextContent());
++    }
++
++    static Stream<Arguments> columnNames() {
++        return Stream.of("a\t\n\rb", "\u00AA", "COUNT(*)", "", "\uD83D\uDE00",
++                "a\u0301\u00B7b").map(Arguments::of);
++    }
++
++    @ParameterizedTest @MethodSource("columnNames")
++    void columnNameRoundTripsThroughTagOrNameAttribute(String name) throws Exception {
++        Element cell = publish(name, "VALUE");
++        assertEquals(name, cell.hasAttribute("name") ? cell.getAttribute("name") : cell.getTagName());
++        assertEquals("VALUE", cell.getTextContent());
++        if (name.equals("COUNT(*)")) assertEquals("COUNT___", cell.getTagName());
++        if (name.equals("\uD83D\uDE00")) assertEquals("__", cell.getTagName());
++        if (name.equals("a\u0301\u00B7b")) assertEquals("a__b", cell.getTagName());
++        if (name.equals("\u00AA")) assertEquals("_", cell.getTagName());
++    }
++
++    static Stream<Arguments> invalidCharacters() {
++        return Stream.concat(java.util.stream.IntStream.range(0, 32)
++                .filter(code -> code != 9 && code != 10 && code != 13).boxed(),
++                Stream.of(0xFFFE, 0xFFFF, 0xD800, 0xDBFF, 0xDC00, 0xDFFF))
++                .flatMap(code -> Stream.of(Arguments.of(code, false), Arguments.of(code, true)));
++    }
++
++    @ParameterizedTest(name="code={0}, column={1}") @MethodSource("invalidCharacters")
++    void unrepresentableValueOrColumnKeepsOldTargetCleansOwnedTempAndAllowsRetry(
++            int code, boolean column) throws Exception {
++        String invalid = "SYNTHETIC_SECRET" + (char) code + "END";
++        String name = column ? invalid : "C";
++        String value = column ? "VALUE" : invalid;
++        Path target = Files.writeString(directory.resolve("result.xml"), "OLD_BYTES");
++        Path unrelated = Files.writeString(directory.resolve("unrelated.tmp"), "KEEP");
++        var temporary = new AtomicReference<Path>();
++        var operation = new ResultExportOperation();
++        var failure = assertThrows(SafeResultFilePublisher.Failure.class, () ->
++                new SafeResultFilePublisher().publish(SafeResultFilePublisher.capture(target), operation,
++                        (path, token) -> { temporary.set(path); write(path, token, name, value); }));
++        assertAll(() -> assertEquals("XML_CHARACTER", failure.stage().name()),
++                () -> assertEquals("Result export failed at XML_CHARACTER", failure.getMessage()),
++                () -> assertNull(failure.getCause()), () -> assertNull(failure.temporaryPath()),
++                () -> assertFalse(operation.published()),
++                () -> assertEquals("OLD_BYTES", Files.readString(target)),
++                () -> assertEquals("KEEP", Files.readString(unrelated)),
++                () -> assertNotNull(temporary.get()), () -> assertFalse(Files.exists(temporary.get())));
++        var retry = new ResultExportOperation();
++        new SafeResultFilePublisher().publish(SafeResultFilePublisher.capture(target), retry,
++                (path, token) -> write(path, token, "C", "RETRY"));
++        assertTrue(retry.published());
++        assertEquals("RETRY", cell(target).getTextContent());
++        try (var files = Files.list(directory)) { assertEquals(2, files.count()); }
++    }
++
++    @Test void nullValueStillOmitsItsElement() throws Exception {
++        assertNull(publish("NULL_COLUMN", null));
++    }
++}
+diff --git a/test/com/datacube/fx/SqlResultXmlExportFailureTest.java b/test/com/datacube/fx/SqlResultXmlExportFailureTest.java
+new file mode 100644
+index 00000000..7b94eb76
+--- /dev/null
++++ b/test/com/datacube/fx/SqlResultXmlExportFailureTest.java
+@@ -0,0 +1,70 @@
++package com.datacube.fx;
++
++import com.datacube.export.*;
++import com.datacube.fx.task.*;
++import com.datacube.spi.model.QueryResult;
++import com.datacube.sqleditor.result.*;
++import java.nio.file.*;
++import java.util.*;
++import java.util.concurrent.*;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.io.TempDir;
++import static org.junit.jupiter.api.Assertions.*;
++
++class SqlResultXmlExportFailureTest {
++    @TempDir Path directory;
++
++    @Test void unrepresentableXmlReportsFixedReasonWithoutSuccessAndCanRetry() throws Exception {
++        Path target = Files.writeString(directory.resolve("result.xml"), "OLD");
++        var events = new ArrayList<String>();
++        var errors = new ArrayList<Boolean>();
++        var settled = new LinkedBlockingQueue<String>();
++        var active = new java.util.concurrent.atomic.AtomicReference<>(snapshot("SYNTHETIC_SECRET\u0000END"));
++        var ui = new SqlResultExportCoordinator.Ui() {
++            public Optional<ResultExportOptionsDialog.Selection> chooseScope(ResultExportSnapshot snapshot,
++                    boolean sql) { return Optional.of(new ResultExportOptionsDialog.Selection(
++                            ResultExportScope.CURRENT_FILTERED, false)); }
++            public Path chooseFile(QueryResultFileWriter.Format format) { return target; }
++            public String chooseTable(String sql) { fail("XML needs no table prompt"); return null; }
++            public boolean confirmOverwrite(Path path) { return true; }
++        };
++        try (var runner = new FxTaskRunner()) {
++            var tasks = runner.scope();
++            var coordinator = new SqlResultExportCoordinator(tasks, active::get, () -> 0L,
++                    (text, error) -> { events.add(text); errors.add(error);
++                        if (!text.equals("导出中...")) settled.add(text); },
++                    text -> { fail("No clipboard access"); return false; }, ui,
++                    (request, operation) -> new SafeResultFilePublisher().publish(request.target(), operation,
++                            (path, token) -> QueryResultFileWriter.write(path, request.format(),
++                                    request.snapshot(), request.selection().scope(),
++                                    request.selection().displayConfirmed(), request.table(), token)));
++            try {
++                Future<?> first = FxUiTestSupport.call(() -> coordinator.export(QueryResultFileWriter.Format.XML));
++                String message = settled.poll(5, TimeUnit.SECONDS);
++                FxUiTestSupport.call(() -> {
++                    assertEquals("XML 无法表示部分字符，原目标文件未修改", message);
++                    assertEquals(List.of("导出中...", message), events);
++                    assertEquals(List.of(false, true), errors);
++                    assertFalse(events.stream().anyMatch(text -> text.contains("SYNTHETIC_SECRET")
++                            || text.startsWith("已导出:")));
++                    return null;
++                });
++                first.get(5, TimeUnit.SECONDS);
++                assertEquals("OLD", Files.readString(target));
++                try (var files = Files.list(directory)) { assertEquals(1, files.count()); }
++                active.set(snapshot("RETRY"));
++                Future<?> retry = FxUiTestSupport.call(() -> coordinator.export(QueryResultFileWriter.Format.XML));
++                retry.get(5, TimeUnit.SECONDS);
++                assertEquals("已导出: " + target.getParent().toRealPath().resolve(target.getFileName()),
++                        settled.poll(5, TimeUnit.SECONDS));
++                FxUiTestSupport.call(() -> { assertEquals(false, errors.getLast()); return null; });
++                assertTrue(Files.readString(target).contains("RETRY"));
++            } finally { coordinator.close(); tasks.close(); }
++        }
++    }
++
++    private ResultExportSnapshot snapshot(String value) {
++        return ResultExportSnapshot.capture(QueryResult.query(List.of("C"), List.of(List.of(value)), 1),
++                "select synthetic_value", List.of(0), List.of(new ResultExportSnapshot.Column(0, "C")));
++    }
++}
