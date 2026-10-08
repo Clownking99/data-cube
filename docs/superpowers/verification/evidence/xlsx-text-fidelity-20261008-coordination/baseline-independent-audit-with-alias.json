@@ -1,0 +1,152 @@
+{
+  "reader": "stdlib XML (DTD/entity declarations forbidden) + openpyxl.utils.escape.unescape",
+  "openpyxlVersion": "3.1.5",
+  "nativeExcelAcceptance": false,
+  "cases": 10,
+  "passed": 1,
+  "failed": 9,
+  "results": [
+    {
+      "id": "nul",
+      "published": true,
+      "expectedUtf16": "0061,0000,0062",
+      "expectedReject": false,
+      "sheetSha256": "3E368E2D2F415FA11C09128B92CA3CD470125CE03251CB243F4714AFFA32B549",
+      "packageBytesChecked": true,
+      "packageSha256": "9CADFBE36703B7D836EF3A4E4F0948DC204503A31CE0E4DE2864E91134BA1A10",
+      "xmlParsed": true,
+      "decodedUtf16": [
+        "0061,0062",
+        "0061,0062"
+      ],
+      "passed": false
+    },
+    {
+      "id": "c0",
+      "published": true,
+      "expectedUtf16": "0061,0001,000B,001F,0062",
+      "expectedReject": false,
+      "sheetSha256": "3E368E2D2F415FA11C09128B92CA3CD470125CE03251CB243F4714AFFA32B549",
+      "packageBytesChecked": true,
+      "packageSha256": "9CADFBE36703B7D836EF3A4E4F0948DC204503A31CE0E4DE2864E91134BA1A10",
+      "xmlParsed": true,
+      "decodedUtf16": [
+        "0061,0062",
+        "0061,0062"
+      ],
+      "passed": false
+    },
+    {
+      "id": "cr",
+      "published": true,
+      "expectedUtf16": "0061,000D,0062,000D,000A,0063",
+      "expectedReject": false,
+      "sheetSha256": "7EAB09E8728579572784C6C55715243DE9C8DDF6033D219900F40C028C70C3E9",
+      "packageBytesChecked": true,
+      "packageSha256": "F585204C87F7DAE3406C53474F16F2DA579190A7B849D42EF27E906F87EB62B5",
+      "xmlParsed": true,
+      "decodedUtf16": [
+        "0061,000A,0062,000A,0063",
+        "0061,000A,0062,000A,0063"
+      ],
+      "passed": false
+    },
+    {
+      "id": "fffe",
+      "published": true,
+      "expectedUtf16": "0061,FFFE,0062",
+      "expectedReject": false,
+      "sheetSha256": "1E4F4C07C1ED36DA959EE548F8C1F23A6EDE4618E6D51D37E887C827F4B7DC89",
+      "packageBytesChecked": true,
+      "packageSha256": "020CF78E86E239D4129110927EA2A5D22CCF29158BE743DABC2ECBDDFD23EC42",
+      "xmlParsed": false,
+      "passed": false
+    },
+    {
+      "id": "ffff",
+      "published": true,
+      "expectedUtf16": "0061,FFFF,0062",
+      "expectedReject": false,
+      "sheetSha256": "92B0B2CA70EF9874ABD3750398FA82E7AE4585B68AE8710B3E1907637DBF7816",
+      "packageBytesChecked": true,
+      "packageSha256": "BD6DBB6B1E1089967346A7FF56E44BAE65B3577A35D2DCAAACF59B401BE1FBE9",
+      "xmlParsed": false,
+      "passed": false
+    },
+    {
+      "id": "literal",
+      "published": true,
+      "expectedUtf16": "0070,005F,0078,0030,0030,0030,0030,005F,005F,0078,0030,0030,0030,0044,005F,005F,0078,0030,0030,0035,0046,005F,0078,0030,0030,0030,0030,005F,005F,0078,0030,0030,0061,0046,005F,0071",
+      "expectedReject": false,
+      "sheetSha256": "1A7BF4C9F2A3C4803801987C58E272116498E00E3F2F7130316AC4A8D909035F",
+      "packageBytesChecked": true,
+      "packageSha256": "C04967537AA8BB6055E27EEBB778A1C0EE4A3F0C36B1890AB72359BFB7073CC4",
+      "xmlParsed": true,
+      "decodedUtf16": [
+        "0070,0000,000D,005F,0078,0030,0030,0030,0030,005F,00AF,0071",
+        "0070,0000,000D,005F,0078,0030,0030,0030,0030,005F,00AF,0071"
+      ],
+      "passed": false
+    },
+    {
+      "id": "near-literal",
+      "published": true,
+      "expectedUtf16": "005F,0058,0030,0030,0030,0030,005F,0020,005F,0078,0030,0030,0030,0067,005F,0020,005F,0078,0030,0030,0030,005F,0020,005F,0078,0030,0030,0030,0030,0030,005F,0020,005F,0078,0030,0030,0035,0046,005F",
+      "expectedReject": false,
+      "sheetSha256": "AD4A8BA36C607E8222F6CD8B46DE60632A752BEC94B05AC0141B9D083852097F",
+      "packageBytesChecked": true,
+      "packageSha256": "1AE59DD7A7EFD1854E2177727B4D1546A8064F0D56B62175DEA957CC0433618C",
+      "xmlParsed": true,
+      "decodedUtf16": [
+        "005F,0058,0030,0030,0030,0030,005F,0020,005F,0078,0030,0030,0030,0067,005F,0020,005F,0078,0030,0030,0030,005F,0020,005F,0078,0030,0030,0030,0030,0030,005F,0020,005F",
+        "005F,0058,0030,0030,0030,0030,005F,0020,005F,0078,0030,0030,0030,0067,005F,0020,005F,0078,0030,0030,0030,005F,0020,005F,0078,0030,0030,0030,0030,0030,005F,0020,005F"
+      ],
+      "passed": false
+    },
+    {
+      "id": "high-surrogate",
+      "published": true,
+      "expectedUtf16": "0061,D800,0062",
+      "expectedReject": true,
+      "sheetSha256": "EB92AAF2EA7D5124FB6A92D537FF3360581CFAAAA94C791EEB6287992D2BA7AA",
+      "packageBytesChecked": true,
+      "packageSha256": "FDBC448D2BE0A3ED140C21293877939B00AA3CE065FC582375933B97FA3D8102",
+      "xmlParsed": true,
+      "decodedUtf16": [
+        "0061,003F,0062",
+        "0061,003F,0062"
+      ],
+      "passed": false
+    },
+    {
+      "id": "low-surrogate",
+      "published": true,
+      "expectedUtf16": "0061,DC00,0062",
+      "expectedReject": true,
+      "sheetSha256": "EB92AAF2EA7D5124FB6A92D537FF3360581CFAAAA94C791EEB6287992D2BA7AA",
+      "packageBytesChecked": true,
+      "packageSha256": "FDBC448D2BE0A3ED140C21293877939B00AA3CE065FC582375933B97FA3D8102",
+      "xmlParsed": true,
+      "decodedUtf16": [
+        "0061,003F,0062",
+        "0061,003F,0062"
+      ],
+      "passed": false
+    },
+    {
+      "id": "ordinary",
+      "published": true,
+      "expectedUtf16": "0020,4E2D,6587,003C,0026,003E,0022,0009,000A,007F,0080,009F,D7FF,E000,FFFD,D800,DC00,D83D,DE00,DBFF,DFFF,0020",
+      "expectedReject": false,
+      "sheetSha256": "3586AE23922FF277AF54DD7C4732F6DBB3E061E34E0EAE370A0AD059E7426C11",
+      "packageBytesChecked": true,
+      "packageSha256": "333C3230CE96CD0CB0EBFE91C3F1FCE3C38365F55088DDC5CE9F2139A66374F8",
+      "xmlParsed": true,
+      "decodedUtf16": [
+        "0020,4E2D,6587,003C,0026,003E,0022,0009,000A,007F,0080,009F,D7FF,E000,FFFD,D800,DC00,D83D,DE00,DBFF,DFFF,0020",
+        "0020,4E2D,6587,003C,0026,003E,0022,0009,000A,007F,0080,009F,D7FF,E000,FFFD,D800,DC00,D83D,DE00,DBFF,DFFF,0020"
+      ],
+      "passed": true
+    }
+  ]
+}
