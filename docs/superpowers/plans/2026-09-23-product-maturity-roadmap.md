@@ -1,5 +1,7 @@
 # DataCube 产品成熟度推进计划
 
+**2026-10-08 最新产品：[XML 导出忠实性](../verification/2026-10-08-xml-export-fidelity-review.md)** 已完成源码 c553e4c5、证据 eda89701、main 集成 33e167b7 与新复验。非法字符明确拒绝并保留原文件，合法正文/列名精确回读，旧可解析标签映射保留。新增 86 项回归，分支/main 各定向 144、全量 4161 通过/3 live 跳过、强制 buildSrc 8、jpackageImage/镜像 XML 七组回读及隔离审计通过，三产物 SHA 相同。失败与夹具/权限诊断原件完整保留，525 份 worker raw/Git 字节复核。最终 main 推送/精确 SHA CI 以本轮 delivery-intent 所指回执为准；原生/真库/慢磁盘/安装签名与完整 M8 不由本轮证明。v3.2.9 和 PAUSED 跟进不变；下方各“最新”为历史。
+
 **2026-10-08 SQL取消执行身份修复（最新）：** 修复旧异步取消误伤后继SQL，以及旧物理cancel晚异常关闭后继连接的竞态；取消发起时绑定执行，保留原物理取消资源所有权，并补全未启动任务拒绝的句柄结算。GPT-6.1-sol开发、root独立审核修正；源f656be08、分支证据dcdfa288、main集成fd5159ce。新增15项行为/服务回归，分支/main各新定向357、全量4075通过/3明确live跳过、强制buildSrc8、jpackageImage及183文件镜像审计通过，三产物SHA一致，566份worker原件Git字节复核。首红、过期结构断言失败及拒绝遗漏补验全部保留。详见[独立审查记录](../verification/2026-10-08-sql-cancel-identity-review.md)。本轮为mock/合成FX证据；真驱动取消/事务、剩余原生/OS缩放、终态恢复、无Gate启动、安装升级签名及完整M8仍待验。旧eaa Verify无记录原因未知，本次最终main推送/精确SHA CI以delivery-intent指向的新回执为准，不预报通过；v3.2.9和PAUSED跟进不动。下方各“最新”为历史轮次。
 
 **2026-10-07 SQL批量错误询问取消修复（最新）：** 修复取消已发生后旧“执行遇错”仍显示并卡住执行队列的问题。每次执行独立询问门禁，先禁止旧选择，再在实际取消finally后释放；保留继续/全部继续/取消/X、拒绝关闭和旧回调隔离。GPT-6.1-sol开发、root独立审核及接管修正；源7030423f、分支证据a5be5b20、main集成c5c25706。新增19个合成UI及6个helper例，分支/main各新定向249、全量4060通过/3明确live跳过、buildSrc8、jpackageImage/183文件零连接镜像审计通过，三产物SHA一致，459份worker原件Git字节复核。产品首红、夹具失败和shell统计调用诊断均保留。详见[独立审查记录](../verification/2026-10-07-sql-script-dialog-review.md)。queued脏tab文件确认前的modal顺序与慢取消调度注入均明确限定，不称原生验收。真驱动、原生/OS缩放、终态恢复、无Gate启动、安装升级签名和完整M8仍待验；最终main推送/精确SHA CI以delivery-intent指向的实际回执为准，v3.2.9与PAUSED跟进不动。下方各轮均按历史解读。
@@ -307,7 +309,7 @@ M4a–c 实现 `f7fa9bc`，main 合并 `4d0467a` 已复验，见 [G4 账本](../
 | M5 | 本地工程完成 | 实现 76dd221、修正 c62e86c；main 最终合并 0e7ca79；[G5 账本](../verification/2026-09-24-datacube-g5-sql-context.md)，main 全量 3724 passed/3 live skips、fresh buildSrc 8、镜像通过 | G5 交付；原生桌面/真库及明确降级单列 |
 | M6 | 本地工程完成 | 实现 d4b02de；main 合并 c182128；[G6 账本](../verification/2026-09-24-datacube-g6-discovery-library.md)，main 全量 3753 passed/3 live skips、fresh buildSrc 8、镜像及 14 张合成桌面截图 | G6 交付；原生模态输入/完整壳流程、真库等单列待验 |
 | M7 | 本地工程完成 | 主体 cc726a2；驱动修复 8b85bd6、载荷修复 ab6b61c；main 代码 552b709；[G7 账本](../verification/2026-09-25-datacube-g7-migration-evidence.md)，main 全量 3809 passed/3 live skipped、fresh buildSrc 8、镜像/驱动发现通过 | G8 已补合成迁移原生预检查/确认/取消/在途关闭；真库事务/权限/一致性与发布仍待验 |
-| M8 | 本地工程与部分原生验收已交付，v3.2.9自动打包已发布；完整M8未完成 | 最新[SQL取消执行身份](../verification/2026-10-08-sql-cancel-identity-review.md)：分支/main各定向357、全量4075通过/3 live跳过、buildSrc8、image/仅驱动发现审计；旧eaa CI无记录，本次精确SHA CI以新回执为准；历史原生/真库证据保持各自运行时身份 | 真驱动取消/事务、原生对话框/收藏/名称字段输入与完整下游动作、终态恢复、OS缩放/多屏、无Gate启动/闪屏、安装升级/回退/生产签名仍待验；datacube保持PAUSED |
+| M8 | 本地工程与部分原生验收已交付，v3.2.9自动打包已发布；完整M8未完成 | 最新[XML 导出忠实性](../verification/2026-10-08-xml-export-fidelity-review.md)：分支/main各新定向144、全量4161通过/3 live跳过、buildSrc8、image/七组XML回读及隔离审计；本次精确SHA CI以新回执为准；历史原生/真库证据保持各自运行时身份 | 真驱动取消/事务、真实慢/网络磁盘、原生对话框/收藏/名称字段输入与完整下游动作、终态恢复、OS缩放/多屏、无Gate启动/闪屏、安装升级/回退/生产签名仍待验；datacube保持PAUSED |
 
 ## 16. 参考与历史记录
 
