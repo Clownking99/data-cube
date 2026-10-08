@@ -1,0 +1,157 @@
+Picked up JAVA_TOOL_OPTIONS: "-Duser.home=C:\Users\hetia\AppData\Local\Temp\datacube-sql-cancel-identity-worker-d0f28977b08445d4a4febc8ebd9916df/profile" "-Djava.io.tmpdir=C:\Users\hetia\AppData\Local\Temp\DA035B~1\temp" -Djava.awt.headless=false
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :compileJava UP-TO-DATE
+> Task :generateBrandIcons UP-TO-DATE
+> Task :generateVersionProperties UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :compileTestJava
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+Picked up JAVA_TOOL_OPTIONS: "-Duser.home=C:\Users\hetia\AppData\Local\Temp\datacube-sql-cancel-identity-worker-d0f28977b08445d4a4febc8ebd9916df/profile" "-Djava.io.tmpdir=C:\Users\hetia\AppData\Local\Temp\DA035B~1\temp" -Djava.awt.headless=false
+> Task :test
+
+AppShellSqlCancelIdentityTest > oldPhysicalCancelFailureCannotCloseTheNextExecutionConnection(DbType) > [1] POSTGRESQL FAILED
+    org.gradle.internal.exceptions.DefaultMultiCauseException: Multiple Failures (3 failures)
+    	org.opentest4j.AssertionFailedError: old fallback must not close connection owned by next execution ==> expected: <false> but was: <true>
+    	org.opentest4j.AssertionFailedError: expected: <0> but was: <1>
+    	org.opentest4j.AssertionFailedError: expected: <CONNECTED> but was: <BROKEN>
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:80)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:44)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:38)
+        at app//org.junit.jupiter.api.Assertions.assertAll(Assertions.java:2944)
+        at app//com.datacube.fx.AppShellSqlCancelIdentityTest$Fixture.assertSecondUnaffected(AppShellSqlCancelIdentityTest.java:138)
+        at app//com.datacube.fx.AppShellSqlCancelIdentityTest.oldPhysicalCancelFailureCannotCloseTheNextExecutionConnection(AppShellSqlCancelIdentityTest.java:75)
+
+        Caused by:
+        org.opentest4j.AssertionFailedError: old fallback must not close connection owned by next execution ==> expected: <false> but was: <true>
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+            at app//org.junit.jupiter.api.AssertFalse.failNotFalse(AssertFalse.java:63)
+            at app//org.junit.jupiter.api.AssertFalse.assertFalse(AssertFalse.java:36)
+            at app//org.junit.jupiter.api.Assertions.assertFalse(Assertions.java:239)
+            at app//com.datacube.fx.AppShellSqlCancelIdentityTest$Fixture.lambda$assertSecondUnaffected$4(AppShellSqlCancelIdentityTest.java:143)
+            at app//org.junit.jupiter.api.AssertAll.lambda$assertAll$0(AssertAll.java:68)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+            at java.base@25.0.1/java.util.Spliterators$ArraySpliterator.forEachRemaining(Spliterators.java:1024)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+            at java.base@25.0.1/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:921)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:723)
+            at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:77)
+            ... 5 more
+
+AppShellSqlCancelIdentityTest > oldPhysicalCancelFailureCannotCloseTheNextExecutionConnection(DbType) > [2] ORACLE FAILED
+    org.gradle.internal.exceptions.DefaultMultiCauseException: Multiple Failures (3 failures)
+    	org.opentest4j.AssertionFailedError: old fallback must not close connection owned by next execution ==> expected: <false> but was: <true>
+    	org.opentest4j.AssertionFailedError: expected: <0> but was: <1>
+    	org.opentest4j.AssertionFailedError: expected: <CONNECTED> but was: <BROKEN>
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:80)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:44)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:38)
+        at app//org.junit.jupiter.api.Assertions.assertAll(Assertions.java:2944)
+        at app//com.datacube.fx.AppShellSqlCancelIdentityTest$Fixture.assertSecondUnaffected(AppShellSqlCancelIdentityTest.java:138)
+        at app//com.datacube.fx.AppShellSqlCancelIdentityTest.oldPhysicalCancelFailureCannotCloseTheNextExecutionConnection(AppShellSqlCancelIdentityTest.java:75)
+
+        Caused by:
+        org.opentest4j.AssertionFailedError: old fallback must not close connection owned by next execution ==> expected: <false> but was: <true>
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+            at app//org.junit.jupiter.api.AssertFalse.failNotFalse(AssertFalse.java:63)
+            at app//org.junit.jupiter.api.AssertFalse.assertFalse(AssertFalse.java:36)
+            at app//org.junit.jupiter.api.Assertions.assertFalse(Assertions.java:239)
+            at app//com.datacube.fx.AppShellSqlCancelIdentityTest$Fixture.lambda$assertSecondUnaffected$4(AppShellSqlCancelIdentityTest.java:143)
+            at app//org.junit.jupiter.api.AssertAll.lambda$assertAll$0(AssertAll.java:68)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+            at java.base@25.0.1/java.util.Spliterators$ArraySpliterator.forEachRemaining(Spliterators.java:1024)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+            at java.base@25.0.1/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:921)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:723)
+            at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:77)
+            ... 5 more
+
+AppShellSqlCancelIdentityTest > queuedOldCancellationCannotTargetTheNextExecution(DbType) > [1] POSTGRESQL FAILED
+    org.gradle.internal.exceptions.DefaultMultiCauseException: Multiple Failures (2 failures)
+    	org.opentest4j.AssertionFailedError: old cancellation must not mark next execution ==> expected: <false> but was: <true>
+    	org.opentest4j.AssertionFailedError: old cancellation must not reach next Statement ==> expected: <0> but was: <1>
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:80)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:44)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:38)
+        at app//org.junit.jupiter.api.Assertions.assertAll(Assertions.java:2944)
+        at app//com.datacube.fx.AppShellSqlCancelIdentityTest$Fixture.assertSecondUnaffected(AppShellSqlCancelIdentityTest.java:138)
+        at app//com.datacube.fx.AppShellSqlCancelIdentityTest.queuedOldCancellationCannotTargetTheNextExecution(AppShellSqlCancelIdentityTest.java:52)
+
+        Caused by:
+        org.opentest4j.AssertionFailedError: old cancellation must not mark next execution ==> expected: <false> but was: <true>
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+            at app//org.junit.jupiter.api.AssertFalse.failNotFalse(AssertFalse.java:63)
+            at app//org.junit.jupiter.api.AssertFalse.assertFalse(AssertFalse.java:36)
+            at app//org.junit.jupiter.api.Assertions.assertFalse(Assertions.java:239)
+            at app//com.datacube.fx.AppShellSqlCancelIdentityTest$Fixture.lambda$assertSecondUnaffected$2(AppShellSqlCancelIdentityTest.java:141)
+            at app//org.junit.jupiter.api.AssertAll.lambda$assertAll$0(AssertAll.java:68)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+            at java.base@25.0.1/java.util.Spliterators$ArraySpliterator.forEachRemaining(Spliterators.java:1024)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+            at java.base@25.0.1/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:921)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:723)
+            at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:77)
+            ... 5 more
+
+AppShellSqlCancelIdentityTest > queuedOldCancellationCannotTargetTheNextExecution(DbType) > [2] ORACLE FAILED
+    org.gradle.internal.exceptions.DefaultMultiCauseException: Multiple Failures (2 failures)
+    	org.opentest4j.AssertionFailedError: old cancellation must not mark next execution ==> expected: <false> but was: <true>
+    	org.opentest4j.AssertionFailedError: old cancellation must not reach next Statement ==> expected: <0> but was: <1>
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:80)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:44)
+        at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:38)
+        at app//org.junit.jupiter.api.Assertions.assertAll(Assertions.java:2944)
+        at app//com.datacube.fx.AppShellSqlCancelIdentityTest$Fixture.assertSecondUnaffected(AppShellSqlCancelIdentityTest.java:138)
+        at app//com.datacube.fx.AppShellSqlCancelIdentityTest.queuedOldCancellationCannotTargetTheNextExecution(AppShellSqlCancelIdentityTest.java:52)
+
+        Caused by:
+        org.opentest4j.AssertionFailedError: old cancellation must not mark next execution ==> expected: <false> but was: <true>
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+            at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+            at app//org.junit.jupiter.api.AssertFalse.failNotFalse(AssertFalse.java:63)
+            at app//org.junit.jupiter.api.AssertFalse.assertFalse(AssertFalse.java:36)
+            at app//org.junit.jupiter.api.Assertions.assertFalse(Assertions.java:239)
+            at app//com.datacube.fx.AppShellSqlCancelIdentityTest$Fixture.lambda$assertSecondUnaffected$2(AppShellSqlCancelIdentityTest.java:141)
+            at app//org.junit.jupiter.api.AssertAll.lambda$assertAll$0(AssertAll.java:68)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline$3$1.accept(ReferencePipeline.java:214)
+            at java.base@25.0.1/java.util.Spliterators$ArraySpliterator.forEachRemaining(Spliterators.java:1024)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:570)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:560)
+            at java.base@25.0.1/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:921)
+            at java.base@25.0.1/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:265)
+            at java.base@25.0.1/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:723)
+            at app//org.junit.jupiter.api.AssertAll.assertAll(AssertAll.java:77)
+            ... 5 more
+
+4 tests completed, 4 failed
+
+> Task :test FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///C:/Users/hetia/.codex/worktrees/metadata-search-cancellation/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to generate a Build Scan (powered by Develocity).
+
+BUILD FAILED in 28s
+8 actionable tasks: 2 executed, 6 up-to-date

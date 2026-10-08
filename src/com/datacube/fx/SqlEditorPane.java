@@ -161,6 +161,7 @@ public final class SqlEditorPane implements AutoCloseable {
     private SqlBatchResults.Choice displayedChoice;
     private volatile SqlProgressMailbox scriptProgress;
     private volatile ScriptErrorQuestionGate scriptErrorGate;
+    private volatile JdbcEditorSession.ExecutionHandle executionHandle;
     private boolean incrementalBrowsing;
     private boolean scriptProgressCancelled;
     private final Map<ObservableList<Object>, Integer> resultRowIndexes = new IdentityHashMap<>();
@@ -922,7 +923,13 @@ public final class SqlEditorPane implements AutoCloseable {
         JdbcEditorSession editorSession = currentEditorSession();
         ScriptErrorQuestionGate gate = scriptErrorGate;
         if (gate != null) gate.seal();
-        try {if (editorSession != null) editorSession.cancel();}
+        try {
+            if (editorSession != null) {
+                JdbcEditorSession.ExecutionHandle handle = executionHandle;
+                if (handle == null) editorSession.cancel();
+                else editorSession.captureCancellation(handle).call();
+            }
+        }
         finally {if (gate != null) gate.finish();}
     }
 
@@ -1763,28 +1770,43 @@ public final class SqlEditorPane implements AutoCloseable {
             default -> null;
         };
         if (transaction != null) pendingTransactionAttempts.add(transaction);
+        JdbcEditorSession editorSession = kind.cancellable() ? ensureEditorSession() : null;
+        JdbcEditorSession.ExecutionHandle execution = editorSession == null ? null : editorSession.newExecutionHandle();
+        if (execution != null) executionHandle = execution;
         setButtonsRunning(true);
         setTransactionControlsDisabled(true);
         cancelBtn.setDisable(!kind.cancellable());
         try {
-            sessionOperations.submit(kind, () -> {
+            var submitted = sessionOperations.submit(kind, () -> {
                 try {
-                    return operation.call();
+                    return execution == null ? operation.call() : editorSession.executeCancellable(execution, operation);
                 } catch (Exception | Error error) {
                     // Rejected submission or queued cancellation never enters this physical operation.
                     if (transaction != null) transaction.failure = error;
                     throw error;
                 }
             }, value -> {
+                if (executionHandle == execution) executionHandle = null;
                 success.accept(value);
                 pendingTransactionAttempts.remove(transaction);
                 refreshOperationControls();
             }, error -> {
+                if (executionHandle == execution) executionHandle = null;
                 failure.accept(error);
                 pendingTransactionAttempts.remove(transaction);
                 refreshOperationControls();
             });
-        } catch (RuntimeException rejected) {
+            if (execution != null && submitted instanceof CompletionStage<?> completion) {
+                completion.whenComplete((ignored, error) -> {
+                    // Covers queue-internal rejection and queued cancellation; started handles are unchanged.
+                    editorSession.abandonExecution(execution);
+                });
+            }
+        } catch (RuntimeException | Error rejected) {
+            if (execution != null) {
+                editorSession.abandonExecution(execution);
+                if (executionHandle == execution) executionHandle = null;
+            }
             pendingTransactionAttempts.remove(transaction);
             refreshOperationControls();
             throw rejected;
@@ -1887,11 +1909,14 @@ public final class SqlEditorPane implements AutoCloseable {
         cancelBtn.setDisable(true);
         transactionStatus.setText("正在取消...");
         ScriptErrorQuestionGate gate = scriptErrorGate;
+        JdbcEditorSession.ExecutionHandle handle = executionHandle;
+        // Capture before background scheduling; the worker must never look up a successor execution.
+        var cancellationRequest = handle == null ? editorSession.captureCancellation() : editorSession.captureCancellation(handle);
         if (gate != null) {
             gate.seal();
             try {
                 var cancellation = tasks.submit(() -> {
-                    try {return editorSession.cancel();}
+                    try {return cancellationRequest.call();}
                     finally {gate.finish();}
                 }, outcome -> {
                     if (scriptErrorGate == gate) renderCancelled(outcome, editorSession.snapshot());
@@ -1903,9 +1928,10 @@ public final class SqlEditorPane implements AutoCloseable {
             } catch (RuntimeException | Error rejected) {gate.finish();throw rejected;}
             return;
         }
-        tasks.submit(editorSession::cancel,
-                outcome -> renderCancelled(outcome, editorSession.snapshot()),
+        tasks.submit(cancellationRequest,
+                outcome -> { if (handle != null && executionHandle == handle) renderCancelled(outcome, editorSession.snapshot()); },
                 failure -> {
+                    if (handle == null || executionHandle != handle) return;
                     renderSessionSnapshot(editorSession.snapshot());
                     showError(message(failure), 0);
                 });
