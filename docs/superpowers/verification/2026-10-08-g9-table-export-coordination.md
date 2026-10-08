@@ -115,3 +115,15 @@ P1a 追加返工已下发：ExportDialog 从 FxTaskScope.submit 改用 runner.su
 采用 OpenAI Docs 技能核对方式；[官方定时任务说明](https://learn.chatgpt.com/docs/automations?surface=app)确认当前聊天跟进可使用分钟间隔，本地任务需要电脑和应用运行。跟进本身不构成产品通过，不赋予真库、发布、tag 或其他外部新权限。
 
 当前交付给后续协调的状态：P1a 修正进行中，开发最近自报曾有 357/357 定向，但其后源码已修改，又用 362 项中的两例失败复现 UI 隐去清理残留；这些均不充当最终通过。待最终冻结后重新独立核对源码和当次 XML/命令/哈希，不能复用旧绿色。本会话尚未接管 Gradle；先完成 P1a 审核，再下发 P1b，沿计划到 P2/P3。
+
+## C1.7：009 冻结证据独立核验与最后的流接管修正
+
+当前目标：审核 P1a 冻结实现及原始证据。直接审阅 TableExporter、ExportDialog 的实际生产调用、两个真实 writer、共享 publisher/operation 与查询导出反馈，以及失败矩阵、身份变化、取消竞争、fatal Error 和残留警告断言。发布后辅助文件残留与未发布失败已分开；Error 在实际 runner.submit 路径中保留一次严重异常报告。
+
+独立运行本会话 [verify-p1a.py](evidence/g9-table-export-20261008-coordination/verify-p1a.py)，重算 `p1a-final-freeze-009` 的 17 份冻结文件、当时清单的 256 份证据文件和 009 运行时的 15 份源码，全部 SHA/长度相符，15 份运行源码与最终冻结对应。20 份 XML 的 suite 数值与实际 testcase 子项分别重算，确认 **373 tests / 0 failures / 0 errors / 0 skipped**；实际 `:test` 执行、退出 0。详见[根会话回执](evidence/g9-table-export-20261008-coordination/p1a-009-review/root-p1a-verification.json)。本会话未运行 Gradle，此为开发原件的独立审核，不冒充 main 新测试。
+
+发现并成功下发一个剩余资源顺序修正：SQL 分支在 `output.open(temporary)` 之后求值 `provider.dialect()`；后者异常时 writer 尚未接管流。要求把可能失败的参数准备前移，补真实 TableExporter 注入断言，证明异常时打开输出流为零、无发布、旧目标/邻居和临时清理正确。009 冻结不覆盖，新增 RED/GREEN 与冻结后再验收。本次哈希检查时工作目录两个测试文件已经开始该修正，与 009 不同；回执明确记录，不把 009 通过外推到后续工作字节。
+
+失败/未验：001/002 启动失败、004 的 Windows 身份假设失败、007 残留反馈 RED、008 严重异常及夹具路径失败全部保留；373 仅为 009 的通过。P1a 尚待新修正验收；P1b/P1c、全量、buildSrc:test、image、main 复验均未完成。既有真库/原生/外部文件竞争和完整发布边界不变。
+
+下一步：核验新冻结；通过后下发 P1b 进程所有权与整窗退出接线。后续 P1c 严格 PG DDL 查询另需检查完整表身份：当前 `primaryKeyClause` 的 join 只绑定 constraint_name/table_schema，新的整表严格路径应避免同 schema 不同表同名约束串入；先核对真实查询契约再做最小修正，不扩张 Schema Diff 或全库 DDL 功能。
