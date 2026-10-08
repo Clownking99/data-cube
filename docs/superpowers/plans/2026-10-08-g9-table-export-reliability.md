@@ -80,6 +80,6 @@ JDK 基线 `D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8`，优先离线复用已有�
 
 ## 当前检查点
 
-P3 / main本地复验通过，但首次精确SHA CI阻断：main f634f7f4已推送，Verify 37822449579的Linux14项失败由两处测试兼容问题导致；原失败/源码诊断和最小返工见[CI协调C8](../verification/2026-10-09-g9-ci-portability-review.md)。已交原GPT-6.1-sol线程修正跨平台Java helper与FX前置门禁，开发重新唯一持有Gradle。原本地定向1181、全量4663通过/3live跳过、buildSrc8、镜像与linked探针通过仍各绑定原字节，不能替代修正后证据。等待冻结审查/合main/新CI，G9未最终交付、跟进不暂停；产品及外部范围不扩大。
+P3 / CI测试兼容返工已通过独立审查并合main ef2b5b1d：526原件与6b8ceb93一致，仅3测试修改。新分支完整G9定向1182/全量4664通过+3live跳过；root新受影响85、headless16明确跳过、clean全量4664通过+3live跳过、强制buildSrc8、重建镜像/linked审计通过；产品仍e7950123，三核心镜像SHA相同。首次CI失败和Windows超时根因未知均保留，详见[最新C10](../verification/2026-10-09-g9-ci-portability-review.md)。最终新SHA推送/Verify四项以[新delivery-intent](../verification/evidence/g9-ci-main-20261009/delivery-intent.json)所指实际回执为准，成功后暂停datacube-g9并交付，不自动启动下一目标；真库、原生、慢盘/文件系统局限及完整M8仍待验。
 
 为落实持续下发和验收，新增当前会话的 `datacube-g9` 跟进，每 15 分钟检查同一开发线程并在有结果时继续审查；无实质变化保持安静，P3 实际交付后暂停，不自动启动下一目标。旧 `datacube` 仍为 PAUSED。本地跟进依赖电脑和应用运行，不替代任何工程或外部验收。

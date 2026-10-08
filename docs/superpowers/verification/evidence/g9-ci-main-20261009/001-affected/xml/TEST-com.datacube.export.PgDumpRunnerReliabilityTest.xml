@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.export.PgDumpRunnerReliabilityTest" tests="23" skipped="0" failures="0" errors="0" timestamp="2026-10-08T18:46:32.592Z" hostname="WAKEUPMAN" time="2.044">
+  <properties/>
+  <testcase name="cancellationBeforeStartAcquiresNoProcessOrScratch()" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.042"/>
+  <testcase name="twoUnbrokenLargeStreamsAreDrainedWithoutTextRetentionAndRealOutputPublishes()" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.132"/>
+  <testcase name="[1] parent" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.241"/>
+  <testcase name="[2] tree" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.411"/>
+  <testcase name="releasedBeforeCloseThrowsIsConfirmedByIdempotentCloseAndNeverPublishes()" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.014"/>
+  <testcase name="[1] false" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.012"/>
+  <testcase name="[2] true" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.013"/>
+  <testcase name="[1] false" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.021"/>
+  <testcase name="[2] true" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.015"/>
+  <testcase name="startStillBlockedAfterDeadlineKeepsBusyAndLateRootIsActuallyReaped()" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.058"/>
+  <testcase name="throwingNormalHandleControlStillJoinsItsWorkerAndForcesOnlyOwnedFamily()" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.214"/>
+  <testcase name="forceSurvivorAndHeldCloseCallsRemainOwnedPastObservationBudget()" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.024"/>
+  <testcase name="[1] start" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.012"/>
+  <testcase name="[2] nonzero" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.093"/>
+  <testcase name="[3] drain" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.054"/>
+  <testcase name="[1] false" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.021"/>
+  <testcase name="[2] true" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.021"/>
+  <testcase name="closeFailureWhileUnderlyingStreamRemainsOpenCannotBecomePhysicalSettlement()" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.015"/>
+  <testcase name="[1] false" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.014"/>
+  <testcase name="[2] true" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.012"/>
+  <testcase name="[1] hang" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.144"/>
+  <testcase name="[2] stream" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.165"/>
+  <testcase name="blockedHandleControlCannotBlockObservationAndItsLateReturnIsStillOwned()" classname="com.datacube.export.PgDumpRunnerReliabilityTest" time="0.283"/>
+  <system-out><![CDATA[PGDUMP_PHYSICAL mode=flood receipt=Receipt[rootPid=12960, descendantPids=[42620], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=8388608, stderrBytes=8388608, reason=NONE, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=parent receipt=Receipt[rootPid=27584, descendantPids=[43904, 44864, 52876], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=DESCENDANTS, cleanupPending=false, physicallySettled=true]
+PGDUMP_FAMILY mode=parent childPid=44864 captured=[43904, 44864, 52876] neighborPid=12376 neighborAlive=true
+PGDUMP_PHYSICAL mode=tree receipt=Receipt[rootPid=48888, descendantPids=[1916, 5692, 23960, 39644, 51588], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=DESCENDANTS, cleanupPending=false, physicallySettled=true]
+PGDUMP_FAMILY mode=tree childPid=1916 captured=[1916, 5692, 23960, 39644, 51588] neighborPid=9224 neighborAlive=true
+PGDUMP_PHYSICAL mode=fake receipt=Receipt[rootPid=1000000001, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=OUTPUT, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=fake receipt=Receipt[rootPid=1000000001, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=TIMEOUT, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=fake receipt=Receipt[rootPid=1000000001, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=TIMEOUT, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=empty receipt=Receipt[rootPid=-1, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=START, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=empty receipt=Receipt[rootPid=-1, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=START, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=hang receipt=Receipt[rootPid=31480, descendantPids=[43536], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=TIMEOUT, cleanupPending=true, physicallySettled=true]
+PGDUMP_PHYSICAL mode=parent receipt=Receipt[rootPid=33680, descendantPids=[42512, 45276, 53472], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=CANCELLED, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=fake receipt=Receipt[rootPid=1000000001, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=CANCELLED, cleanupPending=true, physicallySettled=true]
+PGDUMP_PHYSICAL mode=hang receipt=Receipt[rootPid=-1, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=START, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=fail receipt=Receipt[rootPid=35972, descendantPids=[7552], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=23, reason=NONZERO, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=hang receipt=Receipt[rootPid=30556, descendantPids=[48568], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=OUTPUT, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=fake receipt=Receipt[rootPid=1000000001, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=OUTPUT, cleanupPending=true, physicallySettled=true]
+PGDUMP_PHYSICAL mode=fake receipt=Receipt[rootPid=1000000001, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=CANCELLED, cleanupPending=true, physicallySettled=true]
+PGDUMP_PHYSICAL mode=fake receipt=Receipt[rootPid=1000000001, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=OUTPUT, cleanupPending=true, physicallySettled=true]
+PGDUMP_PHYSICAL mode=empty receipt=Receipt[rootPid=-1, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=START, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=empty receipt=Receipt[rootPid=-1, descendantPids=[], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=START, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=hang receipt=Receipt[rootPid=51964, descendantPids=[44200], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=TIMEOUT, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=stream receipt=Receipt[rootPid=19988, descendantPids=[20000], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=22609920, stderrBytes=22609920, reason=TIMEOUT, cleanupPending=false, physicallySettled=true]
+PGDUMP_PHYSICAL mode=parent receipt=Receipt[rootPid=32720, descendantPids=[28788, 33224, 38140], startPending=false, rootAlive=false, livingDescendants=0, livingWorkers=0, unresolvedStreams=0, stdoutBytes=0, stderrBytes=0, reason=CANCELLED, cleanupPending=true, physicallySettled=true]
+]]></system-out>
+  <system-err><![CDATA[10月 09, 2026 2:46:33 上午 com.datacube.export.SafeResultFilePublisher lambda$new$2
+警告: Result export CLEANUP: C:\Users\hetia\AppData\Local\Temp\datacube-g9-ci-main-ea9d921381d44849b966db0bd888290d\temp\junit-15667795727296287705\.datacube-pgdump-11359639545373451183
+10月 09, 2026 2:46:33 上午 com.datacube.export.SafeResultFilePublisher lambda$new$2
+警告: Result export CLEANUP: C:\Users\hetia\AppData\Local\Temp\datacube-g9-ci-main-ea9d921381d44849b966db0bd888290d\temp\junit-8573466131218860437\.datacube-pgdump-8823055999176041597
+]]></system-err>
+</testsuite>

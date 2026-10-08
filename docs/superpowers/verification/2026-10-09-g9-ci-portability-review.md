@@ -34,3 +34,17 @@
 五轮独立XML：受影响81通过；headless16全部跳过/0通过；完整G9 1182通过；cancel identity完整类单次4通过；clean全量4667项、4664通过/3live跳过，全部0 failure/error、exit0、新UUID隔离、实际test执行。全量345份当前XML与归档同字节，物理摘要43/0/135/20/157行逐项存在于对应XML原system-out。首次WindowsFX初始化超时在单类和全量该类4项均未复现，仍标根因未知，不据此声称修复。Linux真实helper仍待新CI证明。
 
 裁决：本地测试修正通过审核，根会话接回唯一Gradle执行权。下一步合main，新受影响测试（包括cancel identity类）、强制headless与clean全量；产品/构建树未变，既有buildSrc/image身份仍有效，但clean会移除main当前镜像，根会话将重建镜像并重新执行审计，同时强制buildSrc作完整工程收尾。保留所有旧CI失败，不在旧SHA重跑；main复验通过后再推新SHA核对四任务。G9仍待最终CI，不暂停跟进、不扩展目标。
+
+## C10：修正后main复验完成，等待最终新SHA CI
+
+当前目标：完成测试兼容修正后的P3最终交付。main已本地合并6b8ceb93为ef2b5b1d0ff186c6ae30304384ba29bb28dd74f5，根会话为唯一Gradle执行者。合并后526份返工原件与Git/冻结全部相同，无检出换行差异；src/构建/README仍与e7950123一致，测试与6b8ceb93一致。
+
+新独占UUID、清空环境、JDK25离线执行并由[Verify-Main.py](evidence/g9-ci-main-20261009/Verify-Main.py)独立核对[最终本地回执](evidence/g9-ci-main-20261009/main-verification.json)：受影响7 suites/85 passed（包含cancel identity完整4例）、强制headless 1 suite/16 skipped/0 passed、clean全量345 suites/4667 tests（4664 passed、3 live skipped）、强制buildSrc 1 suite/8 passed；所有运行0 failure/error、exit0、实际任务执行、844输入前后字节稳定。新headless日志明确true，ui-error在门禁跳过，不计UI通过；全量当前XML与归档相同。新整套G9 1182定向已在修正分支独立通过，main用受影响85及新clean全量覆盖修正后状态，不把旧1181充当新计数。
+
+clean后重新jpackageImage并做外置镜像审计：183文件无测试类/profile/验收选项污染，7子命令exit0；XML7组、XLSX20包/40单元格独立回读及6非法UTF16拒绝、G9 SQL/XLSX各501行成功和中途失败原目标保护通过。exe/cfg/modules的长度与SHA全部等于已审P2和首次main镜像（modules 102622232字节，62AB89F099650151039E7122ADF86EBFB7BB19EB4B5D1565BA79E1D6FCFF60C4）。产品/构建未改，但本次确实重建，不冒用旧镜像任务。JAVA_TOOL_OPTIONS相关诊断原stderr仍保留。
+
+Windows首次FX初始化超时在worker一次单类+全量及本次main受影响+全量均未复现；根因仍未知，未改该类、FX门禁等待、断言或生产取消逻辑。首次失败Run 37822449579的Linux14失败、Windows1失败及image skip全部保留；不会把新本地绿抹成旧CI成功。Linux真实helper仍以新精确SHA CI为最终证据。
+
+后续文档提交不改受验产品/测试/构建树。只推最终main，读取新精确SHA四项Verify及Windows实际test/buildSrc/jlink日志；直连失败才命令级7897代理，不fetch/tag/PR/发布。新[delivery-intent.json](evidence/g9-ci-main-20261009/delivery-intent.json)指向独占CI原始回执，只有其中delivery-result.json实际passed=true才完成本轮并暂停datacube-g9。首次失败回执已冻结在本审查C8两个证据目录；旧build临时路径不再作为最终交付入口。
+
+外部待验与局限保持：真实Oracle/PostgreSQL驱动/MVCC/undo/网络与取消、真实pg_dump/libpq16+、原生桌面/chooser/Excel与系统缩放、慢/网络磁盘、文件身份校验到move/unlink竞争窗口、驱动内部大值分配、永久阻塞资源pending和已捕获进程家族范围、保守SQL结构类型/仅列与PK及DDL-数据非整个Schema原子快照、安装升级/回退/生产签名和完整M8。CI临时Redis不等同真实业务服务。旧datacube保持PAUSED，v3.2.9不变，交付后不启动下一目标。

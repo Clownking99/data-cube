@@ -1,6 +1,6 @@
 # DataCube 新会话交接：产品成熟度与首个目标
 
-**2026-10-09 G9最终CI阻断：尚未结案。** main已推f634f7f4，本地复验通过仍有效；精确Verify 37822449579的Linux14项失败已定位为两处测试兼容缺陷（java.exe硬编码、headless跳过被异常断言误判）。已下发原GPT-6.1-sol线程最小测试修正并交回唯一Gradle执行权，root等待新证据再审查/合并/CI。详见[CI返工C8](../superpowers/verification/2026-10-09-g9-ci-portability-review.md)。datacube-g9保持ACTIVE；不能把本地通过当P3最终完成。
+**2026-10-09 G9最新：CI测试兼容修正已集成，main新本地复验通过。** 产品e7950123、修正6b8ceb93、main集成ef2b5b1d；526份返工原件独立核验。分支新完整G9定向1182/全量4664通过+3live跳过；root新受影响85、单列headless16跳过、clean全量4664通过+3live跳过、强制buildSrc8、重建镜像与外置linked探针通过，三核心产物SHA不变。首次CI两平台失败已保留，Windows初始化超时本地未复现但根因未知。最新证据/待验见[CI协调C10](../superpowers/verification/2026-10-09-g9-ci-portability-review.md)，最终新SHA CI和结案以[新delivery-intent](../superpowers/verification/evidence/g9-ci-main-20261009/delivery-intent.json)所指实际回执为准；成功后暂停datacube-g9，不启动下一目标。真实DB/pg_dump、原生/慢盘/文件系统局限、安装签名和完整M8仍待验；旧datacube/v3.2.9不变。下方为历史检查点。
 
 **2026-10-09 当前任务：G9整表导出可靠性已完成本地集成与独立复验。** GPT-6.1-sol开发产品e7950123、证据b76b75c，root审核后main集成5b9dfeca；3565份开发代码/原件Git字节、844输入及183镜像文件独立核对，合并后3518开发原件再次一致。分支/main均新定向1181通过、clean全量4663通过/3 live跳过、强制buildSrc8、jpackageImage和镜像外置SQL/XLSX/旧XML文本保真探针通过，exe/cfg/modules哈希一致。三种整表导出保护原目标，pg_dump有总期限与物理结算，SQL/XLSX用绑定配置的专用连接和单cursor完整读取；严格结构导出的保守类型限制已在README声明。 首红/工具失败/跳过不抹除；真实DB/pg_dump、原生桌面/chooser/Excel、慢盘/文件系统竞争、安装签名与完整M8仍未验。见[协调账本C7](../superpowers/verification/2026-10-08-g9-table-export-coordination.md)。最终main推送和精确SHA Verify以[delivery-intent](../superpowers/verification/evidence/g9-main-20261009/delivery-intent.json)指向的实际回执为准；成功后按授权暂停datacube-g9，不启动下一目标。旧datacube继续PAUSED，v3.2.9不变；下方“最新”为历史记录。
 

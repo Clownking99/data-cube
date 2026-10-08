@@ -342,3 +342,7 @@ DataCube.exe为595968字节、SHA256 `6C32DDB83447C5754B5484B7D0C0F501CF48AD5159
 仍未验/局限：真实Oracle/PostgreSQL驱动、MVCC/undo及取消/网络；真实pg_dump/libpq16+兼容与认证；原生桌面/文件chooser/Excel、OS缩放、多屏；慢/网络文件系统、原子替换能力与属性验证到move/unlink的竞争窗口；永久阻塞或close失败可能保持pending，进程后代仅覆盖实际捕获家族；真实驱动内部大值分配不是硬内存上限；SQL结构的保守类型准入、仅列与PK及DDL/数据不构成整个Schema原子快照。安装升级/回退、生产签名及完整M8仍未完成。v3.2.9保持原样、旧datacube保持PAUSED，不扩展Redis/功能或下一轮；P3回执成功后按授权将datacube-g9设PAUSED。
 
 归档补记：main新证据9f87f76f的561份raw/index/commit核验通过。批量更新交接脚本在路线图不同标题处匹配失败，先完成交接、未更新另两份计划；首归档未把此工具退出当测试通过。已按实际标题补正路线图与G9计划，并以final-documentation-binding.json记录三份可读文档的新字节和旧冻结提交身份；原raw-manifest及运行原件不改写。产品/测试仍与受验5b9dfeca相同，不需要因文档纠正重跑工程测试。
+
+## 后续C8-C10：CI返工与最终交付入口
+
+首次推送f634f7f4的Linux14失败及Windows1次既有FX初始化超时已保留；同一6.1-sol线程最小测试修正6b8ceb93由root独立审核后合main ef2b5b1d。修正后worker完整定向1182、全量4664通过/3live跳过；root新受影响85、headless16明确跳过、全量4664通过/3live跳过、强制buildSrc8、重建镜像与外置探针均通过，三核心产物SHA不变。详细最新检查点见[CI协调C10](2026-10-09-g9-ci-portability-review.md)。最终推送/CI/暂停以新[g9-ci-main delivery-intent](evidence/g9-ci-main-20261009/delivery-intent.json)所指实际回执为准，前述C7旧入口仅保留历史失败身份。首次Windows超时根因仍未知；外部/原生及完整发布待验不变。
