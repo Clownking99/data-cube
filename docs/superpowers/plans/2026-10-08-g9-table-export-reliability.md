@@ -80,6 +80,6 @@ JDK 基线 `D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8`，优先离线复用已有�
 
 ## 当前检查点
 
-P1c / 已下发实施：P0、P1a 与 P1b 已独立审查通过；开发线程 `01a11b86-2026-7ed3-86c5-1ec232640653`，独立 worktree `C:/Users/hetia/.codex/worktrees/aed5/朝花夕拾`、分支 `codex/g9-table-export-reliability-20261008`、基线 b81923f2。P1b 最终010的29份冻结文件、355份证据、28份运行前快照及原P1a375份证据均独立重算匹配；25份产品/测试及README/launcher绑定最终冻结，结果报告运行后更新另记。35份新XML与当时build当前XML匹配，560 tests、0 failure/error/skip；所有首红和修正失败保留。详见[协调验收账本 C3](../verification/2026-10-08-g9-table-export-coordination.md)。已下发G9c专用连接/单cursor、三格式配置绑定、严格DDL和完整值边界；P2完整工程/P3 main新复验未启动，产品未合main，G9不称完成。开发仍唯一Gradle执行者。
+P1c / 011证据已核验，严格列定义退回修正：P0、P1a、P1b已独立通过。开发线程01a11b86-2026-7ed3-86c5-1ec232640653在aed5 worktree、codex/g9-table-export-reliability-20261008分支、b81923f2基线。011的49份冻结、1033份证据、48份运行前快照逐项SHA/长度匹配；84份新XML与当时build当前XML一致，1104通过、0失败/错误/跳过，旧A375/B355及B冻结29份未改。资源/取消/主窗链已审，发现新PG严格DDL会静默丢失identity/generated/domain和部分类型修饰，按不完整结构必须失败的原契约退回最小修正。详见[协调账本C3.2](../verification/2026-10-08-g9-table-export-coordination.md)。P1c未验收，开发仍唯一Gradle执行者，新RED/冻结后再审；P2完整工程及P3 main复验未启动，产品未合main，G9不称完成。
 
 为落实持续下发和验收，新增当前会话的 `datacube-g9` 跟进，每 15 分钟检查同一开发线程并在有结果时继续审查；无实质变化保持安静，P3 实际交付后暂停，不自动启动下一目标。旧 `datacube` 仍为 PAUSED。本地跟进依赖电脑和应用运行，不替代任何工程或外部验收。

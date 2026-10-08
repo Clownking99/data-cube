@@ -236,3 +236,29 @@ SQL/XLSX的501行用例均实际只开1条共享连接、调用3次分页accesso
 另核对Oracle readOnly能力疑虑：[Oracle21 JDBC coding tips](https://docs.oracle.com/en/database/oracle/oracle-database/21/jjdbc/JDBC-coding-tips.html)说明驱动支持该标志而服务器连接模式不同；未以旧版本错误码资料要求删去当前设计。具体SET TRANSACTION READ ONLY顺序及真实驱动能力仍待源码/合成测试和外部验收分别核对，网页不作真库通过。
 
 失败/未验：本轮只接受旧缺陷RED，所有新资源/快照/值语义仍实施中。既有P1a/P1b通过不替代C；全量/buildSrc:test/image、P2/P3和main产品集成未开始。下一步由开发修正以上边界并继续定向，根会话等待冻结或可行动新证据；本检查点只本地提交审核文档/原件哈希，不推送或扩大范围。
+
+## C3.2：P1c 011 原件通过核验，严格列定义退回修正
+
+当前目标：2026-10-08 16:58 UTC 心跳（本地10月9日）收到P1c冻结。审查开始main为b18a1355、范围内干净；worker仍b81923f2，原P1c turn已完成。本会话只读审查开发源码及证据，未运行Gradle、未合并产品。
+
+### 已独立核实的证据
+
+本会话运行[verify-p1c.py](evidence/g9-table-export-20261008-coordination/verify-p1c.py)，生成[011独立核验回执](evidence/g9-table-export-20261008-coordination/p1c-011-review/root-p1c-verification.json)：49份冻结文件、1033份C artifacts、48份运行前快照、旧A375份/旧B355份artifacts和29份B冻结文件，逐项长度与SHA全部一致。审查时当前49文件匹配冻结；45份src/test加README/launcher共47份匹配运行前字节，worker报告运行后记录结果另记，不当运行源码。最终冻结脚本亦另记。
+
+011 command/head、exit0、原始stdout与84份XML一致：实际cleanTest、compileJava、compileTestJava、test执行，1104 tests / 0 failures / 0 errors / 0 skipped；suite属性与实际testcase双计数一致。[当时当前XML](evidence/g9-table-export-20261008-coordination/p1c-011-review/root-current-xml-binding.json)逐项与归档匹配。物理摘要逐行与XML system-out一致；不把buildSrc配置编译的UP-TO-DATE算作buildSrc:test。
+
+全部11轮XML独立重算：001为6/6失败，002为6/0，003为18/1，004为57/3，005为1043/0，006为86/0，007为1076/7，008为1090/6，009为1094/0，010为111/9，011为1104/0；各轮0 error/skip，失败exit1、通过exit0。直接读取003/004/007/008/010原failure节点：003原setup Error被close Error替换；007queued订阅残留为产品缺陷；010的迟到execute/next/getter SQLException分别将先赢cancel/timeout/config原因误报为SOURCE，九例现已回归。其余夹具修正按worker第15.1节单列，不把失败抹掉或用009旧绿证明011。
+
+源码审核覆盖TableExporter/Selection/ExportTarget、ConnectionManager最小diff、TableExportJdbcJob全部资源结算、TableExportValues完整读取/精度预算、StrictTableDdl、writer接线、ExportDialog真实选择与提交/取消链、AppShell JDBC关闭测试及A/B相关差异。已读实际断言，确认late LOB先归属再检查、Error优先级、held opener/getter/rollback/close/free/cancel worker保持BUSY、共享事务不受影响、主窗在物理结算前pending以及queued订阅释放。ConnectionManager恢复原同步顺序；其合成测试证明通知先于共享close和capture受锁保护，并非真实Redis/网络测试。PgDumpRunner相对B冻结无产品变化。
+
+### 本轮未通过的审查项与已下发任务
+
+新StrictTableDdl的PG COLUMNS仍只读原7字段，任意普通data_type直接拼接。它不观察identity/generated/domain，也不处理非默认collation、时间/interval修饰；bit(n)因类型不含char/varying而丢掉长度。依据[PostgreSQL columns定义](https://www.postgresql.org/docs/current/infoschema-columns.html)，domain的data_type是底层类型，identity/generated另有标志，字符最大长度也适用于bit字符串。本会话从源码推断上述列会成功输出降级结构；本轮未运行新增复现测试，不冒称已经取得新RED。
+
+这违反C3第4项“不完整结构明确失败”；限制为列+PK、无索引/FK承诺不免除列本身的丢失。已向同一开发线程下发最小纠正：只改新StrictTableDdl的元数据判别与允许类型契约；不能准确表示的修饰用固定STRUCTURE失败，简单现有类型修饰可准确保留。未知类型/缺失必要标志/元数据异常不能静默退回普通列。不新增identity或完整Schema生成器、不改原PgDdlGenerator/迁移/SchemaDiff，DATA-only/XLSX/pg_dump不扩大。
+
+要求先在011产品字节上保存identity/generated/domain/bit(8)/timestamp(3)/非默认collation等真实TableExporter→strict reader→writer/publisher RED，再补STRUCTURE/BOTH的旧目标/邻居、0 move、output未打开、取消与owned结算断言；修正后新受影响完整定向、新编号/冻结/清单，011和旧A/B全部保留。同一worker已active接收，新turn为01a11c7b-8eab-7831-a29f-daaaa795aecc，紧凑游标431e0858-03dc-4a74-84cd-3c2876284d87:51。
+
+裁决：**011证据真实性通过，P1c阶段暂不通过；已退回具体修正。** 仍由开发唯一运行Gradle，尚不允许P2/full/buildSrc:test/image/stage/commit/main/push。P0/P1a/P1b通过维持；G9未完成。下一步审查新RED、修正源码与新冻结，通过后再下发P2。真实DB/pg_dump、原生chooser/桌面、驱动内部缓冲、永久阻塞、慢盘及文件属性竞争窗口继续单列；datacube-g9保持ACTIVE，旧datacube保持PAUSED，v3.2.9不动。
+
+本会话归档15份独立回执/worker清单与冻结报告，均以raw hash-object和暂存blob逐项复核相同，检查器实际exit0，显式文档范围diff-check通过。本地提交仅保存计划/交接/审查证据，不代表worker产品提交或新工程测试通过。
