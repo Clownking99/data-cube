@@ -80,6 +80,6 @@ JDK 基线 `D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8`，优先离线复用已有�
 
 ## 当前检查点
 
-P1b / 已下发实施：P0 与 P1a 已审，开发线程为 `01a11b86-2026-7ed3-86c5-1ec232640653`，独立 worktree `C:/Users/hetia/.codex/worktrees/aed5/朝花夕拾`、分支 `codex/g9-table-export-reliability-20261008`、基线 b81923f2。P1a 最终 012 冻结经协调会话独立核验，17 份冻结文件/375 份证据/15 份运行源码全部匹配，最新定向 375 tests、0 failure/error/skip；初始首红、各次返工和工具/夹具失败均保留。详见[协调验收账本 C2](../verification/2026-10-08-g9-table-export-coordination.md)。已下发 G9b 进程期限、输出与物理所有权、精确参数和最小整窗退出接线；G9c、完整工程/main 复验仍未启动，产品未合 main，G9 不称完成。
+P1c / 已下发实施：P0、P1a 与 P1b 已独立审查通过；开发线程 `01a11b86-2026-7ed3-86c5-1ec232640653`，独立 worktree `C:/Users/hetia/.codex/worktrees/aed5/朝花夕拾`、分支 `codex/g9-table-export-reliability-20261008`、基线 b81923f2。P1b 最终010的29份冻结文件、355份证据、28份运行前快照及原P1a375份证据均独立重算匹配；25份产品/测试及README/launcher绑定最终冻结，结果报告运行后更新另记。35份新XML与当时build当前XML匹配，560 tests、0 failure/error/skip；所有首红和修正失败保留。详见[协调验收账本 C3](../verification/2026-10-08-g9-table-export-coordination.md)。已下发G9c专用连接/单cursor、三格式配置绑定、严格DDL和完整值边界；P2完整工程/P3 main新复验未启动，产品未合main，G9不称完成。开发仍唯一Gradle执行者。
 
 为落实持续下发和验收，新增当前会话的 `datacube-g9` 跟进，每 15 分钟检查同一开发线程并在有结果时继续审查；无实质变化保持安静，P3 实际交付后暂停，不自动启动下一目标。旧 `datacube` 仍为 PAUSED。本地跟进依赖电脑和应用运行，不替代任何工程或外部验收。

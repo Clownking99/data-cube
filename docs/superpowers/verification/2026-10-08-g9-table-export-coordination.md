@@ -182,3 +182,39 @@ send_message_to_thread 已成功向同一正式线程下发 P1b；先在 worker 
 客户端兼容裁决：新 `require_auth='!gss,!sspi'` 与 `gssencmode=disable` 避免静默使用操作系统环境认证。[PostgreSQL 16 发布说明](https://www.postgresql.org/docs/release/16.0/)明确 require_auth 为16新增，[参数文档](https://www.postgresql.org/docs/16/libpq-connect.html)说明否定认证方法的语义。原 `2026-07-08-data-export-design.md:115` 仅要求使用者保证客户端与目标库兼容，未发现承诺旧客户端版本。协调允许将此路径能力门槛明确为 pg_dump/libpq 16+，最小导出说明/README和固定错误指引需可见；禁止静默移除隔离作为旧版回退。无需新增安装、升级、通用客户端管理或版本探测进程，不运行真实pg_dump；合成argv与上游文档不当作客户端实测。
 
 验证/失败/未验：这是未冻结源码与实际调用链预审，两个边界尚待新测试确认；P1b 不称验收通过。开发继续唯一 Gradle 执行权，P1c/P2/P3未启动。下一步等待修正与新原件，独立审核后再决定阶段准入；main只保存本会话审查记录。
+
+## C3：P1b 冻结独立验收通过，已下发 P1c
+
+当前目标：2026-10-08 15:43 UTC 跟进收到 P1b 停写交付，核对 pg_dump 物理所有权与最小整窗接线，决定完整流式读取阶段准入。审查时 main 为 `60cbe57858cf4a068b22ee9998c8af038583b284`、范围内干净；worker 仍为 b81923f2，既有开发 turn 已完成。未运行根会话 Gradle，未集成产品。
+
+### 独立证据核验
+
+本会话执行 [verify-p1b.py](evidence/g9-table-export-20261008-coordination/verify-p1b.py)，只读明确的 worker 证据路径并产生 [P1b 独立回执](evidence/g9-table-export-20261008-coordination/p1b-010-review/root-p1b-verification.json)：
+
+- 最终 `p1b-final-freeze-010` 的 **29 份文件**、P1b **355 份 artifact**、**28 份运行前快照**及原 P1a **375 份 artifact** 均逐项重算 SHA-256/长度一致。审查时当前 29 份文件与冻结相同。28 份运行前快照中，25 份产品/测试及 README、launcher 共27份匹配最终冻结；报告在运行后填写结果，其改变明确保留，不能把结果 prose 当运行前字节。
+- `p1b-010-affected-targeted` 的 command/head、exit、stdout 与 XML 对应；实际 `:cleanTest`、`:compileJava`、`:compileTestJava`、`:test` 执行，exit0。**35 份 XML，560 tests / 0 failures / 0 errors / 0 skipped**，suite 计数和实际 testcase 子项分别一致。worker 当时 `build/test-results/test` 的同名35份 XML 与归档 SHA 全部一致，见 [当前 XML 绑定](evidence/g9-table-export-20261008-coordination/p1b-010-review/root-current-xml-binding.json)。buildSrc 配置编译 UP-TO-DATE 不算 buildSrc:test 通过。
+- 所有10轮原 XML 独立重算：001为4/4失败、002为4/1失败、003为4/0、004为40/2失败、005为545/0、006为1/1失败、007为46/2失败、008为49/5失败、009为53/0、010为560/0；各轮均0 error/skip，失败轮 exit1、绿色 exit0。旧绿色不覆盖后续失败。004缺完整运行前源码，仍只作为失败日志，不能绑定最终源码。
+- 010 的物理摘要逐项等于原 XML system-out；另直接阅读 helper/TrackingProcess/HeldProcess 和实际断言，确认进程/读流/关闭线程的状态是在 fixture finally 强杀或放行之前验证。有限 flood 两路各8,388,608 bytes；持续输出用 ready/两路至少64KiB 后推进可控时钟；parent/tree 等指定PID被捕获才放父进程退出，邻居在产品结算后仍 alive。无真实 pg_dump/数据库运行。
+
+源码审核包括 PgDumpRunner 完整控制流、相对 P1a 的 publisher/operation/TableExporter 变化、ExportDialog 生产入口与 physicalCompletion、TableExportTasks、AppShell 最小 diff，以及参数/资源/真实主窗断言。C2.1/C2.2 的阻断已关闭：立即登记 scratch 根/每文件归属，无法取得身份不删替换空根；只认可 NoSuch；流 close 抛错不等于已关闭，单次最终确认仍受所有权约束；控制调用不占监督器；内层 scratch 残留传到真实 UI；严重 Error 保留原对象。
+
+006首红冻结 AppShell 确保留旧 BestEffort→tasks.close，仅加导出入口 seam；原 XML 在 fake 根仍活、physical pending 时记录 shutdownDone=true。010真实主窗链覆盖退出取消恢复、仍活/隐藏 owner、root退出但stream关闭未解决、发布先赢、queued取消和早期UI Error；资源 pending 时先于 BestEffort 等待，不能靠runner.close返回完成。原 SQL事务/FAILED_PARTIAL/关闭回归包含于本次定向。
+
+裁决：**P1b/G9b 阶段通过**。pg_dump/libpq16+隔离能力提示已进入选项、README及固定错误反馈；源码/合成参数测试不能证明真实客户端或SSL兼容。已观察的自有资源未停止仍保留 pending，不能保证任意脱离子孙或永不返回的驱动/系统调用最终退出。属性回退与 verify→move/unlink 竞争窗口、原生chooser/桌面、真实DB/pg_dump/慢盘仍单列。G9c、P2/P3/main新验证未完成，G9不称交付完成。
+
+本次检查诊断：最初按旧阶段目录名读取 source-snapshot/source-at-run 失败，随后核对实际 `sources-before-run.json` / `source-before-run` 并成功验证；比较跨换行源码时改为忽略行末空白的 diff，原 SHA 不改写。两项只是审查工具路径/呈现修正，不计产品测试失败或通过。
+
+### P1c 下发与验收约束
+
+已通过 `send_message_to_thread` 向同一正式线程成功下发 P1c，先在 worker 报告细化类型/精度/字节预算与资源结算设计，然后按既有授权自主实现；不等待维护者逐步确认，不建新线程/代理。根会话核对现有 SqlScriptExporter 逐行调用 dialect.sqlLiteral、BATCH仅计数，以及 XlsxWriter Number/Boolean/其他值toString 的实际路径，要求整表适配层严格完整取值，不把未知对象交给该fallback。
+
+1. 格式选择开始绑定同一 cfg/provider/version/TableRef；原子订阅并复验，ABA、移除重建、provider改变均失效。三个格式统一目标快照，pg_dump无需JDBC但不能分别读取新旧配置/密码。监听仅发意图，manager锁内无阻塞I/O；取消chooser/确认、queued拒绝与所有终态释放监听。失效与发布延续CAS胜负，不持manager锁move；readOnly/production允许读导出。
+2. SQL/XLSX专用连接，一次带schema引用SELECT/单cursor及其metadata，空表表头、>500行、无主键逐行读取，无OFFSET/LIMIT/COUNT/额外探测或静默maxFieldSize。PG事务与fetch16满足既定cursor条件，Oracle按P0策略；不动共享acquire/其他会话，SQL100行批次不累积100行对象。
+3. 每条DDL/数据Statement使用独立SqlExecutionControl Activation；FX请求与实际cancel/owned fallback分离。迟到opener、execute/next/getter/LOB/关闭/rollback均有所有权，正常资源结算先于发布；关闭失败阻止提交，实际未释放或仍阻塞保持BUSY/主窗pending。保留原Error和固定不泄密反馈，不引入全局JDBC代理或关闭框架。
+4. table-only严格DDL不把Oracle异常变成功注释，空/不完整结构明确失败；PG严格PK查询先核实并绑定完整表身份，避免跨表同名constraint串入；旧展示/迁移/Schema Diff行为不重写，不宣称DDL和数据共同Schema原子快照。
+5. 明确格式可表示的null/文本/boolean/有限常用数值/已有日期时间与SQL二进制允许集；LOB/SQLXML完整有界读取与free/close。未知对象、unsupported类型、非有限数值和XLSX不能保真的数值/二进制明确失败。P0的SQL单值1MiB级/行4MiB级/有限DDL预算落实为精确定义与边界断言；XLSX行列/UTF16上限适用于整表，保留既有查询保真，不截断/偷转显示文本。驱动内部任意大单行缓冲不宣称硬堆上限。
+6. 真旧路径RED与真实TableExporter→writer/publisher及AppShell→mock GREEN，覆盖目标变化、只读/production、配置ABA、迟到资源、各阶段异常和邻居/其他会话不受影响。复验A/B、query保真、dedicated session、控制/事务、DDL/provider/migration及task/shutdown回归；每次新UUID离线隔离环境。开发仍唯一Gradle执行者，新建C证据根，全部A/B原件不覆盖。
+
+下一步：等待开发的 P1c 设计/实施与冻结定向，根会话继续只读审查、必要返工。没有授权开发自行进入全量/buildSrc:test/image/P2、stage/commit/main/push；完整工程及P3仍按冻结准入后分步执行。datacube-g9继续ACTIVE，旧datacube保持PAUSED，v3.2.9不动。
+
+下发后的紧凑快照确认同一线程 active，新 turn `01a11c38-8cb6-75a0-b0a8-f6e256b9f28f` 已开始 P1c，先核对快照、专用JDBC、DDL及writer表示能力并补设计；游标 `431e0858-03dc-4a74-84cd-3c2876284d87:45`。这是实施接收回执，不是P1c通过证据。
