@@ -1,0 +1,157 @@
+{
+  "phase": "P1a RED independent review",
+  "capturedAtUtc": "2026-10-08T13:19:30.3440038Z",
+  "head": "b81923f29e0a6b6603710a589504aab490995491",
+  "workerThreadId": "01a11b86-2026-7ed3-86c5-1ec232640653",
+  "actualTestTaskExecuted": true,
+  "exitCode": 1,
+  "suites": [
+    {
+      "name": "com.datacube.export.TableExporterBaselineRedTest",
+      "tests": 2,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "[1] SQL",
+          "failure": "org.opentest4j.AssertionFailedError: array lengths differ, expected: <9> but was: <144>"
+        },
+        {
+          "name": "[2] XLSX",
+          "failure": "org.opentest4j.AssertionFailedError: array lengths differ, expected: <9> but was: <1464>"
+        }
+      ]
+    },
+    {
+      "name": "com.datacube.export.ResultExportOperationTest",
+      "tests": 2,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        {
+          "name": "cancelReturnsBeforeBlockedPublicationIsReleased()",
+          "failure": "java.util.concurrent.TimeoutException"
+        },
+        {
+          "name": "failedPublicationCannotReuseItsToken()",
+          "failure": "org.opentest4j.AssertionFailedError: expected: <false> but was: <true>"
+        }
+      ]
+    }
+  ],
+  "runEvidence": [
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-003-red/command.json",
+      "sha256": "928684EAF427A3524734E6FB68C8BB3088135CD127606F6225DF4A1E9F70DE6A",
+      "bytes": 778
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-003-red/exit.json",
+      "sha256": "2BC0F055EA298DE11597531772141B802E26A4DF3E0699C3515B8B1AF3432DBF",
+      "bytes": 65
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-003-red/stdout.log",
+      "sha256": "45CA4C1168C53DEB659471DF344D40253A03A3E73FBC2CBD6A126105BAAACBCC",
+      "bytes": 4373
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-003-red/stderr.log",
+      "sha256": "15D4F6F7416AF2B0719FB346C50DFBF398AD830FA7DA9AFD7952F8049B896559",
+      "bytes": 988
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-003-red/xml/TEST-com.datacube.export.TableExporterBaselineRedTest.xml",
+      "sha256": "240DA70FF591CDFA28725A88D1E22377225637E003B56528BC8895C7CB1C3B93",
+      "bytes": 11750
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-003-red/xml/TEST-com.datacube.export.ResultExportOperationTest.xml",
+      "sha256": "6E15290DCA17E43239A0F480A3F1612E470D48FF5C7A082871243ED48B1481CF",
+      "bytes": 2288
+    }
+  ],
+  "frozenSources": [
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-before-red-source/src/com/datacube/export/TableExporter.java",
+      "sha256": "197426289419DC71FF06D703D06587B4384368D8603EBEAEAB99F69578DE2B29",
+      "bytes": 2900,
+      "matchesManifest": true,
+      "mainRawEqual": true,
+      "canonicalBlob": "5b2b7214c543a719a64f2d9bb2d8738bb9db71de",
+      "baselineBlob": "5b2b7214c543a719a64f2d9bb2d8738bb9db71de"
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-before-red-source/src/com/datacube/export/ResultExportOperation.java",
+      "sha256": "DA1E4B78A069F7614954DD599F19F489F16341847DBB41E75F0D93150157B2B1",
+      "bytes": 906,
+      "matchesManifest": true,
+      "mainRawEqual": true,
+      "canonicalBlob": "29ceedf3c00d897f55312f38ce33f14a6dfb9208",
+      "baselineBlob": "29ceedf3c00d897f55312f38ce33f14a6dfb9208"
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-before-red-source/src/com/datacube/export/SafeResultFilePublisher.java",
+      "sha256": "C8D49BD4305E864225334F604F4BB694AF8C9C21B70346ED240CD677AB63325D",
+      "bytes": 6022,
+      "matchesManifest": true,
+      "mainRawEqual": true,
+      "canonicalBlob": "f6f3dacd515f109006a0c68eec651e5d89dfa449",
+      "baselineBlob": "f6f3dacd515f109006a0c68eec651e5d89dfa449"
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-before-red-source/src/com/datacube/fx/ExportDialog.java",
+      "sha256": "33537A1A1E24CCBD2B55D3CEEEF1558086984F25F9FDBA34440764D292E6753F",
+      "bytes": 6871,
+      "matchesManifest": true,
+      "mainRawEqual": false,
+      "canonicalBlob": "ff7f9aec12522f33074ed4a9a1ce7bca03f735ce",
+      "baselineBlob": "ff7f9aec12522f33074ed4a9a1ce7bca03f735ce"
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-before-red-source/test/com/datacube/export/TableExporterBaselineRedTest.java",
+      "sha256": "427F859FB22415880988E9CF7A9F5618FC96A81094C106031E9CEC8C80CE536C",
+      "bytes": 1438,
+      "matchesManifest": true,
+      "mainRawEqual": null,
+      "canonicalBlob": null,
+      "baselineBlob": null
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-before-red-source/test/com/datacube/export/ResultExportOperationTest.java",
+      "sha256": "492894629081D4ADCD5F31CBE2F710AE1618A91481E0085859DD5A7B00029CF6",
+      "bytes": 1817,
+      "matchesManifest": true,
+      "mainRawEqual": null,
+      "canonicalBlob": null,
+      "baselineBlob": null
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-before-red-source/test/com/datacube/service/TableExportMocks.java",
+      "sha256": "A1F78D8F78EE290E37EFAEA508A1562B98F0255CE45DE90AEAAD5AD92F824B60",
+      "bytes": 3443,
+      "matchesManifest": true,
+      "mainRawEqual": null,
+      "canonicalBlob": null,
+      "baselineBlob": null
+    },
+    {
+      "path": "docs/superpowers/verification/evidence/g9-table-export-20261008-worker/p1a-before-red-source/docs/superpowers/verification/evidence/g9-table-export-20261008-worker/Run-P1a.ps1",
+      "sha256": "BE276B4787E2C510A3FB72180F1FB14313616E7BCDE6A61FA9DD667F0E1803C3",
+      "bytes": 4184,
+      "matchesManifest": true,
+      "mainRawEqual": null,
+      "canonicalBlob": null,
+      "baselineBlob": null
+    }
+  ],
+  "notes": [
+    "Fixture only supplies synthetic JDBC/DataAccessor values and exceptions; no target writes. Real TableExporter invokes real writers.",
+    "Four tests fail as intended: SQL/XLSX old bytes changed, cancel waits for publication, failed publication token remains active.",
+    "The frozen pre-red launcher predates invocation repairs; command.json and actual stdout/stderr identify successful test invocation p1a-003-red.",
+    "First root audit stopped on raw ExportDialog SHA mismatch between worktrees. All four frozen production sources and unchanged main match b819 Git blobs after repository EOL canonicalization; raw hashes were not rewritten.",
+    "This is failure reproduction, not GREEN acceptance. Root did not run Gradle. Previous two invocation failures remain separate."
+  ]
+}

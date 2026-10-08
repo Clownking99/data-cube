@@ -61,3 +61,33 @@ P0 审查额外关注：Windows 正常 8.3 路径别名不能误判为非法链�
 失败/未验：P0 没有产品改动或测试通过；G9b/G9c、P2/P3、真库/原生/完整发布仍未验。下一步由 GPT-6.1-sol 实施 P1a，本会话审核其真实调用链和新原始证据后再下发 P1b。
 
 下发回执：send_message_to_thread 已成功，wait_threads 随后返回该线程 active/inProgress，开发明确开始 P1a 的真实旧行为 RED 与安全发布实现。协调文档和审查快照共 12 个暂存文件，11 份原件逐个 `git hash-object --no-filters` 与 index blob 相符。首次默认 `git diff --cached --check` 将保真 CRLF 原件的 CR 识别为尾部空白并 exit2；未改写原件，使用命令级 `core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol` 重新检查 exit0，原有空白检测项仍启用。此检查不计为产品测试。
+
+## C1.1：为 P1b 补充精确连接参数审查
+
+当前目标/发现：在开发 P1a 期间独立阅读 PgDumpRunner、PG/Oracle ConnectionFactory、SqlDialect、writer 与任务执行器，为后续接口验收做准备。发现旧 pg_dump 将 `cfg.database()` 原样放入 `-d`；[pg_dump 官方文档](https://www.postgresql.org/docs/current/app-pgdump.html)明确该值可以是 connection string，且其中的参数优先于冲突的命令行选项。因此“结构化 argv”本身不足以证明数据库名仍是字面量，数据库名中的 `=` 或 URI 前缀可能改变连接目标。这是源码与文档支持的推断，未访问真库或运行 pg_dump。
+
+下发给 P1b 的具体要求：将 host/port/user/database 绑定为明确的字面参数，按 [libpq 字符串规则](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING)正确转义，或对无法证明的形式明确拒绝；不可把数据库名作为任意 conninfo。补合成 `=`、URI 前缀、引号、反斜线、空格及空配置的 argv/环境断言；密码继续禁止进入 argv/日志。`--no-password` 只禁止交互提示，不等于禁止读取默认密码文件；受控环境/临时 passfile 策略须防止未指定凭据时静默借用用户文件，测试只用独占合成材料。
+
+状态：这是既有“绑定目标/受控子进程环境”契约的细化，不新增功能或外部操作；P1b 尚未授权实现，不打断 P1a。工程/进程/真库行为仍待新证据验证。
+
+## C1.2：独立核验 P1a 首红
+
+当前目标：核验开发首红是否走真实产品代码，而不是以夹具行为或编译失败代替旧问题证据。已读取 `p1a-003-red` 的 command/exit/stdout/stderr、2 份 XML、冻结测试和 mock；夹具只提供合成 JDBC/DataAccessor 返回值和 SQLException，不直接写目标文件。实际 `:test` 执行，退出 1，4 tests / 4 failures / 0 errors / 0 skipped。
+
+- SQL/XLSX 的真实 TableExporter→writer 中途失败后，原 9 字节目标分别变为 144 / 1464 字节。
+- 门禁测试以已进入发布动作的 latch 固定顺序；旧 cancel 等待 move 放行，get 超时。另一个测试确认失败发布后旧 token 仍能取消，尚未封闭一次提交资格。
+- 6 份运行原件与 8 份冻结源码的 SHA/长度已记入本会话 [独立首红回执](evidence/g9-table-export-20261008-coordination/p1a-red-review/root-red-verification.json)。4 份产品源经仓库换行规范化后均匹配 b819 基线及当前 main，未运行协调方 Gradle。
+
+失败/限制：前两次 Gradle 权限/参数启动失败单列，不算这 4 个产品失败。冻结的 pre-red 启动脚本早于调用修正，第三次实际 command/log 单独识别。协调方第一次比对跨 worktree 原始 SHA 时因 ExportDialog 换行差异停止；进一步对照 Git blob 后确认规范化源码一致，保留原 SHA 差异，不改写原件。此检查点只确认旧故障，不能当作 GREEN 或本步验收。
+
+下一步：开发已报告接入三格式临时文件写入及移除最终目标删除，正在跑定向；等待冻结结果后检查真实 UI/编排与发布器改动，再决定 P1a 返工或 P1b 下发。
+
+## C1.3：P1a 初稿预审返工
+
+当前目标：开发定向运行期间只读预审真实编排、共享发布器及 UI 生命周期；这是未冻结初稿审查，不是验收通过。实际改动保持在 6 个生产文件（包含为关闭失败测试所需的两个 writer OutputStream 重载），尚未进入 B/C。已向开发线程成功下发三项具体修正：
+
+1. `capture` 在检查链接前调用 `normalize()`，会消去原始路径中的 `link/..`。应保留并检查原路径，再规范化；普通点路径、8.3 仍兼容，链接后接 `..` 必须有独占合成用例或明确平台未验。
+2. cleanup 使用 `Files.exists` 将无法判断也当作不存在。应只把明确 NoSuchFileException 当已消失，读取身份失败应报告 CLEANUP；不得删替换项或静默遗漏残留。
+3. 第二次取消返回 false 后，UI 会把已接受取消的等待状态显示为“正在发布”。应区分既有取消意图和提交已赢，重复取消反馈保持幂等，实际任务返回前不得假报完成。
+
+验证/失败：结论来自当前源码控制流和 API 行为，要求开发补可控回归验证；本会话未运行测试、未接受 GREEN、未合 main。下一步等待修正后的冻结源码和新定向原件，再独立审核。
