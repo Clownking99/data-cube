@@ -98,9 +98,11 @@ class ResultExporterTest {
     }
 
     @Test
-    void xmlStripsIllegalControlChars() throws Exception {
+    void xmlRejectsUnrepresentableCharactersWithoutExposingTheValue() throws Exception {
         StringWriter w = new StringWriter();
-        ResultExporter.writeXml(w, List.of("C"), rows(new Object[]{"a\u0000b\tc"}));
-        assertTrue(w.toString().contains("<C>ab\tc</C>"));
+        var failure = assertThrows(ResultExporter.InvalidXmlCharacterException.class,
+                () -> ResultExporter.writeXml(w, List.of("C"), rows(new Object[]{"a\u0000b\tc"})));
+        assertEquals("XML contains an unrepresentable character", failure.getMessage());
+        assertNull(failure.getCause());
     }
 }
