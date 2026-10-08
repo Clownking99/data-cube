@@ -294,3 +294,17 @@ SQL/XLSX的501行用例均实际只开1条共享连接、调用3次分页accesso
 接收回执确认同一线程active，P2 turn为01a11c8a-3ecd-7e02-ae50-b661829dac24，游标431e0858-03dc-4a74-84cd-3c2876284d87:61；这是实施接收，不是P2通过。根会话只保存本轮审核文档和原件。归档时两份stdout受*.log忽略；多次add/force返回0仍未入索引，原因未确定。临时目录级忽略例外亦未解决，已删除；最终使用仅允许这两份已知路径、明确拒绝.testagent的raw blob/cacheinfo暂存并逐项读回相同SHA，不改变仓库忽略规则，未将未入库日志误报归档成功。
 
 最终32份本轮原件/回执raw hash与索引blob全部相同；19份产品冻结对比确认只有StrictTableDdl改变，见root-product-change-binding.json。原始Gradle stdout的第2行自带行尾空格，归档diff-check因此报错，原件保持不修剪；本次编写的文档与核验器单独diff-check通过，原件用逐文件字节校验。这不是产品测试失败或跳过。
+
+## C5：P2独立验收通过，接管P3
+
+当前目标：2026-10-09本地时间，main审查基线a32a2272、范围内干净；同一开发线程完成P2后idle、停写停测并交回Gradle所有权。开发产品提交e7950123ed052b9c370ed355496f3333b35ad11c，原件/报告提交b76b75c9106709121fd542108cb3bbde944cfe15，开发工作区范围内干净。根会话尚未运行Gradle。
+
+本会话以[verify-p2.py](evidence/g9-table-export-20261008-coordination/verify-p2.py)只读独立核对，见[P2回执](evidence/g9-table-export-20261008-coordination/p2-review-001/root-p2-verification.json)：3516份raw清单项目加2份自排除清单、47份代码/测试/README，共3565份文件与HEAD Git blob原始字节相符；47份代码均等于已接受C014。844份输入的当前、输入快照及四次运行前后身份相符；运行发生于产品提交前，command的b819基线与提交后e795/b76身份由内容哈希绑定，不误要求历史HEAD等于最终HEAD。
+
+本次真实P2定向85 suites/1181 passed，clean全量345 suites/4666 tests，其中4663 passed、3 live skipped，强制buildSrc 1 suite/8 passed，均0 failure/error、exit0；四轮实际任务执行而非缓存通过。当前根项目345份XML及buildSrc XML与归档相同。三项跳过为Redis、Oracle SchemaDiff、PostgreSQL SchemaDiff live，清空外部环境后明确缺少门禁，不算通过，也未访问真实库。每轮均独占UUID home/temp。
+
+本会话读过launcher、XML计数器、镜像审计/修正版wrapper、外置TableExporter探针及全部合成JDBC factory。SQL/XLSX各501行成功与中途失败原目标保护、共享事务未动、独占连接回滚释放等实际断言可见；actualDriverConnectCalls=0来自审查过的synthetic factory和driver discovery路径，不冒充网络拦截计数。7个镜像审计子命令均exit0；独立重算183个当前镜像文件，exe/cfg/modules哈希匹配报告。测试类索引、验收配置污染检查通过，XML 7组、XLSX20包40单元格、无效UTF16 6项及G9 2成功/2失败保护在新linked runtime通过。
+
+失败/诊断原件保留：Run-P2便捷PowerShell汇总将空skipped节点判为false，full便捷skipped=0不采用；独立ElementTree同时核对suite属性和实际节点，确认3跳过。首次005镜像wrapper清空TEMP后落入C:/WINDOWS，目录拒绝、exit1且尚未运行探针；006先建立独占wrapper临时环境，再完整成功，005不覆写。jpackageImage stderr中的12条javac failed与12条java failed伴随Picked up JAVA_TOOL_OPTIONS保留；不按文字误判整个任务失败，也不抹去，实际任务exit0且产物新审计/linked子进程成功。首次Git ls-tree不支持exclude命令诊断保留，改精确cat-file字节核验后成功。原stdout尾空格不修剪。
+
+裁决：P2通过，根会话接管P3及唯一Gradle执行权；下一步本地合并b76b75c，再用新隔离环境定向、clean全量、强制buildSrc/image和新镜像外置探针复验；通过后更新交接、推main并核对精确SHA CI。此时G9尚未交付、没有新main测试。原生chooser/桌面、真库/pg_dump、MVCC/undo、真实driver取消/内部分配、慢/网络磁盘、文件身份校验至move/unlink竞争窗口、永久阻塞资源pending和已捕获进程家族边界继续保留。无tag/发布/新目标，datacube-g9保持ACTIVE至P3实际交付。

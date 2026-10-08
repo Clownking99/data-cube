@@ -80,6 +80,6 @@ JDK 基线 `D:/jvms_v2.1.6_amd64/store/jdk-25.0.1+8`，优先离线复用已有�
 
 ## 当前检查点
 
-P2 / 已下发完整工程验证：P0、P1a、P1b、P1c均已独立通过。严格DDL新增12例首红已确认；最终014的50份冻结、1348份证据、49份运行前快照及85份当前XML核验一致，1181通过、0失败/错误/跳过；旧011/A/B均未改。源码/保守类型范围与局限见[协调账本C4](../verification/2026-10-08-g9-table-export-coordination.md)。已授权同一开发线程在独立aed5 worktree/codex分支执行新完整定向、clean全量、强制buildSrc:test、jpackageImage和新镜像/linked mock探针；全部通过后本地提交、停写交回Gradle所有权。开发仍唯一Gradle执行者，不合main/推送。P2/P3尚未完成，main产品未集成，G9未交付；无真库/原生/发布验收声明。
+P3 / P2已独立通过，根会话接管Gradle：开发产品e7950123、证据b76b75c已停写；3565份Git原始字节、844份输入、三组XML和183份镜像文件均复核。开发新定向1181、clean全量4663通过/3 live跳过、强制buildSrc8、jpackageImage和linked mock探针通过；首次镜像环境失败及便捷汇总漏skip保留，独立计数纠正。见[协调账本C5](../verification/2026-10-08-g9-table-export-coordination.md)。下一步本地合main、新隔离环境复验、更新交接和待验，再按授权推main/核对精确SHA CI。G9尚未交付，外部/原生限制不变。
 
 为落实持续下发和验收，新增当前会话的 `datacube-g9` 跟进，每 15 分钟检查同一开发线程并在有结果时继续审查；无实质变化保持安静，P3 实际交付后暂停，不自动启动下一目标。旧 `datacube` 仍为 PAUSED。本地跟进依赖电脑和应用运行，不替代任何工程或外部验收。
