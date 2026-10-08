@@ -1,0 +1,234 @@
+// DataCube — Gradle + jpackage 模块化打包
+//
+// 以“模块化运行时”打包，消除 fat-jar 方式下的两条 JavaFX 警告（unnamed
+// module + JavaFX 版本旧的 sun.misc.Unsafe），并产出 app-image（免安装）与
+// msi/exe（安装包）。
+//
+// 常用命令：
+//   gradlew run            —— 模块化运行 GUI（验证警告已消失）
+//   gradlew jpackageImage  —— 生成 app-image 免安装目录：build/jpackage/DataCube/
+//   gradlew jpackage       —— 生成安装包（默认 msi；需 WiX Toolset v5）
+//   gradlew jpackage -PinstallerType=exe  —— 生成 exe 安装包
+//   以上任务可用 -PappVersion=X.Y.Z 指定版本（CI 中与 release tag 对齐）。
+//
+// 首次构建需联网下载 Gradle 发行版、插件与 JavaFX 25 模块。
+
+plugins {
+    id 'application'
+    id 'org.openjfx.javafxplugin' version '0.1.0'
+    id 'org.beryx.jlink'         version '4.1.0'   // 4.x 起要求 Gradle 8.14.4+，支持 Java 17-26（含 JDK 25）
+}
+
+group   = 'com.datacube'
+// 版本号：默认 3.0.0，可由 -PappVersion=X.Y.Z 覆盖（CI 中传入与 release tag 一致的版本）。
+// 注意：msi/exe 的 appVersion 要求为数字版本（major.minor.patch）。
+version = project.findProperty('appVersion') ?: '3.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+// JDK 25 工具链
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+// 复用现有 src 目录；src/module-info.java 使其成为模块化构建。
+sourceSets {
+    main {
+        java {
+            srcDirs = ['src']
+        }
+        // 版本资源（version.properties）由 generateVersionProperties 任务生成到此目录，
+        // 作为类路径资源随 jlink/jpackage 进包，供运行时 AppVersion 读取。
+        // resources/ 目录承载 SQL 高亮样式表（sql-highlight.css）等非代码资源。
+        resources {
+            srcDirs = ['build/generated/version', 'build/generated/brand', 'resources']
+        }
+    }
+    // 单元测试源码目录（仅测试 JdbcDataEditor 的纯函数）。
+    test {
+        java {
+            srcDirs = ['test']
+        }
+    }
+}
+
+// 生成版本资源：把 project.version 写入 com/datacube/version.properties。
+// CI 中 project.version 与 release tag 对齐，运行时据此判断是否有新版。
+// 配置阶段冻结字符串，避免任务执行阶段访问 Task.project（Gradle 10 不再允许）。
+def generatedAppVersion = project.version.toString()
+tasks.register('generateVersionProperties') {
+    def outFile = file('build/generated/version/com/datacube/version.properties')
+    inputs.property('version', generatedAppVersion)
+    outputs.file(outFile)
+    doLast {
+        outFile.parentFile.mkdirs()
+        outFile.text = "version=${generatedAppVersion}\n"
+    }
+}
+tasks.named('processResources') {
+    dependsOn 'generateVersionProperties'
+    dependsOn 'generateBrandIcons'
+}
+
+// 两个入库母版是唯一输入；运行时 PNG 与安装包 ICO 采用同一尺寸适配规则。
+def brandStandard = file('datacube-brand-assets/assets/icon-mist-violet.png')
+def brandCompact = file('datacube-brand-assets/assets/icon-mist-violet-compact.png')
+// 运行时品牌图标：用 buildSrc IcoGenerator 生成各尺寸 PNG 到 generated 资源目录，
+// 打进模块后由 BrandLogo.applyIcons 从 classpath 加载为窗口/任务栏图标
+// （与打包 .ico 同一渲染，像素一致）。
+tasks.register('generateBrandIcons') {
+    description = '生成运行时窗口图标 PNG 资源'
+    def outDir = file('build/generated/brand/com/datacube/fx')
+    inputs.files(brandStandard, brandCompact)
+    outputs.dir(outDir)
+    doLast {
+        datacube.build.IcoGenerator.writePngs(brandStandard.toPath(), brandCompact.toPath(), outDir.toPath())
+    }
+}
+
+// JavaFX 25：消除旧版 Marlin 的 sun.misc.Unsafe 警告（JDK-8334137 于 jfx25 用 FFM API 修复）。
+// 仅声明实际使用的最小模块集（无 FXML）。
+javafx {
+    version = '25'
+    modules = ['javafx.controls']
+}
+
+// 非模块依赖用本地 jar，避免版本漂移。
+// RichTextFX（SQL 编辑器语法高亮）经 mavenCentral 解析；其及传递依赖
+//（reactfx/flowless/undofx/wellbehavedfx）均为非模块化 jar，由下方 jlink 合并处理。
+dependencies {
+    implementation files(
+        'drivers/ojdbc17-23.26.1.0.0.jar',
+        'drivers/postgresql-42.7.10.jar'
+    )
+    // 0.11.6 修复 RichTextFX 与 JavaFX 25 的方法签名冲突（TextFlowExt 覆盖 final
+    // getUnderlineShape/getCaretShape 导致 IncompatibleClassChangeError，见 FXMisc#1284/#1285）。
+    implementation 'org.fxmisc.richtext:richtextfx:0.11.6'
+
+    // 单元测试：JUnit 5。测试在类路径（非模块路径）编译运行，可访问包内私有纯函数。
+    testImplementation platform('org.junit:junit-bom:5.11.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// 测试与主模块化构建隔离：关闭测试的模块路径推断，使主类与测试类同处未命名模块，
+// 允许测试类以同包方式访问 JdbcDataEditor 的包内私有静态纯函数；不影响 jlink/主模块。
+tasks.named('compileTestJava') {
+    modularity.inferModulePath = false
+}
+// 主源码兼容性门禁：把项目可控的弃用 API 和不安全泛型调用在引入时直接拦截。
+// 仅约束 compileJava，不把第三方 jlink 生成步骤的 JDK 提示混入项目源码门禁。
+tasks.named('compileJava') {
+    options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked', '-Werror']
+}
+tasks.named('test') {
+    modularity.inferModulePath = false
+    useJUnitPlatform()
+    // DPAPI 单元测试运行于未命名模块；显式授权 JDK 25 FFM 原生调用。
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    testLogging {
+        exceptionFormat = 'full'
+    }
+}
+
+application {
+    mainModule = 'com.datacube'
+    mainClass  = 'com.datacube.DataCubeFx'
+}
+
+// JDBC 驱动为自动模块，未被 module-info 直接 requires；模块图默认不解析它们。
+// 为使 gradlew run 时 DriverManager 的 ServiceLoader 能发现驱动，把模块路径上的
+// 全部模块加入根集合。（打包路径由下方 jlink mergedModule 处理，不依赖此项。）
+run {
+    jvmArgs += ['--add-modules', 'ALL-MODULE-PATH',
+               // NativeTitleBar 用 FFM 调用 dwmapi/user32（Windows 标题栏明暗），授权原生访问以消除告警
+               '--enable-native-access=com.datacube']
+}
+
+// 应用图标：由 generateIcon 任务用 buildSrc 的 IcoGenerator（Java2D）从雾紫折页母版
+// 生成到 packaging/DataCube.ico；jpackage/jpackageImage 打包前自动重新生成。
+def iconFile = file('packaging/DataCube.ico')
+
+tasks.register('generateIcon') {
+    description = '用 buildSrc IcoGenerator 生成品牌 .ico 图标'
+    group = 'build'
+    inputs.files(brandStandard, brandCompact)
+    outputs.file(iconFile)
+    doLast {
+        datacube.build.IcoGenerator.write(brandStandard.toPath(), brandCompact.toPath(), iconFile.toPath())
+        println "Generated icon: ${iconFile}"
+    }
+}
+
+// 打包前确保图标就绪（jpackage 执行时 iconFile 已由 generateIcon 生成）。
+tasks.matching { it.name in ['jpackage', 'jpackageImage'] }.configureEach {
+    dependsOn 'generateIcon'
+}
+
+jlink {
+    // 稳定、跨 JDK 版本无歧义的裁剪选项（不含 --compress，避免不同 JDK 语法差异）。
+    options = ['--strip-debug', '--no-header-files', '--no-man-pages']
+
+    // RichTextFX 及其传递依赖均为非模块化 jar，且存在自动模块互相引用（jlink 不支持），
+    // 强制合并到 merged module 中统一打包。
+    forceMerge 'richtextfx', 'reactfx', 'flowless', 'undofx', 'wellbehaved'
+
+    // 合并模块 module-info 会 requires javafx.*（RichTextFX 依赖），需让这些 JavaFX
+    // 制品在 createMergedModule 编译阶段可见，否则报“找不到模块: javafx.controls”。
+    addExtraDependencies 'javafx'
+
+    // 将 JDBC 驱动等自动模块合并为单一模块，并补齐 jdeps 可能漏掉的
+    // JDK 依赖与 java.sql.Driver 服务发现。（此块为“按需迭代”项，驱动如报缺模块可增补。）
+    mergedModule {
+        requires 'java.naming'
+        requires 'java.security.jgss'
+        requires 'java.security.sasl'
+        requires 'java.sql'
+        requires 'java.management'
+        requires 'java.transaction.xa'
+        requires 'java.xml'
+        // RichTextFX/ReactFX/Flowless 合并后依赖的 JavaFX 模块
+        requires 'javafx.controls'
+        requires 'javafx.graphics'
+        requires 'javafx.base'
+        uses 'java.sql.Driver'
+    }
+
+    // GUI 主启动器（对应 application.mainClass = com.datacube.DataCubeFx）。
+    launcher {
+        name = 'DataCube'
+        // 平衡内存基线：初始堆 16m、默认最大堆 256m（可在设置页覆盖 Xmx，下次启动生效）；
+        // G1 + 周期回收 + 低堆空闲比促使 JVM 归还内存给 OS，降低单库单查询时的常驻占用。
+        jvmArgs = [
+            '-Xms16m',
+            '-Xmx256m',
+            '-XX:+UseG1GC',
+            '-XX:MaxHeapFreeRatio=20',
+            '-XX:MinHeapFreeRatio=5',
+            '-XX:G1PeriodicGCInterval=30000',
+            // NativeTitleBar 用 FFM 调用 dwmapi/user32（Windows 标题栏明暗），授权原生访问以消除告警
+            '--enable-native-access=com.datacube'
+        ]
+    }
+
+    jpackage {
+        imageName  = 'DataCube'
+        appVersion = project.version.toString()
+        vendor     = 'DataCube'
+        // 安装包类型：默认 msi，可用 -PinstallerType=exe 切换；两者均需 WiX Toolset v5。
+        installerType = project.findProperty('installerType') ?: 'msi'
+        installerName = 'DataCube'
+        // 安装包附加项（仅对 msi/exe 生效，不影响 app-image）：per-machine 全机器安装
+        // （默认装到 Program Files，安装/卸载需管理员提权，可干净装到任意盘，包括 D: 等
+        // 非系统盘——避免 per-user 无提权时在盘根 Config.Msi 设 ACL 被拒的卸载报错）、
+        // 安装目录可选、开始菜单项、桌面快捷方式。
+        installerOptions = ['--win-dir-chooser', '--win-menu', '--win-shortcut']
+
+        // 图标由 generateIcon 任务保证在 jpackage 执行前生成。
+        icon = iconFile.toString()
+    }
+}

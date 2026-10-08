@@ -1,0 +1,29 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :cleanTest
+> Task :compileJava UP-TO-DATE
+> Task :generateBrandIcons UP-TO-DATE
+> Task :generateVersionProperties UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :compileTestJava
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test FAILED
+
+TableExportJdbcOwnershipTest > setupExecuteOriginalErrorWinsOverStatementCloseError() FAILED
+    org.opentest4j.AssertionFailedError: expected: <java.lang.AssertionError: SYNTHETIC_SETUP_ERROR> but was: <java.lang.AssertionError: SYNTHETIC_CLOSE_ERROR>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertSame.failNotSame(AssertSame.java:50)
+        at app//org.junit.jupiter.api.AssertSame.assertSame(AssertSame.java:35)
+        at app//org.junit.jupiter.api.AssertSame.assertSame(AssertSame.java:30)
+        at app//org.junit.jupiter.api.Assertions.assertSame(Assertions.java:2860)
+        at app//com.datacube.export.TableExportJdbcOwnershipTest.setupExecuteOriginalErrorWinsOverStatementCloseError(TableExportJdbcOwnershipTest.java:76)
+9 actionable tasks: 3 executed, 6 up-to-date

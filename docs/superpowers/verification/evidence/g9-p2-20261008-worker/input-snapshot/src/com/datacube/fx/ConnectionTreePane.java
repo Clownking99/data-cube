@@ -1,0 +1,896 @@
+package com.datacube.fx;
+
+import com.datacube.config.ConnectionStore;
+import com.datacube.config.CredentialMigration;
+import com.datacube.fx.task.FxTaskRunner;
+import com.datacube.fx.task.FxTaskScope;
+import com.datacube.service.ConnectionManager;
+import com.datacube.service.ObjectTreeService;
+import com.datacube.service.SchemaObjectCatalog;
+import com.datacube.redis.RedisSession;
+import com.datacube.spi.model.ConnConfig;
+import com.datacube.spi.model.DbType;
+import com.datacube.spi.model.PackageInfo;
+import com.datacube.spi.model.RoutineInfo;
+import com.datacube.spi.model.SchemaInfo;
+import com.datacube.spi.model.SequenceInfo;
+import com.datacube.spi.model.TableInfo;
+import com.datacube.spi.model.TableRef;
+import com.datacube.spi.model.TriggerInfo;
+import com.datacube.spi.model.TypeInfo;
+import com.datacube.spi.model.ViewInfo;
+
+import javafx.animation.PauseTransition;
+import javafx.beans.binding.Bindings;
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
+import javafx.geometry.Insets;
+import javafx.scene.Node;
+import javafx.scene.control.*;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
+import javafx.util.Duration;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.function.BiConsumer;
+import java.util.function.Predicate;
+
+/**
+ * 连接树面板：左栏 {@link TreeView}，懒加载 schema/表/视图/函数/序列。
+ *
+ * <p>数据来自 {@link ObjectTreeService}；右键菜单/双击的具体动作委托 {@link Actions}
+ * （由 {@link AppShell} 实现）。选中任意节点会将其所属连接设为活动连接。
+ */
+public final class ConnectionTreePane implements AutoCloseable {
+
+    /** 树操作回调（由 AppShell 实现，打开对应内容标签）。 */
+    public interface Actions {
+        void openSqlEditor(ConnConfig conn, String schema);
+        void openSelectSql(ConnConfig conn, TableRef table);
+        void openSchemaDiff(ConnConfig source, String sourceSchema);
+        void openDataGrid(String connId, TableRef table, boolean readOnly);
+        void openDdl(String connId, NodeData node);
+        void editObject(String connId, NodeData node);
+        void editSequence(String connId, NodeData node);
+        void exportTable(String connId, TableRef table);
+        void openTableDesigner(String connId, TableRef table);
+        void newTable(String connId, String schema);
+        void openRedisKeys(ConnConfig conn, int database);
+        void openRedisConsole(ConnConfig conn);
+    }
+
+    enum Kind { CONNECTION, STATUS, REDIS_DB, SCHEMA, TABLES, VIEWS, ROUTINES, PACKAGES, TRIGGERS, TYPES, SEQUENCES, TABLE, VIEW, ROUTINE, PACKAGE, TRIGGER, TYPE, SEQUENCE }
+
+    /** 树节点数据。 */
+    public static final class NodeData {
+        final Kind kind;
+        final String label;
+        final ConnConfig conn;   // 仅连接节点非空
+        final String connId;
+        final String schema;
+        final String name;
+
+        NodeData(Kind kind, String label, ConnConfig conn, String connId, String schema, String name) {
+            this.kind = kind;
+            this.label = label;
+            this.conn = conn;
+            this.connId = connId;
+            this.schema = schema;
+            this.name = name;
+        }
+
+        public Kind kind() { return kind; }
+        public String connId() { return connId; }
+        public String schema() { return schema; }
+        public String name() { return name; }
+
+        @Override
+        public String toString() { return label; }
+    }
+
+    private final ConnectionStore store;
+    private final ConnectionManager connMgr;
+    private final ObjectTreeService treeSvc;
+    private final SessionContext session;
+    private final Actions actions;
+    private final FxTaskRunner runner;
+    private final FxTaskScope tasks;
+    /** Incremented whenever the visible tree is replaced or the pane closes. */
+    private long treeGeneration;
+
+    private final VBox root = new VBox(6);
+    private final TreeView<NodeData> tree = new TreeView<>();
+    private ConnectionTreeFindBar findBar;
+    private final ConnectionTreeClipboard objectClipboard;
+    private volatile SchemaObjectSearchDialog objectSearch;
+    private volatile SchemaMetadataSearchDialog metadataSearch;
+    private final BooleanProperty metadataSearchReserved = new SimpleBooleanProperty();
+    private final BooleanProperty objectSearchReserved = new SimpleBooleanProperty();
+
+    // 快速检索：直接键入字母即在可见行内增量定位（不含 WHERE 那种搜索框）。
+    private final Label searchHint = new Label();
+    private final StringBuilder searchBuffer = new StringBuilder();
+    private final PauseTransition searchReset = new PauseTransition(Duration.seconds(1.2));
+
+    public ConnectionTreePane(ConnectionStore store, ConnectionManager connMgr,
+                              ObjectTreeService treeSvc, SessionContext session, Actions actions,
+                              FxTaskRunner runner) {
+        this(store, connMgr, treeSvc, session, actions, runner, ConnectionTreeClipboard::writeSystemClipboard);
+    }
+
+    ConnectionTreePane(ConnectionStore store, ConnectionManager connMgr,
+                       ObjectTreeService treeSvc, SessionContext session, Actions actions,
+                       FxTaskRunner runner, Predicate<String> clipboardWriter) {
+        this.store = store;
+        this.connMgr = connMgr;
+        this.treeSvc = treeSvc;
+        this.session = session;
+        this.actions = actions;
+        this.runner = runner;
+        this.tasks = runner.scope();
+        this.objectClipboard = new ConnectionTreeClipboard(connMgr, clipboardWriter);
+        build();
+    }
+
+    public Node getNode() {
+        return root;
+    }
+
+    /** Focus the existing tree without selecting, expanding, reloading or connecting. */
+    public void focusConnections() {
+        tree.requestFocus();
+    }
+
+    @Override
+    public void close() {
+        treeGeneration++;
+        tasks.close();
+        var search = objectSearch;
+        if (search != null) search.close();
+        var metadata = metadataSearch;
+        if (metadata != null) metadata.close();
+        if (findBar != null) findBar.close();
+    }
+
+    /** 新建连接（供上方应用头工具栏调用）。 */
+    public void newConnection() {
+        onAddConnection();
+    }
+
+    /** 刷新连接树（供上方应用头工具栏调用）。 */
+    public void refresh() {
+        reload();
+    }
+
+    /** Immutable in-memory connection snapshot; never reloads the backing file. */
+    List<ConnConfig> connectionConfigsSnapshot() {
+        List<ConnConfig> configs = new ArrayList<>();
+        for (TreeItem<NodeData> item : tree.getRoot().getChildren()) {
+            NodeData data = item.getValue();
+            if (data != null && data.conn != null) configs.add(data.conn);
+        }
+        return List.copyOf(configs);
+    }
+
+    private void build() {
+        root.setPadding(new Insets(6));
+
+        tree.setShowRoot(false);
+        tree.setId("connection-tree");
+        tree.setRoot(new TreeItem<>(new NodeData(Kind.CONNECTION, "root", null, null, null, null)));
+        tree.setCellFactory(tv -> new TreeCellImpl());
+
+        // 选中节点 -> 设为活动连接
+        tree.getSelectionModel().selectedItemProperty().addListener((obs, o, sel) -> {
+            if (sel == null) return;
+            ConnConfig c = connOf(sel);
+            if (c != null) session.setActiveConnection(c);
+        });
+
+        // 双击表/视图 -> 打开数据浏览（视图只读）
+        tree.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                TreeItem<NodeData> sel = tree.getSelectionModel().getSelectedItem();
+                if (sel != null && sel.getValue().kind == Kind.REDIS_DB) {
+                    NodeData d = sel.getValue();
+                    actions.openRedisKeys(connOf(sel), Integer.parseInt(d.name));
+                } else if (sel != null && (sel.getValue().kind == Kind.TABLE || sel.getValue().kind == Kind.VIEW)) {
+                    NodeData d = sel.getValue();
+                    actions.openDataGrid(d.connId, new TableRef(d.schema, d.name), d.kind == Kind.VIEW);
+                }
+            }
+        });
+
+        findBar = new ConnectionTreeFindBar(tree);
+        root.getChildren().addAll(findBar.getNode(), tree, objectClipboard.getNode(), searchHint);
+        VBox.setVgrow(tree, Priority.ALWAYS);
+        installQuickSearch();
+        reload();
+    }
+
+    /** 重新加载连接列表（从存储读取并注册到 ConnectionManager）。 */
+    public void reload() {
+        long generation = ++treeGeneration;
+        objectClipboard.clearStatus();
+        tree.getRoot().getChildren().clear();
+        List<ConnConfig> configs = store.loadAll();
+        for (ConnConfig cfg : configs) {
+            connMgr.register(cfg);
+            tree.getRoot().getChildren().add(connectionItem(cfg, generation));
+        }
+    }
+
+    private void onAddConnection() {
+        ConnectionDialog.show(null, connMgr.cipher(), connMgr, runner).ifPresent(cfg -> {
+            List<ConnConfig> all = new ArrayList<>(store.loadAll());
+            all.add(cfg);
+            saveSnapshot(all);
+            connMgr.register(cfg);
+            tree.getRoot().getChildren().add(connectionItem(cfg, treeGeneration));
+        });
+    }
+
+    private void onEditConnection(ConnConfig existing) {
+        ConnectionDialog.show(existing, connMgr.cipher(), connMgr, runner).ifPresent(cfg -> {
+            List<ConnConfig> all = new ArrayList<>();
+            for (ConnConfig c : store.loadAll()) {
+                all.add(c.id().equals(cfg.id()) ? cfg : c);
+            }
+            saveSnapshot(all);
+            connMgr.register(cfg);
+            reload();
+        });
+    }
+
+    private void onDeleteConnection(ConnConfig cfg) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "确定删除连接 \"" + cfg.name() + "\"？", ButtonType.YES, ButtonType.NO);
+        confirm.setHeaderText(null);
+        confirm.showAndWait();
+        if (confirm.getResult() != ButtonType.YES) return;
+        List<ConnConfig> all = new ArrayList<>();
+        for (ConnConfig c : store.loadAll()) {
+            if (!c.id().equals(cfg.id())) all.add(c);
+        }
+        saveSnapshot(all);
+        connMgr.unregister(cfg.id());
+        reload();
+    }
+
+    private void saveSnapshot(List<ConnConfig> configs) {
+        store.saveAll(CredentialMigration.upgradeAll(configs, connMgr.cipher()));
+    }
+
+    /** 断开连接：关闭活动连接并将该节点重置为未展开的懒加载状态（下次展开重连）。 */
+    private void disconnect(ConnConfig cfg) {
+        connMgr.release(cfg.id());
+        List<TreeItem<NodeData>> rootChildren = tree.getRoot().getChildren();
+        for (int i = 0; i < rootChildren.size(); i++) {
+            NodeData d = rootChildren.get(i).getValue();
+            if (d != null && cfg.id().equals(d.connId)) {
+                rootChildren.set(i, connectionItem(cfg, treeGeneration));
+                break;
+            }
+        }
+    }
+
+    // ---------- 树节点构建 ----------
+
+    private TreeItem<NodeData> connectionItem(ConnConfig cfg, long generation) {
+        NodeData d = new NodeData(Kind.CONNECTION, cfg.name(), cfg, cfg.id(), null, null);
+        if (cfg.type() == DbType.REDIS) {
+            return lazyItem(d, generation, () -> redisDatabaseItems(cfg));
+        }
+        return lazyItem(d, generation, () -> {
+            List<TreeItem<NodeData>> out = new ArrayList<>();
+            if (treeSvc.hasSchemaLevel(cfg.id())) {
+                for (SchemaInfo s : treeSvc.schemas(cfg.id(), cfg.database())) {
+                    out.add(schemaItem(cfg.id(), s.name(), generation));
+                }
+            } else {
+                out.addAll(schemaChildren(cfg.id(), null, generation));
+            }
+            return out;
+        });
+    }
+
+    private List<TreeItem<NodeData>> redisDatabaseItems(ConnConfig cfg) {
+        RedisSession redis = connMgr.acquireRedis(cfg.id());
+        Map<Integer, Long> sizes = parseKeyspaceInfo(redis.info("keyspace"));
+        List<TreeItem<NodeData>> out = new ArrayList<>(16);
+        for (int database = 0; database < 16; database++) {
+            long size = sizes.getOrDefault(database, 0L);
+            String label = "db" + database + " (" + String.format("%,d", size) + ")";
+            out.add(new TreeItem<>(new NodeData(Kind.REDIS_DB, label, null, cfg.id(), null,
+                    Integer.toString(database))));
+        }
+        return out;
+    }
+
+    private static Map<Integer, Long> parseKeyspaceInfo(String info) {
+        Map<Integer, Long> sizes = new HashMap<>();
+        if (info == null) return sizes;
+        for (String line : info.split("\\R")) {
+            if (!line.startsWith("db")) continue;
+            int colon = line.indexOf(':');
+            int keys = line.indexOf("keys=", colon + 1);
+            if (colon < 3 || keys < 0) continue;
+            int comma = line.indexOf(',', keys);
+            try {
+                int database = Integer.parseInt(line.substring(2, colon));
+                long count = Long.parseLong(line.substring(keys + 5, comma < 0 ? line.length() : comma));
+                sizes.put(database, count);
+            } catch (NumberFormatException ignored) {
+                // Ignore a malformed INFO line and keep showing the remaining DBs.
+            }
+        }
+        return sizes;
+    }
+
+    private TreeItem<NodeData> schemaItem(String connId, String schema, long generation) {
+        NodeData d = new NodeData(Kind.SCHEMA, schema, null, connId, schema, schema);
+        return lazyItem(d, generation, () -> schemaChildren(connId, schema, generation));
+    }
+
+    private List<TreeItem<NodeData>> schemaChildren(String connId, String schema, long generation) {
+        List<TreeItem<NodeData>> out = new ArrayList<>();
+        out.add(lazyItem(new NodeData(Kind.TABLES, "表", null, connId, schema, null), generation,
+                () -> tableItems(connId, schema)));
+        out.add(lazyItem(new NodeData(Kind.VIEWS, "视图", null, connId, schema, null), generation,
+                () -> viewItems(connId, schema)));
+        out.add(lazyItem(new NodeData(Kind.ROUTINES, "函数/过程", null, connId, schema, null), generation,
+                () -> routineItems(connId, schema)));
+        if (treeSvc.supportsPackages(connId)) {
+            out.add(lazyItem(new NodeData(Kind.PACKAGES, "程序包", null, connId, schema, null), generation,
+                    () -> packageItems(connId, schema)));
+        }
+        if (treeSvc.supportsTriggers(connId)) {
+            out.add(lazyItem(new NodeData(Kind.TRIGGERS, "触发器", null, connId, schema, null), generation,
+                    () -> triggerItems(connId, schema)));
+        }
+        if (treeSvc.supportsTypes(connId)) {
+            out.add(lazyItem(new NodeData(Kind.TYPES, "类型", null, connId, schema, null), generation,
+                    () -> typeItems(connId, schema)));
+        }
+        out.add(lazyItem(new NodeData(Kind.SEQUENCES, "序列", null, connId, schema, null), generation,
+                () -> sequenceItems(connId, schema)));
+        return out;
+    }
+
+    private List<TreeItem<NodeData>> tableItems(String connId, String schema) throws Exception {
+        List<TreeItem<NodeData>> out = new ArrayList<>();
+        for (TableInfo t : treeSvc.tables(connId, schema)) {
+            out.add(new TreeItem<>(new NodeData(Kind.TABLE, t.name(), null, connId, schema, t.name())));
+        }
+        return out;
+    }
+
+    private List<TreeItem<NodeData>> viewItems(String connId, String schema) throws Exception {
+        List<TreeItem<NodeData>> out = new ArrayList<>();
+        for (ViewInfo v : treeSvc.views(connId, schema)) {
+            out.add(new TreeItem<>(new NodeData(Kind.VIEW, v.name(), null, connId, schema, v.name())));
+        }
+        return out;
+    }
+
+    private List<TreeItem<NodeData>> routineItems(String connId, String schema) throws Exception {
+        List<TreeItem<NodeData>> out = new ArrayList<>();
+        for (RoutineInfo r : treeSvc.routines(connId, schema)) {
+            out.add(new TreeItem<>(new NodeData(Kind.ROUTINE, r.name(), null, connId, schema, r.name())));
+        }
+        return out;
+    }
+
+    private List<TreeItem<NodeData>> packageItems(String connId, String schema) throws Exception {
+        List<TreeItem<NodeData>> out = new ArrayList<>();
+        for (PackageInfo p : treeSvc.packages(connId, schema)) {
+            out.add(new TreeItem<>(new NodeData(Kind.PACKAGE, p.name(), null, connId, schema, p.name())));
+        }
+        return out;
+    }
+
+    private List<TreeItem<NodeData>> triggerItems(String connId, String schema) throws Exception {
+        List<TreeItem<NodeData>> out = new ArrayList<>();
+        for (TriggerInfo t : treeSvc.triggers(connId, schema)) {
+            out.add(new TreeItem<>(new NodeData(Kind.TRIGGER, t.name(), null, connId, schema, t.name())));
+        }
+        return out;
+    }
+
+    private List<TreeItem<NodeData>> typeItems(String connId, String schema) throws Exception {
+        List<TreeItem<NodeData>> out = new ArrayList<>();
+        for (TypeInfo t : treeSvc.types(connId, schema)) {
+            out.add(new TreeItem<>(new NodeData(Kind.TYPE, t.name(), null, connId, schema, t.name())));
+        }
+        return out;
+    }
+
+    private List<TreeItem<NodeData>> sequenceItems(String connId, String schema) throws Exception {
+        List<TreeItem<NodeData>> out = new ArrayList<>();
+        for (SequenceInfo s : treeSvc.sequences(connId, schema)) {
+            out.add(new TreeItem<>(new NodeData(Kind.SEQUENCE, s.name(), null, connId, schema, s.name())));
+        }
+        return out;
+    }
+
+    /** Retryable state for a lazy node: a failed attempt may run after collapse/re-expand. */
+    static final class LazyLoadState {
+        private boolean started;
+        private boolean retryable;
+        private boolean expanded;
+
+        boolean onExpanded(boolean expanded) {
+            if (!expanded) {
+                this.expanded = false;
+                return false;
+            }
+            if (this.expanded || (started && !retryable)) return false;
+            this.expanded = true;
+            started = true;
+            retryable = false;
+            return true;
+        }
+
+        void completed() {
+            retryable = false;
+        }
+
+        void failed() {
+            retryable = true;
+        }
+    }
+
+    static List<TreeItem<NodeData>> displayChildren(NodeData parent, List<TreeItem<NodeData>> children) {
+        if (children == null || children.isEmpty()) {
+            return List.of(new TreeItem<>(statusData(parent, "没有可用对象")));
+        }
+        return List.copyOf(children);
+    }
+
+    static boolean loadCallbackAllowed(long itemGeneration, long currentGeneration, boolean attached) {
+        return itemGeneration == currentGeneration && attached;
+    }
+
+    /** 构造懒加载节点：首次展开或失败后重新展开时在受管虚拟线程中加载子节点。 */
+    private TreeItem<NodeData> lazyItem(NodeData data, long generation,
+                                        Callable<List<TreeItem<NodeData>>> loader) {
+        TreeItem<NodeData> item = new TreeItem<>(data);
+        TreeItem<NodeData> placeholder = new TreeItem<>(statusData(data, "加载中..."));
+        item.getChildren().add(placeholder);
+        LazyLoadState state = new LazyLoadState();
+        item.expandedProperty().addListener((obs, was, is) -> {
+            if (state.onExpanded(is)) {
+                item.getChildren().setAll(List.of(new TreeItem<>(statusData(data, "加载中..."))));
+                loadInto(item, generation, loader, state);
+            }
+        });
+        return item;
+    }
+
+    private void loadInto(TreeItem<NodeData> item, long generation,
+                          Callable<List<TreeItem<NodeData>>> loader, LazyLoadState state) {
+        tasks.submit(loader,
+                children -> {
+                    if (!isCurrent(item, generation)) return;
+                    state.completed();
+                    item.getChildren().setAll(displayChildren(item.getValue(), children));
+                },
+                failure -> {
+                    if (!isCurrent(item, generation)) return;
+                    state.failed();
+                    item.getChildren().setAll(List.of(new TreeItem<>(
+                            statusData(item.getValue(), "加载失败：" + message(failure) + "（收起后可重试）"))));
+                });
+    }
+
+    private boolean isCurrent(TreeItem<NodeData> item, long generation) {
+        return loadCallbackAllowed(item, tree.getRoot(), generation, treeGeneration);
+    }
+
+    static boolean loadCallbackAllowed(TreeItem<NodeData> item, TreeItem<NodeData> root,
+                                       long generation, long currentGeneration) {
+        if (item == null || item == root) return false;
+        TreeItem<NodeData> top = item;
+        while (top.getParent() != null) top = top.getParent();
+        return loadCallbackAllowed(generation, currentGeneration, top == root);
+    }
+
+    static NodeData statusData(NodeData parent, String label) {
+        return new NodeData(Kind.STATUS, label, null, parent.connId, parent.schema, null);
+    }
+
+    static boolean hasContextActions(NodeData data) {
+        return data != null && data.kind != Kind.STATUS;
+    }
+
+    private static String message(Throwable failure) {
+        String message = failure.getMessage();
+        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
+    }
+
+    /** 沿树向上找到所属连接的 ConnConfig。 */
+    private ConnConfig connOf(TreeItem<NodeData> item) {
+        TreeItem<NodeData> cur = item;
+        while (cur != null) {
+            if (cur.getValue() != null && cur.getValue().conn != null) {
+                return cur.getValue().conn;
+            }
+            cur = cur.getParent();
+        }
+        return null;
+    }
+
+    // ---------- 快速检索（键入即定位可见行） ----------
+
+    /** 安装键入型快速检索：直接敲字母累积成关键字，在可见行内忽略大小写做“包含”匹配。 */
+    private void installQuickSearch() {
+        searchHint.setManaged(false);
+        searchHint.setVisible(false);
+        searchHint.setPadding(new Insets(2, 6, 2, 6));
+        searchReset.setOnFinished(e -> clearSearch());
+
+        // Esc 清除当前查找串（仅在检索进行中拦截，不影响其它场景）。
+        tree.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() == KeyCode.ESCAPE && searchBuffer.length() > 0) {
+                clearSearch();
+                e.consume();
+            }
+        });
+
+        // 可打印字符累积；退格删字符；Enter/Tab 等控制键交默认处理（不拦截方向键导航）。
+        tree.addEventFilter(KeyEvent.KEY_TYPED, e -> {
+            String s = e.getCharacter();
+            if (s == null || s.isEmpty()) return;
+            char c = s.charAt(0);
+            if (c == '\b') {                       // 退格
+                if (searchBuffer.length() > 0) {
+                    searchBuffer.deleteCharAt(searchBuffer.length() - 1);
+                    if (searchBuffer.length() == 0) {
+                        clearSearch();
+                    } else {
+                        showHint(runSearch());
+                        searchReset.playFromStart();
+                    }
+                }
+                e.consume();
+                return;
+            }
+            if (Character.isISOControl(c)) return;  // Enter/Tab/Esc 等不参与检索
+            searchBuffer.append(c);
+            showHint(runSearch());
+            searchReset.playFromStart();
+            e.consume();
+        });
+    }
+
+    /**
+     * 在当前可见行（展开链）内从选中项起环形查找，命中即选中并滚动定位。
+     *
+     * @return 是否命中
+     */
+    private boolean runSearch() {
+        int n = tree.getExpandedItemCount();
+        if (n == 0) return false;
+        int sel = tree.getSelectionModel().getSelectedIndex();
+        int start = sel < 0 ? 0 : sel;
+        String needle = searchBuffer.toString().toLowerCase();
+        for (int off = 0; off < n; off++) {
+            int idx = (start + off) % n;
+            TreeItem<NodeData> it = tree.getTreeItem(idx);
+            NodeData d = it == null ? null : it.getValue();
+            if (d != null && d.label != null && d.label.toLowerCase().contains(needle)) {
+                tree.getSelectionModel().select(idx);
+                tree.scrollTo(idx);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void showHint(boolean matched) {
+        searchHint.setText(matched ? "查找: " + searchBuffer : "查找: " + searchBuffer + "  (无匹配)");
+        searchHint.setStyle(matched
+                ? "-fx-background-color:-warn-bg; -fx-border-color:-warn-fg; -fx-text-fill:-warn-fg; -fx-background-radius:3; -fx-border-radius:3;"
+                : "-fx-background-color:-danger-bg; -fx-border-color:-danger-fg; -fx-text-fill:-danger-fg; -fx-background-radius:3; -fx-border-radius:3;");
+        searchHint.setManaged(true);
+        searchHint.setVisible(true);
+    }
+
+    private void clearSearch() {
+        searchBuffer.setLength(0);
+        searchReset.stop();
+        searchHint.setVisible(false);
+        searchHint.setManaged(false);
+    }
+
+    // ---------- 自定义单元格（含右键菜单） ----------
+
+    MenuItem selectSqlItem(TreeItem<NodeData> target) {
+        return tableActionItem(target, "生成 SELECT 到新 SQL（不执行）", "tree-generate-select",
+                (connection, table) -> actions.openSelectSql(connection, table));
+    }
+
+    MenuItem copyQualifiedNameItem(TreeItem<NodeData> target) {
+        return tableActionItem(target, "复制限定名称", "tree-copy-qualified-name", objectClipboard::copy);
+    }
+
+    @FunctionalInterface interface SchemaObjectChooser {
+        java.util.Optional<TableRef> choose(ConnConfig connection, String schema, java.util.function.BooleanSupplier allowed);
+    }
+
+    MenuItem schemaObjectFindItem(TreeItem<NodeData> target, SchemaObjectChooser chooser) {
+        NodeData expected = target == null ? null : target.getValue();
+        ConnConfig connection = target == null ? null : connOf(target);
+        var allowed = schemaSearchAllowed(target, expected, connection);
+        MenuItem item = new MenuItem("查找表/视图…"); item.setId("tree-find-schema-objects");
+        item.disableProperty().bind(metadataSearchReserved.or(objectSearchReserved));
+        item.textProperty().bind(Bindings.when(metadataSearchReserved.or(objectSearchReserved))
+                .then("查找表/视图…（等待读取结束）").otherwise("查找表/视图…"));
+        item.setOnAction(event -> {
+            if (objectSearch != null || metadataSearch != null || !allowed.getAsBoolean()) return;
+            chooser.choose(connection, expected.schema, allowed).ifPresent(ref -> {
+                if (allowed.getAsBoolean() && java.util.Objects.equals(expected.schema, ref.schema())
+                        && ref.name() != null && !ref.name().isEmpty()) actions.openSelectSql(connection, ref);
+            });
+        });
+        return item;
+    }
+
+    private java.util.function.BooleanSupplier schemaSearchAllowed(TreeItem<NodeData> target,
+                                                                  NodeData expected, ConnConfig connection) {
+        return () -> {
+            if (tasks.isClosed() || expected == null || expected.kind != Kind.SCHEMA || target.getValue() != expected
+                    || expected.schema == null || expected.schema.isEmpty() || expected.schema.length() > 1024
+                    || connection == null || (connection.type() != DbType.POSTGRESQL && connection.type() != DbType.ORACLE)
+                    || !java.util.Objects.equals(connection.id(), expected.connId) || !connection.equals(connOf(target))) return false;
+            TreeItem<NodeData> ancestor = target;
+            while (ancestor.getParent() != null) ancestor = ancestor.getParent();
+            return ancestor == tree.getRoot();
+        };
+    }
+
+    MenuItem schemaMetadataFindItem(TreeItem<NodeData> target) {
+        NodeData expected = target == null ? null : target.getValue();
+        ConnConfig connection = target == null ? null : connOf(target);
+        var allowed = schemaSearchAllowed(target, expected, connection);
+        MenuItem item = new MenuItem("按字段 / 注释查找…"); item.setId("tree-find-schema-metadata");
+        item.disableProperty().bind(metadataSearchReserved.or(objectSearchReserved));
+        item.textProperty().bind(Bindings.when(metadataSearchReserved.or(objectSearchReserved))
+                .then("按字段 / 注释查找…（等待读取结束）").otherwise("按字段 / 注释查找…"));
+        item.setOnAction(event -> {
+            if (objectSearch != null || !allowed.getAsBoolean()) return;
+            showSchemaMetadata(connection, expected.schema,
+                    root.getScene() == null ? null : root.getScene().getWindow(), allowed, () -> {});
+        });
+        return item;
+    }
+
+    private java.util.Optional<TableRef> chooseSchemaObject(ConnConfig connection, String schema,
+                                                           java.util.function.BooleanSupplier allowed) {
+        if (objectSearch != null || metadataSearch != null) return java.util.Optional.empty();
+        var picker = SchemaObjectSearchDialog.create(connection.name(), schema,
+                root.getScene() == null ? null : root.getScene().getWindow(),
+                () -> new SchemaObjectCatalog(connMgr).load(connection, schema), runner, allowed);
+        picker.installCopyAction(ref -> objectClipboard.copyResult(connection, ref));
+        picker.installMetadataSearch(() -> showSchemaMetadata(connection, schema,
+                picker.dialog().getDialogPane().getScene().getWindow(), allowed, picker.dialog()::close),
+                () -> { var search = metadataSearch; if (search != null) search.close(); });
+        objectSearch = picker;
+        objectSearchReserved.set(true);
+        TreeItem<NodeData> sourceRoot = tree.getRoot();
+        javafx.event.EventHandler<TreeItem.TreeModificationEvent<NodeData>> changed = event -> picker.sourceChanged();
+        javafx.beans.value.ChangeListener<TreeItem<NodeData>> replaced = (obs, old, value) -> picker.sourceChanged();
+        sourceRoot.addEventHandler(TreeItem.treeNotificationEvent(), changed);
+        tree.rootProperty().addListener(replaced);
+        try { return picker.showAndWait(); }
+        finally {
+            picker.close();
+            picker.disposal().thenRun(() -> {
+                if(objectSearch==picker) { objectSearch=null; objectSearchReserved.set(false); }
+            });
+            sourceRoot.removeEventHandler(TreeItem.treeNotificationEvent(), changed);
+            tree.rootProperty().removeListener(replaced);
+        }
+    }
+
+    /** Both entries share one pinned dialog, query, invalidation and result routing lifecycle. */
+    private void showSchemaMetadata(ConnConfig connection, String schema, javafx.stage.Window owner,
+                                    java.util.function.BooleanSupplier sourceAllowed, Runnable beforeRoute) {
+        var invalidated = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.function.BooleanSupplier allowed = () -> !invalidated.get() && !tasks.isClosed()
+                && sourceAllowed.getAsBoolean() && connection.equals(connMgr.config(connection.id()));
+        if (metadataSearch != null || !allowed.getAsBoolean()) return;
+        var search = new SchemaMetadataSearchDialog(connection, schema, owner, runner,
+                (request, control) -> {
+                    if (invalidated.get() || tasks.isClosed() || !connection.equals(connMgr.config(connection.id())))
+                        throw new java.sql.SQLException("Catalog target changed");
+                    return com.datacube.service.SchemaMetadataSearch.search(request, connMgr::openDedicated, control);
+                }, allowed);
+        metadataSearch = search;
+        metadataSearchReserved.set(true);
+        TreeItem<NodeData> sourceRoot = tree.getRoot();
+        Runnable invalidate = () -> { invalidated.set(true); search.close(); };
+        javafx.event.EventHandler<TreeItem.TreeModificationEvent<NodeData>> changed = event -> {
+            if (!allowed.getAsBoolean()) invalidate.run();
+        };
+        javafx.beans.value.ChangeListener<TreeItem<NodeData>> replaced = (obs, old, value) -> {
+            if (!allowed.getAsBoolean()) invalidate.run();
+        };
+        Runnable stopConfigWatch = () -> {};
+        try {
+            sourceRoot.addEventHandler(TreeItem.treeNotificationEvent(), changed);
+            tree.rootProperty().addListener(replaced);
+            // Subscribe to identity changes only: read-only connections may still search metadata.
+            stopConfigWatch = connMgr.writeTarget(connection.id()).whenChanged(invalidate);
+            if (!allowed.getAsBoolean()) return;
+            search.showAndWait().ifPresent(selection -> {
+                if (!allowed.getAsBoolean() || !schema.equals(selection.hit().object().schema())) return;
+                beforeRoute.run();
+                openMetadataMatch(connection, schema, allowed, selection);
+            });
+        } finally {
+            stopConfigWatch.run();
+            sourceRoot.removeEventHandler(TreeItem.treeNotificationEvent(), changed);
+            tree.rootProperty().removeListener(replaced);
+            search.close();
+            search.disposal().thenRun(() -> {
+                if (metadataSearch == search) { metadataSearch = null; metadataSearchReserved.set(false); }
+            });
+        }
+    }
+
+    void openMetadataMatch(ConnConfig connection,String schema,java.util.function.BooleanSupplier allowed,
+                           SchemaMetadataSearchDialog.Selection selection) {
+        if(tasks.isClosed() || !allowed.getAsBoolean() || !connection.equals(connMgr.config(connection.id()))
+                || selection==null || selection.hit()==null) return;
+        var object=selection.hit().object();
+        if(object==null || !schema.equals(object.schema()) || object.name()==null || object.name().isEmpty()
+                || object.kind()!=TableInfo.Kind.TABLE && object.kind()!=TableInfo.Kind.VIEW) return;
+        switch(selection.action()) {
+            case SELECT -> actions.openSelectSql(connection,object.ref());
+            case DATA -> actions.openDataGrid(connection.id(),object.ref(),true);
+            case DDL -> actions.openDdl(connection.id(),new NodeData(object.kind()==TableInfo.Kind.VIEW ? Kind.VIEW : Kind.TABLE,
+                    object.name(),null,connection.id(),schema,object.name()));
+        }
+    }
+
+    /** Capture the exact node and connection, not a recyclable cell or the current selection. */
+    private MenuItem tableActionItem(TreeItem<NodeData> target, String label, String id,
+                                    BiConsumer<ConnConfig, TableRef> action) {
+        NodeData expected = target == null ? null : target.getValue();
+        ConnConfig expectedConnection = target == null ? null : connOf(target);
+        MenuItem sql = new MenuItem(label);
+        sql.setId(id);
+        sql.setOnAction(event -> {
+            if (tasks.isClosed() || expected == null || target.getValue() != expected
+                    || (expected.kind != Kind.TABLE && expected.kind != Kind.VIEW)) return;
+            TreeItem<NodeData> ancestor = target;
+            while (ancestor.getParent() != null) ancestor = ancestor.getParent();
+            if (ancestor != tree.getRoot()) return;
+            ConnConfig connection = connOf(target);
+            if (connection == null || !connection.equals(expectedConnection)
+                    || (connection.type() != DbType.POSTGRESQL && connection.type() != DbType.ORACLE)
+                    || !java.util.Objects.equals(connection.id(), expected.connId)) return;
+            action.accept(connection, new TableRef(expected.schema, expected.name));
+        });
+        return sql;
+    }
+
+    private final class TreeCellImpl extends TreeCell<NodeData> {
+        @Override
+        protected void updateItem(NodeData item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setText(null);
+                setContextMenu(null);
+                return;
+            }
+            setText(item.label);
+            setStyle(item.kind == Kind.REDIS_DB && item.label.endsWith("(0)")
+                    ? "-fx-text-fill: -brand-fg-muted;" : "");
+            setContextMenu(hasContextActions(item) ? buildMenu(item) : null);
+        }
+
+        private ContextMenu buildMenu(NodeData d) {
+            ContextMenu menu = new ContextMenu();
+            switch (d.kind) {
+                case STATUS -> {
+                    return menu;
+                }
+                case CONNECTION -> {
+                    MenuItem primary = new MenuItem(d.conn.type() == DbType.REDIS ? "打开命令行控制台" : "打开 SQL 编辑器");
+                    primary.setOnAction(e -> {
+                        if (d.conn.type() == DbType.REDIS) actions.openRedisConsole(d.conn);
+                        else actions.openSqlEditor(d.conn, null);
+                    });
+                    MenuItem edit = new MenuItem("编辑连接");
+                    edit.setOnAction(e -> onEditConnection(d.conn));
+                    MenuItem del = new MenuItem("删除连接");
+                    del.setOnAction(e -> onDeleteConnection(d.conn));
+                    MenuItem refresh = new MenuItem("刷新");
+                    refresh.setOnAction(e -> reload());
+                    menu.getItems().addAll(primary, edit, del, refresh);
+                    if (d.conn.type() != DbType.REDIS) {
+                        MenuItem schemaDiff = new MenuItem("Schema 对比...");
+                        schemaDiff.setOnAction(e -> actions.openSchemaDiff(d.conn, null));
+                        menu.getItems().add(1, schemaDiff);
+                    }
+                    // 仅在已连接时提供“断开连接”（连接为惰性建立，展开节点才连）。
+                    if (connMgr.isConnected(d.connId)) {
+                        MenuItem disconnect = new MenuItem("断开连接");
+                        disconnect.setOnAction(e -> disconnect(d.conn));
+                        menu.getItems().add(1, disconnect);
+                    }
+                }
+                case REDIS_DB -> {
+                    MenuItem open = new MenuItem("打开键浏览器");
+                    open.setOnAction(e -> actions.openRedisKeys(connOf(getTreeItem()), Integer.parseInt(d.name)));
+                    menu.getItems().add(open);
+                }
+                case SCHEMA -> {
+                    MenuItem sql = new MenuItem("打开 SQL 编辑器");
+                    sql.setOnAction(e -> actions.openSqlEditor(connOf(getTreeItem()), d.schema));
+                    MenuItem schemaDiff = new MenuItem("Schema 对比...");
+                    schemaDiff.setOnAction(e -> actions.openSchemaDiff(connOf(getTreeItem()), d.schema));
+                    menu.getItems().addAll(sql, schemaDiff);
+                    menu.getItems().add(schemaObjectFindItem(getTreeItem(), ConnectionTreePane.this::chooseSchemaObject));
+                    menu.getItems().add(schemaMetadataFindItem(getTreeItem()));
+                }
+                case TABLES -> {
+                    MenuItem create = new MenuItem("新建表");
+                    create.setOnAction(e -> actions.newTable(d.connId, d.schema));
+                    menu.getItems().add(create);
+                }
+                case TABLE -> {
+                    MenuItem data = new MenuItem("查看数据");
+                    data.setOnAction(e -> actions.openDataGrid(d.connId, new TableRef(d.schema, d.name), false));
+                    MenuItem design = new MenuItem("设计表");
+                    design.setOnAction(e -> actions.openTableDesigner(d.connId, new TableRef(d.schema, d.name)));
+                    MenuItem ddl = new MenuItem("查看 DDL");
+                    ddl.setOnAction(e -> actions.openDdl(d.connId, d));
+                    MenuItem export = new MenuItem("导出...");
+                    export.setOnAction(e -> actions.exportTable(d.connId, new TableRef(d.schema, d.name)));
+                    MenuItem sql = new MenuItem("打开 SQL 编辑器");
+                    sql.setOnAction(e -> actions.openSqlEditor(connOf(getTreeItem()), d.schema));
+                    menu.getItems().addAll(data, selectSqlItem(getTreeItem()), copyQualifiedNameItem(getTreeItem()),
+                            design, ddl, export, sql);
+                }
+                case VIEW -> {
+                    MenuItem data = new MenuItem("查看数据");
+                    data.setOnAction(e -> actions.openDataGrid(d.connId, new TableRef(d.schema, d.name), true));
+                    MenuItem ddl = new MenuItem("查看 DDL");
+                    ddl.setOnAction(e -> actions.openDdl(d.connId, d));
+                    MenuItem edit = new MenuItem("编辑");
+                    edit.setOnAction(e -> actions.editObject(d.connId, d));
+                    menu.getItems().addAll(data, selectSqlItem(getTreeItem()), copyQualifiedNameItem(getTreeItem()), ddl, edit);
+                }
+                case ROUTINE, PACKAGE, TRIGGER, TYPE -> {
+                    MenuItem ddl = new MenuItem("查看 DDL");
+                    ddl.setOnAction(e -> actions.openDdl(d.connId, d));
+                    MenuItem edit = new MenuItem("编辑");
+                    edit.setOnAction(e -> actions.editObject(d.connId, d));
+                    menu.getItems().addAll(ddl, edit);
+                }
+                case SEQUENCE -> {
+                    MenuItem ddl = new MenuItem("查看 DDL");
+                    ddl.setOnAction(e -> actions.openDdl(d.connId, d));
+                    MenuItem edit = new MenuItem("编辑");
+                    edit.setOnAction(e -> actions.editSequence(d.connId, d));
+                    MenuItem editSql = new MenuItem("编辑 SQL");
+                    editSql.setOnAction(e -> actions.editObject(d.connId, d));
+                    menu.getItems().addAll(ddl, edit, editSql);
+                }
+                default -> {
+                    return null;
+                }
+            }
+            return menu;
+        }
+    }
+}

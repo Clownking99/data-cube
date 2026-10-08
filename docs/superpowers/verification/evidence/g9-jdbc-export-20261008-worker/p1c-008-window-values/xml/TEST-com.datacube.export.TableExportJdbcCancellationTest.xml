@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.export.TableExportJdbcCancellationTest" tests="19" skipped="0" failures="0" errors="0" timestamp="2026-10-08T16:41:50.327Z" hostname="WAKEUPMAN" time="0.867">
+  <properties/>
+  <testcase name="blockedCancelWorkerRemainsOwnedAfterCursorAndConnectionClose()" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.089"/>
+  <testcase name="failedConnectionCloseGetsOnlyOneFinalConfirmationAndStillFailsPublication()" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.01"/>
+  <testcase name="[1] open" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.029"/>
+  <testcase name="[2] execute" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.022"/>
+  <testcase name="[3] next" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.026"/>
+  <testcase name="[4] getter" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.023"/>
+  <testcase name="[5] rollback" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.023"/>
+  <testcase name="[6] conn-close" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.017"/>
+  <testcase name="[1] open, false" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.056"/>
+  <testcase name="[2] open, true" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.057"/>
+  <testcase name="[3] setup, false" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.058"/>
+  <testcase name="[4] execute, false" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.056"/>
+  <testcase name="[5] next, false" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.058"/>
+  <testcase name="[6] getter, false" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.055"/>
+  <testcase name="[7] rollback, false" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.055"/>
+  <testcase name="[8] conn-close, false" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.045"/>
+  <testcase name="[9] rs-close, false" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.059"/>
+  <testcase name="[10] stmt-close, false" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.048"/>
+  <testcase name="[11] writer-close, false" classname="com.datacube.export.TableExportJdbcCancellationTest" time="0.057"/>
+  <system-out><![CDATA[JDBC_CANCEL_WORKER receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_DEADLINE stage=open receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_DEADLINE stage=execute receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_DEADLINE stage=next receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_DEADLINE stage=getter receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_DEADLINE stage=rollback receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_DEADLINE stage=conn-close receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_PHYSICAL stage=open invalidation=false receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_PHYSICAL stage=open invalidation=true receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_PHYSICAL stage=setup invalidation=false receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_PHYSICAL stage=execute invalidation=false receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_PHYSICAL stage=next invalidation=false receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_PHYSICAL stage=getter invalidation=false receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_PHYSICAL stage=rollback invalidation=false receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_PHYSICAL stage=conn-close invalidation=false receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_PHYSICAL stage=rs-close invalidation=false receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_PHYSICAL stage=stmt-close invalidation=false receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+JDBC_PHYSICAL stage=writer-close invalidation=false receipt=Receipt[openerPending=false, mainFinished=true, unresolvedResources=0, livingWorkers=0, activeStatement=false, cleanupPending=true, failure=null, physicallySettled=true]
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

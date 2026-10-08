@@ -1,0 +1,813 @@
+diff --git a/src/com/datacube/export/ResultExportOperation.java b/src/com/datacube/export/ResultExportOperation.java
+index 29ceedf3..d62ec806 100644
+--- a/src/com/datacube/export/ResultExportOperation.java
++++ b/src/com/datacube/export/ResultExportOperation.java
+@@ -1,28 +1,33 @@
+ package com.datacube.export;
+ 
+ import java.util.concurrent.CancellationException;
++import java.util.concurrent.atomic.AtomicReference;
++import java.nio.file.Path;
++import java.util.List;
+ 
+ public final class ResultExportOperation {
+     @FunctionalInterface public interface Action { void run() throws Exception; }
+-    private enum State { ACTIVE, CANCELLED, PUBLISHED }
+-    private State state = State.ACTIVE;
++    private enum State { ACTIVE, CANCELLED, PUBLISHING, PUBLISHED, FAILED }
++    private final AtomicReference<State> state = new AtomicReference<>(State.ACTIVE);
++    private volatile List<Path> cleanupResidues = List.of();
++    void recordCleanupResidues(List<Path> paths) { cleanupResidues = List.copyOf(paths); }
++    public List<Path> cleanupResidues() { return cleanupResidues; }
+ 
+-    public synchronized void check() {
+-        if (state != State.ACTIVE || Thread.currentThread().isInterrupted())
++    public void check() {
++        if (state.get() != State.ACTIVE || Thread.currentThread().isInterrupted())
+             throw new CancellationException("Export cancelled");
+     }
+ 
+-    public synchronized boolean cancel() {
+-        if (state != State.ACTIVE) return false;
+-        state = State.CANCELLED;
+-        return true;
+-    }
++    public boolean cancel() { return state.compareAndSet(State.ACTIVE, State.CANCELLED); }
+ 
+-    public synchronized void publish(Action action) throws Exception {
++    public void publish(Action action) throws Exception {
+         check();
+-        action.run();
+-        state = State.PUBLISHED;
++        if (!state.compareAndSet(State.ACTIVE, State.PUBLISHING))
++            throw new CancellationException("Export is no longer active");
++        boolean committed = false;
++        try { action.run(); committed = true; }
++        finally { state.set(committed ? State.PUBLISHED : State.FAILED); }
+     }
+ 
+-    public synchronized boolean published() { return state == State.PUBLISHED; }
++    public boolean published() { return state.get() == State.PUBLISHED; }
+ }
+diff --git a/src/com/datacube/export/SafeResultFilePublisher.java b/src/com/datacube/export/SafeResultFilePublisher.java
+index f6f3dacd..bfcb14d4 100644
+--- a/src/com/datacube/export/SafeResultFilePublisher.java
++++ b/src/com/datacube/export/SafeResultFilePublisher.java
+@@ -5,9 +5,7 @@ import java.nio.file.*;
+ import java.nio.file.attribute.BasicFileAttributes;
+ import java.nio.file.attribute.FileTime;
+ import java.util.Objects;
+-import java.util.Set;
+ import java.util.concurrent.CancellationException;
+-import java.util.concurrent.ConcurrentHashMap;
+ import java.util.function.Consumer;
+ import java.util.logging.Logger;
+ 
+@@ -17,21 +15,32 @@ public final class SafeResultFilePublisher {
+     public static final class Failure extends IOException {
+         private final Stage stage;
+         private final Path temporaryPath;
++        private final java.util.List<Path> residualPaths;
+         public Failure(Stage stage, Path temporaryPath) {
++            this(stage, temporaryPath == null ? java.util.List.of() : java.util.List.of(temporaryPath), true);
++        }
++        private Failure(Stage stage, java.util.List<Path> residualPaths, boolean cleanup) {
+             super("Result export failed at " + stage);
+             this.stage = stage;
+-            this.temporaryPath = temporaryPath;
++            this.residualPaths = java.util.List.copyOf(residualPaths);
++            this.temporaryPath = residualPaths.isEmpty() ? null : residualPaths.getFirst();
+         }
+         public Stage stage() { return stage; }
+         public Path temporaryPath() { return temporaryPath; }
++        public java.util.List<Path> residualPaths() { return residualPaths; }
+     }
+ 
+     private record Stamp(boolean exists, Object key, long size, FileTime modified, FileTime created) {}
++    private record Identity(Object key, FileTime created) {}
+ 
+     public static final class Target {
+         private final Path path;
+         private final Stamp stamp;
+-        private Target(Path path, Stamp stamp) { this.path = path; this.stamp = stamp; }
++        private final Path chosen;
++        private final java.util.Map<Path, Identity> parents;
++        private Target(Path path, Path chosen, Stamp stamp, java.util.Map<Path, Identity> parents) {
++            this.path = path; this.chosen = chosen; this.stamp = stamp; this.parents = parents;
++        }
+         public Path path() { return path; }
+         public boolean existed() { return stamp.exists(); }
+     }
+@@ -41,12 +50,17 @@ public final class SafeResultFilePublisher {
+     }
+     @FunctionalInterface interface AtomicMover { void move(Path source, Path target) throws IOException; }
+     @FunctionalInterface interface TempCleaner { void delete(Path path) throws IOException; }
++    @FunctionalInterface interface AttributeReader { BasicFileAttributes read(Path path) throws IOException; }
++    @FunctionalInterface interface LinkCreator { void create(Path link, Path existing) throws IOException; }
+ 
+-    private static final Set<Path> BUSY = ConcurrentHashMap.newKeySet();
++    private static final java.util.List<Target> BUSY = new java.util.ArrayList<>();
++    private static final Object BUSY_LOCK = new Object();
+     private static final Logger LOG = Logger.getLogger(SafeResultFilePublisher.class.getName());
+     private final AtomicMover mover;
+     private final TempCleaner cleaner;
+     private final Consumer<Path> cleanupDiagnostic;
++    private final AttributeReader attributes;
++    private final LinkCreator links;
+ 
+     public SafeResultFilePublisher() {
+         this((source, target) -> Files.move(source, target,
+@@ -56,27 +70,69 @@ public final class SafeResultFilePublisher {
+     }
+ 
+     SafeResultFilePublisher(AtomicMover mover, TempCleaner cleaner, Consumer<Path> diagnostic) {
++        this(mover, cleaner, diagnostic,
++                path -> Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS));
++    }
++
++    SafeResultFilePublisher(AtomicMover mover, TempCleaner cleaner, Consumer<Path> diagnostic, AttributeReader attributes) {
++        this(mover, cleaner, diagnostic, attributes, Files::createLink);
++    }
++    SafeResultFilePublisher(AtomicMover mover, TempCleaner cleaner, Consumer<Path> diagnostic,
++                            AttributeReader attributes, LinkCreator links) {
+         this.mover = Objects.requireNonNull(mover);
+         this.cleaner = Objects.requireNonNull(cleaner);
+         this.cleanupDiagnostic = Objects.requireNonNull(diagnostic);
++        this.attributes = Objects.requireNonNull(attributes);
++        this.links = Objects.requireNonNull(links);
+     }
+ 
+     public static Target capture(Path chosen) throws Failure {
+         try {
+-            Path absolute = chosen.toAbsolutePath().normalize();
++            Path original = chosen.toAbsolutePath();
++            // Inspect the spelling before lexical normalization can erase link/.. components.
++            noLinks(original);
++            Path absolute = original.normalize();
++            noLinks(absolute);
+             Path parent = absolute.getParent();
+             if (parent == null || absolute.getFileName() == null) throw new IOException("Unsupported export path");
+             Path path = parent.toRealPath().resolve(absolute.getFileName());
+-            return new Target(path, stamp(path));
++            Stamp stamp = stamp(path);
++            if (stamp.exists()) path = path.toRealPath(LinkOption.NOFOLLOW_LINKS);
++            var parents = new java.util.LinkedHashMap<Path, Identity>();
++            for (Path current = path.getParent(); current != null; current = current.getParent()) {
++                parents.put(current, identity(current, true));
++            }
++            return new Target(path, original, stamp, java.util.Map.copyOf(parents));
+         } catch (IOException | RuntimeException failure) {
+             throw new Failure(Stage.PREPARE, null);
+         }
+     }
+ 
++    private static void noLinks(Path path) throws IOException {
++        for (Path current = path; current != null; current = current.getParent()) {
++            try {
++                var attrs = Files.readAttributes(current, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
++                if (attrs.isSymbolicLink() || attrs.isOther()) throw new IOException("Unsupported export path");
++            } catch (NoSuchFileException absent) { /* New filename: still inspect ancestors. */ }
++        }
++    }
++
++    private static Identity identity(Path path, boolean directory) throws IOException {
++        return identity(path, directory, candidate -> Files.readAttributes(candidate, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS));
++    }
++    private static Identity identity(Path path, boolean directory, AttributeReader reader) throws IOException {
++        var attrs = reader.read(path);
++        if (directory ? !attrs.isDirectory() : !attrs.isRegularFile()) throw new IOException("Export identity changed");
++        if (attrs.isSymbolicLink() || attrs.isOther())
++            throw new IOException("Export identity unavailable");
++        return new Identity(attrs.fileKey(), attrs.creationTime());
++    }
++
+     private static Stamp stamp(Path path) throws IOException {
+         try {
+             BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+-            if (!attributes.isRegularFile()) throw new IOException("Unsupported export target");
++            if (!attributes.isRegularFile() || attributes.isOther())
++                throw new IOException("Unsupported export target");
+             return new Stamp(true, attributes.fileKey(), attributes.size(), attributes.lastModifiedTime(), attributes.creationTime());
+         } catch (NoSuchFileException absent) {
+             return new Stamp(false, null, 0, null, null);
+@@ -85,8 +141,9 @@ public final class SafeResultFilePublisher {
+ 
+     private static void verify(Target target) throws Failure {
+         try {
+-            Path parent = target.path.getParent();
+-            if (!parent.toRealPath().equals(parent) || !stamp(target.path).equals(target.stamp))
++            noLinks(target.chosen);
++            verifyParents(target);
++            if (!stamp(target.path).equals(target.stamp))
+                 throw new IOException("Export target changed");
+         } catch (IOException | RuntimeException changed) {
+             throw new Failure(Stage.TARGET_CHANGED, null);
+@@ -95,17 +152,46 @@ public final class SafeResultFilePublisher {
+ 
+     public Path publish(Target target, ResultExportOperation operation, TempWriter writer) throws Exception {
+         Objects.requireNonNull(target); Objects.requireNonNull(operation); Objects.requireNonNull(writer);
+-        if (!BUSY.add(target.path)) throw new Failure(Stage.TARGET_BUSY, null);
++        synchronized (BUSY_LOCK) {
++            for (Target busy : BUSY) {
++                boolean same = busy.path.equals(target.path);
++                try {
++                    if (!same && busy.stamp.exists() && target.stamp.exists())
++                        same = Files.isSameFile(busy.path, target.path);
++                } catch (IOException unsafeIdentity) { throw new Failure(Stage.TARGET_CHANGED, null); }
++                if (same) throw new Failure(Stage.TARGET_BUSY, null);
++            }
++            BUSY.add(target);
++        }
+         Path temporary = null;
++        Identity temporaryIdentity = null;
++        Path witness = null;
++        Identity witnessIdentity = null;
++        boolean witnessCreated = false;
++        Error primaryFatal = null;
+         Stage stage = Stage.PREPARE;
+         try {
+             operation.check(); verify(target);
+             temporary = Files.createTempFile(target.path.getParent(), ".datacube-export-", ".tmp");
++            temporaryIdentity = identity(temporary, false, attributes);
++            if (temporaryIdentity.key() == null) {
++                witness = target.path.getParent().resolve(".datacube-export-" + java.util.UUID.randomUUID() + ".identity");
++                links.create(witness, temporary);
++                witnessCreated = true;
++                witnessIdentity = identity(witness, false, attributes);
++            }
+             stage = Stage.WRITE;
+             operation.check(); writer.write(temporary, operation);
+             stage = Stage.PUBLISH;
+             Path ready = temporary;
+-            operation.publish(() -> { verify(target); mover.move(ready, target.path); });
++            Identity owned = temporaryIdentity;
++            Path proof = witness;
++            Identity proofIdentity = witnessIdentity;
++            operation.publish(() -> {
++                verify(target);
++                verifyTemporary(ready, owned, proof, proofIdentity);
++                mover.move(ready, target.path);
++            });
+             return target.path;
+         } catch (CancellationException cancelled) {
+             throw cancelled;
+@@ -115,16 +201,85 @@ public final class SafeResultFilePublisher {
+             throw safe;
+         } catch (Exception failure) {
+             throw new Failure(stage, null);
++        } catch (Error fatal) {
++            primaryFatal = fatal;
++            throw fatal;
+         } finally {
++            var residues = new java.util.ArrayList<Path>();
++            boolean witnessVerified = false;
+             try {
++                // Keep the identity proof until both names have been verified. Never delete an unproved witness.
++                if (witnessCreated) {
++                    try {
++                        verifyParents(target);
++                        Path reference = operation.published() ? target.path : temporary;
++                        verifyTemporary(reference, temporaryIdentity, witness, witnessIdentity);
++                        witnessVerified = true;
++                    } catch (IOException | RuntimeException unsafeWitness) { /* Preserve it and report below. */ }
++                }
+                 if (temporary != null && !operation.published()) {
+-                    try { cleaner.delete(temporary); }
++                    try {
++                        verifyParents(target);
++                        Identity current = null;
++                        try { current = identity(temporary, false, attributes); }
++                        catch (NoSuchFileException absent) { /* Only confirmed absence needs no cleanup. */ }
++                        if (current != null) {
++                            verifyTemporary(temporary, current, temporaryIdentity, witness, witnessIdentity);
++                            cleaner.delete(temporary);
++                        }
++                    }
+                     catch (IOException | RuntimeException cleanupFailure) {
+-                        try { cleanupDiagnostic.accept(temporary); } catch (RuntimeException ignored) { }
+-                        throw new Failure(Stage.CLEANUP, temporary);
++                        residues.add(temporary);
++                    }
++                }
++            } finally {
++                try {
++                    Identity current = null;
++                    if (witnessCreated) {
++                        try { current = identity(witness, false, attributes); }
++                        catch (NoSuchFileException absent) { /* No owned witness remains at this path. */ }
++                    }
++                    if (current != null) {
++                        verifyParents(target);
++                        if (!witnessVerified || !current.equals(witnessIdentity)) throw new IOException("Export witness changed");
++                        Files.deleteIfExists(witness);
+                     }
++                } catch (IOException | RuntimeException witnessCleanupFailure) {
++                    residues.add(witness);
++                } finally {
++                    synchronized (BUSY_LOCK) { BUSY.remove(target); }
++                }
++            }
++            for (Path residue : residues) {
++                try { cleanupDiagnostic.accept(residue); } catch (RuntimeException ignored) { }
++            }
++            if (!residues.isEmpty()) {
++                operation.recordCleanupResidues(residues);
++                // A committed file remains successful, with an explicit warning consumed by both UIs.
++                if (!operation.published()) {
++                    var cleanup = new Failure(Stage.CLEANUP, residues, true);
++                    if (primaryFatal != null) primaryFatal.addSuppressed(cleanup);
++                    else throw cleanup;
+                 }
+-            } finally { BUSY.remove(target.path); }
++            }
++        }
++    }
++
++    private void verifyTemporary(Path path, Identity owned, Path witness, Identity witnessIdentity) throws IOException {
++        verifyTemporary(path, identity(path, false, attributes), owned, witness, witnessIdentity);
++    }
++    private void verifyTemporary(Path path, Identity current, Identity owned, Path witness, Identity witnessIdentity) throws IOException {
++        if (!current.equals(owned)) throw new IOException("Export temporary changed");
++        if (owned.key() == null && (witness == null || !identity(witness, false, attributes).equals(witnessIdentity)
++                || !Files.isSameFile(path, witness))) throw new IOException("Export temporary ownership unavailable");
++    }
++
++    private static void verifyParents(Target target) throws IOException {
++        noLinks(target.chosen.getParent());
++        Path parent = target.path.getParent();
++        if (!parent.toRealPath().equals(parent)) throw new IOException("Export parent changed");
++        for (var entry : target.parents.entrySet()) {
++            if (!identity(entry.getKey(), true).equals(entry.getValue())) throw new IOException("Export parent changed");
+         }
+     }
+ }
+diff --git a/src/com/datacube/export/SqlScriptExporter.java b/src/com/datacube/export/SqlScriptExporter.java
+index 83f2f855..204897e1 100644
+--- a/src/com/datacube/export/SqlScriptExporter.java
++++ b/src/com/datacube/export/SqlScriptExporter.java
+@@ -7,6 +7,7 @@ import java.io.BufferedWriter;
+ import java.io.File;
+ import java.io.FileOutputStream;
+ import java.io.OutputStreamWriter;
++import java.io.OutputStream;
+ import java.io.Writer;
+ import java.nio.charset.StandardCharsets;
+ import java.time.LocalDateTime;
+@@ -40,8 +41,14 @@ public final class SqlScriptExporter {
+      */
+     public static void write(File out, TableRef t, ExportContent content, String ddl,
+                              List<String> columns, RowFeed feed, SqlDialect dialect) throws Exception {
++        write(new FileOutputStream(out), t, content, ddl, columns, feed, dialect);
++    }
++
++    /** Caller supplies a destination stream; this writer always owns and closes it. */
++    static void write(OutputStream out, TableRef t, ExportContent content, String ddl,
++                      List<String> columns, RowFeed feed, SqlDialect dialect) throws Exception {
+         try (Writer w = new BufferedWriter(new OutputStreamWriter(
+-                new FileOutputStream(out), StandardCharsets.UTF_8))) {
++                out, StandardCharsets.UTF_8))) {
+ 
+             w.write("-- DataCube 导出\n");
+             w.write("-- 表: " + t.qualified() + "\n");
+diff --git a/src/com/datacube/export/TableExporter.java b/src/com/datacube/export/TableExporter.java
+index 5b2b7214..c9b66a16 100644
+--- a/src/com/datacube/export/TableExporter.java
++++ b/src/com/datacube/export/TableExporter.java
+@@ -8,9 +8,13 @@ import com.datacube.spi.model.PagedResult;
+ import com.datacube.spi.model.TableRef;
+ 
+ import java.io.File;
++import java.io.OutputStream;
++import java.nio.file.Files;
++import java.nio.file.Path;
+ import java.sql.Connection;
+ import java.sql.SQLException;
+ import java.util.List;
++import java.util.Objects;
+ 
+ /**
+  * 单表导出编排：按 {@link ExportFormat} 分派到对应 writer / 外部工具。
+@@ -25,19 +29,58 @@ public final class TableExporter {
+     private TableExporter() {
+     }
+ 
++    /** File identity is captured before resource acquisition, and shared by confirmation and publication. */
++    public record Request(String connId, TableRef table, ExportContent content, ExportFormat format,
++                          SafeResultFilePublisher.Target target) {
++        public Request {
++            Objects.requireNonNull(connId); Objects.requireNonNull(table); Objects.requireNonNull(content);
++            Objects.requireNonNull(format); Objects.requireNonNull(target);
++        }
++        @Override public String toString() { return "TableExportRequest[" + format + "]"; }
++    }
++
++    @FunctionalInterface interface DumpJob {
++        void run(ConnConfig cfg, String password, TableRef table, ExportContent content, File temporary) throws Exception;
++    }
++    @FunctionalInterface interface OutputFactory { OutputStream open(Path temporary) throws Exception; }
++
+     public static void export(ConnectionManager conns, String connId, TableRef t,
+                               ExportContent content, ExportFormat format, File out) throws Exception {
+-        switch (format) {
++        export(conns, new Request(connId, t, content, format, SafeResultFilePublisher.capture(out.toPath())),
++                new ResultExportOperation());
++    }
++
++    public static Path export(ConnectionManager conns, Request request, ResultExportOperation operation) throws Exception {
++        return export(conns, request, operation, new SafeResultFilePublisher(), PgDumpRunner::run,
++                Files::newOutputStream);
++    }
++
++    static Path export(ConnectionManager conns, Request request, ResultExportOperation operation,
++                       SafeResultFilePublisher publisher, DumpJob dump, OutputFactory output) throws Exception {
++        return publisher.publish(request.target(), operation, (temporary, token) ->
++                writeTemporary(conns, request, temporary, token, dump, output));
++    }
++
++    private static void writeTemporary(ConnectionManager conns, Request request, Path temporary,
++                                       ResultExportOperation operation, DumpJob dump, OutputFactory output) throws Exception {
++        operation.check();
++        String connId = request.connId();
++        TableRef t = request.table();
++        ExportContent content = request.content();
++        switch (request.format()) {
+             case PG_DUMP -> {
+                 ConnConfig cfg = conns.config(connId);
+                 String pw = conns.cipher().decrypt(cfg.encryptedPassword());
+-                PgDumpRunner.run(cfg, pw, t, content, out);
++                operation.check();
++                dump.run(cfg, pw, t, content, temporary.toFile());
+             }
+             case XLSX -> {
+                 Connection conn = conns.acquire(connId);
+                 DataAccessor da = conns.provider(connId).dataAccessor(conn);
+                 // Excel 仅导出数据
+-                XlsxWriter.write(out, columnsOf(da, t), pagingFeed(da, t));
++                List<String> columns = columnsOf(da, t);
++                operation.check();
++                XlsxWriter.write(output.open(temporary), columns, pagingFeed(da, t, operation));
+             }
+             case SQL -> {
+                 Connection conn = conns.acquire(connId);
+@@ -46,9 +89,12 @@ public final class TableExporter {
+                 String ddl = content.includesStructure()
+                         ? provider.ddlGenerator(conn).tableDdl(t) : null;
+                 List<String> cols = content.includesData() ? columnsOf(da, t) : List.of();
+-                SqlScriptExporter.write(out, t, content, ddl, cols, pagingFeed(da, t), provider.dialect());
++                operation.check();
++                SqlScriptExporter.write(output.open(temporary), t, content, ddl, cols,
++                        pagingFeed(da, t, operation), provider.dialect());
+             }
+         }
++        operation.check();
+     }
+ 
+     /** 取一行以读回列名（空表也能拿到列）。 */
+@@ -58,13 +104,16 @@ public final class TableExporter {
+     }
+ 
+     /** 分页遍历全表的流式 RowFeed。 */
+-    private static RowFeed pagingFeed(DataAccessor da, TableRef t) {
++    private static RowFeed pagingFeed(DataAccessor da, TableRef t, ResultExportOperation operation) {
+         return sink -> {
+             long offset = 0;
+             while (true) {
++                operation.check();
+                 PagedResult pr = da.page(t, offset, PAGE, null, null);
+                 for (List<Object> row : pr.rows()) {
++                    operation.check();
+                     sink.row(row);
++                    operation.check();
+                 }
+                 if (!pr.hasMore()) break;
+                 offset += PAGE;
+diff --git a/src/com/datacube/export/XlsxWriter.java b/src/com/datacube/export/XlsxWriter.java
+index 8ae6fe3b..c2d4a1b8 100644
+--- a/src/com/datacube/export/XlsxWriter.java
++++ b/src/com/datacube/export/XlsxWriter.java
+@@ -5,6 +5,7 @@ import java.io.File;
+ import java.io.FileOutputStream;
+ import java.io.IOException;
+ import java.io.OutputStreamWriter;
++import java.io.OutputStream;
+ import java.io.Writer;
+ import java.nio.charset.StandardCharsets;
+ import java.util.List;
+@@ -56,9 +57,19 @@ public final class XlsxWriter {
+ 
+     private static void writePackage(File out, List<String> columns, RowFeed feed,
+                                      XlsxLayout layout) throws Exception {
++        writePackage(new FileOutputStream(out), columns, feed, layout);
++    }
++
++    /** Caller supplies a destination stream; package serialization owns and closes it. */
++    static void write(OutputStream out, List<String> columns, RowFeed feed) throws Exception {
++        writePackage(out, columns, feed, null);
++    }
++
++    private static void writePackage(OutputStream out, List<String> columns, RowFeed feed,
++                                     XlsxLayout layout) throws Exception {
+         boolean styled = layout != null;
+         try (ZipOutputStream zip = new ZipOutputStream(
+-                new BufferedOutputStream(new FileOutputStream(out)))) {
++                new BufferedOutputStream(out))) {
+             String types = contentTypes();
+             String relationships = workbookRels();
+             String workbookXml = workbook();
+diff --git a/src/com/datacube/fx/ExportDialog.java b/src/com/datacube/fx/ExportDialog.java
+index ff7f9aec..187a8002 100644
+--- a/src/com/datacube/fx/ExportDialog.java
++++ b/src/com/datacube/fx/ExportDialog.java
+@@ -3,6 +3,8 @@ package com.datacube.fx;
+ import com.datacube.export.ExportContent;
+ import com.datacube.export.ExportFormat;
+ import com.datacube.export.TableExporter;
++import com.datacube.export.SafeResultFilePublisher;
++import com.datacube.export.ResultExportOperation;
+ import com.datacube.fx.task.FxTaskRunner;
+ import com.datacube.fx.task.FxTaskScope;
+ import com.datacube.service.ConnectionManager;
+@@ -20,7 +22,13 @@ import javafx.stage.FileChooser;
+ import javafx.stage.Window;
+ 
+ import java.io.File;
++import java.nio.file.Path;
++import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.CancellationException;
++import java.util.concurrent.atomic.AtomicInteger;
+ import java.util.concurrent.atomic.AtomicBoolean;
++import javafx.event.ActionEvent;
++import javafx.scene.control.Button;
+ 
+ /**
+  * 单表导出对话框：选择内容（结构/数据/两者）与格式（SQL/Excel/pg_dump），
+@@ -98,58 +106,162 @@ public final class ExportDialog {
+         File out = chooser.showSaveDialog(owner);
+         if (out == null) return;
+ 
+-        runExport(conns, connId, table, content, format, out, runner);
++        startExport(conns, connId, table, content, format, out.toPath(), runner, new DialogUi(owner, table));
+     }
+ 
+-    private static void runExport(ConnectionManager conns, String connId, TableRef table,
+-                                  ExportContent content, ExportFormat format, File out,
+-                                  FxTaskRunner runner) {
+-        FxTaskScope task = runner.scope();
+-        AtomicBoolean completed = new AtomicBoolean();
+-        Alert progress = new Alert(Alert.AlertType.INFORMATION);
+-        progress.setTitle("导出");
+-        progress.setHeaderText(null);
+-        progress.setContentText("正在导出 " + table.qualified() + " ...");
+-        progress.getButtonTypes().setAll(ButtonType.CANCEL);
+-        progress.setOnHidden(event -> {
+-            if (!completed.get()) task.close();
+-        });
+-        progress.show();
++    enum Status { SUCCEEDED, FAILED, CANCELLED }
++    record Outcome(Status status, Path path, String message, java.util.List<Path> cleanupResidues) {
++        Outcome(Status status, Path path, String message) { this(status, path, message, java.util.List.of()); }
++    }
++    interface ExportUi {
++        boolean confirmOverwrite(Path target);
++        void running(ExportTask task);
++        void cancelling(boolean accepted);
++        void finished(Outcome outcome);
++    }
++    @FunctionalInterface interface ExportJob {
++        Path write(TableExporter.Request request, ResultExportOperation operation) throws Exception;
++    }
++
++    /** Local lifecycle seam, also used by the actual dialog after the native file chooser returns. */
++    static ExportTask startExport(ConnectionManager conns, String connId, TableRef table,
++                                  ExportContent content, ExportFormat format, Path chosen,
++                                  FxTaskRunner runner, ExportUi ui) {
++        return startExport(connId, table, content, format, chosen, runner, ui,
++                (request, operation) -> TableExporter.export(conns, request, operation));
++    }
++
++    static ExportTask startExport(String connId, TableRef table, ExportContent content, ExportFormat format,
++                                  Path chosen, FxTaskRunner runner, ExportUi ui, ExportJob job) {
++        if (chosen == null) return null;
++        ExportTask task = null;
++        try {
++            var target = SafeResultFilePublisher.capture(chosen);
++            if (target.existed() && !ui.confirmOverwrite(target.path())) return null;
++            var request = new TableExporter.Request(connId, table, content, format, target);
++            task = new ExportTask(runner.scope(), ui);
++            ExportTask accepted = task;
++            ui.running(accepted);
++            runner.submit(() -> accepted.run(() -> job.write(request, accepted.operation)));
++            return accepted;
++        } catch (Exception failure) {
++            if (task != null) task.finish(new Outcome(Status.FAILED, null, message(failure)));
++            else ui.finished(new Outcome(Status.FAILED, null, message(failure)));
++            return task;
++        }
++    }
+ 
+-        task.submit(() -> {
++    static final class ExportTask {
++        private final ResultExportOperation operation = new ResultExportOperation();
++        private final AtomicInteger phase = new AtomicInteger(); // queued, running, settled
++        private final AtomicBoolean cancellationAccepted = new AtomicBoolean();
++        private final FxTaskScope callbacks;
++        private final ExportUi ui;
++        final CompletableFuture<Outcome> completion = new CompletableFuture<>();
++        private ExportTask(FxTaskScope callbacks, ExportUi ui) {
++            this.callbacks = callbacks; this.ui = ui;
++            completion.thenAccept(outcome -> callbacks.dispatch(() -> {
++                try { ui.finished(outcome); } finally { callbacks.close(); }
++            }));
++        }
++        boolean cancel() {
++            if (phase.get() == 2) return false;
++            boolean accepted = cancellationAccepted.get() || operation.cancel();
++            if (accepted) cancellationAccepted.set(true);
++            ui.cancelling(accepted);
++            if (accepted && phase.compareAndSet(0, 2))
++                finish(new Outcome(Status.CANCELLED, null, "取消请求已生效，未发布结果文件"));
++            return accepted;
++        }
++        void ownerClosed() { cancel(); callbacks.close(); }
++        private void run(java.util.concurrent.Callable<Path> job) {
++            if (!phase.compareAndSet(0, 1)) return;
++            Outcome outcome;
+             try {
+-                TableExporter.export(conns, connId, table, content, format, out);
+-                return out;
++                Path published = job.call();
++                if (!operation.published()) throw new IllegalStateException("Export was not published");
++                var residues = operation.cleanupResidues();
++                outcome = new Outcome(Status.SUCCEEDED, published, residues.isEmpty() ? "导出完成"
++                        : "已发布，但辅助临时文件清理失败，请核对:\n" + residues, residues);
++            } catch (CancellationException cancelled) {
++                outcome = new Outcome(Status.CANCELLED, null, "取消请求已生效，未发布结果文件");
+             } catch (Exception failure) {
+-                if (out.exists()) out.delete();
+-                throw failure;
++                outcome = new Outcome(Status.FAILED, null, message(failure));
++            } catch (Error fatal) {
++                try {
++                    finish(new Outcome(Status.FAILED, null, operation.cleanupResidues().isEmpty()
++                            ? "导出失败，未发布结果文件" : "导出失败，未发布结果文件；临时文件未清理，请核对: " + operation.cleanupResidues()));
++                } finally {
++                    // submit captures thrown Error in its Future; explicitly preserve the scope's application handler semantics.
++                    Thread worker = Thread.currentThread();
++                    worker.getUncaughtExceptionHandler().uncaughtException(worker, fatal);
++                }
++                return;
+             }
+-        }, exported -> {
+-            completed.set(true);
+-            task.close();
+-            progress.close();
+-            showResult(null, exported);
+-        }, failure -> {
+-            completed.set(true);
+-            task.close();
+-            progress.close();
+-            showResult(message(failure), out);
+-        });
++            finish(outcome);
++        }
++        private void finish(Outcome outcome) {
++            phase.set(2);
++            if (outcome.status() != Status.SUCCEEDED) operation.cancel();
++            completion.complete(outcome);
++        }
+     }
+ 
+-    private static void showResult(String error, File out) {
+-        Alert done = new Alert(error == null ? Alert.AlertType.INFORMATION : Alert.AlertType.ERROR);
+-        done.setTitle("导出");
+-        done.setHeaderText(null);
+-        done.setContentText(error == null
+-                ? "导出完成:\n" + out.getAbsolutePath()
+-                : "导出失败:\n" + error);
+-        done.showAndWait();
++    private static final class DialogUi implements ExportUi {
++        private final Window owner;
++        private final TableRef table;
++        private Alert progress;
++        private boolean finishing;
++        private DialogUi(Window owner, TableRef table) { this.owner = owner; this.table = table; }
++        public boolean confirmOverwrite(Path target) {
++            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
++                    "导出成功后替换此文件；失败时保留原文件。\n" + target, ButtonType.OK, ButtonType.CANCEL);
++            if (owner != null) confirm.initOwner(owner);
++            confirm.setTitle("确认替换文件");
++            confirm.setHeaderText("目标文件已存在");
++            return confirm.showAndWait().filter(ButtonType.OK::equals).isPresent();
++        }
++        public void running(ExportTask task) {
++            progress = new Alert(Alert.AlertType.INFORMATION);
++            if (owner != null) progress.initOwner(owner);
++            progress.setTitle("导出"); progress.setHeaderText(null);
++            progress.setContentText("正在导出 " + table.qualified() + " ...");
++            progress.getButtonTypes().setAll(ButtonType.CANCEL);
++            ((Button) progress.getDialogPane().lookupButton(ButtonType.CANCEL)).addEventFilter(ActionEvent.ACTION,
++                    event -> { event.consume(); task.cancel(); });
++            progress.setOnCloseRequest(event -> {
++                if (!finishing) { event.consume(); task.cancel(); }
++            });
++            progress.setOnHidden(event -> { if (!finishing) task.ownerClosed(); });
++            progress.show();
++        }
++        public void cancelling(boolean accepted) {
++            if (progress != null) progress.setContentText(accepted
++                    ? "正在取消，等待导出任务返回..." : "正在发布文件，请等待结果...");
++        }
++        public void finished(Outcome outcome) {
++            finishing = true;
++            if (progress != null) progress.close();
++            Alert done = new Alert(outcome.status() == Status.FAILED ? Alert.AlertType.ERROR
++                    : !outcome.cleanupResidues().isEmpty() ? Alert.AlertType.WARNING : Alert.AlertType.INFORMATION);
++            if (owner != null) done.initOwner(owner);
++            done.setTitle("导出"); done.setHeaderText(null);
++            done.setContentText(outcome.status() == Status.SUCCEEDED
++                    ? outcome.message() + ":\n" + outcome.path() : outcome.message());
++            done.showAndWait();
++        }
+     }
+ 
+     private static String message(Throwable failure) {
+-        String message = failure.getMessage();
+-        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
++        if (failure instanceof SafeResultFilePublisher.Failure safe) return switch (safe.stage()) {
++            case PREPARE -> "无法安全保存：请选择本地普通文件";
++            case TARGET_CHANGED -> "目标文件已改变，请重新选择并确认";
++            case TARGET_BUSY -> "目标文件正在导出，请稍后重试";
++            case WRITE, XML_CHARACTER -> "导出写入失败，原目标文件未修改";
++            case PUBLISH -> "无法原子发布导出文件，原目标文件未修改";
++            case CLEANUP -> "导出未完成，临时文件清理失败，请核对: " + safe.residualPaths();
++        };
++        return "导出任务未完成，未发布结果文件";
+     }
+ 
+     private static RadioButton radio(ToggleGroup group, String text, Object userData) {
+diff --git a/src/com/datacube/fx/SqlResultExportCoordinator.java b/src/com/datacube/fx/SqlResultExportCoordinator.java
+index 7823eca1..dd052d83 100644
+--- a/src/com/datacube/fx/SqlResultExportCoordinator.java
++++ b/src/com/datacube/fx/SqlResultExportCoordinator.java
+@@ -107,8 +107,12 @@ final class SqlResultExportCoordinator implements AutoCloseable {
+                 try { return job.write(request, operation); }
+                 finally { session.finish(operation); }
+             }, published -> {
+-                if (ownsStatus(operation, completionRevision))
+-                    status.accept("已导出: " + published, false);
++                if (ownsStatus(operation, completionRevision)) {
++                    var residues = operation.cleanupResidues();
++                    status.accept(residues.isEmpty() ? "已导出: " + published
++                            : "已发布，但辅助临时文件清理失败，请核对: " + residues + "；结果文件: " + published,
++                            !residues.isEmpty());
++                }
+             }, failure -> {
+                 if (ownsStatus(operation, completionRevision))
+                     status.accept(failureMessage(failure), true);
+@@ -168,7 +172,7 @@ final class SqlResultExportCoordinator implements AutoCloseable {
+                 case XML_CHARACTER -> "XML 无法表示部分字符，原目标文件未修改";
+                 case WRITE -> "导出写入失败，原目标文件未修改";
+                 case PUBLISH -> "无法原子发布导出文件，原目标文件未修改";
+-                case CLEANUP -> "导出未完成，临时文件清理失败，请手动处理: " + safe.temporaryPath();
++                case CLEANUP -> "导出未完成，临时文件清理失败，请手动处理: " + safe.residualPaths();
+             };
+         }
+         return "导出失败，未发布结果文件";
+diff --git a/test/com/datacube/fx/SqlResultExportCoordinatorTest.java b/test/com/datacube/fx/SqlResultExportCoordinatorTest.java
+index c0cf6755..2af9f7ab 100644
+--- a/test/com/datacube/fx/SqlResultExportCoordinatorTest.java
++++ b/test/com/datacube/fx/SqlResultExportCoordinatorTest.java
+@@ -40,6 +40,33 @@ class SqlResultExportCoordinatorTest {
+         }
+         @Override public boolean confirmOverwrite(Path path) { return overwrite; }
+     }
++    @Test void queryPublicationReportsAuxiliaryCleanupWarningWithActualResidualPath() throws Exception {
++        try (FxTaskRunner runner = new FxTaskRunner()) {
++            FxTaskScope tasks = runner.scope();
++            var message = new AtomicReference<String>();
++            var warning = new AtomicBoolean();
++            var done = new CountDownLatch(1);
++            var coordinator = new SqlResultExportCoordinator(tasks, this::snapshot, () -> 0L,
++                    (text, error) -> { message.set(text); warning.set(error); if (!text.equals("导出中...")) done.countDown(); },
++                    text -> true, new Ui(), (request, operation) -> TableExportTestJobs.cleanupWarningPublisher().publish(
++                            request.target(), operation, (temporary, token) -> QueryResultFileWriter.write(temporary,
++                                    request.format(), request.snapshot(), request.selection().scope(),
++                                    request.selection().displayConfirmed(), request.table(), token)));
++            try {
++                Future<?> future = FxUiTestSupport.call(() -> coordinator.export(QueryResultFileWriter.Format.CSV));
++                future.get(5, TimeUnit.SECONDS); assertTrue(done.await(5, TimeUnit.SECONDS));
++                assertTrue(Files.readString(directory.resolve("result.csv")).contains("2"));
++                Path residue;
++                try (var entries = Files.list(directory)) {
++                    residue = entries.filter(path -> path.getFileName().toString().endsWith(".identity")).findFirst().orElseThrow();
++                }
++                assertTrue(Files.isSameFile(directory.resolve("result.csv"), residue));
++                assertTrue(message.get().contains("已发布，但辅助临时文件清理失败"));
++                assertTrue(message.get().contains(residue.toRealPath().toString())); assertTrue(warning.get());
++                assertFalse(message.get().contains("synthetic witness"));
++            } finally { coordinator.close(); tasks.close(); }
++        }
++    }
+     @Test void cancellingEitherDialogDoesNotSubmitAndInsertUsesCapturedScope() throws Exception {
+         try (FxTaskRunner runner = new FxTaskRunner()) {
+             FxTaskScope tasks = runner.scope();

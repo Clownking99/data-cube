@@ -1,0 +1,1745 @@
+diff --git a/README.md b/README.md
+index 040a902e..a01a9376 100644
+--- a/README.md
++++ b/README.md
+@@ -21,7 +21,10 @@
+ - XML 导出保留可表示的正文、换行和原列名；遇到 XML 1.0 无法表示的字符时明确报错并保留原目标文件，不再静默删除字符。可调整结果或选择其他格式后重试。
+ - Excel 导出保留文本中的控制字符、回车和形似 `_xHHHH_` 的原文；无效 UTF-16 文本明确报错，不再替换成问号。查询结果导出失败时保留原目标文件，可调整结果后重试。
+ - **行详情正文查找**：结果表右键“查看当前行（可见列）”，在选中的字段正文内按字面查找，支持大小写、计数和双向循环；Ctrl+Alt+F 聚焦正文查找，Enter / Shift+Enter 或 F3 / Shift+F3 定位，Esc 关闭。原 Ctrl+F 仍筛选字段名。输入不改变正文选区，切换字段保留查找词并重算，不自动跳转；字段被筛选排除时清空正文和匹配，不代选其他字段。仅搜索当前字段已显示部分，不搜索其他字段、隐藏列、元数据或截断尾部；每字段仍最多 4,096 UTF-16 单元，查找词最多 1,024 单元，超限整体拒绝。只读快照，不重新查询、修改 SQL/结果或使用剪贴板。
+-- **导出文件保护**：查询结果先写同目录临时文件，成功后才原子发布；覆盖前确认目标，写入/发布失败保留旧文件，不支持原子发布时拒绝保存。整表导出、pg_dump 和迁移保持各自原有行为，不在此保护承诺范围内。
++- **导出文件保护**：查询结果、整表 SQL/XLSX 和 pg_dump 先写同目录临时文件，成功后才原子发布；覆盖前确认目标，来源或目标变化、读取/写入/资源释放失败时保留旧文件，不支持原子发布时拒绝保存。迁移采用单独的证据与发布流程。
++- **整表导出**：选择开始时绑定连接与表；SQL/XLSX 使用专用只读连接和一个完整数据 cursor，取消与总期限覆盖读取及资源释放。SQL 单值最多 1 MiB UTF-8 或原二进制字节、行最多 4 MiB、DDL 最多 4 MiB；Oracle 二进制最多 2000 bytes。XLSX 最多 1,048,575 数据行、16,384 列，文本最多 32,767 UTF-16 单元，数字最多 15 位有效十进制位；未知/结构化类型、无法保持数值精度或超额度明确失败，不用预览或截断值代替。
++- **PostgreSQL 表结构范围**：SQL 结构导出限明确支持的基础列与主键；保留简单字符长度和 numeric 精度/scale。identity/generated/domain、非默认 collation、bit、time/timestamp/interval 及未知类型会明确报结构读取失败，避免把列定义降级后成功保存。仅数据 SQL、XLSX 和 pg_dump 沿各自契约处理。
++- **pg_dump 客户端**：整表备份需要 PATH 中的 pg_dump/libpq 16+，并由使用者保证客户端与目标库兼容。导出隔离默认凭据文件并禁止 GSS/SSPI 隐式认证；不支持这些参数的旧客户端会失败，不自动降低隔离要求。客户端未安装或执行失败时显示固定提示，不展示子进程输出。
+ - **迁移**：Oracle→PostgreSQL 的只读预检查、目标确认、逐表事务导入与有限范围文件对账；不提供覆盖或增量同步。
+ - **Schema Diff**：在线比较 PostgreSQL↔PostgreSQL 或 Oracle↔Oracle 的单个 Schema，按语义差异生成稳定、有序且带安全门禁的同步计划。
+ - **应用内更新**：启动时检查 GitHub Release；自动执行必须通过内置受信任公钥、签名清单和包摘要验证。当前尚未配置生产公钥，只提供官方手动下载。便携更新保留旧版与恢复状态，安装版只报告安装程序交接，不将下载完成视为升级成功。协议与待验边界见 [可信更新说明](docs/updates/trusted-update-protocol.md)。
+@@ -308,8 +311,10 @@ INFO 首次展开加载使用面板级作用域；DDL 查看器的数据库读
+ 以及序列/表设计器的加载、执行使用标签级作用域。受管标签关闭时会取消尚未完成的任务、
+ 解绑监听器、关闭专用 Redis 会话并丢弃延迟 UI 回调；应用退出会依次释放全部受管标签、
+ 连接树作用域，再等待后台任务最多 3 秒，最后关闭连接资源。该机制仅使用标准 Java/JavaFX
+-API，Windows 打包与其他平台运行使用同一套实现。单表导出使用独立任务作用域并保持每页
+-500 行的流式背压；关闭导出进度框会协作式取消任务并屏蔽完成回调。其他 GUI I/O 面板将
++API，Windows 打包与其他平台运行使用同一套实现。单表导出使用独立任务作用域，SQL/XLSX
++逐行从同一个 cursor 完整读取并交给 writer；关闭进度框只请求取消并屏蔽完成回调。
++应用通过既有 SQL 退出决策后，先等待导出自有进程、连接、流及取消线程实际结束，再拆除其他资源；
++回收超过观察预算仍保持主窗 pending。其他 GUI I/O 面板将
+ 按相同方式迁移。自动/手动更新检查和更新包下载同样使用应用级虚拟线程；更新服务关闭后
+ 会跳过尚未开始的操作、关闭交接前的在途下载流，并屏蔽已排队的 JavaFX 回调。GUI 迁移页的顶层 Oracle/PostgreSQL
+ JDBC 操作也由应用级虚拟线程和面板任务作用域管理；关闭应用会同时触发业务取消标记、
+diff --git a/src/com/datacube/export/PgDumpRunner.java b/src/com/datacube/export/PgDumpRunner.java
+index 8a7ef889..d8b6062c 100644
+--- a/src/com/datacube/export/PgDumpRunner.java
++++ b/src/com/datacube/export/PgDumpRunner.java
+@@ -1,90 +1,452 @@
+ package com.datacube.export;
+ 
+ import com.datacube.spi.model.ConnConfig;
++import com.datacube.spi.model.DbType;
+ import com.datacube.spi.model.TableRef;
++import java.io.*;
++import java.nio.file.*;
++import java.time.Duration;
++import java.util.*;
++import java.util.concurrent.*;
++import java.util.concurrent.atomic.*;
++import java.util.concurrent.locks.LockSupport;
++import java.util.function.*;
+ 
+-import java.io.BufferedReader;
+-import java.io.File;
+-import java.io.IOException;
+-import java.io.InputStreamReader;
+-import java.nio.charset.StandardCharsets;
+-import java.util.ArrayList;
+-import java.util.List;
+-import java.util.concurrent.TimeUnit;
+-
+-/**
+- * 调用外部 {@code pg_dump} 生成单表备份文件。
+- *
+- * <p>密码经 {@code PGPASSWORD} 环境变量传入，避免出现在命令行参数中。
+- * pg_dump 需已安装并在 PATH 中；找不到或非零退出时抛出可读异常。
+- */
++/** A single owned pg_dump job. Output contents and connection secrets never enter diagnostics. */
+ public final class PgDumpRunner {
+-
+-    private PgDumpRunner() {
++    private PgDumpRunner() {}
++    enum Reason { NONE, PREPARE, START, OUTPUT, NONZERO, TIMEOUT, CANCELLED, DESCENDANTS, CONTROL }
++    public static final class Failure extends IOException {
++        private final Reason reason;
++        private Failure(Reason reason) { super("pg_dump failed at " + reason); this.reason = reason; }
++        Reason reason() { return reason; }
++        public String userMessage() {
++            return switch (reason) {
++                case START -> "无法启动 pg_dump，请确认 PATH 中已安装 pg_dump/libpq 16+ 且与目标库兼容；原目标文件未修改";
++                case NONZERO -> "pg_dump 执行失败，请确认 pg_dump/libpq 16+、目标库兼容性及连接设置；原目标文件未修改";
++                case TIMEOUT -> "pg_dump 超过总时限，已停止自有资源；原目标文件未修改";
++                default -> "pg_dump 未完成，原目标文件未修改";
++            };
++        }
+     }
+-
+-    /**
+-     * 备份单表。
+-     *
+-     * @param cfg           连接配置（host/port/database/username）
+-     * @param plainPassword 明文密码（由调用方解密）
+-     * @param t             目标表
+-     * @param content       导出内容（结构/数据/两者→映射 --schema-only/--data-only/无）
+-     * @param out           输出文件
+-     */
+-    public static void run(ConnConfig cfg, String plainPassword, TableRef t,
+-                           ExportContent content, File out) throws Exception {
+-        List<String> cmd = new ArrayList<>();
+-        cmd.add("pg_dump");
+-        cmd.add("-h");
+-        cmd.add(cfg.host());
+-        cmd.add("-p");
+-        cmd.add(String.valueOf(cfg.port()));
+-        cmd.add("-U");
+-        cmd.add(cfg.username());
+-        cmd.add("-d");
+-        cmd.add(cfg.database());
+-        cmd.add("-t");
+-        cmd.add(t.qualified());
+-        if (content == ExportContent.STRUCTURE) {
+-            cmd.add("--schema-only");
+-        } else if (content == ExportContent.DATA) {
+-            cmd.add("--data-only");
+-        }
+-        cmd.add("-f");
+-        cmd.add(out.getAbsolutePath());
+-
+-        ProcessBuilder pb = new ProcessBuilder(cmd);
+-        pb.environment().put("PGPASSWORD", plainPassword == null ? "" : plainPassword);
+-        pb.redirectErrorStream(false);
+-
+-        Process proc;
++    @FunctionalInterface interface Starter { Process start(ProcessBuilder builder) throws IOException; }
++    @FunctionalInterface interface HandleControl { void signal(ProcessHandle handle, boolean force); }
++    @FunctionalInterface interface ScratchAttributes { java.nio.file.attribute.BasicFileAttributes read(Path path) throws IOException; }
++    @FunctionalInterface interface ScratchFiles { void createEmpty(Path path) throws IOException; }
++    record Policy(Duration timeout, Duration grace, Duration observation, LongSupplier clock,
++                  Starter starter, Consumer<Receipt> observer, HandleControl control, Consumer<Thread> launch) {
++        Policy(Duration timeout, Duration grace, Duration observation, LongSupplier clock,
++               Starter starter, Consumer<Receipt> observer) {
++            this(timeout, grace, observation, clock, starter, observer,
++                    (handle, force) -> { if (force) handle.destroyForcibly(); else handle.destroy(); }, Thread::start);
++        }
++        Policy(Duration timeout, Duration grace, Duration observation, LongSupplier clock,
++               Starter starter, Consumer<Receipt> observer, HandleControl control) {
++            this(timeout, grace, observation, clock, starter, observer, control, Thread::start);
++        }
++        Policy {
++            Objects.requireNonNull(timeout); Objects.requireNonNull(grace); Objects.requireNonNull(observation);
++            Objects.requireNonNull(clock); Objects.requireNonNull(starter); Objects.requireNonNull(observer);
++            Objects.requireNonNull(control);
++            Objects.requireNonNull(launch);
++            if (timeout.isNegative() || timeout.isZero() || grace.isNegative() || observation.isNegative())
++                throw new IllegalArgumentException("Invalid pg_dump budget");
++            timeout.toNanos(); grace.toNanos(); observation.toNanos();
++        }
++        @Override public String toString() { return "PgDumpPolicy"; }
++    }
++    record Receipt(long rootPid, List<Long> descendantPids, boolean startPending, boolean rootAlive,
++                   int livingDescendants, int livingWorkers, int unresolvedStreams, long stdoutBytes, long stderrBytes,
++                   Reason reason, boolean cleanupPending, boolean physicallySettled) {}
++    private static Policy defaults() {
++        return new Policy(Duration.ofMinutes(10), Duration.ofSeconds(1), Duration.ofSeconds(5),
++                System::nanoTime, ProcessBuilder::start, ignored -> {});
++    }
++    public static void run(ConnConfig cfg, String password, TableRef table, ExportContent content, File out) throws Exception {
++        run(cfg, password, table, content, out, new ResultExportOperation(), defaults());
++    }
++    public static void run(ConnConfig cfg, String password, TableRef table, ExportContent content,
++                           File out, ResultExportOperation operation) throws Exception {
++        run(cfg, password, table, content, out, operation, defaults());
++    }
++    static void run(ConnConfig cfg, String password, TableRef table, ExportContent content,
++                    File out, Starter starter, Duration timeout) throws Exception {
++        run(cfg, password, table, content, out, new ResultExportOperation(),
++                new Policy(timeout, Duration.ofMillis(100), Duration.ofSeconds(5), System::nanoTime, starter, ignored -> {}));
++    }
++    static void run(ConnConfig cfg, String password, TableRef table, ExportContent content,
++                    File out, ResultExportOperation operation, Policy policy) throws Exception {
++        long beginning = policy.clock().getAsLong();
++        operation.check();
++        Prepared prepared;
++        try { prepared = prepare(cfg, password, table, content, out.toPath()); }
++        catch (SafeResultFilePublisher.Failure failure) { operation.recordCleanupResidues(failure.residualPaths()); throw failure; }
++        catch (Error fatal) {
++            for (Throwable suppressed : fatal.getSuppressed()) if (suppressed instanceof SafeResultFilePublisher.Failure cleanup)
++                operation.recordCleanupResidues(cleanup.residualPaths());
++            throw fatal;
++        }
++        Session session = null;
++        Error fatal = null;
++        boolean interrupted = false;
+         try {
+-            proc = pb.start();
+-        } catch (IOException e) {
+-            throw new IOException("无法启动 pg_dump，请确认已安装 PostgreSQL 客户端工具并在 PATH 中。原始错误: "
+-                    + e.getMessage(), e);
++            session = new Session(operation, policy, beginning);
++            Session owned = session;
++            operation.requireBeforePublication(() -> {
++                if (policy.clock().getAsLong() - beginning >= policy.timeout().toNanos()) {
++                    owned.stop(Reason.TIMEOUT); owned.observe(true); throw new Failure(Reason.TIMEOUT);
++                }
++            });
++            try {
++                policy.launch().accept(session.supervisor);
++                if (session.supervisor.getState() == Thread.State.NEW) throw new Failure(Reason.START);
++                operation.check();
++                session.register(policy.starter().start(prepared.builder));
++            } catch (CancellationException cancelled) { session.stop(Reason.CANCELLED); }
++            catch (Error error) { fatal = error; session.stop(Reason.START); }
++            catch (Exception failure) { session.stop(Reason.START); }
++            finally {
++                prepared.builder.environment().remove("PGPASSWORD");
++                session.setupComplete = true;
++                LockSupport.unpark(session.supervisor);
++            }
++            // Interruption requests stopping; it never proves a child or drainer ended.
++            while (session.supervisor.isAlive()) {
++                try { session.supervisor.join(); }
++                catch (InterruptedException stop) { interrupted = true; session.stop(Reason.CANCELLED); }
++            }
++            if (session.fatal.get() != null && fatal == null) fatal = session.fatal.get();
++            if (fatal != null) throw fatal;
++            if (session.reason.get() == Reason.CANCELLED)
++                throw new CancellationException("pg_dump cancelled after resource settlement");
++            if (session.reason.get() != Reason.NONE) throw new Failure(session.reason.get());
++            operation.check();
++        } catch (Error error) {
++            fatal = error;
++            throw error;
++        } finally {
++            prepared.builder.environment().remove("PGPASSWORD");
++            try { prepared.close(); }
++            catch (IOException | RuntimeException | Error failure) {
++                var cleanup = new SafeResultFilePublisher.Failure(SafeResultFilePublisher.Stage.CLEANUP, prepared.root);
++                operation.recordCleanupResidues(cleanup.residualPaths());
++                if (fatal != null) fatal.addSuppressed(cleanup);
++                else if (failure instanceof Error error) throw error;
++                else throw cleanup;
++            } finally {
++                try { if (session != null) session.observe(true); }
++                catch (Error observation) {
++                    if (fatal == null) throw observation;
++                    if (fatal != observation) fatal.addSuppressed(new Failure(Reason.CONTROL));
++                } finally { if (interrupted) Thread.currentThread().interrupt(); }
++            }
+         }
++    }
+ 
+-        StringBuilder stderr = new StringBuilder();
+-        try (BufferedReader r = new BufferedReader(
+-                new InputStreamReader(proc.getErrorStream(), StandardCharsets.UTF_8))) {
+-            String line;
+-            while ((line = r.readLine()) != null) {
+-                stderr.append(line).append('\n');
++    private static String literal(String value) throws Failure {
++        if (value == null || value.isBlank() || value.indexOf('\0') >= 0) throw new Failure(Reason.PREPARE);
++        return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'";
++    }
++    private static String pattern(String value) throws Failure {
++        if (value == null || value.isEmpty() || value.indexOf('\0') >= 0) throw new Failure(Reason.PREPARE);
++        return "\"" + value.replace("\"", "\"\"") + "\"";
++    }
++    static Prepared prepare(ConnConfig cfg, String password, TableRef table, ExportContent content, Path output) throws IOException {
++        return prepare(cfg, password, table, content, output,
++                path -> Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS));
++    }
++    static Prepared prepare(ConnConfig cfg, String password, TableRef table, ExportContent content, Path output,
++                            ScratchAttributes attributes) throws IOException {
++        return prepare(cfg, password, table, content, output, attributes,
++                path -> Files.write(path, new byte[0], StandardOpenOption.CREATE_NEW));
++    }
++    static Prepared prepare(ConnConfig cfg, String password, TableRef table, ExportContent content, Path output,
++                            ScratchAttributes attributes, ScratchFiles files) throws IOException {
++        if (cfg == null || table == null || content == null || output == null
++                || cfg.type() != DbType.POSTGRESQL || cfg.port() < 1 || cfg.port() > 65535)
++            throw new Failure(Reason.PREPARE);
++        String host = literal(cfg.host()), database = literal(cfg.database()), user = literal(cfg.username());
++        if (cfg.host().contains(",") || cfg.host().startsWith("/") || cfg.host().startsWith("@")
++                || cfg.host().matches("^[A-Za-z]:.*")) throw new Failure(Reason.PREPARE);
++        String tablePattern = pattern(table.schema()) + "." + pattern(table.name());
++        if (password != null && password.indexOf('\0') >= 0) throw new Failure(Reason.PREPARE);
++        Path root;
++        try { root = Files.createTempDirectory(output.toAbsolutePath().getParent(), ".datacube-pgdump-"); }
++        catch (IOException | RuntimeException failure) { throw new Failure(Reason.PREPARE); }
++        Path passfile = root.resolve("empty.pgpass"), service = root.resolve("empty.pg_service.conf");
++        Prepared prepared = new Prepared(root, passfile, service, attributes);
++        try {
++            prepared.captureRoot();
++            files.createEmpty(passfile); prepared.captureFile(passfile);
++            files.createEmpty(service); prepared.captureFile(service);
++            try {
++                Files.setPosixFilePermissions(root, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
++                Files.setPosixFilePermissions(passfile, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
++            } catch (UnsupportedOperationException platformAcl) { /* Empty files contain no credentials. */ }
++            String conninfo = "host=" + host + " port=" + literal(Integer.toString(cfg.port()))
++                    + " dbname=" + database + " user=" + user + " passfile=" + literal(passfile.toString())
++                    + " sslcert=" + literal(root.resolve("absent-client.crt").toString())
++                    + " sslkey=" + literal(root.resolve("absent-client.key").toString())
++                    + " sslrootcert=" + literal(root.resolve("absent-root.crt").toString())
++                    + " sslcrl=" + literal(root.resolve("absent-root.crl").toString())
++                    + " gssencmode='disable' require_auth='!gss,!sspi'";
++            var command = new ArrayList<>(List.of("pg_dump", "--format=plain", "--no-password", "--dbname", conninfo,
++                    "--table", tablePattern));
++            if (content == ExportContent.STRUCTURE) command.add("--schema-only");
++            else if (content == ExportContent.DATA) command.add("--data-only");
++            command.addAll(List.of("-f", output.toAbsolutePath().toString()));
++            prepared.builder = new ProcessBuilder(command).directory(root.toFile());
++            Map<String,String> env = prepared.builder.environment(); env.clear();
++            for (String key : List.of("SystemRoot", "WINDIR", "PATH", "COMSPEC", "PATHEXT")) {
++                String value = System.getenv(key); if (value != null) env.put(key, value);
+             }
++            for (String key : List.of("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP"))
++                env.put(key, root.toString());
++            env.put("PGPASSFILE", passfile.toString()); env.put("PGSERVICEFILE", service.toString());
++            env.put("PGSYSCONFDIR", root.toString()); env.put("PGPASSWORD", password == null ? "" : password);
++            return prepared;
++        } catch (IOException | RuntimeException | Error failure) {
++            try { prepared.close(); }
++            catch (IOException | RuntimeException | Error cleanup) {
++                var safe = new SafeResultFilePublisher.Failure(SafeResultFilePublisher.Stage.CLEANUP, root);
++                if (failure instanceof Error fatal) { fatal.addSuppressed(safe); throw fatal; }
++                if (cleanup instanceof Error fatal) { fatal.addSuppressed(safe); throw fatal; }
++                throw safe;
++            }
++            if (failure instanceof Error fatal) throw fatal;
++            throw new Failure(Reason.PREPARE);
++        }
++    }
++    static final class Prepared implements AutoCloseable {
++        final Path root, passfile, service;
++        ProcessBuilder builder;
++        private record Stamp(Object key, java.nio.file.attribute.FileTime created, long size,
++                             java.nio.file.attribute.FileTime modified) {}
++        private final Map<Path,Stamp> owned = new HashMap<>();
++        ScratchAttributes attributes;
++        private Object rootKey;
++        private java.nio.file.attribute.FileTime rootCreated;
++        Prepared(Path root, Path passfile, Path service, ScratchAttributes attributes) {
++            this.root = root; this.passfile = passfile; this.service = service; this.attributes = attributes;
++        }
++        @Override public String toString() { return "PgDumpPrepared[isolated]"; }
++        void captureRoot() throws IOException {
++            var directory = attributes.read(root);
++            if (!directory.isDirectory() || directory.isOther() || directory.isSymbolicLink()) throw new IOException("Isolation root changed");
++            rootKey = directory.fileKey(); rootCreated = directory.creationTime();
++        }
++        void captureFile(Path path) throws IOException { owned.put(path, stamp(path)); }
++        private Stamp stamp(Path path) throws IOException {
++            var attrs = attributes.read(path);
++            if (!attrs.isRegularFile() || attrs.isOther() || attrs.isSymbolicLink()) throw new IOException("Isolation identity changed");
++            return new Stamp(attrs.fileKey(), attrs.creationTime(), attrs.size(), attrs.lastModifiedTime());
++        }
++        @Override public void close() throws IOException {
++            if (builder != null) builder.environment().remove("PGPASSWORD");
++            IOException first = null;
++            java.nio.file.attribute.BasicFileAttributes directory;
++            try { directory = attributes.read(root); }
++            catch (NoSuchFileException absent) { return; } // The named root is absent; never search for a relocated directory.
++            if (!directory.isDirectory() || directory.isOther() || directory.isSymbolicLink()
++                    || rootCreated == null || !Objects.equals(rootKey, directory.fileKey()) || !rootCreated.equals(directory.creationTime()))
++                throw new IOException("Isolation parent changed");
++            for (Path path : List.of(passfile, service, root)) {
++                try {
++                    if (!path.equals(root)) {
++                        if (!owned.containsKey(path)) continue;
++                        if (!stamp(path).equals(owned.get(path))) throw new IOException("Isolation file changed");
++                    }
++                    Files.deleteIfExists(path);
++                } catch (NoSuchFileException absent) { /* Only confirmed absence requires no deletion. */ }
++                catch (IOException failure) { if (first == null) first = failure; }
++            }
++            if (first != null) throw first;
+         }
++    }
+ 
+-        boolean done = proc.waitFor(10, TimeUnit.MINUTES);
+-        if (!done) {
+-            proc.destroyForcibly();
+-            throw new IOException("pg_dump 执行超时（超过 10 分钟）。");
+-        }
+-        int code = proc.exitValue();
+-        if (code != 0) {
+-            String tail = stderr.length() > 2000
+-                    ? stderr.substring(stderr.length() - 2000) : stderr.toString();
+-            throw new IOException("pg_dump 退出码 " + code + "：\n" + tail.trim());
++    private static final class Session {
++        private static final long POLL_NANOS = TimeUnit.MILLISECONDS.toNanos(10);
++        final ResultExportOperation operation;
++        final Policy policy;
++        final long beginning;
++        final AtomicReference<Reason> reason = new AtomicReference<>(Reason.NONE);
++        final AtomicReference<Error> fatal = new AtomicReference<>();
++        final AtomicLong stdout = new AtomicLong(), stderr = new AtomicLong();
++        final Map<Long,ProcessHandle> descendants = new ConcurrentHashMap<>();
++        final List<Thread> workers = new CopyOnWriteArrayList<>();
++        final Thread supervisor;
++        final Controls normalControls = new Controls(false), forceControls = new Controls(true);
++        volatile Process process;
++        volatile OwnedStream output, error, input;
++        volatile boolean setupComplete, cleanupPending;
++        volatile long stopAt;
++        boolean normalSent, forceSent, streamsClosing;
++        long normalAt;
++        Session(ResultExportOperation operation, Policy policy, long beginning) {
++            this.operation = operation; this.policy = policy; this.beginning = beginning;
++            supervisor = Thread.ofVirtual().name("DataCube-pgdump-supervisor").unstarted(this::supervise);
++        }
++        void stop(Reason cause) {
++            if (reason.compareAndSet(Reason.NONE, cause)) stopAt = policy.clock().getAsLong();
++            operation.cancel(); LockSupport.unpark(supervisor);
++        }
++        void startWorker(String name, Runnable action) {
++            Thread thread = Thread.ofVirtual().name("DataCube-pgdump-" + name).unstarted(() -> {
++                try { action.run(); }
++                catch (Error error) { fatal.compareAndSet(null, error); stop(Reason.CONTROL); }
++                catch (RuntimeException failure) { stop(Reason.CONTROL); }
++                finally { LockSupport.unpark(supervisor); }
++            });
++            workers.add(thread); thread.start();
++        }
++        void register(Process child) {
++            process = Objects.requireNonNull(child);
++            output = new OwnedStream(child.getInputStream(), "stdout");
++            error = new OwnedStream(child.getErrorStream(), "stderr");
++            input = new OwnedStream(child.getOutputStream(), "stdin");
++            startWorker("stdin-close", input::closeFirst);
++            startWorker("stdout", () -> drain(output, stdout));
++            startWorker("stderr", () -> drain(error, stderr));
++        }
++        /** Closeable is idempotent after closure. A failed close is unresolved, never proof of release. */
++        final class OwnedStream {
++            final Closeable stream;
++            final String name;
++            final AtomicInteger state = new AtomicInteger(); // open, closing, successfully closed, failed
++            boolean retryStarted; // supervisor only
++            OwnedStream(Closeable stream, String name) { this.stream = Objects.requireNonNull(stream); this.name = name; }
++            void closeFirst() { if (state.compareAndSet(0, 1)) closeAcquired(); }
++            void closeAcquired() {
++                boolean closed = false;
++                try { stream.close(); closed = true; }
++                catch (IOException failure) { stop(Reason.OUTPUT); }
++                finally { state.set(closed ? 2 : 3); LockSupport.unpark(supervisor); }
++            }
++            void retryAfterProcessExit() {
++                // One serialized final attempt after root/captured family exit, never a poll-based retry loop.
++                if (!retryStarted && state.compareAndSet(3, 1)) {
++                    retryStarted = true;
++                    startWorker(name + "-final-close", this::closeAcquired);
++                }
++            }
++            boolean resolved() { return state.get() == 2; }
++        }
++        int unresolvedStreams() {
++            int count = 0;
++            for (OwnedStream stream : new OwnedStream[]{input, output, error}) if (stream != null && !stream.resolved()) count++;
++            return count;
++        }
++        void drain(OwnedStream owned, AtomicLong count) {
++            InputStream stream = (InputStream) owned.stream;
++            byte[] bytes = new byte[8192];
++            try {
++                int n;
++                while ((n = stream.read(bytes)) >= 0) {
++                    if (n == 0) { Thread.yield(); continue; }
++                    final int consumed = n;
++                    count.updateAndGet(prior -> prior > Long.MAX_VALUE - consumed ? Long.MAX_VALUE : prior + consumed);
++                }
++            } catch (IOException failure) { if (reason.get() == Reason.NONE) stop(Reason.OUTPUT); }
++            finally { owned.closeFirst(); }
++        }
++        void capture() {
++            Process child = process;
++            var ancestors = new ArrayList<>(descendants.values());
++            if (child != null && child.isAlive()) ancestors.add(child.toHandle());
++            for (var ancestor : ancestors) if (ancestor.isAlive()) {
++                try (var handles = ancestor.descendants()) {
++                    handles.forEach(handle -> descendants.compute(handle.pid(), (pid, prior) ->
++                            prior == null || !prior.isAlive() ? handle : prior));
++                } catch (RuntimeException failure) { stop(Reason.CONTROL); }
++            }
++        }
++        /** One queue/worker per stop phase. A blocked native call stays owned without blocking observation. */
++        final class Controls {
++            final boolean force;
++            final Queue<ProcessHandle> pending = new ConcurrentLinkedQueue<>();
++            final Set<ProcessHandle> submitted = Collections.newSetFromMap(new IdentityHashMap<>());
++            volatile boolean closing;
++            Thread thread;
++            Controls(boolean force) { this.force = force; }
++            void enqueue() {
++                for (ProcessHandle handle : descendants.values()) if (handle.isAlive() && submitted.add(handle)) pending.add(handle);
++                if (thread == null && !pending.isEmpty()) {
++                    thread = Thread.ofVirtual().name("DataCube-pgdump-handles-" + force).unstarted(this::run);
++                    workers.add(thread); thread.start();
++                }
++                if (thread != null) LockSupport.unpark(thread);
++            }
++            void finish() { closing = true; if (thread != null) LockSupport.unpark(thread); }
++            void run() {
++                while (true) {
++                    ProcessHandle handle = pending.poll();
++                    if (handle != null) {
++                        try { if (handle.isAlive()) policy.control().signal(handle, force); }
++                        catch (Error failure) { fatal.compareAndSet(null, failure); stop(Reason.CONTROL); }
++                        catch (RuntimeException failure) { stop(Reason.CONTROL); }
++                    } else if (closing) return;
++                    else LockSupport.parkNanos(POLL_NANOS);
++                    if (Thread.interrupted()) stop(Reason.CANCELLED);
++                    LockSupport.unpark(supervisor);
++                }
++            }
++        }
++        int livingDescendants() { return (int) descendants.values().stream().filter(ProcessHandle::isAlive).count(); }
++        int livingWorkers() { return (int) workers.stream().filter(Thread::isAlive).count(); }
++        void supervise() {
++            while (true) {
++                try {
++                    long now = policy.clock().getAsLong();
++                    if (operation.cancelled()) stop(Reason.CANCELLED);
++                    if (now - beginning >= policy.timeout().toNanos()) stop(Reason.TIMEOUT);
++                    if (reason.get() != Reason.NONE && !cleanupPending && now - stopAt >= policy.observation().toNanos()) {
++                        cleanupPending = true; operation.markCleanupPending();
++                    }
++                    capture();
++                    Process child = process;
++                    boolean alive = child != null && child.isAlive();
++                    if (child != null && !alive && setupComplete && reason.get() == Reason.NONE) {
++                        if (child.exitValue() != 0) stop(Reason.NONZERO);
++                        else if (livingDescendants() != 0) stop(Reason.DESCENDANTS);
++                    }
++                    if (reason.get() != Reason.NONE) {
++                        if (child != null && !normalSent) {
++                            normalSent = true; normalAt = now;
++                            startWorker("terminate", child::destroy);
++                        }
++                        if (normalSent && !forceSent && now - normalAt >= policy.grace().toNanos()) {
++                            forceSent = true;
++                            startWorker("force", child::destroyForcibly);
++                        }
++                        normalControls.enqueue();
++                        if (forceSent) forceControls.enqueue();
++                        if (setupComplete && !streamsClosing) {
++                            streamsClosing = true;
++                            if (output != null) startWorker("stdout-close", output::closeFirst);
++                            if (error != null) startWorker("stderr-close", error::closeFirst);
++                        }
++                    }
++                    if (setupComplete && !alive && livingDescendants() == 0) {
++                        normalControls.finish(); forceControls.finish();
++                        for (OwnedStream stream : new OwnedStream[]{input, output, error})
++                            if (stream != null) stream.retryAfterProcessExit();
++                    }
++                    if (setupComplete && !alive && livingDescendants() == 0 && livingWorkers() == 0 && unresolvedStreams() == 0) return;
++                    observe(false);
++                } catch (Error error) { fatal.compareAndSet(null, error); stop(Reason.CONTROL); }
++                catch (RuntimeException failure) { stop(Reason.CONTROL); }
++                LockSupport.parkNanos(POLL_NANOS);
++                if (Thread.interrupted()) stop(Reason.CANCELLED);
++            }
++        }
++        void observe(boolean settled) {
++            Process child = process;
++            long pid = -1;
++            if (child != null) try { pid = child.pid(); } catch (RuntimeException ignored) {}
++            var receipt = new Receipt(pid, descendants.keySet().stream().sorted().toList(), !setupComplete,
++                    child != null && child.isAlive(), livingDescendants(), livingWorkers(), unresolvedStreams(), stdout.get(), stderr.get(),
++                    reason.get(), cleanupPending, settled && unresolvedStreams() == 0);
++            try { policy.observer().accept(receipt); } catch (RuntimeException ignored) {}
+         }
+     }
+ }
+diff --git a/src/com/datacube/export/ResultExportOperation.java b/src/com/datacube/export/ResultExportOperation.java
+index 29ceedf3..51fd83b4 100644
+--- a/src/com/datacube/export/ResultExportOperation.java
++++ b/src/com/datacube/export/ResultExportOperation.java
+@@ -1,28 +1,56 @@
+ package com.datacube.export;
+ 
+ import java.util.concurrent.CancellationException;
++import java.util.concurrent.atomic.AtomicReference;
++import java.nio.file.Path;
++import java.util.List;
+ 
+ public final class ResultExportOperation {
+     @FunctionalInterface public interface Action { void run() throws Exception; }
+-    private enum State { ACTIVE, CANCELLED, PUBLISHED }
+-    private State state = State.ACTIVE;
++    private enum State { ACTIVE, CANCELLED, TARGET_CHANGED, TIMED_OUT, PUBLISHING, PUBLISHED, FAILED }
++    private final AtomicReference<State> state = new AtomicReference<>(State.ACTIVE);
++    private volatile List<Path> cleanupResidues = List.of();
++    private volatile boolean cleanupPending;
++    private volatile Runnable cleanupPendingListener = () -> {};
++    private volatile Action publicationCheck = () -> {};
++    private volatile Runnable beforeClaim = () -> {};
++    void requireBeforeClaim(Runnable check){beforeClaim=java.util.Objects.requireNonNull(check);}
++    void requireBeforePublication(Action check) {
++        Action previous=publicationCheck;
++        publicationCheck=()->{previous.run();check.run();};
++    }
++    void verifyPublicationEligibility() throws Exception { publicationCheck.run(); }
++    void recordCleanupResidues(List<Path> paths) { cleanupResidues = List.copyOf(paths); }
++    public List<Path> cleanupResidues() { return cleanupResidues; }
++    public boolean cancelled() { State value=state.get();return value==State.CANCELLED||value==State.TARGET_CHANGED||value==State.TIMED_OUT; }
++    public boolean cleanupPending() { return cleanupPending; }
++    public void onCleanupPending(Runnable listener) { cleanupPendingListener = java.util.Objects.requireNonNull(listener); }
++    void markCleanupPending() {
++        cleanupPending = true;
++        try { cleanupPendingListener.run(); } catch (RuntimeException ignored) {}
++    }
+ 
+-    public synchronized void check() {
+-        if (state != State.ACTIVE || Thread.currentThread().isInterrupted())
++    public void check() {
++        State value=state.get();
++        if(value==State.TARGET_CHANGED)throw new TableExportFailure(TableExportFailure.Kind.TARGET_CHANGED);
++        if(value==State.TIMED_OUT)throw new TableExportFailure(TableExportFailure.Kind.TIMEOUT);
++        if (value != State.ACTIVE || Thread.currentThread().isInterrupted())
+             throw new CancellationException("Export cancelled");
+     }
+ 
+-    public synchronized boolean cancel() {
+-        if (state != State.ACTIVE) return false;
+-        state = State.CANCELLED;
+-        return true;
+-    }
++    public boolean cancel() { return state.compareAndSet(State.ACTIVE, State.CANCELLED); }
++    public void invalidateTarget(){state.compareAndSet(State.ACTIVE,State.TARGET_CHANGED);}
++    void timedOut(){state.compareAndSet(State.ACTIVE,State.TIMED_OUT);}
+ 
+-    public synchronized void publish(Action action) throws Exception {
++    public void publish(Action action) throws Exception {
++        beforeClaim.run();
+         check();
+-        action.run();
+-        state = State.PUBLISHED;
++        if (!state.compareAndSet(State.ACTIVE, State.PUBLISHING))
++            throw new CancellationException("Export is no longer active");
++        boolean committed = false;
++        try { verifyPublicationEligibility(); action.run(); committed = true; }
++        finally { state.set(committed ? State.PUBLISHED : State.FAILED); publicationCheck = () -> {}; }
+     }
+ 
+-    public synchronized boolean published() { return state == State.PUBLISHED; }
++    public boolean published() { return state.get() == State.PUBLISHED; }
+ }
+diff --git a/src/com/datacube/export/SafeResultFilePublisher.java b/src/com/datacube/export/SafeResultFilePublisher.java
+index f6f3dacd..b71fbd0a 100644
+--- a/src/com/datacube/export/SafeResultFilePublisher.java
++++ b/src/com/datacube/export/SafeResultFilePublisher.java
+@@ -5,9 +5,7 @@ import java.nio.file.*;
+ import java.nio.file.attribute.BasicFileAttributes;
+ import java.nio.file.attribute.FileTime;
+ import java.util.Objects;
+-import java.util.Set;
+ import java.util.concurrent.CancellationException;
+-import java.util.concurrent.ConcurrentHashMap;
+ import java.util.function.Consumer;
+ import java.util.logging.Logger;
+ 
+@@ -17,21 +15,32 @@ public final class SafeResultFilePublisher {
+     public static final class Failure extends IOException {
+         private final Stage stage;
+         private final Path temporaryPath;
++        private final java.util.List<Path> residualPaths;
+         public Failure(Stage stage, Path temporaryPath) {
++            this(stage, temporaryPath == null ? java.util.List.of() : java.util.List.of(temporaryPath), true);
++        }
++        private Failure(Stage stage, java.util.List<Path> residualPaths, boolean cleanup) {
+             super("Result export failed at " + stage);
+             this.stage = stage;
+-            this.temporaryPath = temporaryPath;
++            this.residualPaths = java.util.List.copyOf(residualPaths);
++            this.temporaryPath = residualPaths.isEmpty() ? null : residualPaths.getFirst();
+         }
+         public Stage stage() { return stage; }
+         public Path temporaryPath() { return temporaryPath; }
++        public java.util.List<Path> residualPaths() { return residualPaths; }
+     }
+ 
+     private record Stamp(boolean exists, Object key, long size, FileTime modified, FileTime created) {}
++    private record Identity(Object key, FileTime created) {}
+ 
+     public static final class Target {
+         private final Path path;
+         private final Stamp stamp;
+-        private Target(Path path, Stamp stamp) { this.path = path; this.stamp = stamp; }
++        private final Path chosen;
++        private final java.util.Map<Path, Identity> parents;
++        private Target(Path path, Path chosen, Stamp stamp, java.util.Map<Path, Identity> parents) {
++            this.path = path; this.chosen = chosen; this.stamp = stamp; this.parents = parents;
++        }
+         public Path path() { return path; }
+         public boolean existed() { return stamp.exists(); }
+     }
+@@ -41,12 +50,17 @@ public final class SafeResultFilePublisher {
+     }
+     @FunctionalInterface interface AtomicMover { void move(Path source, Path target) throws IOException; }
+     @FunctionalInterface interface TempCleaner { void delete(Path path) throws IOException; }
++    @FunctionalInterface interface AttributeReader { BasicFileAttributes read(Path path) throws IOException; }
++    @FunctionalInterface interface LinkCreator { void create(Path link, Path existing) throws IOException; }
+ 
+-    private static final Set<Path> BUSY = ConcurrentHashMap.newKeySet();
++    private static final java.util.List<Target> BUSY = new java.util.ArrayList<>();
++    private static final Object BUSY_LOCK = new Object();
+     private static final Logger LOG = Logger.getLogger(SafeResultFilePublisher.class.getName());
+     private final AtomicMover mover;
+     private final TempCleaner cleaner;
+     private final Consumer<Path> cleanupDiagnostic;
++    private final AttributeReader attributes;
++    private final LinkCreator links;
+ 
+     public SafeResultFilePublisher() {
+         this((source, target) -> Files.move(source, target,
+@@ -56,27 +70,69 @@ public final class SafeResultFilePublisher {
+     }
+ 
+     SafeResultFilePublisher(AtomicMover mover, TempCleaner cleaner, Consumer<Path> diagnostic) {
++        this(mover, cleaner, diagnostic,
++                path -> Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS));
++    }
++
++    SafeResultFilePublisher(AtomicMover mover, TempCleaner cleaner, Consumer<Path> diagnostic, AttributeReader attributes) {
++        this(mover, cleaner, diagnostic, attributes, Files::createLink);
++    }
++    SafeResultFilePublisher(AtomicMover mover, TempCleaner cleaner, Consumer<Path> diagnostic,
++                            AttributeReader attributes, LinkCreator links) {
+         this.mover = Objects.requireNonNull(mover);
+         this.cleaner = Objects.requireNonNull(cleaner);
+         this.cleanupDiagnostic = Objects.requireNonNull(diagnostic);
++        this.attributes = Objects.requireNonNull(attributes);
++        this.links = Objects.requireNonNull(links);
+     }
+ 
+     public static Target capture(Path chosen) throws Failure {
+         try {
+-            Path absolute = chosen.toAbsolutePath().normalize();
++            Path original = chosen.toAbsolutePath();
++            // Inspect the spelling before lexical normalization can erase link/.. components.
++            noLinks(original);
++            Path absolute = original.normalize();
++            noLinks(absolute);
+             Path parent = absolute.getParent();
+             if (parent == null || absolute.getFileName() == null) throw new IOException("Unsupported export path");
+             Path path = parent.toRealPath().resolve(absolute.getFileName());
+-            return new Target(path, stamp(path));
++            Stamp stamp = stamp(path);
++            if (stamp.exists()) path = path.toRealPath(LinkOption.NOFOLLOW_LINKS);
++            var parents = new java.util.LinkedHashMap<Path, Identity>();
++            for (Path current = path.getParent(); current != null; current = current.getParent()) {
++                parents.put(current, identity(current, true));
++            }
++            return new Target(path, original, stamp, java.util.Map.copyOf(parents));
+         } catch (IOException | RuntimeException failure) {
+             throw new Failure(Stage.PREPARE, null);
+         }
+     }
+ 
++    private static void noLinks(Path path) throws IOException {
++        for (Path current = path; current != null; current = current.getParent()) {
++            try {
++                var attrs = Files.readAttributes(current, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
++                if (attrs.isSymbolicLink() || attrs.isOther()) throw new IOException("Unsupported export path");
++            } catch (NoSuchFileException absent) { /* New filename: still inspect ancestors. */ }
++        }
++    }
++
++    private static Identity identity(Path path, boolean directory) throws IOException {
++        return identity(path, directory, candidate -> Files.readAttributes(candidate, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS));
++    }
++    private static Identity identity(Path path, boolean directory, AttributeReader reader) throws IOException {
++        var attrs = reader.read(path);
++        if (directory ? !attrs.isDirectory() : !attrs.isRegularFile()) throw new IOException("Export identity changed");
++        if (attrs.isSymbolicLink() || attrs.isOther())
++            throw new IOException("Export identity unavailable");
++        return new Identity(attrs.fileKey(), attrs.creationTime());
++    }
++
+     private static Stamp stamp(Path path) throws IOException {
+         try {
+             BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+-            if (!attributes.isRegularFile()) throw new IOException("Unsupported export target");
++            if (!attributes.isRegularFile() || attributes.isOther())
++                throw new IOException("Unsupported export target");
+             return new Stamp(true, attributes.fileKey(), attributes.size(), attributes.lastModifiedTime(), attributes.creationTime());
+         } catch (NoSuchFileException absent) {
+             return new Stamp(false, null, 0, null, null);
+@@ -85,8 +141,9 @@ public final class SafeResultFilePublisher {
+ 
+     private static void verify(Target target) throws Failure {
+         try {
+-            Path parent = target.path.getParent();
+-            if (!parent.toRealPath().equals(parent) || !stamp(target.path).equals(target.stamp))
++            noLinks(target.chosen);
++            verifyParents(target);
++            if (!stamp(target.path).equals(target.stamp))
+                 throw new IOException("Export target changed");
+         } catch (IOException | RuntimeException changed) {
+             throw new Failure(Stage.TARGET_CHANGED, null);
+@@ -95,36 +152,145 @@ public final class SafeResultFilePublisher {
+ 
+     public Path publish(Target target, ResultExportOperation operation, TempWriter writer) throws Exception {
+         Objects.requireNonNull(target); Objects.requireNonNull(operation); Objects.requireNonNull(writer);
+-        if (!BUSY.add(target.path)) throw new Failure(Stage.TARGET_BUSY, null);
++        synchronized (BUSY_LOCK) {
++            for (Target busy : BUSY) {
++                boolean same = busy.path.equals(target.path);
++                try {
++                    if (!same && busy.stamp.exists() && target.stamp.exists())
++                        same = Files.isSameFile(busy.path, target.path);
++                } catch (IOException unsafeIdentity) { throw new Failure(Stage.TARGET_CHANGED, null); }
++                if (same) throw new Failure(Stage.TARGET_BUSY, null);
++            }
++            BUSY.add(target);
++        }
+         Path temporary = null;
++        Identity temporaryIdentity = null;
++        Path witness = null;
++        Identity witnessIdentity = null;
++        boolean witnessCreated = false;
++        Error primaryFatal = null;
++        Failure primarySafe = null;
+         Stage stage = Stage.PREPARE;
+         try {
+             operation.check(); verify(target);
+             temporary = Files.createTempFile(target.path.getParent(), ".datacube-export-", ".tmp");
++            temporaryIdentity = identity(temporary, false, attributes);
++            if (temporaryIdentity.key() == null) {
++                witness = target.path.getParent().resolve(".datacube-export-" + java.util.UUID.randomUUID() + ".identity");
++                links.create(witness, temporary);
++                witnessCreated = true;
++                witnessIdentity = identity(witness, false, attributes);
++            }
+             stage = Stage.WRITE;
+             operation.check(); writer.write(temporary, operation);
+             stage = Stage.PUBLISH;
+             Path ready = temporary;
+-            operation.publish(() -> { verify(target); mover.move(ready, target.path); });
++            Identity owned = temporaryIdentity;
++            Path proof = witness;
++            Identity proofIdentity = witnessIdentity;
++            operation.publish(() -> {
++                verify(target);
++                verifyTemporary(ready, owned, proof, proofIdentity);
++                operation.verifyPublicationEligibility();
++                mover.move(ready, target.path);
++            });
+             return target.path;
+         } catch (CancellationException cancelled) {
+             throw cancelled;
+         } catch (ResultExporter.InvalidXmlCharacterException invalidXml) {
+             throw new Failure(Stage.XML_CHARACTER, null);
+         } catch (Failure safe) {
++            primarySafe = safe;
+             throw safe;
++        } catch (PgDumpRunner.Failure safeDump) {
++            throw safeDump;
++        } catch (TableExportFailure safeTable) {
++            throw safeTable;
+         } catch (Exception failure) {
+             throw new Failure(stage, null);
++        } catch (Error fatal) {
++            primaryFatal = fatal;
++            throw fatal;
+         } finally {
++            var residues = new java.util.ArrayList<Path>();
++            boolean witnessVerified = false;
+             try {
++                // Keep the identity proof until both names have been verified. Never delete an unproved witness.
++                if (witnessCreated) {
++                    try {
++                        verifyParents(target);
++                        Path reference = operation.published() ? target.path : temporary;
++                        verifyTemporary(reference, temporaryIdentity, witness, witnessIdentity);
++                        witnessVerified = true;
++                    } catch (IOException | RuntimeException unsafeWitness) { /* Preserve it and report below. */ }
++                }
+                 if (temporary != null && !operation.published()) {
+-                    try { cleaner.delete(temporary); }
++                    try {
++                        verifyParents(target);
++                        Identity current = null;
++                        try { current = identity(temporary, false, attributes); }
++                        catch (NoSuchFileException absent) { /* Only confirmed absence needs no cleanup. */ }
++                        if (current != null) {
++                            verifyTemporary(temporary, current, temporaryIdentity, witness, witnessIdentity);
++                            cleaner.delete(temporary);
++                        }
++                    }
+                     catch (IOException | RuntimeException cleanupFailure) {
+-                        try { cleanupDiagnostic.accept(temporary); } catch (RuntimeException ignored) { }
+-                        throw new Failure(Stage.CLEANUP, temporary);
++                        residues.add(temporary);
++                    }
++                }
++            } finally {
++                try {
++                    Identity current = null;
++                    if (witnessCreated) {
++                        try { current = identity(witness, false, attributes); }
++                        catch (NoSuchFileException absent) { /* No owned witness remains at this path. */ }
++                    }
++                    if (current != null) {
++                        verifyParents(target);
++                        if (!witnessVerified || !current.equals(witnessIdentity)) throw new IOException("Export witness changed");
++                        Files.deleteIfExists(witness);
+                     }
++                } catch (IOException | RuntimeException witnessCleanupFailure) {
++                    residues.add(witness);
++                } finally {
++                    synchronized (BUSY_LOCK) { BUSY.remove(target); }
++                }
++            }
++            boolean localCleanupFailed = !residues.isEmpty();
++            if (primarySafe != null) for (Path earlier : primarySafe.residualPaths())
++                if (!residues.contains(earlier)) residues.add(earlier);
++            for (Path earlier : operation.cleanupResidues()) if (!residues.contains(earlier)) residues.add(earlier);
++            for (Path residue : residues) {
++                try { cleanupDiagnostic.accept(residue); } catch (RuntimeException ignored) { }
++            }
++            if (!residues.isEmpty()) {
++                operation.recordCleanupResidues(residues);
++                // A committed file remains successful, with an explicit warning consumed by both UIs.
++                if (!operation.published() && localCleanupFailed) {
++                    var cleanup = new Failure(Stage.CLEANUP, residues, true);
++                    if (primaryFatal != null) primaryFatal.addSuppressed(cleanup);
++                    else throw cleanup;
+                 }
+-            } finally { BUSY.remove(target.path); }
++            }
++        }
++    }
++
++    private void verifyTemporary(Path path, Identity owned, Path witness, Identity witnessIdentity) throws IOException {
++        verifyTemporary(path, identity(path, false, attributes), owned, witness, witnessIdentity);
++    }
++    private void verifyTemporary(Path path, Identity current, Identity owned, Path witness, Identity witnessIdentity) throws IOException {
++        if (!current.equals(owned)) throw new IOException("Export temporary changed");
++        if (owned.key() == null && (witness == null || !identity(witness, false, attributes).equals(witnessIdentity)
++                || !Files.isSameFile(path, witness))) throw new IOException("Export temporary ownership unavailable");
++    }
++
++    private static void verifyParents(Target target) throws IOException {
++        noLinks(target.chosen.getParent());
++        Path parent = target.path.getParent();
++        if (!parent.toRealPath().equals(parent)) throw new IOException("Export parent changed");
++        for (var entry : target.parents.entrySet()) {
++            if (!identity(entry.getKey(), true).equals(entry.getValue())) throw new IOException("Export parent changed");
+         }
+     }
+ }
+diff --git a/src/com/datacube/export/SqlScriptExporter.java b/src/com/datacube/export/SqlScriptExporter.java
+index 83f2f855..204897e1 100644
+--- a/src/com/datacube/export/SqlScriptExporter.java
++++ b/src/com/datacube/export/SqlScriptExporter.java
+@@ -7,6 +7,7 @@ import java.io.BufferedWriter;
+ import java.io.File;
+ import java.io.FileOutputStream;
+ import java.io.OutputStreamWriter;
++import java.io.OutputStream;
+ import java.io.Writer;
+ import java.nio.charset.StandardCharsets;
+ import java.time.LocalDateTime;
+@@ -40,8 +41,14 @@ public final class SqlScriptExporter {
+      */
+     public static void write(File out, TableRef t, ExportContent content, String ddl,
+                              List<String> columns, RowFeed feed, SqlDialect dialect) throws Exception {
++        write(new FileOutputStream(out), t, content, ddl, columns, feed, dialect);
++    }
++
++    /** Caller supplies a destination stream; this writer always owns and closes it. */
++    static void write(OutputStream out, TableRef t, ExportContent content, String ddl,
++                      List<String> columns, RowFeed feed, SqlDialect dialect) throws Exception {
+         try (Writer w = new BufferedWriter(new OutputStreamWriter(
+-                new FileOutputStream(out), StandardCharsets.UTF_8))) {
++                out, StandardCharsets.UTF_8))) {
+ 
+             w.write("-- DataCube 导出\n");
+             w.write("-- 表: " + t.qualified() + "\n");
+diff --git a/src/com/datacube/export/TableExporter.java b/src/com/datacube/export/TableExporter.java
+index 5b2b7214..e881f3c1 100644
+--- a/src/com/datacube/export/TableExporter.java
++++ b/src/com/datacube/export/TableExporter.java
+@@ -1,74 +1,98 @@
+ package com.datacube.export;
+ 
+ import com.datacube.service.ConnectionManager;
+-import com.datacube.spi.DataAccessor;
+-import com.datacube.spi.DatabaseProvider;
+-import com.datacube.spi.model.ConnConfig;
+-import com.datacube.spi.model.PagedResult;
+-import com.datacube.spi.model.TableRef;
++import com.datacube.service.ExportTarget;
++import com.datacube.spi.model.*;
++import java.io.*;
++import java.nio.file.*;
++import java.sql.*;
++import java.util.*;
++import java.util.concurrent.CancellationException;
++import java.util.concurrent.atomic.AtomicBoolean;
+ 
+-import java.io.File;
+-import java.sql.Connection;
+-import java.sql.SQLException;
+-import java.util.List;
+-
+-/**
+- * 单表导出编排：按 {@link ExportFormat} 分派到对应 writer / 外部工具。
+- *
+- * <p>数据来源统一用 {@link DataAccessor} 分页构造流式 {@link RowFeed}，
+- * 结构来自 {@link DatabaseProvider#ddlGenerator}，pg_dump 走外部进程。
+- */
++/** Pinned table export, dedicated single cursor, strict complete values and protected publication. */
+ public final class TableExporter {
+-
+-    private static final int PAGE = 500;
+-
+-    private TableExporter() {
++    private TableExporter(){}
++    public record Request(String connId,TableRef table,ExportContent content,ExportFormat format,
++                          SafeResultFilePublisher.Target target,ExportTarget source){
++        public Request(String connId,TableRef table,ExportContent content,ExportFormat format,SafeResultFilePublisher.Target target){
++            this(connId,table,content,format,target,null);
++        }
++        public Request{Objects.requireNonNull(connId);Objects.requireNonNull(table);Objects.requireNonNull(content);Objects.requireNonNull(format);Objects.requireNonNull(target);}
++        @Override public String toString(){return "TableExportRequest["+format+"]";}
+     }
+-
+-    public static void export(ConnectionManager conns, String connId, TableRef t,
+-                              ExportContent content, ExportFormat format, File out) throws Exception {
+-        switch (format) {
+-            case PG_DUMP -> {
+-                ConnConfig cfg = conns.config(connId);
+-                String pw = conns.cipher().decrypt(cfg.encryptedPassword());
+-                PgDumpRunner.run(cfg, pw, t, content, out);
+-            }
+-            case XLSX -> {
+-                Connection conn = conns.acquire(connId);
+-                DataAccessor da = conns.provider(connId).dataAccessor(conn);
+-                // Excel 仅导出数据
+-                XlsxWriter.write(out, columnsOf(da, t), pagingFeed(da, t));
+-            }
+-            case SQL -> {
+-                Connection conn = conns.acquire(connId);
+-                DatabaseProvider provider = conns.provider(connId);
+-                DataAccessor da = provider.dataAccessor(conn);
+-                String ddl = content.includesStructure()
+-                        ? provider.ddlGenerator(conn).tableDdl(t) : null;
+-                List<String> cols = content.includesData() ? columnsOf(da, t) : List.of();
+-                SqlScriptExporter.write(out, t, content, ddl, cols, pagingFeed(da, t), provider.dialect());
+-            }
++    /** Owns the selection-time subscription, even when no background producer is eventually submitted. */
++    public static final class Selection implements AutoCloseable {
++        private final ExportTarget snapshot;
++        private final ResultExportOperation operation;
++        private final AutoCloseable listener;
++        private final AtomicBoolean closed=new AtomicBoolean();
++        private Selection(ConnectionManager manager,String id){
++            snapshot=manager.captureExport(id);operation=new ResultExportOperation();
++            listener=snapshot.whenChanged(operation::invalidateTarget);
++            operation.requireBeforeClaim(this::validate);
+         }
++        public ExportTarget snapshot(){return snapshot;}
++        public ResultExportOperation operation(){return operation;}
++        public void validate(){operation.check();if(!snapshot.current())operation.invalidateTarget();operation.check();}
++        public void close(){if(closed.compareAndSet(false,true))try{listener.close();}catch(Exception failure){throw new IllegalStateException("Export listener release failed");}}
++        @Override public String toString(){return "TableExportSelection[redacted]";}
+     }
+-
+-    /** 取一行以读回列名（空表也能拿到列）。 */
+-    private static List<String> columnsOf(DataAccessor da, TableRef t) throws SQLException {
+-        PagedResult first = da.page(t, 0, 1, null, null);
+-        return first.columns();
++    public static Selection capture(ConnectionManager manager,String id){return new Selection(manager,id);}
++    @FunctionalInterface interface DumpJob{void run(ConnConfig cfg,String password,TableRef table,ExportContent content,File temporary)throws Exception;}
++    @FunctionalInterface interface OutputFactory{OutputStream open(Path temporary)throws Exception;}
++    public static void export(ConnectionManager manager,String id,TableRef table,ExportContent content,ExportFormat format,File out)throws Exception{
++        export(manager,new Request(id,table,content,format,SafeResultFilePublisher.capture(out.toPath())),new ResultExportOperation());
+     }
+-
+-    /** 分页遍历全表的流式 RowFeed。 */
+-    private static RowFeed pagingFeed(DataAccessor da, TableRef t) {
+-        return sink -> {
+-            long offset = 0;
+-            while (true) {
+-                PagedResult pr = da.page(t, offset, PAGE, null, null);
+-                for (List<Object> row : pr.rows()) {
+-                    sink.row(row);
++    public static Path export(ConnectionManager manager,Request request,ResultExportOperation operation)throws Exception{
++        return export(manager,request,operation,new SafeResultFilePublisher(),
++                (cfg,password,table,content,out)->PgDumpRunner.run(cfg,password,table,content,out,operation),Files::newOutputStream);
++    }
++    static Path export(ConnectionManager manager,Request request,ResultExportOperation operation,SafeResultFilePublisher publisher,DumpJob dump,OutputFactory output)throws Exception{
++        return export(manager,request,operation,publisher,dump,output,TableExportJdbcJob.Policy.defaults());
++    }
++    static Path export(ConnectionManager manager,Request request,ResultExportOperation operation,SafeResultFilePublisher publisher,DumpJob dump,OutputFactory output,TableExportJdbcJob.Policy policy)throws Exception{
++        operation.check();
++        ExportTarget snapshot=request.source()==null?manager.captureExport(request.connId()):request.source();
++        if(!snapshot.belongsTo(manager)||!snapshot.config().id().equals(request.connId()))
++            throw new TableExportFailure(TableExportFailure.Kind.TARGET_CHANGED);
++        AutoCloseable listener=snapshot.whenChanged(operation::invalidateTarget);
++        try{
++            Runnable validate=()->{operation.check();if(!snapshot.current())operation.invalidateTarget();operation.check();};
++            operation.requireBeforeClaim(validate);validate.run();
++            TableRef table=request.table();
++            if(table.schema()==null||table.schema().isEmpty()||table.name()==null||table.name().isEmpty()
++                    ||table.schema().indexOf('\0')>=0||table.name().indexOf('\0')>=0)throw new TableExportFailure(TableExportFailure.Kind.TARGET_CHANGED);
++            return publisher.publish(request.target(),operation,(temporary,token)->{
++                validate.run();
++                if(request.format()==ExportFormat.PG_DUMP){
++                    ConnConfig cfg=snapshot.config();String password=manager.cipher().decrypt(cfg.encryptedPassword());validate.run();
++                    dump.run(cfg,password,table,request.content(),temporary.toFile());validate.run();return;
+                 }
+-                if (!pr.hasMore()) break;
+-                offset += PAGE;
+-            }
+-        };
++                var job=new TableExportJdbcJob(snapshot,operation,policy);
++                job.run(manager,()->{
++                    var dialect=snapshot.provider().dialect();job.check();
++                    String ddl=request.format()==ExportFormat.SQL&&request.content().includesStructure()?StrictTableDdl.read(job,table,dialect):null;
++                    boolean data=request.format()==ExportFormat.XLSX||request.content().includesData();
++                    if(!data){job.check();OutputStream stream=job.output(output.open(temporary));job.check();SqlScriptExporter.write(stream,table,request.content(),ddl,List.of(),sink->{},dialect);return null;}
++                    String sql="SELECT * FROM "+StrictTableDdl.qualified(table,dialect);
++                    try(var cursor=job.openCursor(sql,null)){
++                        job.check();ResultSetMetaData metadata=cursor.rows.getMetaData();job.check();
++                        List<String> columns=TableExportValues.columns(metadata,request.format(),job);
++                        RowFeed feed=sink->{long count=0;while(StrictTableDdl.next(cursor.rows,job)){
++                            TableExportValues.rowNumber(++count,request.format());
++                            List<Object> values=TableExportValues.row(cursor.rows,metadata,columns.size(),request.format(),snapshot.config().type(),dialect,job);
++                            job.check();sink.row(values);job.check();
++                        }};
++                        job.check();OutputStream stream=job.output(output.open(temporary));job.check();
++                        if(request.format()==ExportFormat.XLSX)XlsxWriter.write(stream,columns,feed);
++                        else SqlScriptExporter.write(stream,table,request.content(),ddl,columns,feed,dialect);
++                    }
++                    return null;
++                });
++                validate.run();
++            });
++        }catch(CancellationException cancelled){operation.check();throw cancelled;}
++        finally{listener.close();}
+     }
+ }
+diff --git a/src/com/datacube/export/XlsxWriter.java b/src/com/datacube/export/XlsxWriter.java
+index 8ae6fe3b..c2d4a1b8 100644
+--- a/src/com/datacube/export/XlsxWriter.java
++++ b/src/com/datacube/export/XlsxWriter.java
+@@ -5,6 +5,7 @@ import java.io.File;
+ import java.io.FileOutputStream;
+ import java.io.IOException;
+ import java.io.OutputStreamWriter;
++import java.io.OutputStream;
+ import java.io.Writer;
+ import java.nio.charset.StandardCharsets;
+ import java.util.List;
+@@ -56,9 +57,19 @@ public final class XlsxWriter {
+ 
+     private static void writePackage(File out, List<String> columns, RowFeed feed,
+                                      XlsxLayout layout) throws Exception {
++        writePackage(new FileOutputStream(out), columns, feed, layout);
++    }
++
++    /** Caller supplies a destination stream; package serialization owns and closes it. */
++    static void write(OutputStream out, List<String> columns, RowFeed feed) throws Exception {
++        writePackage(out, columns, feed, null);
++    }
++
++    private static void writePackage(OutputStream out, List<String> columns, RowFeed feed,
++                                     XlsxLayout layout) throws Exception {
+         boolean styled = layout != null;
+         try (ZipOutputStream zip = new ZipOutputStream(
+-                new BufferedOutputStream(new FileOutputStream(out)))) {
++                new BufferedOutputStream(out))) {
+             String types = contentTypes();
+             String relationships = workbookRels();
+             String workbookXml = workbook();
+diff --git a/src/com/datacube/fx/AppShell.java b/src/com/datacube/fx/AppShell.java
+index a856a241..0e513fcf 100644
+--- a/src/com/datacube/fx/AppShell.java
++++ b/src/com/datacube/fx/AppShell.java
+@@ -74,6 +74,7 @@ public final class AppShell {
+     private final TableDesignService designSvc = new TableDesignService(connMgr);
+     private final SessionContext session = new SessionContext();
+     private final FxTaskRunner tasks = new FxTaskRunner();
++    private final TableExportTasks tableExports = new TableExportTasks();
+     private final FxTaskScope fileOpenTasks = tasks.scope();
+     private final SqlScriptFileStore sqlScriptFileStore = new SqlScriptFileStore();
+     private final RecentSqlFiles recentSqlFiles = new RecentSqlFiles(
+@@ -272,6 +273,7 @@ public final class AppShell {
+             return result;
+         }
+         if (shutdownAttempt != null) return shutdownAttempt.copy();
++        tableExports.freeze();
+         sqlFileEntry.suspend();
+         var attempt = new java.util.concurrent.CompletableFuture<ShutdownOutcome>();
+         shutdownAttempt = attempt;
+@@ -285,6 +287,7 @@ public final class AppShell {
+             }
+             if (failure != null || outcome == ShutdownOutcome.CANCELLED) {
+                 sqlFileEntry.resume();
++                tableExports.resume();
+                 shutdownAttempt = null;
+             }
+             if (failure != null) attempt.completeExceptionally(failure);
+@@ -300,6 +303,7 @@ public final class AppShell {
+     }
+ 
+     private void shutdownRemaining() {
++        tableExports.stopAndAwait();
+         BestEffortCloseSequence.run(
+                 this::closeSqlFilesOnFx,
+                 () -> sqlDrafts.ifInitialized(SqlDraftUi::closeFromBackground),
+@@ -310,6 +314,18 @@ public final class AppShell {
+                 connMgr::closeAll);
+     }
+ 
++    ExportDialog.ExportTask startTableExport(String connId, TableRef table,
++            com.datacube.export.ExportContent content, com.datacube.export.ExportFormat format,
++            Path chosen, ExportDialog.ExportUi ui, ExportDialog.ExportJob job) {
++        return ExportDialog.startExport(connId, table, content, format, chosen, tasks, ui, job, tableExports);
++    }
++    ExportDialog.ExportTask startTableExport(com.datacube.export.TableExporter.Selection selection,
++            String connId, TableRef table, com.datacube.export.ExportContent content,
++            com.datacube.export.ExportFormat format, Path chosen, ExportDialog.ExportUi ui,
++            ExportDialog.ExportJob job) {
++        return ExportDialog.startExport(selection, connId, table, content, format, chosen, tasks, ui, job, tableExports);
++    }
++
+     private void closeSqlFilesOnFx() {
+         // Irreversible cleanup starts only inside destructive teardown; every owner gets a close attempt.
+         var filesClosed = new java.util.concurrent.CompletableFuture<Void>();
+@@ -845,7 +861,7 @@ public final class AppShell {
+         @Override
+         public void exportTable(String connId, TableRef table) {
+             ExportDialog.show(connMgr, connId, table,
+-                    root.getScene() == null ? null : root.getScene().getWindow(), tasks);
++                    root.getScene() == null ? null : root.getScene().getWindow(), tasks, tableExports);
+         }
+ 
+         @Override
+diff --git a/src/com/datacube/fx/ExportDialog.java b/src/com/datacube/fx/ExportDialog.java
+index ff7f9aec..555fb7f3 100644
+--- a/src/com/datacube/fx/ExportDialog.java
++++ b/src/com/datacube/fx/ExportDialog.java
+@@ -3,6 +3,8 @@ package com.datacube.fx;
+ import com.datacube.export.ExportContent;
+ import com.datacube.export.ExportFormat;
+ import com.datacube.export.TableExporter;
++import com.datacube.export.SafeResultFilePublisher;
++import com.datacube.export.ResultExportOperation;
+ import com.datacube.fx.task.FxTaskRunner;
+ import com.datacube.fx.task.FxTaskScope;
+ import com.datacube.service.ConnectionManager;
+@@ -20,7 +22,13 @@ import javafx.stage.FileChooser;
+ import javafx.stage.Window;
+ 
+ import java.io.File;
++import java.nio.file.Path;
++import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.CancellationException;
++import java.util.concurrent.atomic.AtomicInteger;
+ import java.util.concurrent.atomic.AtomicBoolean;
++import javafx.event.ActionEvent;
++import javafx.scene.control.Button;
+ 
+ /**
+  * 单表导出对话框：选择内容（结构/数据/两者）与格式（SQL/Excel/pg_dump），
+@@ -33,6 +41,14 @@ public final class ExportDialog {
+ 
+     public static void show(ConnectionManager conns, String connId, TableRef table, Window owner,
+                             FxTaskRunner runner) {
++        show(conns, connId, table, owner, runner, null);
++    }
++    static void show(ConnectionManager conns, String connId, TableRef table, Window owner,
++                     FxTaskRunner runner, TableExportTasks exports) {
++        if (exports != null && !exports.admitting()) return;
++        var selection = TableExporter.capture(conns, connId);
++        boolean handedOff = false;
++        try {
+         Dialog<ButtonType> dialog = new Dialog<>();
+         dialog.setTitle("导出表: " + table.qualified());
+         dialog.setHeaderText(null);
+@@ -52,8 +68,8 @@ public final class ExportDialog {
+         RadioButton fXlsx = radio(formatGroup, "Excel (.xlsx)", ExportFormat.XLSX);
+         fSql.setSelected(true);
+         // pg_dump 备份仅 PostgreSQL 可用；其它库不提供该选项
+-        boolean isPg = conns.config(connId).type() == com.datacube.spi.model.DbType.POSTGRESQL;
+-        RadioButton fDump = isPg ? radio(formatGroup, "pg_dump 备份 (.sql)", ExportFormat.PG_DUMP) : null;
++        boolean isPg = selection.snapshot().config().type() == com.datacube.spi.model.DbType.POSTGRESQL;
++        RadioButton fDump = isPg ? radio(formatGroup, "pg_dump 备份 (.sql，需 pg_dump/libpq 16+)", ExportFormat.PG_DUMP) : null;
+ 
+         Label xlsxHint = new Label("提示: Excel 仅导出数据。");
+         xlsxHint.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
+@@ -98,58 +114,213 @@ public final class ExportDialog {
+         File out = chooser.showSaveDialog(owner);
+         if (out == null) return;
+ 
+-        runExport(conns, connId, table, content, format, out, runner);
++        startExport(selection, connId, table, content, format, out.toPath(), runner, new DialogUi(owner, table),
++                (request, operation) -> TableExporter.export(conns, request, operation), exports);
++        handedOff = true;
++        } finally { if (!handedOff) selection.close(); }
+     }
+ 
+-    private static void runExport(ConnectionManager conns, String connId, TableRef table,
+-                                  ExportContent content, ExportFormat format, File out,
+-                                  FxTaskRunner runner) {
+-        FxTaskScope task = runner.scope();
+-        AtomicBoolean completed = new AtomicBoolean();
+-        Alert progress = new Alert(Alert.AlertType.INFORMATION);
+-        progress.setTitle("导出");
+-        progress.setHeaderText(null);
+-        progress.setContentText("正在导出 " + table.qualified() + " ...");
+-        progress.getButtonTypes().setAll(ButtonType.CANCEL);
+-        progress.setOnHidden(event -> {
+-            if (!completed.get()) task.close();
+-        });
+-        progress.show();
++    enum Status { SUCCEEDED, FAILED, CANCELLED }
++    record Outcome(Status status, Path path, String message, java.util.List<Path> cleanupResidues) {
++        Outcome(Status status, Path path, String message) { this(status, path, message, java.util.List.of()); }
++    }
++    interface ExportUi {
++        boolean confirmOverwrite(Path target);
++        void running(ExportTask task);
++        void cancelling(boolean accepted);
++        default void cleanupPending() { cancelling(true); }
++        void finished(Outcome outcome);
++    }
++    @FunctionalInterface interface ExportJob {
++        Path write(TableExporter.Request request, ResultExportOperation operation) throws Exception;
++    }
++
++    /** Local lifecycle seam, also used by the actual dialog after the native file chooser returns. */
++    static ExportTask startExport(ConnectionManager conns, String connId, TableRef table,
++                                  ExportContent content, ExportFormat format, Path chosen,
++                                  FxTaskRunner runner, ExportUi ui) {
++        return startExport(TableExporter.capture(conns, connId), connId, table, content, format, chosen, runner, ui,
++                (request, operation) -> TableExporter.export(conns, request, operation), null);
++    }
+ 
+-        task.submit(() -> {
++    static ExportTask startExport(String connId, TableRef table, ExportContent content, ExportFormat format,
++                                  Path chosen, FxTaskRunner runner, ExportUi ui, ExportJob job) {
++        return startExport(connId, table, content, format, chosen, runner, ui, job, null);
++    }
++    static ExportTask startExport(String connId, TableRef table, ExportContent content, ExportFormat format,
++                                  Path chosen, FxTaskRunner runner, ExportUi ui, ExportJob job, TableExportTasks exports) {
++        return startExport(null, connId, table, content, format, chosen, runner, ui, job, exports);
++    }
++    static ExportTask startExport(TableExporter.Selection selection, String connId, TableRef table,
++                                  ExportContent content, ExportFormat format, Path chosen,
++                                  FxTaskRunner runner, ExportUi ui, ExportJob job, TableExportTasks exports) {
++        ExportTask task = null;
++        boolean handedOff = false;
++        try {
++            if (chosen == null || exports != null && !exports.admitting()) return null;
++            if (selection != null) selection.validate();
++            var target = SafeResultFilePublisher.capture(chosen);
++            if (target.existed() && !ui.confirmOverwrite(target.path())) return null;
++            if (selection != null) selection.validate();
++            var request = new TableExporter.Request(connId, table, content, format, target,
++                    selection == null ? null : selection.snapshot());
++            task = new ExportTask(runner.scope(), ui, selection == null ? new ResultExportOperation() : selection.operation(),
++                    selection == null ? () -> {} : selection::close);
++            handedOff = true;
++            if (exports != null && !exports.register(task)) {
++                task.finish(new Outcome(Status.FAILED, null, "应用正在退出，导出任务未启动"));
++                return task;
++            }
++            ExportTask accepted = task;
++            ui.running(accepted);
++            runner.submit(() -> accepted.run(() -> job.write(request, accepted.operation)));
++            return accepted;
++        } catch (Exception failure) {
++            if (task != null) task.finish(new Outcome(Status.FAILED, null, message(failure)));
++            else ui.finished(new Outcome(Status.FAILED, null, message(failure)));
++            return task;
++        } catch (Error fatal) {
++            // No producer started if admission/UI/submission failed. Release this queued owner's physical promise.
++            if (task != null) task.finish(new Outcome(Status.FAILED, null, "导出失败，未发布结果文件"));
++            throw fatal;
++        } finally { if (!handedOff && selection != null) selection.close(); }
++    }
++
++    static final class ExportTask {
++        private final ResultExportOperation operation;
++        private final AtomicInteger phase = new AtomicInteger(); // queued, running, settled
++        private final AtomicBoolean cancellationAccepted = new AtomicBoolean();
++        private final FxTaskScope callbacks;
++        private final ExportUi ui;
++        private final Runnable releaseSelection;
++        final CompletableFuture<Outcome> completion = new CompletableFuture<>();
++        final CompletableFuture<Void> physicalCompletion = new CompletableFuture<>();
++        private ExportTask(FxTaskScope callbacks, ExportUi ui, ResultExportOperation operation, Runnable releaseSelection) {
++            this.operation = operation;
++            this.releaseSelection = releaseSelection;
++            this.callbacks = callbacks; this.ui = ui;
++            operation.onCleanupPending(() -> callbacks.dispatch(ui::cleanupPending));
++            completion.thenAccept(outcome -> callbacks.dispatch(() -> {
++                try { ui.finished(outcome); } finally { callbacks.close(); }
++            }));
++        }
++        boolean cancel() {
++            return requestCancellation(true);
++        }
++        void requestStop() { requestCancellation(false); }
++        private boolean requestCancellation(boolean onFx) {
++            if (phase.get() == 2) return false;
++            boolean accepted = cancellationAccepted.get() || operation.cancelled() || operation.cancel();
++            if (accepted) cancellationAccepted.set(true);
++            if (onFx) ui.cancelling(accepted);
++            else callbacks.dispatch(() -> ui.cancelling(accepted));
++            if (accepted && phase.compareAndSet(0, 2)) {
++                releaseSelection.run();
++                finish(new Outcome(Status.CANCELLED, null, "取消请求已生效，未发布结果文件"));
++                physicalCompletion.complete(null);
++            }
++            return accepted;
++        }
++        void ownerClosed() { cancel(); callbacks.close(); }
++        private void run(java.util.concurrent.Callable<Path> job) {
++            if (!phase.compareAndSet(0, 1)) return;
++            try { runStarted(job); }
++            finally { releaseSelection.run(); physicalCompletion.complete(null); }
++        }
++        private void runStarted(java.util.concurrent.Callable<Path> job) {
++            Outcome outcome;
+             try {
+-                TableExporter.export(conns, connId, table, content, format, out);
+-                return out;
++                operation.check();
++                Path published = job.call();
++                if (!operation.published()) throw new IllegalStateException("Export was not published");
++                var residues = operation.cleanupResidues();
++                outcome = new Outcome(Status.SUCCEEDED, published, residues.isEmpty() ? "导出完成"
++                        : "已发布，但辅助临时文件清理失败，请核对:\n" + residues, residues);
++            } catch (CancellationException cancelled) {
++                outcome = new Outcome(Status.CANCELLED, null, "取消请求已生效，未发布结果文件");
+             } catch (Exception failure) {
+-                if (out.exists()) out.delete();
+-                throw failure;
++                outcome = new Outcome(Status.FAILED, null, message(failure));
++            } catch (Error fatal) {
++                try {
++                    finish(new Outcome(Status.FAILED, null, operation.cleanupResidues().isEmpty()
++                            ? "导出失败，未发布结果文件" : "导出失败，未发布结果文件；临时文件未清理，请核对: " + operation.cleanupResidues()));
++                } finally {
++                    // submit captures thrown Error in its Future; explicitly preserve the scope's application handler semantics.
++                    Thread worker = Thread.currentThread();
++                    worker.getUncaughtExceptionHandler().uncaughtException(worker, fatal);
++                }
++                return;
+             }
+-        }, exported -> {
+-            completed.set(true);
+-            task.close();
+-            progress.close();
+-            showResult(null, exported);
+-        }, failure -> {
+-            completed.set(true);
+-            task.close();
+-            progress.close();
+-            showResult(message(failure), out);
+-        });
++            finish(outcome);
++        }
++        private void finish(Outcome outcome) {
++            int previous = phase.getAndSet(2);
++            if (outcome.status() != Status.SUCCEEDED) operation.cancel();
++            completion.complete(outcome);
++            if (previous == 0) { releaseSelection.run(); physicalCompletion.complete(null); }
++        }
+     }
+ 
+-    private static void showResult(String error, File out) {
+-        Alert done = new Alert(error == null ? Alert.AlertType.INFORMATION : Alert.AlertType.ERROR);
+-        done.setTitle("导出");
+-        done.setHeaderText(null);
+-        done.setContentText(error == null
+-                ? "导出完成:\n" + out.getAbsolutePath()
+-                : "导出失败:\n" + error);
+-        done.showAndWait();
++    private static final class DialogUi implements ExportUi {
++        private final Window owner;
++        private final TableRef table;
++        private Alert progress;
++        private boolean finishing;
++        private DialogUi(Window owner, TableRef table) { this.owner = owner; this.table = table; }
++        public boolean confirmOverwrite(Path target) {
++            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
++                    "导出成功后替换此文件；失败时保留原文件。\n" + target, ButtonType.OK, ButtonType.CANCEL);
++            if (owner != null) confirm.initOwner(owner);
++            confirm.setTitle("确认替换文件");
++            confirm.setHeaderText("目标文件已存在");
++            return confirm.showAndWait().filter(ButtonType.OK::equals).isPresent();
++        }
++        public void running(ExportTask task) {
++            progress = new Alert(Alert.AlertType.INFORMATION);
++            if (owner != null) progress.initOwner(owner);
++            progress.setTitle("导出"); progress.setHeaderText(null);
++            progress.setContentText("正在导出 " + table.qualified() + " ...");
++            progress.getButtonTypes().setAll(ButtonType.CANCEL);
++            ((Button) progress.getDialogPane().lookupButton(ButtonType.CANCEL)).addEventFilter(ActionEvent.ACTION,
++                    event -> { event.consume(); task.cancel(); });
++            progress.setOnCloseRequest(event -> {
++                if (!finishing) { event.consume(); task.cancel(); }
++            });
++            progress.setOnHidden(event -> { if (!finishing) task.ownerClosed(); });
++            progress.show();
++        }
++        public void cancelling(boolean accepted) {
++            if (progress != null) progress.setContentText(accepted
++                    ? "正在取消，等待导出任务返回..." : "正在发布文件，请等待结果...");
++        }
++        public void cleanupPending() {
++            if (progress != null) progress.setContentText("导出尚未结束，正在等待自有进程、连接和输出资源停止，请勿重试或强制退出...");
++        }
++        public void finished(Outcome outcome) {
++            finishing = true;
++            if (progress != null) progress.close();
++            Alert done = new Alert(outcome.status() == Status.FAILED ? Alert.AlertType.ERROR
++                    : !outcome.cleanupResidues().isEmpty() ? Alert.AlertType.WARNING : Alert.AlertType.INFORMATION);
++            if (owner != null) done.initOwner(owner);
++            done.setTitle("导出"); done.setHeaderText(null);
++            done.setContentText(outcome.status() == Status.SUCCEEDED
++                    ? outcome.message() + ":\n" + outcome.path() : outcome.message());
++            done.showAndWait();
++        }
+     }
+ 
+     private static String message(Throwable failure) {
+-        String message = failure.getMessage();
+-        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
++        if (failure instanceof com.datacube.export.TableExportFailure safe) return safe.getMessage();
++        if (failure instanceof com.datacube.export.PgDumpRunner.Failure dump) return dump.userMessage();
++        if (failure instanceof SafeResultFilePublisher.Failure safe) return switch (safe.stage()) {
++            case PREPARE -> "无法安全保存：请选择本地普通文件";
++            case TARGET_CHANGED -> "目标文件已改变，请重新选择并确认";
++            case TARGET_BUSY -> "目标文件正在导出，请稍后重试";
++            case WRITE, XML_CHARACTER -> "导出写入失败，原目标文件未修改";
++            case PUBLISH -> "无法原子发布导出文件，原目标文件未修改";
++            case CLEANUP -> "导出未完成，临时文件清理失败，请核对: " + safe.residualPaths();
++        };
++        return "导出任务未完成，未发布结果文件";
+     }
+ 
+     private static RadioButton radio(ToggleGroup group, String text, Object userData) {
+diff --git a/src/com/datacube/fx/SqlResultExportCoordinator.java b/src/com/datacube/fx/SqlResultExportCoordinator.java
+index 7823eca1..dd052d83 100644
+--- a/src/com/datacube/fx/SqlResultExportCoordinator.java
++++ b/src/com/datacube/fx/SqlResultExportCoordinator.java
+@@ -107,8 +107,12 @@ final class SqlResultExportCoordinator implements AutoCloseable {
+                 try { return job.write(request, operation); }
+                 finally { session.finish(operation); }
+             }, published -> {
+-                if (ownsStatus(operation, completionRevision))
+-                    status.accept("已导出: " + published, false);
++                if (ownsStatus(operation, completionRevision)) {
++                    var residues = operation.cleanupResidues();
++                    status.accept(residues.isEmpty() ? "已导出: " + published
++                            : "已发布，但辅助临时文件清理失败，请核对: " + residues + "；结果文件: " + published,
++                            !residues.isEmpty());
++                }
+             }, failure -> {
+                 if (ownsStatus(operation, completionRevision))
+                     status.accept(failureMessage(failure), true);
+@@ -168,7 +172,7 @@ final class SqlResultExportCoordinator implements AutoCloseable {
+                 case XML_CHARACTER -> "XML 无法表示部分字符，原目标文件未修改";
+                 case WRITE -> "导出写入失败，原目标文件未修改";
+                 case PUBLISH -> "无法原子发布导出文件，原目标文件未修改";
+-                case CLEANUP -> "导出未完成，临时文件清理失败，请手动处理: " + safe.temporaryPath();
++                case CLEANUP -> "导出未完成，临时文件清理失败，请手动处理: " + safe.residualPaths();
+             };
+         }
+         return "导出失败，未发布结果文件";
+diff --git a/src/com/datacube/provider/oracle/OracleSqlDialect.java b/src/com/datacube/provider/oracle/OracleSqlDialect.java
+index 76c800c4..1e858abd 100644
+--- a/src/com/datacube/provider/oracle/OracleSqlDialect.java
++++ b/src/com/datacube/provider/oracle/OracleSqlDialect.java
+@@ -76,6 +76,7 @@ public final class OracleSqlDialect implements SqlDialect {
+         String s = v.toString();
+         return "'" + s.replace("'", "''") + "'";
+     }
++    @Override public boolean supportsBinaryLiteral(){return true;}
+ 
+     @Override
+     public Map<String, String> columnComments(Connection conn, String schema, String table) throws SQLException {
+diff --git a/src/com/datacube/provider/postgres/PgSqlDialect.java b/src/com/datacube/provider/postgres/PgSqlDialect.java
+index 361b88e5..fb272d64 100644
+--- a/src/com/datacube/provider/postgres/PgSqlDialect.java
++++ b/src/com/datacube/provider/postgres/PgSqlDialect.java
+@@ -52,6 +52,7 @@ public final class PgSqlDialect implements SqlDialect {
+         String s = v.toString();
+         return "'" + s.replace("'", "''") + "'";
+     }
++    @Override public boolean supportsBinaryLiteral(){return true;}
+ 
+     @Override
+     public Map<String, String> columnComments(Connection conn, String schema, String table) throws SQLException {
+diff --git a/src/com/datacube/service/ConnectionManager.java b/src/com/datacube/service/ConnectionManager.java
+index 0d82e763..673c16a9 100644
+--- a/src/com/datacube/service/ConnectionManager.java
++++ b/src/com/datacube/service/ConnectionManager.java
+@@ -38,6 +38,8 @@ public final class ConnectionManager {
+     private final Map<String, Long> configVersions = new HashMap<>();
+     private long nextConfigVersion;
+     private final Map<String, java.util.Set<Runnable>> configListeners = new HashMap<>();
++    private final Map<String, DatabaseProvider> exportProviders = new HashMap<>();
++    private final Map<String, java.util.Set<Runnable>> exportListeners = new HashMap<>();
+ 
+     public ConnectionManager(CredentialCipher cipher) {
+         this(cipher, ProviderRegistry::forType);
+@@ -59,22 +61,58 @@ public final class ConnectionManager {
+     /** 注册/更新连接配置（供 acquire 惰性建连使用）。 */
+     public synchronized void register(ConnConfig cfg) {
+         ConnConfig previous = configs.get(cfg.id());
+-        if (!cfg.equals(previous)) configVersions.put(cfg.id(), ++nextConfigVersion);
++        DatabaseProvider recorded = exportProviders.get(cfg.id());
++        boolean providerChanged = recorded != null && (cfg.type() == DbType.REDIS
++                || recorded != providerResolver.apply(cfg.type()));
++        boolean changed = !cfg.equals(previous) || providerChanged;
++        if (changed) {
++            configVersions.put(cfg.id(), ++nextConfigVersion);
++            exportProviders.remove(cfg.id());
++            // Intent only; wake export cancellation before a legacy shared close can block.
++            notifyExportChanged(cfg.id());
++        }
+         if (previous != null && !previous.equals(cfg)) release(cfg.id());
+         configs.put(cfg.id(), cfg);
+         if (cfg.type() == DbType.REDIS) redis.register(cfg);
+-        if (!cfg.equals(previous)) notifyConfigChanged(cfg.id());
++        if (changed) notifyConfigChanged(cfg.id());
+     }
+ 
+     /** 移除配置并关闭其活动连接。 */
+     public synchronized void unregister(String connId) {
++        configVersions.put(connId, ++nextConfigVersion);
++        exportProviders.remove(connId);
++        notifyExportChanged(connId);
+         release(connId);
+         redis.unregister(connId);
+         configs.remove(connId);
+-        configVersions.put(connId, ++nextConfigVersion);
+         notifyConfigChanged(connId);
+     }
+ 
++    public synchronized ExportTarget captureExport(String connId) {
++        ConnConfig cfg=requireConfig(connId);
++        DatabaseProvider snapshot=provider(cfg);
++        exportProviders.put(connId,snapshot);
++        return new ExportTarget(this,cfg,snapshot,configVersions.getOrDefault(connId,-1L));
++    }
++    synchronized boolean exportCurrent(ExportTarget target) {
++        if(!target.belongsTo(this))return false;
++        ConnConfig cfg=target.config();
++        return cfg.equals(configs.get(cfg.id())) && target.version()==configVersions.getOrDefault(cfg.id(),-1L)
++                && target.provider()==providerResolver.apply(cfg.type());
++    }
++    synchronized AutoCloseable subscribeExport(ExportTarget target,Runnable intent) {
++        Objects.requireNonNull(intent);
++        if(!target.belongsTo(this))throw new IllegalArgumentException("Export target authority changed");
++        String id=target.config().id();
++        exportListeners.computeIfAbsent(id,ignored->new java.util.HashSet<>()).add(intent);
++        if(!exportCurrent(target))intent.run(); // Closes the capture/subscribe window while still under the same lock.
++        var removed=new java.util.concurrent.atomic.AtomicBoolean();
++        return ()->{if(removed.compareAndSet(false,true))synchronized(ConnectionManager.this){
++            var listeners=exportListeners.get(id);
++            if(listeners!=null){listeners.remove(intent);if(listeners.isEmpty())exportListeners.remove(id);}
++        }};
++    }
++
+     public synchronized ConnConfig config(String connId) {
+         return configs.get(connId);
+     }
+@@ -115,6 +153,12 @@ public final class ConnectionManager {
+             catch (RuntimeException ignored) { LOG.fine("连接安全状态通知失败"); }
+         }
+     }
++    private void notifyExportChanged(String id) {
++        for (Runnable intent : java.util.List.copyOf(exportListeners.getOrDefault(id, java.util.Set.of()))) {
++            try { intent.run(); }
++            catch (RuntimeException ignored) { LOG.fine("导出目标通知失败"); }
++        }
++    }
+ 
+     synchronized long configVersion(ConnConfig snapshot) {
+         if (!snapshot.equals(configs.get(snapshot.id()))) throw new IllegalStateException(WriteTarget.CHANGED);
+@@ -290,7 +334,7 @@ public final class ConnectionManager {
+                 cfg.database(), cfg.username(), cfg.encryptedPassword(), props);
+     }
+ 
+-    Connection openDedicated(ConnConfig cfg, DatabaseProvider provider) throws SQLException {
++    public Connection openDedicated(ConnConfig cfg, DatabaseProvider provider) throws SQLException {
+         return provider.connectionFactory().open(withPlainPassword(cfg));
+     }
+ 
+@@ -306,7 +350,7 @@ public final class ConnectionManager {
+         try {
+             c.close();
+         } catch (SQLException e) {
+-            LOG.fine("关闭连接异常: " + e.getMessage());
++            LOG.fine("关闭连接异常");
+         }
+     }
+ }
+diff --git a/src/com/datacube/spi/SqlDialect.java b/src/com/datacube/spi/SqlDialect.java
+index 2183c2b5..41849ab6 100644
+--- a/src/com/datacube/spi/SqlDialect.java
++++ b/src/com/datacube/spi/SqlDialect.java
+@@ -74,6 +74,7 @@ public interface SqlDialect {
+      * 使 {@code export.SqlScriptExporter} 不出现任何数据库专属语法。
+      */
+     String sqlLiteral(Object v);
++    default boolean supportsBinaryLiteral(){return false;}
+ 
+     /**
+      * 查询指定表的列注释（列名 → 注释）；无注释或不支持时返回空 Map。
+diff --git a/test/com/datacube/fx/SqlResultExportCoordinatorTest.java b/test/com/datacube/fx/SqlResultExportCoordinatorTest.java
+index c0cf6755..2af9f7ab 100644
+--- a/test/com/datacube/fx/SqlResultExportCoordinatorTest.java
++++ b/test/com/datacube/fx/SqlResultExportCoordinatorTest.java
+@@ -40,6 +40,33 @@ class SqlResultExportCoordinatorTest {
+         }
+         @Override public boolean confirmOverwrite(Path path) { return overwrite; }
+     }
++    @Test void queryPublicationReportsAuxiliaryCleanupWarningWithActualResidualPath() throws Exception {
++        try (FxTaskRunner runner = new FxTaskRunner()) {
++            FxTaskScope tasks = runner.scope();
++            var message = new AtomicReference<String>();
++            var warning = new AtomicBoolean();
++            var done = new CountDownLatch(1);
++            var coordinator = new SqlResultExportCoordinator(tasks, this::snapshot, () -> 0L,
++                    (text, error) -> { message.set(text); warning.set(error); if (!text.equals("导出中...")) done.countDown(); },
++                    text -> true, new Ui(), (request, operation) -> TableExportTestJobs.cleanupWarningPublisher().publish(
++                            request.target(), operation, (temporary, token) -> QueryResultFileWriter.write(temporary,
++                                    request.format(), request.snapshot(), request.selection().scope(),
++                                    request.selection().displayConfirmed(), request.table(), token)));
++            try {
++                Future<?> future = FxUiTestSupport.call(() -> coordinator.export(QueryResultFileWriter.Format.CSV));
++                future.get(5, TimeUnit.SECONDS); assertTrue(done.await(5, TimeUnit.SECONDS));
++                assertTrue(Files.readString(directory.resolve("result.csv")).contains("2"));
++                Path residue;
++                try (var entries = Files.list(directory)) {
++                    residue = entries.filter(path -> path.getFileName().toString().endsWith(".identity")).findFirst().orElseThrow();
++                }
++                assertTrue(Files.isSameFile(directory.resolve("result.csv"), residue));
++                assertTrue(message.get().contains("已发布，但辅助临时文件清理失败"));
++                assertTrue(message.get().contains(residue.toRealPath().toString())); assertTrue(warning.get());
++                assertFalse(message.get().contains("synthetic witness"));
++            } finally { coordinator.close(); tasks.close(); }
++        }
++    }
+     @Test void cancellingEitherDialogDoesNotSubmitAndInsertUsesCapturedScope() throws Exception {
+         try (FxTaskRunner runner = new FxTaskRunner()) {
+             FxTaskScope tasks = runner.scope();

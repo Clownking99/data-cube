@@ -1,0 +1,103 @@
+/*
+ * 主题基座样式：明暗两套主题共享的结构性规则。
+ *
+ * 仅在此定义"用到哪些颜色变量"，具体色值由 theme-light.css / theme-dark.css
+ * 在 .root 上以查找色（looked-up color）形式提供，从而同一套规则随主题变化。
+ * 通过 Scene.getStylesheets() 与对应主题文件一并加载（见 ThemeManager）。
+ */
+
+.root {
+    -fx-font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+    -fx-font-size: 13px;
+}
+
+/* Discovery forms need readable empty-field guidance in both themes and focus states. */
+#favorites-filter, #favorites-name, #favorites-group, #favorites-sql,
+#metadata-search-query {
+    -fx-prompt-text-fill: -brand-fg-dim;
+}
+
+/* Keep the read-only draft preview guidance visible, including focused state. */
+#draft-manager-sql {
+    -fx-prompt-text-fill: -brand-fg-dim;
+}
+
+/* The permanent tree search entry must remain discoverable in both themes. */
+#connection-tree-find-query,
+#sql-result-search,
+#open-tabs-query,
+#sql-history-filter,
+#draft-manager-filter,
+#sql-connection-query,
+#recent-sql-query,
+#recent-sql-path,
+#schema-object-query,
+#schema-object-preview,
+#sql-history-preview {
+    -fx-prompt-text-fill: -brand-fg-dim;
+}
+
+/* Read-only detail searches must stay discoverable even while the empty field is focused. */
+#result-row-query, #result-row-find-query, #result-cell-find-query, #result-row-locate-query,
+#ddl-view-pane #sql-find-query, #sql-script-find-query, #sql-script-sql-filter {
+    -fx-prompt-text-fill: -brand-fg-dim;
+}
+
+/* Find keeps focus in its query; the selected body match must still be visible. */
+#result-cell-text, #result-row-text, #sql-script-detail-sql, #sql-script-detail-error {
+    -fx-highlight-fill: -brand-accent-solid;
+    -fx-highlight-text-fill: white;
+}
+
+/* ── 顶部工具栏 ── */
+.top-bar {
+    -fx-background-color: -brand-surface;
+    -fx-border-color: transparent transparent -brand-border transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+/* 顶栏按钮：扁平风格 + 主题色悬停，与工具栏融为一体 */
+.top-bar .button {
+    -fx-background-color: transparent;
+    -fx-text-fill: -brand-fg;
+    -fx-background-radius: 6;
+    -fx-padding: 4 10 4 10;
+    -fx-cursor: hand;
+}
+.top-bar .button:hover {
+    -fx-background-color: rgba(108, 92, 231, 0.14);
+}
+.top-bar .button:armed {
+    -fx-background-color: rgba(108, 92, 231, 0.24);
+}
+.top-bar .separator .line {
+    -fx-border-color: -brand-border;
+    -fx-border-width: 0 1 0 0;
+}
+
+.brand-title {
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -brand-fg;
+}
+
+/* ── 品牌文字（Text 节点用 -fx-fill）──
+ * 注意：由代码 setFill 设定的值优先级高于 CSS，故这些 Text 不得再 setFill。 */
+.brand-wordmark { -fx-fill: -brand-fg; }
+.brand-subtitle { -fx-fill: -brand-fg-muted; }
+.brand-slogan   { -fx-fill: -brand-fg-muted; }
+
+/* ── "关于"对话框卡片 ── */
+.about-card {
+    -fx-background-color: -brand-bg;
+}
+
+.tag-chip {
+    -fx-text-fill: -brand-accent;
+    -fx-background-color: rgba(108, 92, 231, 0.14);
+    -fx-border-color: rgba(108, 92, 231, 0.25);
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 3 10 3 10;
+    -fx-font-size: 11px;
+}

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.export.QueryXlsxExportTest" tests="5" skipped="0" failures="2" errors="0" timestamp="2026-10-08T13:19:20.203Z" hostname="WAKEUPMAN" time="0.134">
+  <properties/>
+  <testcase name="samplingFailureAndCancellationPreserveOldFileAndCleanTemporary()" classname="com.datacube.export.QueryXlsxExportTest" time="0.007">
+    <failure message="com.datacube.export.SafeResultFilePublisher$Failure: Result export failed at PREPARE" type="com.datacube.export.SafeResultFilePublisher$Failure">com.datacube.export.SafeResultFilePublisher$Failure: Result export failed at PREPARE
+	at app//com.datacube.export.SafeResultFilePublisher.capture(SafeResultFilePublisher.java:86)
+	at app//com.datacube.export.QueryXlsxExportTest.samplingFailureAndCancellationPreserveOldFileAndCleanTemporary(QueryXlsxExportTest.java:95)
+	at java.base@25.0.1/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base@25.0.1/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base@25.0.1/java.util.ArrayList.forEach(ArrayList.java:1604)
+</failure>
+  </testcase>
+  <testcase name="isoControlsDoNotWidenQueryXlsxButRemainInSerializedText()" classname="com.datacube.export.QueryXlsxExportTest" time="0.054"/>
+  <testcase name="cancellationDuringActualXlsxSerializationStopsLaterRowsAndPublication()" classname="com.datacube.export.QueryXlsxExportTest" time="0.007">
+    <failure message="org.opentest4j.AssertionFailedError: Unexpected exception type thrown, expected: &lt;java.util.concurrent.CancellationException&gt; but was: &lt;com.datacube.export.SafeResultFilePublisher.Failure&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: Unexpected exception type thrown, expected: &lt;java.util.concurrent.CancellationException&gt; but was: &lt;com.datacube.export.SafeResultFilePublisher.Failure&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:67)
+	at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:35)
+	at app//org.junit.jupiter.api.Assertions.assertThrows(Assertions.java:3128)
+	at app//com.datacube.export.QueryXlsxExportTest.cancellationDuringActualXlsxSerializationStopsLaterRowsAndPublication(QueryXlsxExportTest.java:146)
+	at java.base@25.0.1/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base@25.0.1/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base@25.0.1/java.util.ArrayList.forEach(ArrayList.java:1604)
+Caused by: com.datacube.export.SafeResultFilePublisher$Failure: Result export failed at PREPARE
+	at app//com.datacube.export.SafeResultFilePublisher.capture(SafeResultFilePublisher.java:86)
+	at app//com.datacube.export.QueryXlsxExportTest.lambda$cancellationDuringActualXlsxSerializationStopsLaterRowsAndPublication$0(QueryXlsxExportTest.java:147)
+	at app//org.junit.jupiter.api.AssertThrows.assertThrows(AssertThrows.java:53)
+	... 6 more
+</failure>
+  </testcase>
+  <testcase name="specialValuesStillNeedConsentAndNeverBecomeSql()" classname="com.datacube.export.QueryXlsxExportTest" time="0.021"/>
+  <testcase name="scopesUseTheirOwnSampleAndOrderingWithTheSameProjection()" classname="com.datacube.export.QueryXlsxExportTest" time="0.044"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

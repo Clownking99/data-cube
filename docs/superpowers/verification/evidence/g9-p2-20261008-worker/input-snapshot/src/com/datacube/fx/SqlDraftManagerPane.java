@@ -1,0 +1,323 @@
+package com.datacube.fx;
+
+import com.datacube.config.SqlDraft;
+import com.datacube.config.SqlDraftCoordinator;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.scene.Parent;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.SplitPane;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.control.TextFormatter;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
+
+final class SqlDraftManagerPane implements AutoCloseable {
+    private record SearchEntry(SqlDraft draft, String connection, String schema, String summary) {
+        boolean matches(String query) { return connection.contains(query) || schema.contains(query) || summary.contains(query); }
+    }
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+            .withZone(ZoneId.systemDefault());
+    private final SqlDraftCoordinator runtime;
+    private final Function<SqlDraft, Boolean> restore;
+    private final Runnable restored;
+    private final VBox root = new VBox(8);
+    private final ListView<SqlDraft> list = new ListView<>();
+    private final TextArea sql = new TextArea();
+    private final TextField filter = new TextField();
+    private final Label matches = new Label();
+    private final Label placeholder = new Label();
+    private List<SearchEntry> all = List.of();
+    private boolean changingList, filterRejected;
+    private final Label status = new Label();
+    private final Label notice = new Label();
+    private final Button recover = new Button("恢复");
+    private final Button refresh = new Button("刷新");
+    private final Button delete = new Button("删除所选");
+    private final Button clear = new Button("清空全部草稿");
+    private final Button toggle = new Button();
+    private SqlDraftCoordinator.ManagementResult applied;
+    private boolean initialRefresh = true, pending, closed, operationFailed;
+
+    SqlDraftManagerPane(SqlDraftCoordinator runtime, Function<SqlDraft, Boolean> restore, Runnable restored) {
+        this.runtime = runtime;
+        this.restore = restore;
+        this.restored = restored;
+        list.setId("draft-manager-list");
+        placeholder.setWrapText(true); placeholder.setPadding(new Insets(8)); list.setPlaceholder(placeholder);
+        list.setCellFactory(ignored -> new ListCell<>() {
+            @Override protected void updateItem(SqlDraft draft, boolean empty) {
+                super.updateItem(draft, empty);
+                setText(empty || draft == null ? null : TIME.format(Instant.ofEpochMilli(draft.modifiedAt()))
+                        + "  " + connectionSummary(draft)
+                        + "\nSchema: " + displayMetadata(draft.schema(), "未指定") + "\n"
+                        + sqlSummary(draft));
+                setGraphic(null);
+            }
+        });
+        sql.setId("draft-manager-sql");
+        sql.setEditable(false);
+        sql.setPromptText("选择草稿后预览完整 SQL；恢复不会自动连接数据库。");
+        list.getSelectionModel().selectedItemProperty().addListener((observable, before, after) -> {
+            if (changingList) return;
+            showPreview(after);
+            renderControls();
+        });
+        filter.setId("draft-manager-filter"); filter.setMinWidth(0);
+        filter.setPromptText("连接 / Schema / SQL 摘要"); filter.setAccessibleText("筛选已读取的草稿摘要");
+        matches.setId("draft-manager-matches"); matches.setWrapText(true); matches.setMinHeight(Region.USE_PREF_SIZE);
+        filter.setTextFormatter(new TextFormatter<String>(change -> {
+            if (closed || root.isDisabled()) return null;
+            if (change.getControlNewText().length() <= 256) {
+                if (change.isContentChange()) filterRejected = false;
+                return change;
+            }
+            filterRejected = true; renderMatches(); return null;
+        }));
+        filter.textProperty().addListener(ignored -> applyFilter());
+        Button clearFilter = new Button("清除筛选"); clearFilter.setId("draft-manager-clear-filter");
+        clearFilter.setMinWidth(Region.USE_PREF_SIZE); clearFilter.disableProperty().bind(filter.textProperty().isEmpty());
+        clearFilter.setOnAction(event -> {
+            if (closed || root.isDisabled()) return;
+            filter.clear(); filter.requestFocus();
+        });
+        HBox search = new HBox(8, filter, clearFilter); HBox.setHgrow(filter, Priority.ALWAYS);
+        Label searchHint = new Label("仅筛选列表摘要：连接与 Schema 各前 80 字符，SQL 前 120 字符；不搜索后续正文。\nCtrl+F 筛选 · ↓ 选择 · Enter 恢复所选（不连接或执行）");
+        searchHint.setId("draft-manager-filter-hint"); searchHint.setWrapText(true); searchHint.setMinHeight(Region.USE_PREF_SIZE);
+        status.setId("draft-manager-status");
+        status.setWrapText(true);
+        notice.setId("draft-manager-notice");
+        notice.setWrapText(true);
+        recover.setId("draft-manager-restore");
+        recover.setDefaultButton(false);
+        refresh.setId("draft-manager-refresh");
+        delete.setId("draft-manager-delete");
+        clear.setId("draft-manager-clear");
+        toggle.setId("draft-manager-toggle");
+        recover.setOnAction(event -> {
+            if (blocked() || list.getSelectionModel().getSelectedItem() == null) return;
+            try {
+                if (Boolean.TRUE.equals(restore.apply(list.getSelectionModel().getSelectedItem()))) restored.run();
+                else notice.setText("恢复失败，现有草稿和标签保持不变。");
+            } catch (RuntimeException failure) {
+                notice.setText("恢复失败，现有草稿和标签保持不变。");
+            }
+        });
+        refresh.setOnAction(event -> perform(runtime::refresh));
+        delete.setOnAction(event -> {
+            SqlDraft selected = list.getSelectionModel().getSelectedItem();
+            if (!mutable() || selected == null) return;
+            if (confirm("删除所选草稿", "仅删除本机这份恢复记录，不清空已打开的编辑器。"))
+                perform(() -> runtime.delete(selected.id()));
+        });
+        clear.setOnAction(event -> {
+            if (mutable() && confirm("清空全部草稿", "删除本机全部可恢复草稿，包括被筛选隐藏的记录；不清空编辑器，之后的新修改仍会保存。"))
+                perform(runtime::clear);
+        });
+        toggle.setOnAction(event -> perform(() -> runtime.setEnabled(runtime.mode() != SqlDraftCoordinator.Mode.ENABLED)));
+        Label privacy = new Label(SqlDraftEditorBinding.PRIVACY);
+        privacy.setWrapText(true); privacy.setMinHeight(Region.USE_PREF_SIZE);
+        SplitPane split = new SplitPane(list, sql);
+        split.setDividerPositions(0.42);
+        VBox.setVgrow(split, Priority.ALWAYS);
+        root.setPadding(new Insets(10));
+        root.setPrefSize(860, 580); root.setMinWidth(0);
+        root.getChildren().addAll(status, new FlowPane(8, 4, recover, refresh, delete, clear, toggle),
+                notice, search, matches, split, searchHint, privacy);
+        filter.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (closed || root.isDisabled() || modified(event)) return;
+            if (event.getCode() == KeyCode.DOWN) {
+                if (!list.getItems().isEmpty()) {
+                    if (list.getSelectionModel().isEmpty()) list.getSelectionModel().selectFirst();
+                    list.requestFocus(); list.scrollTo(list.getSelectionModel().getSelectedIndex());
+                }
+                event.consume();
+            } else if (event.getCode() == KeyCode.ENTER) { recover.fire(); event.consume(); }
+        });
+        list.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (!closed && !root.isDisabled() && !modified(event) && event.getCode() == KeyCode.ENTER) {
+                recover.fire(); event.consume();
+            }
+        });
+        root.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (!closed && !root.isDisabled() && event.getCode() == KeyCode.F && event.isControlDown()
+                    && !event.isAltDown() && !event.isShiftDown() && !event.isMetaDown()) {
+                filter.requestFocus(); filter.selectAll(); event.consume();
+            }
+        });
+        refreshView();
+    }
+
+    Parent getNode() { return root; }
+
+    static String preview(String text, int maximum) {
+        if (text == null) return "";
+        int length = Math.min(text.length(), maximum);
+        StringBuilder value = new StringBuilder(length + 1);
+        for (int index = 0; index < length; index++) {
+            char c = text.charAt(index);
+            value.append(Character.isISOControl(c) ? ' ' : c);
+        }
+        if (text.length() > length) value.append('…');
+        return value.toString();
+    }
+
+    private static String displayMetadata(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : preview(value, 80);
+    }
+
+    private static String connectionSummary(SqlDraft draft) {
+        return draft.connectionType() == null ? "未绑定连接"
+                : displayMetadata(draft.connectionName(), "未命名连接") + " · " + draft.connectionType();
+    }
+
+    private static String sqlSummary(SqlDraft draft) { return draft.sql().isEmpty() ? "空草稿" : preview(draft.sql(), 120); }
+
+    private static SearchEntry searchable(SqlDraft draft) {
+        return new SearchEntry(draft, connectionSummary(draft).toLowerCase(Locale.ROOT),
+                displayMetadata(draft.schema(), "未指定").toLowerCase(Locale.ROOT), sqlSummary(draft).toLowerCase(Locale.ROOT));
+    }
+
+    private void showPreview(SqlDraft selected) {
+        sql.setText(selected == null ? "" : selected.sql().replace("\r\n", "\n").replace("\r", "\n"));
+    }
+
+    private void applyFilter() {
+        if (closed || root.isDisabled()) return;
+        SqlDraft selected = list.getSelectionModel().getSelectedItem();
+        UUID selectedId = selected == null ? null : selected.id();
+        String query = filter.getText().strip().toLowerCase(Locale.ROOT);
+        List<SqlDraft> shown = all.stream().filter(entry -> entry.matches(query)).map(SearchEntry::draft).toList();
+        changingList = true;
+        try {
+            list.getSelectionModel().clearSelection(); list.getItems().setAll(shown);
+            if (selectedId != null) shown.stream().filter(draft -> draft.id().equals(selectedId)).findFirst()
+                    .ifPresent(list.getSelectionModel()::select);
+        } finally { changingList = false; }
+        SqlDraft retained = list.getSelectionModel().getSelectedItem();
+        if (retained != selected) showPreview(retained);
+        renderControls();
+    }
+
+    private void renderMatches() {
+        boolean loaded = applied != null && applied.snapshot() != null;
+        matches.setText((loaded ? "显示 " + list.getItems().size() + " / " + all.size() + " 份草稿" : "尚未加载草稿")
+                + (filterRejected ? " · 筛选词最多 256 字符，超长输入未应用" : ""));
+        placeholder.setText(!loaded ? "尚未加载草稿" : all.isEmpty() ? "没有可恢复草稿" : "没有匹配的草稿，请修改或清除筛选");
+    }
+
+    private static boolean modified(KeyEvent event) {
+        return event.isControlDown() || event.isAltDown() || event.isShiftDown() || event.isMetaDown();
+    }
+
+    void refreshView() {
+        if (closed || root.isDisabled()) return;
+        SqlDraftCoordinator.ManagementResult current = runtime.lastManagementResult();
+        if (current != applied && current != null) {
+            applied = current;
+            if (current.snapshot() != null) {
+                all = current.snapshot().drafts().stream().sorted(Comparator.comparingLong(SqlDraft::modifiedAt).reversed())
+                        .map(SqlDraftManagerPane::searchable).toList();
+                applyFilter();
+            }
+            operationFailed = !current.succeeded() || current.snapshot() == null;
+        }
+        renderControls();
+        if (initialRefresh && !runtime.managementPending()
+                && runtime.mode() != SqlDraftCoordinator.Mode.INITIALIZING) {
+            initialRefresh = false;
+            if (mutable()) perform(runtime::refresh);
+        }
+    }
+
+    private boolean blocked() {
+        return closed || root.isDisabled() || pending || runtime.managementPending() || runtime.mode() == SqlDraftCoordinator.Mode.CLOSED;
+    }
+
+    private boolean mutable() {
+        return !blocked() && runtime.mode() != SqlDraftCoordinator.Mode.UNAVAILABLE
+                && runtime.mode() != SqlDraftCoordinator.Mode.INITIALIZING;
+    }
+
+    private void renderControls() {
+        boolean blocked = blocked();
+        boolean writable = mutable();
+        recover.setDisable(blocked || list.getSelectionModel().getSelectedItem() == null);
+        refresh.setDisable(!writable);
+        delete.setDisable(!writable || list.getSelectionModel().getSelectedItem() == null);
+        clear.setDisable(!writable);
+        toggle.setDisable(!writable);
+        toggle.setText(runtime.mode() == SqlDraftCoordinator.Mode.ENABLED ? "关闭草稿保护" : "开启草稿保护");
+        String state = switch (runtime.mode()) {
+            case INITIALIZING -> "草稿保护初始化中，尚未加载草稿";
+            case ENABLED -> "草稿保护已开启";
+            case DISABLED -> "草稿保护已关闭，已有草稿仍可恢复";
+            case PAUSED -> "本次已暂停，设置未保存，下次启动可能恢复";
+            case UNAVAILABLE -> SqlDraftEditorBinding.failureMessage(runtime.unavailableReason()) + "；仍可恢复已读取的草稿";
+            case CLOSED -> "草稿保护已停止";
+        };
+        status.setText(state + (pending || runtime.managementPending() ? " · 处理中" : "")
+                + (applied == null || applied.snapshot() == null ? "" : " · 共 " + all.size() + " 份草稿"));
+        renderMatches();
+        boolean problems = applied != null && applied.snapshot() != null && !applied.snapshot().problems().isEmpty();
+        if (operationFailed || problems)
+            notice.setText("部分记录未能读取或清理，已保留可恢复内容及未知/损坏文件；请检查后重试。");
+    }
+
+    private void perform(Supplier<CompletableFuture<SqlDraftCoordinator.ManagementResult>> operation) {
+        if (!mutable()) return;
+        pending = true;
+        operationFailed = false;
+        notice.setText("");
+        try {
+            operation.get().whenComplete((result, failure) -> Platform.runLater(() -> {
+                if (closed) return;
+                pending = false;
+                refreshView();
+                operationFailed = failure != null || result == null || !result.succeeded() || result.snapshot() == null;
+                renderControls();
+            }));
+        } catch (RuntimeException failure) {
+            pending = false;
+            operationFailed = true;
+        }
+        renderControls();
+    }
+
+    private boolean confirm(String title, String message) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        if (root.getScene() != null && root.getScene().getWindow() != null)
+            alert.initOwner(root.getScene().getWindow());
+        alert.setTitle(title);
+        alert.setHeaderText(message);
+        ButtonType confirm = new ButtonType("确认删除", ButtonBar.ButtonData.OK_DONE);
+        alert.getButtonTypes().setAll(confirm, ButtonType.CANCEL);
+        ((Button) alert.getDialogPane().lookupButton(confirm)).setDefaultButton(false);
+        ((Button) alert.getDialogPane().lookupButton(ButtonType.CANCEL)).setDefaultButton(true);
+        return alert.showAndWait().filter(confirm::equals).isPresent();
+    }
+
+    @Override public void close() { closed = true; }
+}

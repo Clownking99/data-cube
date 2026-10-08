@@ -1,0 +1,36 @@
+{
+  "phase": "P0",
+  "head": "b81923f29e0a6b6603710a589504aab490995491",
+  "branch": "codex/g9-table-export-reliability-20261008",
+  "checks": [
+    {
+      "command": "git diff --check -- . ':(exclude).testagent' ':(exclude).testagent/**'",
+      "exit": 0,
+      "output": []
+    },
+    {
+      "command": "git diff --name-only HEAD -- src test build.gradle buildSrc settings.gradle gradle",
+      "exit": 0,
+      "output": []
+    },
+    {
+      "command": "git status --short -- . ':(exclude).testagent' ':(exclude).testagent/**'",
+      "exit": 0,
+      "output": [
+        "?? docs/superpowers/verification/2026-10-08-g9-table-export-worker.md",
+        "?? docs/superpowers/verification/evidence/g9-table-export-20261008-worker/"
+      ]
+    }
+  ],
+  "reportLineCount": 170,
+  "reportTrailingWhitespaceLines": 0,
+  "sourceManifestVerifiedCount": 33,
+  "sourceByteMismatches": 0,
+  "initialReceipt": "p0-checks-first.json",
+  "initialSerializationWarnings": "p0-checks-first-serialization.txt",
+  "initialNoIndexExit": 1,
+  "tests": "NOT_RUN",
+  "packaging": "NOT_RUN",
+  "productImplementation": "NOT_STARTED",
+  "next": "Await coordinating-thread P1 technical review"
+}

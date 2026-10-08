@@ -1,0 +1,62 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :cleanTest UP-TO-DATE
+> Task :compileJava
+> Task :generateBrandIcons
+> Task :generateVersionProperties
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+ResultExportOperationTest > cancelReturnsBeforeBlockedPublicationIsReleased() FAILED
+    java.util.concurrent.TimeoutException
+        at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:206)
+        at com.datacube.export.ResultExportOperationTest.cancelReturnsBeforeBlockedPublicationIsReleased(ResultExportOperationTest.java:23)
+
+ResultExportOperationTest > failedPublicationCannotReuseItsToken() FAILED
+    org.opentest4j.AssertionFailedError: expected: <false> but was: <true>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertFalse.failNotFalse(AssertFalse.java:63)
+        at app//org.junit.jupiter.api.AssertFalse.assertFalse(AssertFalse.java:36)
+        at app//org.junit.jupiter.api.AssertFalse.assertFalse(AssertFalse.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertFalse(Assertions.java:231)
+        at app//com.datacube.export.ResultExportOperationTest.failedPublicationCannotReuseItsToken(ResultExportOperationTest.java:35)
+
+TableExporterBaselineRedTest > middleReadFailureMustKeepExistingDestinationAndNeighbor(ExportFormat) > [1] SQL FAILED
+    org.opentest4j.AssertionFailedError: array lengths differ, expected: <9> but was: <144>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertArrayEquals.assertArraysHaveSameLength(AssertArrayEquals.java:428)
+        at app//org.junit.jupiter.api.AssertArrayEquals.assertArrayEquals(AssertArrayEquals.java:205)
+        at app//org.junit.jupiter.api.AssertArrayEquals.assertArrayEquals(AssertArrayEquals.java:63)
+        at app//org.junit.jupiter.api.AssertArrayEquals.assertArrayEquals(AssertArrayEquals.java:59)
+        at app//org.junit.jupiter.api.Assertions.assertArrayEquals(Assertions.java:1229)
+        at app//com.datacube.export.TableExporterBaselineRedTest.middleReadFailureMustKeepExistingDestinationAndNeighbor(TableExporterBaselineRedTest.java:22)
+
+TableExporterBaselineRedTest > middleReadFailureMustKeepExistingDestinationAndNeighbor(ExportFormat) > [2] XLSX FAILED
+    org.opentest4j.AssertionFailedError: array lengths differ, expected: <9> but was: <1464>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertArrayEquals.assertArraysHaveSameLength(AssertArrayEquals.java:428)
+        at app//org.junit.jupiter.api.AssertArrayEquals.assertArrayEquals(AssertArrayEquals.java:205)
+        at app//org.junit.jupiter.api.AssertArrayEquals.assertArrayEquals(AssertArrayEquals.java:63)
+        at app//org.junit.jupiter.api.AssertArrayEquals.assertArrayEquals(AssertArrayEquals.java:59)
+        at app//org.junit.jupiter.api.Assertions.assertArrayEquals(Assertions.java:1229)
+        at app//com.datacube.export.TableExporterBaselineRedTest.middleReadFailureMustKeepExistingDestinationAndNeighbor(TableExporterBaselineRedTest.java:22)
+
+> Task :test FAILED
+
+[Incubating] Problems report is available at: file:///C:/Users/hetia/.codex/worktrees/aed5/%E6%9C%9D%E8%8A%B1%E5%A4%95%E6%8B%BE/build/reports/problems/problems-report.html
+9 actionable tasks: 6 executed, 3 up-to-date

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.fx.SqlResultExportCoordinatorTest" tests="6" skipped="0" failures="4" errors="0" timestamp="2026-10-08T13:19:43.977Z" hostname="WAKEUPMAN" time="10.028">
+  <properties/>
+  <testcase name="lateExportDoesNotOverwriteNewerStatusAndDuplicateIsNotSubmitted()" classname="com.datacube.fx.SqlResultExportCoordinatorTest" time="5.008">
+    <failure message="org.opentest4j.AssertionFailedError: expected: &lt;true&gt; but was: &lt;false&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: expected: &lt;true&gt; but was: &lt;false&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+	at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+	at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+	at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+	at app//com.datacube.fx.SqlResultExportCoordinatorTest.lateExportDoesNotOverwriteNewerStatusAndDuplicateIsNotSubmitted(SqlResultExportCoordinatorTest.java:91)
+	at java.base@25.0.1/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base@25.0.1/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base@25.0.1/java.util.ArrayList.forEach(ArrayList.java:1604)
+</failure>
+  </testcase>
+  <testcase name="clipboardFailureNeverReportsSuccessAndBlockedValuesNeverReachWriter()" classname="com.datacube.fx.SqlResultExportCoordinatorTest" time="0.002"/>
+  <testcase name="rejectedSubmissionKeepsNewerStatusButAllowsRetryToReportItsOwnStartupFailure()" classname="com.datacube.fx.SqlResultExportCoordinatorTest" time="0.004">
+    <failure message="org.opentest4j.AssertionFailedError: expected: &lt;导出任务未能启动，请重试&gt; but was: &lt;无法安全保存：请选择本地普通文件&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: expected: &lt;导出任务未能启动，请重试&gt; but was: &lt;无法安全保存：请选择本地普通文件&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:182)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:177)
+	at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1145)
+	at app//com.datacube.fx.SqlResultExportCoordinatorTest.lambda$rejectedSubmissionKeepsNewerStatusButAllowsRetryToReportItsOwnStartupFailure$3(SqlResultExportCoordinatorTest.java:135)
+	at app//com.datacube.fx.FxUiTestSupport.lambda$call$0(FxUiTestSupport.java:29)
+	at java.base@25.0.1/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at app//com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+	at app//com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+	at app//com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+	at app//com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+	at java.base@25.0.1/java.lang.Thread.run(Thread.java:1474)
+</failure>
+  </testcase>
+  <testcase name="cancellingEitherDialogDoesNotSubmitAndInsertUsesCapturedScope()" classname="com.datacube.fx.SqlResultExportCoordinatorTest" time="0.002"/>
+  <testcase name="closeCancelsUnpublishedFileAndSuppressesCompletionUi()" classname="com.datacube.fx.SqlResultExportCoordinatorTest" time="5.005">
+    <failure message="org.opentest4j.AssertionFailedError: expected: &lt;true&gt; but was: &lt;false&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: expected: &lt;true&gt; but was: &lt;false&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+	at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+	at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+	at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+	at app//com.datacube.fx.SqlResultExportCoordinatorTest.closeCancelsUnpublishedFileAndSuppressesCompletionUi(SqlResultExportCoordinatorTest.java:183)
+	at java.base@25.0.1/java.lang.reflect.Method.invoke(Method.java:565)
+	at java.base@25.0.1/java.util.ArrayList.forEach(ArrayList.java:1604)
+	at java.base@25.0.1/java.util.ArrayList.forEach(ArrayList.java:1604)
+</failure>
+  </testcase>
+  <testcase name="rejectedSubmissionReleasesBusyStateAndUsesFixedMessage()" classname="com.datacube.fx.SqlResultExportCoordinatorTest" time="0.007">
+    <failure message="org.opentest4j.AssertionFailedError: expected: &lt;2&gt; but was: &lt;0&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: expected: &lt;2&gt; but was: &lt;0&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at app//org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:166)
+	at app//org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:161)
+	at app//org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:632)
+	at app//com.datacube.fx.SqlResultExportCoordinatorTest.lambda$rejectedSubmissionReleasesBusyStateAndUsesFixedMessage$4(SqlResultExportCoordinatorTest.java:157)
+	at app//com.datacube.fx.FxUiTestSupport.lambda$call$0(FxUiTestSupport.java:29)
+	at java.base@25.0.1/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at app//com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+	at app//com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+	at app//com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+	at app//com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+	at java.base@25.0.1/java.lang.Thread.run(Thread.java:1474)
+</failure>
+  </testcase>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
