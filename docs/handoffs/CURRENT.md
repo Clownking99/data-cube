@@ -14,6 +14,8 @@
 
 [main验收报告与剩余边界](../superpowers/verification/2026-10-09-g11-main-verification.md)、[协调账本](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。实际最终推送SHA/四任务CI以[交付定位](../superpowers/verification/evidence/g11-p3-813154b3fa4c-package/delivery-intent.json)指向的本机push.json、delivery-result.json及原始日志为准；定位文件本身不代表CI成功。受验后只新增交付文档和证据，875个工程/工具输入未改。未自动启动下一轮。
 
+当前远端交付尚未通过：cfd9d4ed的Verify37893270726在Ubuntu暴露旧PgDump测试PID就绪竞态；已下发原开发会话做最小协议修正与确定性回归，保留本轮原件并用新验证补齐，不盲重试CI。见协调账本C11。
+
 ## 后续候选
 
 G11按[最小设计](../maintenance/verification-runner-design.md)落地，只迁移本轮新验证。后续再考虑整理测试专用受控 JVM 夹具的超时/退出结算。Redis 请求状态和 Shell 关闭入场拆分是后续独立候选，范围与必需回归见成本报告；本轮未实施架构改造。

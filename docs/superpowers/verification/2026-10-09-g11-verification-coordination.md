@@ -166,3 +166,12 @@ P3封存1900文件/33218660字节，manifest SHA923c436ba191f2627d9b34ec24dee176
 裁决：P3本地接受。已更新CURRENT、验证使用说明、最小设计与计划检查点；新增文件/文档不改变工程输入。下一步精确暂存/本地提交，main-only push（必要时仅本次7897代理）并核对同SHA四任务Verify、原始日志与远端SHA。交付回执写入build/owned-g11-ci-c7f5f3e81c2c474e81269515c2730c1a，由已提交delivery-intent.json定位，避免CI完成后改变受验HEAD；只有实际delivery-result.json passed=true才记交付通过。当前检查点不提前声称CI完成。
 
 未验：完整桌面、真实Redis/关系库、签名安装升级回退及G10 RSS/阻塞OS等局限仍保留；private Job和实际handle不外推委托服务，故障注入不是实际不可杀进程。不fetch/tag/PR/发布、不创建后续开发任务或自动跟进。
+## C11：精确SHA CI失败，必要的PID就绪协议纠正
+
+main cfd9d4ed4ebd08d1b9f2ff138ae25690901effe9已直连推送，远端SHA相同，无代理；Verify37893270726的wrapper和Redis integration通过，Ubuntu unit失败，Windows仍执行。因此G11只完成本地验收，远端交付尚未通过；没有重试到绿或伪报结束。
+
+Ubuntu原始job113698755125日志保存在g11-ci-pid-readiness-20261009/ubuntu-first-failure-stdout.raw，实际4614 cases / 1failure / 1763CI环境skip，失败PgDumpRunnerReliabilityTest.capturedFamilyHoldingPipeIsStoppedAfterParentExitAndIndependentNeighborSurvives[2] tree，第169行NumberFormatException空字符串。CI跳过不算通过，不能覆盖本地native证据。
+
+root源码定位：PgDumpProcessHelper Files.writeString创建PID文件后尚未写入/关闭的窗口，PgDumpTestJobs.awaitFile仅检查exists，测试便readString/parseLong；并非G11工具吞错。已下发同一6.1-sol会话，从本地cfd9d4ed建codex/g11-ci-pid-readiness-20261009，只修正PID完成发布/读取协议及必要确定性回归，覆盖child/grandchild消费者，不放宽5秒/skip/断言，不做JVM夹具迁移或产品改造。属于当前交付被实际CI失败阻止的必要局部纠正，常规方案自主记录。
+
+开发先交源码/证明方案，不Gradle/提交；root源码审后再明确转移唯一Gradle执行权。冻结P1/P2/P3不改；后续修正将使用新输入身份和新验证目录，当前P3通过不冒充修正后的新证据。下一步审查小修正，再本地验证/集成/新SHA CI。没有新增线程、自动调度或外部服务访问。
