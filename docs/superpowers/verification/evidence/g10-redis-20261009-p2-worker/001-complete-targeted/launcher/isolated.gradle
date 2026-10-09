@@ -1,0 +1,23 @@
+allprojects {
+    layout.buildDirectory.set(file(System.getenv('G10_BUILD') + '/' + (rootProject.name == 'buildSrc' ? 'buildSrc' : 'main')))
+    tasks.withType(Test).configureEach {
+        systemProperty 'user.home', System.getenv('USERPROFILE')
+        systemProperty 'java.io.tmpdir', System.getenv('TEMP')
+        systemProperty 'java.awt.headless', System.getenv('G10_HEADLESS')
+    }
+    afterEvaluate { project ->
+        if (rootProject.name != 'buildSrc') {
+            def versionOut = layout.buildDirectory.file('generated/version/com/datacube/version.properties').get().asFile
+            def brandOut = layout.buildDirectory.dir('generated/brand/com/datacube/fx').get().asFile
+            def iconOut = layout.buildDirectory.file('packaging/DataCube.ico').get().asFile
+            def standard = file('datacube-brand-assets/assets/icon-mist-violet.png')
+            def compact = file('datacube-brand-assets/assets/icon-mist-violet-compact.png')
+            def frozenVersion = project.version.toString()
+            sourceSets.main.resources.setSrcDirs([versionOut.parentFile.parentFile.parentFile.parentFile, brandOut.parentFile.parentFile.parentFile, file('resources')])
+            tasks.named('generateVersionProperties').configure { actions.clear(); doLast { versionOut.parentFile.mkdirs(); versionOut.text = "version=${frozenVersion}\n" } }
+            tasks.named('generateBrandIcons').configure { actions.clear(); doLast { datacube.build.IcoGenerator.writePngs(standard.toPath(),compact.toPath(),brandOut.toPath()) } }
+            tasks.named('generateIcon').configure { actions.clear(); doLast { datacube.build.IcoGenerator.write(standard.toPath(),compact.toPath(),iconOut.toPath()) } }
+            jlink.jpackage.icon=iconOut.toString()
+        }
+    }
+}

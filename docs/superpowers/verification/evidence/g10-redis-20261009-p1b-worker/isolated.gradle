@@ -1,0 +1,8 @@
+allprojects {
+    layout.buildDirectory.set(file(System.getenv('G10_BUILD') + '/' + (rootProject.name == 'buildSrc' ? 'buildSrc' : 'main')))
+    tasks.withType(Test).configureEach {
+        systemProperty 'user.home', System.getenv('USERPROFILE')
+        systemProperty 'java.io.tmpdir', System.getenv('TEMP')
+        systemProperty 'java.awt.headless', System.getenv('G10_HEADLESS')
+    }
+}
