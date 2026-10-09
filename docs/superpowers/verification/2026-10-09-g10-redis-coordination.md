@@ -48,3 +48,34 @@ P1a 必须补足两个约束：
 改动与验证：本检查点只有审查和原件归档，未运行 Gradle，无 G10 通过声明。P1a 执行权交给同一 6.1-sol 会话，其成为唯一 Gradle 执行者；root 只读代码和新原件。开发先完成 P1a 新定向证据并停写交审，root 接受后才准入 P1b。P2 的 clean 全量、buildSrc、jpackageImage 后置，不用 P0 或旧 XML 代替。
 
 失败/未验：已复现的四项缺陷尚待修复；复杂 raw 上下文、预算、物理关闭、UI 均未取得新通过证据。自动跟进授权仍待答复，未创建新自动化，旧两个跟进继续 PAUSED。下一步正式下发 P1a 并跟踪实际实现，G10 完成交付后再做维护成本整理。
+
+## C1.1：Codec 新定向通过，client/manager 初审返工
+
+当前目标：继续 P1a，不提前准入 P1b。C1 本地提交 `967874aea125e2ba3e73ceaa9a7d81e6bbf2d05f`；开发已实际实现初版预算、迭代 Codec 和连接/manager 修正，仍在写、未冻结。root 未运行 Gradle。
+
+新验证：开发证据目录 `aed5/朝花夕拾/docs/superpowers/verification/evidence/g10-redis-20261009-p1a-worker/` 的 `001-codec-first` 因脚本 argv 拼接失败，未编译产品，原失败保留。修正后 `002-codec-corrected-runner` 命令为离线、rerun-tasks 的两个 Codec 测试类；root 独立读取 command/exit/stdout/两个 XML 及 831 项前后输入，确认 exit0、15 tests、0 failures/errors/skips、输入一致，日志显示 8 个实际执行任务。XML SHA256：RespBudgetTest `49abfba64424aa7b110cd8f2186b391bdfd2f0f0a6ae8bbce0cc7b2880498051`；RespCodecTest `d4775d935d25492ac36bee01f2f5cb6004b619bbe7ebafd435f77c41092055a8`。它只证明当次 Codec 阶段，不能覆盖后来 client/manager 或 P1a 最终输入。
+
+独立源码审查发现并已下发：
+
+1. 所有重放/SELECT/上下文判断必须绑定实际编码帧，不能在编码后回读调用者可变参数来决定另一请求的策略；开发已采用从编码帧提取短参数。
+2. 共享期限开始后，重试 connect 和每个 AUTH/SELECT/业务 write 前要校验剩余时间；当前仅 attempt 入口检查、connect 固定 5 秒可能使已耗尽期限后仍发送下一帧。DNS/阻塞 write 无硬中断的局限不变。
+3. 新建 session 在首次 PING 通过前未被 manager 任何集合持有，closeAll 暂时无法关闭其阻塞 I/O。要求最小 pending ownership 和代际验证；阻塞 factory 仍只能迟到关闭，不能伪称可中断。
+4. cached PING TRANSPORT 后的关闭 RuntimeException 被 suppress 后仍自动重建，丢弃原异常会隐藏关闭失败。要求报告关闭失败并停止该次替换，正常纯 transport 替换保留；Error 不吞。
+
+这些为代码审查发现，尚无独立运行的缺陷复现或修复通过声明。下一步继续读取新 client/manager 定向及小堆证据，确认上述修正和物理资源结算后审查 P1a 冻结。自动跟进授权仍未收到，不重试创建。
+
+## C2：P1a 独立审查通过，准入 P1b
+
+当前目标：开始 Redis 展示、保留和候选提交预算。开发 turn `01a11e10-ebc5-73a0-b2f6-e516fd212fcc` 已停写完成，cursor `431e0858-03dc-4a74-84cd-3c2876284d87:123`。HEAD 仍 `66edd24f`，产品未提交；root main 当前 `967874ae`。root 已审六个产品文件、六个变更测试文件及旧错误消息断言，没有放宽原消息兼容要求；diff --check 无错误（工作区行尾提示单列）。
+
+改动：C1.1 发现已修正并有定向断言。另补业务读取中非 Redis RuntimeException/Error 的 lease 清理，原异常对象原样抛出，不转换为预算失败。root 读到并核对合成 AssertionError 后 peer 关闭、后继新连接成功测试。最后一轮修改将新 socket 因已关闭而拒绝时的 close 移出状态锁，随后重跑最终定向。
+
+独立验证：[root 验收回执](evidence/g10-redis-20261009-p1a-review/receipt.json)重新计算开发 manifest 全部 **284** 项长度/哈希，全部匹配；最终 `009-p1a-frozen-targeted` 的 **834** 项输入 before/after/当前工作源码一致。重新解析14份当前XML，75 total = **74 pass + 1 skip**、0 failure/error、exit0；唯一skip为未配置的真实 Redis 集成测试，不记通过。命令与原日志已读，未拿 buildSrc compile 当 buildSrc:test。root 未运行 Gradle，开发仍为唯一执行者。
+
+最终 `008-final-smallheap-probes` 的6项 argv/exit/stdout/stderr 已逐项复核，每项 `-Xmx32m -Xss256k`、exit0且实际退出；巨大array/bulk各读13字节、深度读132字节、长行读65,538字节、节点总量读360,085字节、请求在UTF-8/frame副本前NOT_SENT拒绝。旧OOM/SOE诊断与这批新受控拒绝是不同证据。P0、P1a报告快照及开发manifest/binding在root归档，不重写开发冻结目录。
+
+准入裁决：P1a阶段接受，可直接实施P1b；不代表G10完成或允许提前合main。集中预算/分配前准入、共享期限、请求帧绑定策略、已确认DB及保守raw模式恢复、pending ownership和异常清理满足本阶段边界。raw AUTH/事务/RESET等模式发送后恢复不可信，即使完整server error也保守保持该状态，连接损坏后要求新会话；这是已记录兼容限制，不新增完整CLI状态机。工厂返回session之前、DNS/阻塞写/native close/GC的局限继续保留。
+
+P1b按已审P0依次完成纯格式化/retention/树与页面候选、console接入、browser接入和真实可执行的FX mock回归。格式化/页面拒绝必须恢复控件并保留旧结果/游标/来源，不能把预览变成可保存值；原始行身份不能取自截断显示。无效UTF-8 key整页明确拒绝已接受，不新增binary key编辑器。UI只允许当前模式真正完整且底层读取完整的数据保存；不能用切模式绕过不完整读取，完整raw可恢复出完整合法模式的情形应保留正常编辑能力。单飞与一个最新待处理意图，不扩大通用queue/AppShell。
+
+失败/未验：首轮脚本启动失败保留；真实Redis、原生桌面、最大合法多会话RSS、P1b、P2全量/buildSrc/image及P3集成/CI仍未完成。自动跟进授权未答复，未创建新自动化。下一步下发P1b，完成新定向后停写交审；G10最终交付后才开始维护成本整理。
