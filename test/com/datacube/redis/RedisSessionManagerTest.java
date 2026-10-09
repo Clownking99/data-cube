@@ -40,7 +40,7 @@ class RedisSessionManagerTest {
     void replacesSessionWhenHealthCheckFails() {
         CredentialCipher cipher = new CredentialCipher();
         RecordingFactory factory = new RecordingFactory(
-                List.of(bytes("PONG"), new RedisException("connection lost")),
+                List.of(bytes("PONG"), RedisException.rejected(RedisException.Kind.TRANSPORT, RedisException.Delivery.MAY_HAVE_SENT)),
                 List.of(bytes("PONG")));
         RedisSessionManager manager = new RedisSessionManager(cipher, factory);
         manager.register(redisConfig(cipher, "", "0"));

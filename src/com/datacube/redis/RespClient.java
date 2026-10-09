@@ -2,136 +2,232 @@ package com.datacube.redis;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.LongSupplier;
 
-/** 单连接、单飞行命令的 RESP2 TCP 客户端。 */
+/** Single-flight RESP2 client; close can detach the active socket without waiting for I/O. */
 public final class RespClient implements Closeable, RedisCommandExecutor {
-
-    private static final int CONNECT_TIMEOUT_MS = 5_000;
-    private static final int READ_TIMEOUT_MS = 10_000;
-    private static final Set<String> RETRY_SAFE = Set.of(
-            "PING", "GET", "STRLEN", "GETRANGE", "TYPE", "TTL", "EXISTS", "DBSIZE", "INFO",
-            "SCAN", "HSCAN", "SSCAN", "ZSCAN", "LLEN", "LRANGE", "ZCARD");
-
+    private static final Set<String> RETRY_SAFE = Set.of("PING", "GET", "STRLEN", "GETRANGE", "TYPE", "TTL", "EXISTS", "DBSIZE", "INFO", "SCAN", "HSCAN", "SSCAN", "ZSCAN", "LLEN", "LRANGE", "ZCARD");
+    // These modes may change authentication/DB/transaction/reply state we cannot reconstruct.
+    private static final Set<String> RAW_CONTEXT = Set.of("AUTH", "MULTI", "EXEC", "DISCARD", "RESET", "WATCH", "UNWATCH", "HELLO", "CLIENT", "SUBSCRIBE", "PSUBSCRIBE", "SSUBSCRIBE", "UNSUBSCRIBE", "PUNSUBSCRIBE", "SUNSUBSCRIBE", "MONITOR");
     private final String host;
     private final int port;
     private final String username;
     private final String password;
-    private final int database;
-
-    private Socket socket;
+    private final RedisResourceLimits limits;
+    private final LongSupplier clock;
+    private final Object flight = new Object();
+    private final Object state = new Object();
+    private Socket current;
     private boolean closed;
+    private int confirmedDatabase;
+    private boolean restoreTrusted = true;
+    private boolean contextInvalid;
 
     public RespClient(String host, int port, String username, String password, int database) {
-        this.host = Objects.requireNonNull(host, "host");
-        this.port = port;
-        this.username = username == null ? "" : username;
-        this.password = password == null ? "" : password;
-        this.database = database;
+        this(host, port, username, password, database, RedisResourceLimits.DEFAULT, System::nanoTime);
     }
-
-    /** 发送 UTF-8 文本命令。 */
-    public Object call(String... args) {
-        byte[][] encodedArgs = Arrays.stream(args)
-                .map(value -> Objects.requireNonNull(value, "Redis command argument")
-                        .getBytes(StandardCharsets.UTF_8))
-                .toArray(byte[][]::new);
-        return callBytes(encodedArgs);
+    RespClient(String host, int port, String username, String password, int database, RedisResourceLimits limits, LongSupplier clock) {
+        this.host = Objects.requireNonNull(host, "host"); this.port = port;
+        this.username = username == null ? "" : username; this.password = password == null ? "" : password;
+        this.confirmedDatabase = database; this.limits = Objects.requireNonNull(limits); this.clock = Objects.requireNonNull(clock);
     }
+    public Object call(String... args) { return callArguments(args); }
+    @Override public Object callBytes(byte[]... args) { return callArguments(args); }
+    RedisResourceLimits limits() { return limits; }
 
-    /** 发送二进制安全命令；包内会话门面使用。 */
-    @Override
-    public synchronized Object callBytes(byte[]... args) {
-        if (closed) throw new RedisException("Redis client is closed");
-        IOException last = null;
-        boolean retrySafe = retrySafe(args);
-        int attempts = retrySafe ? 2 : 1;
-        for (int attempt = 0; attempt < attempts; attempt++) {
-            try {
-                ensureConnected();
-                return exchange(args);
-            } catch (RedisException e) {
-                throw e;
-            } catch (IOException e) {
-                last = e;
-                closeSocket();
-            }
-        }
-        if (!retrySafe) {
-            throw new RedisException("Redis connection lost; command result is uncertain and was not replayed", last);
-        }
-        throw new RedisException("Redis I/O error: " + last.getMessage(), last);
-    }
-
-    private static boolean retrySafe(byte[][] args) {
-        if (args.length == 0 || args[0] == null) return false;
-        String command = new String(args[0], StandardCharsets.US_ASCII).toUpperCase(Locale.ROOT);
-        return RETRY_SAFE.contains(command);
-    }
-
-    private void ensureConnected() throws IOException {
-        if (socket != null && socket.isConnected() && !socket.isClosed()) return;
-        Socket created = new Socket();
-        try {
-            created.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
-            created.setSoTimeout(READ_TIMEOUT_MS);
-            socket = created;
-            if (!password.isEmpty()) {
-                if (username.isBlank()) {
-                    expectOk(exchange(strings("AUTH", password)), "AUTH");
-                } else {
-                    expectOk(exchange(strings("AUTH", username, password)), "AUTH");
+    private Object callArguments(Object[] args) {
+        synchronized (flight) {
+            admit();
+            byte[] frame = RespCodec.encodeArguments(args, limits);
+            // Validate handshake too, before creating a socket or sending any bytes.
+            Object[] auth = auth();
+            if (auth != null) RespCodec.preflight(auth, limits);
+            if (confirmedDatabase != 0) RespCodec.preflight(new Object[]{"SELECT", confirmedDatabase}, limits);
+            FrameArguments actual = frameArguments(frame);
+            String command = command(frame, actual.first);
+            boolean retrySafe = RETRY_SAFE.contains(command);
+            Integer selected = "SELECT".equals(command) && actual.count == 2 ? databaseArgument(frame, actual.second) : null;
+            RespCodec.Deadline deadline = new RespCodec.Deadline(limits.readNanos(), clock);
+            int attempts = retrySafe ? 2 : 1;
+            for (int attempt = 0; attempt < attempts; attempt++) {
+                Socket lease = null;
+                boolean sent = false;
+                try {
+                    admit();
+                    deadline.checkIfStarted();
+                    lease = ensureConnected(deadline);
+                    OutputStream output = lease.getOutputStream();
+                    admit();
+                    deadline.checkIfStarted();
+                    if (RAW_CONTEXT.contains(command)) restoreTrusted = false;
+                    sent = true; // write may send only part of the frame.
+                    output.write(frame); output.flush();
+                    Object response = decode(lease, deadline);
+                    admit();
+                    if ("SELECT".equals(command)) {
+                        if (ok(response)) {
+                            if (selected == null) {
+                                contextInvalid = true;
+                                discard(lease);
+                                throw RedisException.rejected(RedisException.Kind.CONTEXT, RedisException.Delivery.MAY_HAVE_SENT);
+                            }
+                            confirmedDatabase = selected;
+                        } else restoreTrusted = false; // e.g. QUEUED: do not infer EXEC results.
+                    }
+                    return response;
+                } catch (RespCodec.ReadFailure failure) {
+                    discard(lease);
+                    throw RedisException.rejected(failure.kind, delivery(sent));
+                } catch (RedisException failure) {
+                    if (failure.kind() == RedisException.Kind.SERVER) {
+                        returnServerError(failure, sent);
+                    }
+                    discard(lease);
+                    throw sent && failure.delivery() == RedisException.Delivery.NOT_SENT
+                            ? RedisException.rejected(failure.kind(), delivery(true)) : failure;
+                } catch (IOException failure) {
+                    discard(lease);
+                    try { deadline.checkIfStarted(); }
+                    catch (RespCodec.ReadFailure expired) { throw RedisException.rejected(expired.kind, delivery(sent)); }
+                    try { admit(); } // closed/untrusted context must never reopen silently.
+                    catch (RedisException rejected) { throw RedisException.rejected(rejected.kind(), delivery(sent)); }
+                    if (!retrySafe || attempt + 1 == attempts) {
+                        throw RedisException.rejected(RedisException.Kind.TRANSPORT, delivery(sent));
+                    }
+                } catch (RuntimeException | Error failure) {
+                    discard(lease); // Cleanup only; never convert VM/application errors to budget failures.
+                    throw failure;
                 }
             }
-            if (database != 0) expectOk(exchange(strings("SELECT", Integer.toString(database))), "SELECT");
-        } catch (IOException | RuntimeException e) {
-            closeSocket();
-            throw e;
+            throw new AssertionError("unreachable");
         }
     }
 
-    private Object exchange(byte[][] args) throws IOException {
-        socket.getOutputStream().write(RespCodec.encode(args));
-        socket.getOutputStream().flush();
-        return RespCodec.decode(socket.getInputStream());
+    private static void returnServerError(RedisException failure, boolean businessSent) {
+        throw new RedisException(failure.getMessage(), null, RedisException.Kind.SERVER,
+                businessSent ? RedisException.Delivery.REPLIED : RedisException.Delivery.NOT_SENT);
     }
-
-    private static void expectOk(Object response, String command) {
-        if (!(response instanceof byte[] bytes)
-                || !"OK".equalsIgnoreCase(new String(bytes, StandardCharsets.UTF_8))) {
-            throw new RedisException(command + " returned an unexpected response");
+    private static RedisException.Delivery delivery(boolean sent) {
+        return sent ? RedisException.Delivery.MAY_HAVE_SENT : RedisException.Delivery.NOT_SENT;
+    }
+    private void admit() {
+        synchronized (state) {
+            if (closed) throw RedisException.rejected(RedisException.Kind.CLOSED, RedisException.Delivery.NOT_SENT);
         }
+        if (contextInvalid) throw RedisException.rejected(RedisException.Kind.CONTEXT, RedisException.Delivery.NOT_SENT);
     }
-
-    private static byte[][] strings(String... args) {
-        return Arrays.stream(args).map(value -> value.getBytes(StandardCharsets.UTF_8)).toArray(byte[][]::new);
-    }
-
-    @Override
-    public synchronized void close() {
-        closed = true;
-        closeSocket();
-    }
-
-    private void closeSocket() {
-        Socket current = socket;
-        socket = null;
-        if (current == null) return;
+    private Socket ensureConnected(RespCodec.Deadline deadline) throws IOException {
+        synchronized (state) { if (current != null) return current; }
+        admit();
+        Socket created = new Socket();
+        boolean rejected;
+        synchronized (state) {
+            rejected = closed;
+            if (!rejected) current = created; // provisional lease: close can reach connect/handshake.
+        }
+        if (rejected) { closeSocket(created); throw RedisException.rejected(RedisException.Kind.CLOSED, RedisException.Delivery.NOT_SENT); }
         try {
-            current.close();
-        } catch (IOException ignored) {
-            // Closing is best effort; the connection is already discarded.
+            InetSocketAddress address = new InetSocketAddress(host, port); // DNS has no hard deadline here.
+            deadline.checkIfStarted();
+            created.connect(address, deadline.connectMillis());
+            admit();
+            Object[] auth = auth();
+            if (auth != null) expectOk(exchange(created, RespCodec.encodeArguments(auth, limits), deadline));
+            if (confirmedDatabase != 0) expectOk(exchange(created, RespCodec.encodeArguments(new Object[]{"SELECT", confirmedDatabase}, limits), deadline));
+            admit();
+            return created;
+        } catch (IOException | RuntimeException | Error failure) {
+            discard(created);
+            throw failure;
         }
+    }
+    private Object[] auth() {
+        if (password.isEmpty()) return null;
+        return username.isBlank() ? new Object[]{"AUTH", password} : new Object[]{"AUTH", username, password};
+    }
+    private Object exchange(Socket socket, byte[] frame, RespCodec.Deadline deadline) throws IOException {
+        admit();
+        deadline.checkIfStarted();
+        socket.getOutputStream().write(frame); socket.getOutputStream().flush();
+        return decode(socket, deadline);
+    }
+    private Object decode(Socket socket, RespCodec.Deadline deadline) throws IOException {
+        return RespCodec.decode(socket.getInputStream(), limits, deadline, socket::setSoTimeout);
+    }
+    private static boolean ok(Object response) {
+        return response instanceof byte[] bytes && bytes.length == 2
+                && (bytes[0] == 'O' || bytes[0] == 'o') && (bytes[1] == 'K' || bytes[1] == 'k');
+    }
+    private static void expectOk(Object response) throws RespCodec.ReadFailure {
+        if (!ok(response)) throw RespCodec.failure(RedisException.Kind.PROTOCOL);
+    }
+    private static String command(byte[] frame, Slice arg) {
+        int size = arg.length;
+        if (size > 16) return "";
+        char[] chars = new char[size];
+        for (int i = 0; i < size; i++) {
+            int c = frame[arg.offset + i] & 255;
+            if (c > 127) return "";
+            chars[i] = (char) (c >= 'a' && c <= 'z' ? c - 32 : c);
+        }
+        return new String(chars);
+    }
+    private static Integer databaseArgument(byte[] frame, Slice arg) {
+        int size = arg.length;
+        if (size == 0) return null;
+        int i = 0;
+        int first = frame[arg.offset] & 255;
+        boolean negative = first == '-';
+        if (negative || first == '+') i++;
+        if (i == size) return null;
+        int value = 0;
+        for (; i < size; i++) {
+            int digit = (frame[arg.offset + i] & 255) - '0';
+            if (digit < 0 || digit > 9 || value > (Integer.MAX_VALUE - digit) / 10) return null;
+            value = value * 10 + digit;
+        }
+        return negative && value != 0 ? null : value;
+    }
+    private record Slice(int offset, int length) {}
+    private record FrameArguments(int count, Slice first, Slice second) {}
+    private static FrameArguments frameArguments(byte[] frame) {
+        // Only reads the trusted encoder's headers; policy uses actual immutable frame bytes.
+        int p = 1, count = 0;
+        while (frame[p] != '\r') count = count * 10 + frame[p++] - '0';
+        p += 3; // CRLF and '$'.
+        int size = 0;
+        while (frame[p] != '\r') size = size * 10 + frame[p++] - '0';
+        Slice first = new Slice(p + 2, size);
+        Slice second = null;
+        if (count == 2) {
+            p = first.offset + first.length + 3;
+            size = 0;
+            while (frame[p] != '\r') size = size * 10 + frame[p++] - '0';
+            second = new Slice(p + 2, size);
+        }
+        return new FrameArguments(count, first, second);
+    }
+    private void discard(Socket lease) {
+        if (lease == null) return;
+        synchronized (state) { if (current == lease) current = null; }
+        if (!restoreTrusted) contextInvalid = true;
+        closeSocket(lease);
+    }
+    @Override public void close() {
+        Socket lease;
+        synchronized (state) { closed = true; lease = current; current = null; }
+        closeSocket(lease);
+    }
+    private static void closeSocket(Socket socket) {
+        if (socket == null) return;
+        try { socket.close(); } catch (IOException ignored) { /* Already detached; close is best effort. */ }
     }
 }
 
 @FunctionalInterface
-interface RedisCommandExecutor {
-    Object callBytes(byte[]... args);
-}
+interface RedisCommandExecutor { Object callBytes(byte[]... args); }

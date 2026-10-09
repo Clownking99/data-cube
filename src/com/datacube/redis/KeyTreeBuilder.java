@@ -1,52 +1,58 @@
 package com.datacube.redis;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.regex.Pattern;
 
-/** 将 Redis 键按可配置分隔符聚合为稳定、有序的前缀树。 */
+/** Stable prefix tree; checks precede splitting, node allocation and freezing. */
 public final class KeyTreeBuilder {
-
-    public record Node(String segment, String fullKey, List<Node> children, int keyCount) {}
-
+    public record Node(String segment,String fullKey,List<Node> children,int keyCount) {}
     private KeyTreeBuilder() {}
-
-    public static Node build(List<String> keys, String separator) {
-        MutableNode root = new MutableNode("");
-        String delimiter = separator == null ? "" : separator;
-        for (String key : new LinkedHashSet<>(keys == null ? List.of() : keys)) {
-            if (key == null) continue;
-            String[] parts = delimiter.isEmpty()
-                    ? new String[]{key}
-                    : key.split(Pattern.quote(delimiter), -1);
-            MutableNode current = root;
-            for (String part : parts) current = current.children.computeIfAbsent(part, MutableNode::new);
-            current.fullKey = key;
+    public static Node build(List<String> keys,String separator) { return build(keys,separator,RedisDisplayLimits.DEFAULT); }
+    public static Node build(List<String> keys,String separator,RedisDisplayLimits limits) {
+        String delimiter=separator==null ? "" : separator;
+        if(delimiter.length()>limits.separatorChars() || keys!=null && keys.size()>RedisResourceLimits.DEFAULT.arrayElements()) throw RedisDisplaySupport.rejected();
+        Mutable root=new Mutable(""); int nodes=1; long bytes=0; LinkedHashSet<String> seen=new LinkedHashSet<>();
+        for(String key:keys==null ? List.<String>of() : keys) {
+            if(key==null || seen.contains(key)) continue;
+            int length=RespCodec.utf8Length(key,limits.singleKeyBytes());
+            if(seen.size()>=limits.keys() || length>limits.keyBytes()-bytes) throw RedisDisplaySupport.rejected();
+            seen.add(key); bytes+=length;
+            Mutable current=root; int from=0,depth=0;
+            while(true) {
+                if(++depth>limits.depth()) throw RedisDisplaySupport.rejected();
+                int next=delimiter.isEmpty() ? -1 : key.indexOf(delimiter,from);
+                String part=key.substring(from,next<0 ? key.length() : next);
+                Mutable child=current.children.get(part);
+                if(child==null) {
+                    if(nodes>=limits.treeNodes()) throw RedisDisplaySupport.rejected();
+                    nodes++; child=new Mutable(part); current.children.put(part,child);
+                }
+                current=child;
+                if(next<0) break;
+                from=next+delimiter.length();
+            }
+            current.fullKey=key;
         }
-        return freeze(root);
+        ArrayDeque<Frame> stack=new ArrayDeque<>(); stack.push(new Frame(root));
+        while(true) {
+            Frame frame=stack.peek();
+            if(frame.children.hasNext()) { stack.push(new Frame(frame.children.next())); continue; }
+            Node frozen=new Node(frame.source.segment,frame.source.fullKey,List.copyOf(frame.frozen),frame.count);
+            stack.pop(); if(stack.isEmpty()) return frozen;
+            stack.peek().frozen.add(frozen); stack.peek().count+=frozen.keyCount();
+        }
     }
-
-    private static Node freeze(MutableNode source) {
-        List<Node> children = new ArrayList<>(source.children.size());
-        int count = source.fullKey == null ? 0 : 1;
-        for (MutableNode child : source.children.values()) {
-            Node frozen = freeze(child);
-            children.add(frozen);
-            count += frozen.keyCount();
-        }
-        return new Node(source.segment, source.fullKey, List.copyOf(children), count);
+    private static final class Mutable {
+        final String segment; final Map<String,Mutable> children=new TreeMap<>(); String fullKey;
+        Mutable(String segment) { this.segment=segment; }
     }
-
-    private static final class MutableNode {
-        private final String segment;
-        private final Map<String, MutableNode> children = new TreeMap<>();
-        private String fullKey;
-
-        private MutableNode(String segment) {
-            this.segment = segment;
-        }
+    private static final class Frame {
+        final Mutable source; final Iterator<Mutable> children; final List<Node> frozen=new ArrayList<>(0); int count;
+        Frame(Mutable source) { this.source=source; children=source.children.values().iterator(); count=source.fullKey==null ? 0 : 1; }
     }
 }

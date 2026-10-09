@@ -16,28 +16,34 @@ public final class RedisSession implements AutoCloseable {
 
     private final RedisCommandExecutor executor;
     private final Runnable closeAction;
-    private boolean closed;
+    private final RedisResourceLimits limits;
+    private volatile boolean closed;
 
     RedisSession(RedisCommandExecutor executor, Runnable closeAction) {
+        this(executor, closeAction, RedisResourceLimits.DEFAULT);
+    }
+
+    RedisSession(RedisCommandExecutor executor, Runnable closeAction, RedisResourceLimits limits) {
         this.executor = Objects.requireNonNull(executor, "executor");
         this.closeAction = Objects.requireNonNull(closeAction, "closeAction");
+        this.limits = Objects.requireNonNull(limits, "limits");
     }
 
     RedisSession(RespClient client) {
-        this(client, client::close);
+        this(client, client::close, client.limits());
     }
 
     public boolean ping() {
-        return "PONG".equalsIgnoreCase(text(call("PING")));
+        return asciiEquals(call("PING"), "PONG");
     }
 
     public ScanPage scan(long cursor, String pattern, int count) {
-        return scanPage(call("SCAN", cursor, "MATCH", pattern == null || pattern.isBlank() ? "*" : pattern,
+        return scanPage(call("SCAN", Long.toUnsignedString(cursor), "MATCH", pattern == null || pattern.isBlank() ? "*" : pattern,
                 "COUNT", count));
     }
 
     public String type(String key) {
-        return text(call("TYPE", key));
+        return text(call("TYPE", key), 128);
     }
 
     public long ttl(String key) {
@@ -73,7 +79,14 @@ public final class RedisSession implements AutoCloseable {
     }
 
     public String info(String section) {
-        return text(section == null || section.isBlank() ? call("INFO") : call("INFO", section));
+        Object response = section == null || section.isBlank() ? call("INFO") : call("INFO", section);
+        byte[] bytes = bytesOrNull(response);
+        if ("keyspace".equalsIgnoreCase(section) && bytes != null) {
+            if (bytes.length > 64 * 1024) throw RedisException.rejected(RedisException.Kind.RESOURCE, RedisException.Delivery.REPLIED);
+            int lines = 1;
+            for (byte b : bytes) if (b == '\n' && ++lines > 1024) throw RedisException.rejected(RedisException.Kind.RESOURCE, RedisException.Delivery.REPLIED);
+        }
+        return text(response, limits.bulkBytes());
     }
 
     public byte[] get(String key) {
@@ -93,7 +106,7 @@ public final class RedisSession implements AutoCloseable {
     }
 
     public HashScanPage hscan(String key, long cursor, int count) {
-        ScanPage page = scanPage(call("HSCAN", key, cursor, "COUNT", count));
+        ScanPage page = scanPage(call("HSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
         requirePairs(page.values(), "HSCAN");
         List<HashEntry> entries = new ArrayList<>(page.values().size() / 2);
         for (int i = 0; i + 1 < page.values().size(); i += 2) {
@@ -135,7 +148,7 @@ public final class RedisSession implements AutoCloseable {
     }
 
     public ScanPage sscan(String key, long cursor, int count) {
-        return scanPage(call("SSCAN", key, cursor, "COUNT", count));
+        return scanPage(call("SSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
     }
 
     public boolean sadd(String key, byte[] member) {
@@ -147,11 +160,15 @@ public final class RedisSession implements AutoCloseable {
     }
 
     public ZScanPage zscan(String key, long cursor, int count) {
-        ScanPage page = scanPage(call("ZSCAN", key, cursor, "COUNT", count));
+        ScanPage page = scanPage(call("ZSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
         requirePairs(page.values(), "ZSCAN");
         List<ScoredValue> entries = new ArrayList<>(page.values().size() / 2);
         for (int i = 0; i + 1 < page.values().size(); i += 2) {
-            entries.add(new ScoredValue(page.values().get(i), Double.parseDouble(text(page.values().get(i + 1)))));
+            try {
+                entries.add(new ScoredValue(page.values().get(i), Double.parseDouble(text(page.values().get(i + 1), 128))));
+            } catch (NumberFormatException invalid) {
+                throw RedisException.rejected(RedisException.Kind.PROTOCOL, RedisException.Delivery.REPLIED);
+            }
         }
         return new ZScanPage(page.cursor(), List.copyOf(entries));
     }
@@ -173,26 +190,32 @@ public final class RedisSession implements AutoCloseable {
     }
 
     @Override
-    public synchronized void close() {
-        if (closed) return;
-        closed = true;
+    public void close() {
+        synchronized (this) {
+            if (closed) return;
+            closed = true;
+        }
         closeAction.run();
     }
 
     private Object call(Object... args) {
-        if (closed) throw new RedisException("Redis session is closed");
-        byte[][] bytes = new byte[args.length][];
-        for (int i = 0; i < args.length; i++) {
-            Object arg = Objects.requireNonNull(args[i], "Redis command argument");
-            bytes[i] = arg instanceof byte[] raw ? raw : utf8(String.valueOf(arg));
-        }
+        if (closed) throw RedisException.rejected(RedisException.Kind.CLOSED, RedisException.Delivery.NOT_SENT);
+        byte[][] bytes = RespCodec.arguments(args, limits);
         return executor.callBytes(bytes);
     }
 
     private static ScanPage scanPage(Object response) {
         List<?> parts = list(response, "scan response");
         if (parts.size() != 2) throw new RedisException("Invalid Redis scan response");
-        long cursor = Long.parseLong(text(parts.get(0)));
+        String cursorText = text(parts.get(0), 20);
+        long cursor;
+        try {
+            if (cursorText == null || cursorText.isEmpty()) throw new NumberFormatException();
+            for (int i = 0; i < cursorText.length(); i++) if (cursorText.charAt(i) < '0' || cursorText.charAt(i) > '9') throw new NumberFormatException();
+            cursor = Long.parseUnsignedLong(cursorText);
+        } catch (NumberFormatException invalid) {
+            throw RedisException.rejected(RedisException.Kind.PROTOCOL, RedisException.Delivery.REPLIED);
+        }
         return new ScanPage(cursor, byteList(parts.get(1)));
     }
 
@@ -222,18 +245,27 @@ public final class RedisSession implements AutoCloseable {
         throw new RedisException("Expected Redis bulk string response");
     }
 
-    private static String text(Object response) {
+    private static String text(Object response, int maximum) {
         byte[] bytes = bytesOrNull(response);
+        if (bytes != null && bytes.length > maximum) throw RedisException.rejected(RedisException.Kind.RESOURCE, RedisException.Delivery.REPLIED);
         return bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
     }
 
+    private static boolean asciiEquals(Object response, String expected) {
+        byte[] bytes = bytesOrNull(response);
+        if (bytes == null || bytes.length != expected.length()) return false;
+        for (int i = 0; i < bytes.length; i++) {
+            int b = bytes[i] & 255;
+            if (b >= 'a' && b <= 'z') b -= 32;
+            if (b != expected.charAt(i)) return false;
+        }
+        return true;
+    }
+
     private static void expectOk(Object response, String command) {
-        if (!"OK".equalsIgnoreCase(text(response))) {
+        if (!asciiEquals(response, "OK")) {
             throw new RedisException(command + " returned an unexpected response");
         }
     }
 
-    private static byte[] utf8(String value) {
-        return value.getBytes(StandardCharsets.UTF_8);
-    }
 }
