@@ -5,6 +5,9 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.InetAddress;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -106,9 +109,10 @@ class RespClientTest {
         private final List<String> responses;
         private final List<List<String>> commands = new ArrayList<>();
         private final CountDownLatch done = new CountDownLatch(1);
+        private volatile Throwable failure;
 
         ScriptedServer(String... responses) throws IOException {
-            this.server = new ServerSocket(0);
+            this.server = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"));
             this.responses = List.of(responses);
             this.thread = new Thread(this::serve, "RespClientTest-Server");
             thread.setDaemon(true);
@@ -139,7 +143,7 @@ class RespClientTest {
                     socket.getOutputStream().flush();
                 }
             } catch (Throwable error) {
-                // The awaiting assertion exposes missing commands; avoid hiding the client failure here.
+                if (!(error instanceof SocketException && server.isClosed())) failure = error;
             } finally {
                 done.countDown();
             }
@@ -149,6 +153,8 @@ class RespClientTest {
         public void close() throws Exception {
             server.close();
             thread.join(2_000);
+            assertFalse(thread.isAlive(), "fake server thread leaked");
+            if (failure != null) throw new AssertionError("fake server failed", failure);
         }
     }
 
@@ -157,9 +163,10 @@ class RespClientTest {
         private final Thread thread;
         private final CountDownLatch done = new CountDownLatch(1);
         private volatile int connections;
+        private volatile Throwable failure;
 
         RetryServer() throws IOException {
-            server = new ServerSocket(0);
+            server = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"));
             server.setSoTimeout(700);
             thread = new Thread(this::serve, "RespClientTest-RetryServer");
             thread.setDaemon(true);
@@ -183,7 +190,9 @@ class RespClientTest {
                     second.getOutputStream().write("+PONG\r\n".getBytes(UTF_8));
                     second.getOutputStream().flush();
                 }
-            } catch (Exception ignored) {
+            } catch (Throwable error) {
+                if (!(error instanceof SocketTimeoutException && connections == 1)
+                        && !(error instanceof SocketException && server.isClosed())) failure = error;
             } finally {
                 done.countDown();
             }
@@ -193,6 +202,8 @@ class RespClientTest {
         public void close() throws Exception {
             server.close();
             thread.join(2_000);
+            assertFalse(thread.isAlive(), "retry server thread leaked");
+            if (failure != null) throw new AssertionError("retry server failed", failure);
         }
     }
 }

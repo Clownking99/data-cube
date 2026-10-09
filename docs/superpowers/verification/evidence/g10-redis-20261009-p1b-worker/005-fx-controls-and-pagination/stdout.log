@@ -1,0 +1,54 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes
+> Task :buildSrc:jar
+> Task :compileJava
+> Task :generateBrandIcons
+> Task :generateVersionProperties
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+RedisPaneBudgetTest > failedDbSwitchRetainsReadonlyOldSourceAndOldActionCannotMutateNewSession() FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.RedisPaneBudgetTest.lambda$failedDbSwitchRetainsReadonlyOldSourceAndOldActionCannotMutateNewSession$3(RedisPaneBudgetTest.java:98)
+
+RedisPaneBudgetTest > rejectedFinalScanPageAndFxInstallFailurePreserveOldCursorTreeThenRecover() FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.RedisPaneBudgetTest.lambda$rejectedFinalScanPageAndFxInstallFailurePreserveOldCursorTreeThenRecover$3(RedisPaneBudgetTest.java:67)
+
+RedisPaneBudgetTest > stringModesRecoverFullEditingWhileRangeAndOversizeFullLoadNeverSave() FAILED
+    org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+        at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+        at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+        at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:31)
+        at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:183)
+        at app//com.datacube.fx.RedisPaneBudgetTest.lambda$stringModesRecoverFullEditingWhileRangeAndOversizeFullLoadNeverSave$2(RedisPaneBudgetTest.java:107)
+
+> Task :test FAILED
+
+[Incubating] Problems report is available at: file:///C:/Users/hetia/AppData/Local/Temp/datacube-g10-p1b-8a2fb1a85595457384ac24b883741454/build/main/reports/problems/problems-report.html
+8 actionable tasks: 8 executed

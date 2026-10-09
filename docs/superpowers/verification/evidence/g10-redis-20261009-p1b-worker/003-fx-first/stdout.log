@@ -1,0 +1,64 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes
+> Task :buildSrc:jar
+> Task :compileJava
+> Task :generateBrandIcons
+> Task :generateVersionProperties
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+RedisPaneBudgetTest > failedDbSwitchRetainsReadonlyOldSourceAndOldActionCannotMutateNewSession() FAILED
+    java.lang.AssertionError: Missing control: redis-database
+        at com.datacube.fx.RedisPaneBudgetTest.find(RedisPaneBudgetTest.java:160)
+
+RedisPaneBudgetTest > rejectedFinalScanPageAndFxInstallFailurePreserveOldCursorTreeThenRecover() FAILED
+    java.lang.AssertionError: Missing control: redis-keys
+        at com.datacube.fx.RedisPaneBudgetTest.find(RedisPaneBudgetTest.java:160)
+        at com.datacube.fx.RedisPaneBudgetTest.tree(RedisPaneBudgetTest.java:157)
+        at com.datacube.fx.RedisPaneBudgetTest.lambda$rejectedFinalScanPageAndFxInstallFailurePreserveOldCursorTreeThenRecover$2(RedisPaneBudgetTest.java:66)
+
+RedisPaneBudgetTest > pendingRefreshWinsOldTreeSelectionAndLatestDbIntentIsNotDropped() FAILED
+    java.lang.AssertionError: Missing control: redis-keys
+        at com.datacube.fx.RedisPaneBudgetTest.find(RedisPaneBudgetTest.java:160)
+        at com.datacube.fx.RedisPaneBudgetTest.tree(RedisPaneBudgetTest.java:157)
+
+RedisPaneBudgetTest > stringModesRecoverFullEditingWhileRangeAndOversizeFullLoadNeverSave() FAILED
+    java.lang.AssertionError: Missing control: redis-keys
+        at com.datacube.fx.RedisPaneBudgetTest.find(RedisPaneBudgetTest.java:160)
+        at com.datacube.fx.RedisPaneBudgetTest.tree(RedisPaneBudgetTest.java:157)
+
+RedisPaneBudgetTest > staleValueCallbackCannotOverwriteNewSelection() FAILED
+    java.lang.AssertionError: Missing control: redis-keys
+        at com.datacube.fx.RedisPaneBudgetTest.find(RedisPaneBudgetTest.java:160)
+        at com.datacube.fx.RedisPaneBudgetTest.tree(RedisPaneBudgetTest.java:157)
+
+RedisPaneBudgetTest > consoleRetentionAndInstallFailureRestoreInputAndAllowNextCommand() FAILED
+    java.lang.AssertionError: Missing control: redis-console-output
+        at com.datacube.fx.RedisPaneBudgetTest.find(RedisPaneBudgetTest.java:160)
+        at com.datacube.fx.RedisPaneBudgetTest.lambda$consoleRetentionAndInstallFailureRestoreInputAndAllowNextCommand$6(RedisPaneBudgetTest.java:45)
+
+RedisPaneBudgetTest > fiveTypesBinaryEditingAndRowsUseFullRawFieldMemberAndIndex() FAILED
+    java.lang.AssertionError: Missing control: redis-keys
+        at com.datacube.fx.RedisPaneBudgetTest.find(RedisPaneBudgetTest.java:160)
+        at com.datacube.fx.RedisPaneBudgetTest.tree(RedisPaneBudgetTest.java:157)
+
+RedisPaneBudgetTest > consoleCloseSettlesBlockedWorkerAndNeverReenablesOrAppendsLateResponse() FAILED
+    java.lang.AssertionError: Missing control: redis-console-output
+        at com.datacube.fx.RedisPaneBudgetTest.find(RedisPaneBudgetTest.java:160)
+        at com.datacube.fx.RedisPaneBudgetTest.lambda$consoleCloseSettlesBlockedWorkerAndNeverReenablesOrAppendsLateResponse$6(RedisPaneBudgetTest.java:59)
+
+> Task :test FAILED
+
+[Incubating] Problems report is available at: file:///C:/Users/hetia/AppData/Local/Temp/datacube-g10-p1b-64ce4ace8dd444559d3880733ade94e8/build/main/reports/problems/problems-report.html
+8 actionable tasks: 8 executed

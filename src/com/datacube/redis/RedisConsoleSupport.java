@@ -5,7 +5,8 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.ArrayDeque;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -23,6 +24,11 @@ public final class RedisConsoleSupport {
     private RedisConsoleSupport() {}
 
     public static List<String> tokenize(String line) {
+        return tokenize(line, RedisDisplayLimits.DEFAULT);
+    }
+
+    public static List<String> tokenize(String line, RedisDisplayLimits limits) {
+        if (line != null && line.length() > limits.consoleChars()) throw RedisDisplaySupport.rejected();
         List<String> tokens = new ArrayList<>();
         StringBuilder token = new StringBuilder();
         char quote = 0;
@@ -45,6 +51,7 @@ public final class RedisConsoleSupport {
                 started = true;
             } else if (Character.isWhitespace(c)) {
                 if (started) {
+                    if (tokens.size() >= RedisResourceLimits.DEFAULT.arguments()) throw RedisDisplaySupport.rejected();
                     tokens.add(token.toString());
                     token.setLength(0);
                     started = false;
@@ -56,7 +63,10 @@ public final class RedisConsoleSupport {
         }
         if (escaping) throw new IllegalArgumentException("命令末尾不能是转义符");
         if (quote != 0) throw new IllegalArgumentException("命令中的引号未闭合");
-        if (started) tokens.add(token.toString());
+        if (started) {
+            if (tokens.size() >= RedisResourceLimits.DEFAULT.arguments()) throw RedisDisplaySupport.rejected();
+            tokens.add(token.toString());
+        }
         return List.copyOf(tokens);
     }
 
@@ -64,7 +74,7 @@ public final class RedisConsoleSupport {
         if (args == null || args.isEmpty()) return CommandPolicy.NORMAL;
         String command = upper(args.getFirst());
         if (BLOCKED.contains(command)) return CommandPolicy.BLOCKED;
-        if ("XREAD".equals(command) && upperArgs(args).contains("BLOCK")) return CommandPolicy.BLOCKED;
+        if ("XREAD".equals(command) && args.stream().anyMatch("BLOCK"::equalsIgnoreCase)) return CommandPolicy.BLOCKED;
         if (CONFIRM.contains(command)) return CommandPolicy.CONFIRM;
         if ("CONFIG".equals(command) && args.size() > 1 && "SET".equals(upper(args.get(1)))) {
             return CommandPolicy.CONFIRM;
@@ -73,64 +83,49 @@ public final class RedisConsoleSupport {
     }
 
     public static String format(Object response) {
-        return format(response, 0);
+        return format(response, RedisDisplayLimits.DEFAULT).text();
     }
 
-    private static String format(Object response, int depth) {
-        if (response == null) return "(nil)";
-        if (response instanceof Long value) return "(integer) " + value;
-        if (response instanceof byte[] bytes) return formatBytes(bytes);
-        if (response instanceof List<?> values) {
-            if (values.isEmpty()) return "(empty array)";
-            StringBuilder out = new StringBuilder();
-            String indent = "  ".repeat(depth);
-            for (int i = 0; i < values.size(); i++) {
-                if (i > 0) out.append('\n');
-                Object value = values.get(i);
-                out.append(indent).append(i + 1).append(") ");
-                if (value instanceof List<?>) {
-                    out.append('\n').append(format(value, depth + 1));
-                } else {
-                    out.append(format(value, depth + 1));
-                }
+    public static RedisDisplaySupport.Preview format(Object response, RedisDisplayLimits limits) {
+        RedisDisplaySupport.Bounded out=new RedisDisplaySupport.Bounded(limits.consoleChars());
+        ArrayDeque<Object> stack=new ArrayDeque<>();
+        IdentityHashMap<List<?>,Boolean> active=new IdentityHashMap<>();
+        stack.push(new Value(response,0)); int nodes=0;
+        while(!stack.isEmpty() && !out.full()) {
+            Object next=stack.pop();
+            if(next instanceof Cursor cursor) {
+                if(cursor.index()==cursor.values().size()) { active.remove(cursor.values()); continue; }
+                if(cursor.index()>0) out.append('\n');
+                for(int i=0;i<cursor.depth()*2;i++) out.append(' ');
+                out.append(Integer.toString(cursor.index()+1)); out.append(") ");
+                Object child=cursor.values().get(cursor.index());
+                if(child instanceof List<?>) out.append('\n');
+                stack.push(new Cursor(cursor.values(),cursor.depth(),cursor.index()+1));
+                stack.push(new Value(child,cursor.depth()+1));
+            } else {
+                Value value=(Value)next;
+                if(++nodes>RedisResourceLimits.DEFAULT.nodes()) { out.omit(); break; }
+                Object raw=value.raw();
+                if(raw==null) out.append("(nil)");
+                else if(raw instanceof Long number) { out.append("(integer) "); out.append(Long.toString(number)); }
+                else if(raw instanceof byte[] bytes) {
+                    RedisDisplaySupport.Preview text=RedisDisplaySupport.text(bytes,limits.consoleChars(),true);
+                    if(text!=null) { out.append('"'); out.append(text.text()); out.append('"'); }
+                    else { text=RedisDisplaySupport.hex(bytes,limits.consoleChars(),"(hex)"," "); out.append(text.text()); }
+                    if(!text.complete()) out.omit();
+                } else if(raw instanceof List<?> list) {
+                    if(list.isEmpty()) out.append("(empty array)");
+                    else if(value.depth()>=limits.depth() || active.put(list,true)!=null) out.omit();
+                    else stack.push(new Cursor(list,value.depth(),0));
+                } else { out.append("(unsupported response)"); out.omit(); }
             }
-            return out.toString();
         }
-        return String.valueOf(response);
+        return out.finish();
     }
-
-    private static String formatBytes(byte[] bytes) {
-        String text = decodePrintableUtf8(bytes);
-        if (text != null) return '"' + text + '"';
-        StringBuilder hex = new StringBuilder("(hex)");
-        for (byte value : bytes) hex.append(String.format(Locale.ROOT, " %02x", value & 0xff));
-        return hex.toString();
-    }
-
-    private static String decodePrintableUtf8(byte[] bytes) {
-        final String value;
-        try {
-            value = StandardCharsets.UTF_8.newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes)).toString();
-        } catch (CharacterCodingException e) {
-            return null;
-        }
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (Character.isISOControl(c) && c != '\r' && c != '\n' && c != '\t') return null;
-        }
-        return value;
-    }
-
-    private static Set<String> upperArgs(List<String> args) {
-        Set<String> result = new HashSet<>();
-        for (String arg : args) result.add(upper(arg));
-        return result;
-    }
+    private record Value(Object raw,int depth) {}
+    private record Cursor(List<?> values,int depth,int index) {}
 
     private static String upper(String value) {
-        return value == null ? "" : value.toUpperCase(Locale.ROOT);
+        return value == null || value.length()>16 ? "" : value.toUpperCase(Locale.ROOT);
     }
 }
