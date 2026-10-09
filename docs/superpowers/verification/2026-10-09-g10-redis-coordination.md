@@ -141,3 +141,23 @@ root 独立解析 `003-complete-targeted` 的56份XML、前后863项输入、命
 镜像脚本初审发现输入中408个test源码路径全部采用Windows反斜杠，原`^test/`匹配使测试类泄漏名单为空；已要求先规范分隔符并断言覆盖全部408项。开发已修正。其image相对路径替换经root检查实际为单反斜杠转换，不是另一个已确认缺陷。linked helper源码已读：加载新image中的命名产品模块，脚本socket显式127.0.0.1，检查确认DB恢复、普通错误消息/同socket继续、资源拒绝、展示和raw身份，并join/EOF结算；尚未执行成功，不先记绿。
 
 冻结脚本计划复制全部863输入及多轮全部class；root已在执行前裁决缩为最小原件集合，避免再复制未修改驱动jar和整个已版本化源/测试树。完整输入、全部编译产物/image仍保留长度/哈希清单；仅复制本G10新增/修改源/测试、实际launcher、Redis/两pane与新测试相关class、必要buildSrc工具/probe、产品jar/launcher。完整image保留在具名UUID路径并绑定manifest。此为尚未生成的P2原件选择，不删历史、不修改P1a/P1b、不减少测试或断言；维护成本正式盘点仍后置。下一步继续独立核验全量、buildSrc和image实际结果。
+
+### C4.3：clean 全量和 buildSrc 新通过，模型容量中断已恢复
+
+root 重新读取 `004-clean-full` 351份XML（含 testcase 实际数与skip节点数）、命令/exit/raw日志及863项输入：4714 total = **4711 pass + 3 live skip**，0 failure/error，exit0，前后输入一致。跳过为真实Redis、Oracle SchemaDiff、PostgreSQL SchemaDiff的前置条件；11项Redis FX实际执行。新UUID目录clean无旧文件可删而UP-TO-DATE，不把它作为测试通过，实际编译/test等8任务执行、6分15秒。`005-buildsrc-forced` 原始XML独立核对 **8 pass、0skip**，exit0，4实际任务执行、863输入前后一致。
+
+P2 turn `01a11e52-eddb-7191-8b5c-bd06e4bc8346` 因“Selected model is at capacity”失败，是模型服务中断而非产品失败。root已向同一GPT-6.1-sol会话下发恢复，先核对已有006构建session/退出，不重复启动Gradle；新turn `01a11e61-aa31-7700-aab1-e10d75d5644a` active，cursor `431e0858-03dc-4a74-84cd-3c2876284d87:171`。006当时仅有command/inputs-before，没有exit，尚不记通过。收尾进程核对要求在CIM服务端按owned UUID/已知PID收窄，只输出PID/父PID与本轮范围；空查询不能泛称所有本机后台工作已物理停止。
+
+main检查点 `949958b9`；handoff已添加G10进行中入口（尚未提交），没有产品变化。下一步完成image/linked新证据与冻结，P2独立接受后才接管P3。自动跟进仍未获新明确授权，没有新调度；维护成本阶段尚未启动。
+
+## C5：P2 独立验收通过，接管 P3
+
+当前目标：提交已审核实现/证据，root 合入 main 后在新隔离环境复验，再按既有授权推送并核对精确 SHA CI。恢复后的开发 turn `01a11e61-aa31-7700-aab1-e10d75d5644a` 已完成，cursor `431e0858-03dc-4a74-84cd-3c2876284d87:174`；产品/test/Gradle已停写停测，开发HEAD仍66edd24f。root接管唯一Gradle执行权，尚未开始main新验证。
+
+[P2独立回执](evidence/g10-redis-20261009-p2-review/receipt.json)与[完整class补充核对](evidence/g10-redis-20261009-p2-review/compiled-output-review.json)确认：P1a284、P1b212、P2 **664** 项原件长度/哈希逐项匹配；863输入在四个成功run、linked audit和当前工作区一致；主/测试全量1817、buildSrc3、image1040个编译文件在各具名UUID目录逐项重算，合计2860；完整镜像183文件同样匹配。P2 manifest为 `f48851ead8341a55cde7ab8519c87bcdaae1f3ce4e7a8f7dfe8d60fca8921f04`。14产品/9测试无P2代码改动；完整报告第12节与所有已发现修正均已审阅。
+
+实际工程结论：完整定向291通过/1live跳过；clean全量4711通过/3live跳过；强制buildSrc8通过/0跳过；jpackageImage exit0、14任务实际执行。root重新解析suite与testcase/skip计数，未使用旧XML。新image外置javac及driver/Redis linked探针实际exit0、未timeout；产品来自命名模块，确认DB7恢复、精确普通error后同socket可继续、巨大声明13字节拒绝、展示预算和raw身份通过。两个loopback socket/peer由代码中的EOF/join及真实退出结算；probe PID退出和owned范围进程记录已读，不扩大为空查询证明所有系统进程停止。
+
+root独立重建408个测试类名单检查实际module-index、cfg和文件清单，未发现测试/probe/合成profile/验收参数泄漏。三核心产物SHA为exe `6c32ddb83447c5754b5484b7d0c0f501cf48ad515993f96143388d2b4a32074f`，cfg `e53f0d480a7462920e5d0b6df5e12bb24bbaa011298317a090ca174fbcc6153d`，modules `6fe70009ef582903716ab4f301f23d4ba65a035b2640bc921780f14020638c91`。stderr的12条javac failed与12条java failed前缀消息实际内容为JAVA_TOOL_OPTIONS提示，原件保留；任务退出、后续外置编译/运行与产物审计通过，不声称stderr为空。
+
+准入裁决：接受P2，允许同一开发会话只进行两个本地提交（产品/测试、报告/冻结证据），逐项检查raw Git blob后停写；不再执行Gradle、不合main、不推送。root随后核对提交和范围、合main、新UUID定向/clean全量/强制buildSrc/image及linked复验，再更新交接与实际CI结果。main复验不得沿用分支结果。原生桌面、真实Redis/数据库、最大合法多会话RSS、DNS/阻塞write/native close/GC及完整发布验收仍未完成；维护成本整理仍在G10交付后。

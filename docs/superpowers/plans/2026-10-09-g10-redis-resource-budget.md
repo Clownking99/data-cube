@@ -71,4 +71,4 @@ root 独立读实现、断言和原件，必要时给同一开发会话具体返
 
 ## 当前检查点
 
-C4：P1a、P1b 已停写并通过 root 独立源码/原件审查。P1b 最终定向87通过、1真实Redis跳过，11项FX mock实际执行；212项新原件和841项当前输入一致，P1a原284项未改。详见[协调记录 C4](../verification/2026-10-09-g10-redis-coordination.md)及其独立回执。下一步同一 GPT-6.1-sol 会话执行P2完整定向、clean全量、强制buildSrc、jpackageImage与隔离镜像验证，开发仍独占Gradle；P3尚未准入，G10产品尚未提交或合main。G10完成后按[维护成本整理计划](2026-10-09-maintenance-cost-review.md)继续，二者不混合提交或验收。
+C5：P1a、P1b、P2 已通过 root 独立审查。新P2完整定向291通过/1live跳过，clean全量4711通过/3live跳过，强制buildSrc8通过，jpackageImage及实际linked探针通过；1160项阶段原件、863输入、2860编译文件、183镜像文件独立核对。详见[协调记录 C5](../verification/2026-10-09-g10-redis-coordination.md)及回执。P3现由root接管唯一Gradle执行权；开发仅完成已审产品/证据的本地提交，root随后合main、新隔离复验、推送并核对精确SHA CI。产品尚未合main，不能用分支通过称最终交付。G10完成后按[维护成本整理计划](2026-10-09-maintenance-cost-review.md)继续，二者不混合提交或验收。
