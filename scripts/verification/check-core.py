@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 import xml.etree.ElementTree as ET
 import ctypes
 from ctypes import wintypes
@@ -15,6 +16,15 @@ import tempfile
 
 
 def fixture(mode, arguments):
+    if mode == 'exit-tail':
+        gate=Path(arguments[0]);code=int(arguments[1])
+        if code not in (0,7) or any(p.rstrip(' .').casefold() in ('.testagent','.git') for p in gate.parts):raise ValueError('INVALID_TAIL_FIXTURE')
+        end=time.monotonic()+15
+        while not gate.is_file():
+            if time.monotonic()>=end:raise RuntimeError('TAIL_GATE_DEADLINE')
+            time.sleep(.01)
+        os.write(1,b'tail boundary stdout\n');os.write(2,b'tail boundary stderr\n')
+        return code
     if mode == "argv":
         sys.stdout.write(json.dumps(arguments, ensure_ascii=False))
         return 0
@@ -176,7 +186,7 @@ class OuterOwner:
             self.api.CloseHandle(self.handle)
 
 
-def process_checks(repo, directory, pwsh, python, jdk, cache):
+def process_checks(repo, directory, pwsh, python, jdk, cache, matrix=None):
     repo=repo.absolute();directory=directory.absolute()
     directory.mkdir(exist_ok=False)
     results = []
@@ -186,7 +196,8 @@ def process_checks(repo, directory, pwsh, python, jdk, cache):
     outer_spec=importlib.util.spec_from_file_location('matrix_outer',Path(__file__).absolute().with_name('run-owned.py'))
     outer_module=importlib.util.module_from_spec(outer_spec);outer_spec.loader.exec_module(outer_module)
     try:
-        for mode, expected in (("normal", None), ("argv", None), ("nonzero", "NONZERO_EXIT"),
+        if matrix is None:
+            matrix=(("normal", None), ("argv", None), ("nonzero", "NONZERO_EXIT"),
                                ("dual", None), ("continuous", "DEADLINE"), ("overflow", "LOG_LIMIT"),
                                ("child-pipe", "DEADLINE"), ("nonzero-child-pipe", "NONZERO_EXIT"),
                                ('detached-child','OWNED_DESCENDANT_REQUIRES_TERMINATION'),
@@ -194,8 +205,9 @@ def process_checks(repo, directory, pwsh, python, jdk, cache):
                                ('unobserved-settlement','OWNED_SETTLEMENT_INCOMPLETE'),
                                ('cap-exact',None),('cap-plus-one','LOG_LIMIT'),('cancel','CANCELLED'),('tool-change','TOOL_IDENTITY_CHANGED'),
                                ('compile-zero-xml','NONZERO_EXIT'),('compile-stat-failure','NONZERO_EXIT'),('nonzero-child-overflow','NONZERO_EXIT'),
-                               ('skip-live',None),('skip-native','UNAPPROVED_SKIP:')):
-            name = "g11-p2-synthetic-" + directory.name + "-" + mode
+                               ('skip-live',None),('skip-native','UNAPPROVED_SKIP:'))
+        for mode, expected in matrix:
+            name = "g11-p2-synthetic-" + uuid.uuid4().hex + "-" + mode
             evidence = repo / "docs/superpowers/verification/evidence" / name
             out_path=repo/'docs/superpowers/verification/evidence'/(name+'-owner')
             spec={'repo':str(repo),'tools':str(Path(__file__).absolute().parent),'out':str(out_path),'stageEvidence':str(evidence),'mode':'fixture','inputSpec':None,'jdk':jdk,'cache':cache,'pwsh':pwsh,'python':python,'runtimeParent':tempfile.gettempdir(),'imageSourceScope':None,'deadlineSeconds':22,'fixture':mode,'processDeadlineMs':7000,'settleMs':1500,'streamCap':32768 if mode in ('overflow','cap-exact','cap-plus-one','nonzero-child-overflow') else 33554432,'outerFixture':None}
@@ -208,7 +220,7 @@ def process_checks(repo, directory, pwsh, python, jdk, cache):
             finally:sys.argv=original_args
             outer=json.loads((out_path/'result.json').read_text(encoding='utf-8'))
             failure=outer['firstFailure']
-            if failure=='NONZERO_EXIT' and code!=0:failure=None # Expected inner negative, not outer containment failure.
+            if expected is not None and failure=='NONZERO_EXIT' and code!=0:failure=None # Only an expected inner negative may explain outer NONZERO_EXIT.
             outer_settlement=outer['settlement']
             receipts = list(evidence.glob("*/stage-result.json"))
             receipt = json.loads(receipts[0].read_text(encoding="utf-8-sig")) if len(receipts) == 1 else None
@@ -219,8 +231,27 @@ def process_checks(repo, directory, pwsh, python, jdk, cache):
             results.append(record)
             (directory / (mode + "-check.json")).write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
             expected_ok=receipt is not None and (receipt['primaryFailure']==expected or (expected is not None and expected.endswith(':') and str(receipt['primaryFailure']).startswith(expected)))
+            if expected_ok:
+                expected_ok=(receipt['status']=='passed' and code==0) if expected is None else (receipt['status']=='failed' and code!=0)
             if failure or not expected_ok or not record["neighborStillRunning"]:
                 raise RuntimeError("PROCESS_CHECK_FAILED:" + mode)
+            if expected is None:
+                # Composite skip-policy receipts contain the actual process rather than root fields at the top level.
+                successful_process=receipt if receipt['schema']=='process/v1' else receipt.get('processReceipt')
+                if not isinstance(successful_process,dict) or successful_process.get('schema')!='process/v1' or successful_process.get('status')!='passed':raise RuntimeError('SUCCESSFUL_PROCESS_RECEIPT_MISSING:'+mode)
+                proof=successful_process.get('rootExitProof')
+                if successful_process.get('rootExited') is not True or successful_process.get('rootExitCode')!=0 or successful_process.get('observedRootExitCode')!=0 or not isinstance(proof,dict) or proof.get('exitCode')!=0 or successful_process.get('ownedSettlement')!='complete':raise RuntimeError('SUCCESSFUL_ROOT_EXIT_PROOF_MISSING:'+mode)
+            if mode.startswith('exit-'):
+                if receipt['observationAdapterFault']!=mode:raise RuntimeError('EXIT_FAULT_NOT_ACTUALLY_APPLIED')
+                if mode in ('exit-tail-zero','exit-tail-seven','exit-late-identity','exit-no-capture-zero','exit-no-capture-seven'):
+                    proof=receipt['rootExitProof'];wanted=7 if mode.endswith('seven') else 0
+                    if proof is None or receipt['rootExitCode']!=wanted or not receipt['rootExited'] or proof['exitCode']!=wanted or not isinstance(proof['startTimeUtc'],str):raise RuntimeError('ROOT_EXIT_PROOF_MISSING')
+                    if mode in ('exit-late-identity','exit-no-capture-zero','exit-no-capture-seven') and (proof['parentCaptured'] or receipt['capturedDescendants']):raise RuntimeError('MISSED_CAPTURE_CONTROL_NOT_APPLIED')
+                    if mode in ('exit-tail-zero','exit-tail-seven','exit-late-identity') and not receipt['hostReceipt']['tailBoundaryForced']:raise RuntimeError('TAIL_BOUNDARY_NOT_FORCED')
+                else:
+                    if not receipt['rootExitEvidenceError'] or receipt['status']=='passed' or receipt['rootExitProof'] is not None:raise RuntimeError('INVALID_EXIT_EVIDENCE_ACCEPTED')
+                    if mode=='exit-missing-seven' and (receipt['rootExitCode']!=7 or not any(x.startswith('ROOT_EXIT_EVIDENCE:') for x in receipt['secondaryFailures'])):raise RuntimeError('ROOT7_EVIDENCE_FIRST_CAUSE_LOST')
+                    if mode=='exit-cancel-missing' and not receipt['cancelled']:raise RuntimeError('CANCELLATION_NOT_ACTUAL')
             if mode not in ('unobserved-settlement','start-failure') and receipt["ownedSettlement"] != "complete":
                 raise RuntimeError("OWNED_EXIT_NOT_OBSERVED:" + mode)
             if mode == "argv":
@@ -253,6 +284,13 @@ def process_checks(repo, directory, pwsh, python, jdk, cache):
     return {"schema": "process-checks/v1", "passed": True, "cases": results}
 
 
+def root_exit_checks(repo,directory,pwsh,python,jdk,cache):
+    matrix=[('exit-tail-zero',None),('exit-tail-seven','NONZERO_EXIT'),('exit-late-identity',None),('exit-no-capture-zero',None),('exit-no-capture-seven','NONZERO_EXIT')]
+    matrix.extend((name,'ROOT_EXIT_EVIDENCE:') for name in ('exit-missing-event','exit-corrupt-event','exit-wrong-pid','exit-wrong-time','exit-wrong-code','exit-missing-identity','exit-corrupt-identity','exit-summary-mismatch','exit-date-coercion','exit-root-is-host'))
+    matrix.extend([('exit-missing-seven','NONZERO_EXIT'),('exit-cancel-missing','CANCELLED'),('exit-budget-missing','DEADLINE')])
+    return process_checks(repo,directory,pwsh,python,jdk,cache,matrix)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--fixture")
@@ -260,6 +298,7 @@ def main():
     parser.add_argument("--check-tools")
     parser.add_argument("--out")
     parser.add_argument("--check-processes")
+    parser.add_argument("--check-root-exits")
     parser.add_argument("--repo")
     parser.add_argument("--pwsh")
     parser.add_argument("--python")
@@ -275,8 +314,9 @@ def main():
                 if time.monotonic()>=end:raise RuntimeError('GATE_DEADLINE')
                 time.sleep(.01)
         return fixture(args.fixture, remaining[1:] if remaining[:1] == ["--"] else remaining)
-    if args.check_processes:
-        result = process_checks(Path(args.repo), Path(args.check_processes), args.pwsh, args.python, args.jdk, args.cache)
+    if args.check_processes or args.check_root_exits:
+        checker=root_exit_checks if args.check_root_exits else process_checks
+        result = checker(Path(args.repo), Path(args.check_root_exits or args.check_processes), args.pwsh, args.python, args.jdk, args.cache)
         with Path(args.out).open("x", encoding="utf-8") as output:
             json.dump(result, output, ensure_ascii=False, indent=2)
         return 0

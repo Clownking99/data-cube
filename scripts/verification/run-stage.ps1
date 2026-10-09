@@ -30,7 +30,7 @@ if(-not $DeadlineMs){$DeadlineMs=$(if($Mode -eq 'fixture'){600000}else{$policy.s
 function Run-Python([string]$Name,[string[]]$Arguments) {
  $tokenSource=[Threading.CancellationTokenSource]::new()
  try {
-  if($Mode -eq 'fixture' -and $Fixture -eq 'cancel'){$tokenSource.CancelAfter(3000)}
+  if($Mode -eq 'fixture' -and $Fixture -in @('cancel','exit-cancel-missing')){$tokenSource.CancelAfter(3000)}
   $result=Invoke-OwnedProcess -Scope $scope -Name $Name -Exe $scope.paths.Python -Argv (@('-I','-S','-B')+$Arguments) -Cwd $Repo -HostScript $hostScript -DeadlineMs $DeadlineMs -SettleMs $SettleMs -StreamCap $StreamCap -CancellationToken $tokenSource.Token
  } finally {$tokenSource.Dispose()}
  if($result.status -ne 'passed'){$failures.Add($result.primaryFailure)}
@@ -48,8 +48,14 @@ function Apply-TestPolicy($Results,[string]$PolicyStage=$Mode) {
 }
 if($Mode -eq 'fixture') {
  if($Fixture -in @('start-failure','assign-failure','unobserved-settlement')){$scope.testFault=$Fixture;$Fixture='normal'}
- $fixtureMode=$(if($Fixture -eq 'cancel'){'continuous'}elseif($Fixture -in @('compile-zero-xml','compile-stat-failure')){'nonzero'}elseif($Fixture -in @('skip-live','skip-native')){'normal'}else{$Fixture})
+ $exitFaults=@('exit-tail-zero','exit-tail-seven','exit-late-identity','exit-no-capture-zero','exit-no-capture-seven','exit-missing-event','exit-corrupt-event','exit-wrong-pid','exit-wrong-time','exit-wrong-code','exit-missing-identity','exit-corrupt-identity','exit-summary-mismatch','exit-missing-seven','exit-cancel-missing','exit-budget-missing','exit-date-coercion','exit-root-is-host')
+ if($Fixture -in $exitFaults){$scope.testFault=$Fixture}
+
+ $fixtureMode=$(if($Fixture -in @('cancel','exit-cancel-missing')){'continuous'}elseif($Fixture -in @('compile-zero-xml','compile-stat-failure')){'nonzero'}elseif($Fixture -in @('skip-live','skip-native')){'normal'}else{$Fixture})
+ if($Fixture -in $exitFaults){$fixtureMode=$(if($Fixture -in @('exit-tail-zero','exit-tail-seven','exit-late-identity')){'exit-tail'}elseif($Fixture -in @('exit-no-capture-seven','exit-missing-seven')){'nonzero'}elseif($Fixture -in @('exit-cancel-missing','exit-budget-missing')){'continuous'}else{'normal'})}
  $arguments=@($scope.tools['check-core.py'].frozen,'--fixture',$fixtureMode,'--','space value','中文','literal"quote','')
+ if($fixtureMode -eq 'exit-tail'){$arguments=@($scope.tools['check-core.py'].frozen,'--fixture','exit-tail','--',(Join-Path $scope.owned 'processes/fixture/root-identity.json.tail-release'),$(if($Fixture -eq 'exit-tail-seven'){'7'}else{'0'}))}
+
  try {
   if($Fixture -eq 'tool-change'){[IO.File]::AppendAllText($scope.tools['check-core.py'].frozen,"`n# synthetic mutation`n")}
   $process=Run-Python 'fixture' $arguments
