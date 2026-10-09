@@ -175,3 +175,19 @@ Ubuntu原始job113698755125日志保存在g11-ci-pid-readiness-20261009/ubuntu-f
 root源码定位：PgDumpProcessHelper Files.writeString创建PID文件后尚未写入/关闭的窗口，PgDumpTestJobs.awaitFile仅检查exists，测试便readString/parseLong；并非G11工具吞错。已下发同一6.1-sol会话，从本地cfd9d4ed建codex/g11-ci-pid-readiness-20261009，只修正PID完成发布/读取协议及必要确定性回归，覆盖child/grandchild消费者，不放宽5秒/skip/断言，不做JVM夹具迁移或产品改造。属于当前交付被实际CI失败阻止的必要局部纠正，常规方案自主记录。
 
 开发先交源码/证明方案，不Gradle/提交；root源码审后再明确转移唯一Gradle执行权。冻结P1/P2/P3不改；后续修正将使用新输入身份和新验证目录，当前P3通过不冒充修正后的新证据。下一步审查小修正，再本地验证/集成/新SHA CI。没有新增线程、自动调度或外部服务访问。
+### C11.1：PID最小修正源码准入
+
+root完整阅读三文件diff：测试专用PgDumpProcessHelper新增publishPid，CREATE_NEW写入正PID并关闭后才创建.ready；PgDumpTestJobs.awaitPid先沿用原5秒awaitFile等待完成标记，再由readPublishedPid确认标记/解析正long，空串/非法/溢出转换为明确IOException；PgDumpRunnerReliabilityTest三个消费者改用此接口，原capture/physical/neighbor断言不动。
+
+新增3个参数化回归方法10case：pidReaderRejectsEmptyPartialAndCompletePayloadUntilPublication（空/12前缀/完整但未发布均拒绝，发布后完整123456），pidPublisherPublishesCompletePositivePayloadForBothFamilyRoles（child与grandchild），publishedPidMustBeCompleteAndPositive（空/0/-1/非数字/溢出）。采用code-testing-agent focused流程，不创建中间状态、不扩展测试框架。源码准入通过不等于测试通过。
+
+已把唯一Gradle交给开发，仅允许一次最窄PgDumpRunnerReliabilityTest重编译/执行，复用冻结core与新一次性薄入口/有界owner；共享12工具、原stage-policy过滤器和旧封存根不改。root停止Gradle；待实际退出/raw XML/输入/薄入口归档审查后才提交和接管修正后main复验。常规预算与5秒保持不变，未调用CI重跑。
+## C12：PID修正定向与封存独立接受
+
+唯一真实定向为cleanTest test --tests com.datacube.export.PgDumpRunnerReliabilityTest --rerun-tasks --offline --no-daemon --console=plain，Gradle实际41秒/exit0，33通过（原23+新10）、0skip/failure/error。此前相对spec被共享路径准入在启动进程前拒绝exit1；原始拒绝保留，改为绝对参数后未改任何入口/工具字节。受验是cfd9d4ed加三文件工作区修正，875文件SHA前后相同；不能称原cfd9d4ed已含修正。
+
+root逐行核对一次性stage.ps1及outer.py相对冻结共用版差异，只选择窄任务与本轮薄入口、17entry文件（outer运行身份闭包16）和赋Job后gate。预算/双流/结算/环境沿用，无新增任意命令平台。独立audit_narrow.py实际exit0：1XML33case、875输入、408测试源码、12工具、5进程20日志全部正确。独立audit_archive.py实际exit0：103文件910931字节，manifest SHA04ee175ba44263ac75a6e528e19c0d6f1cafcaea1e72c46e599657cb79f72379；17entry、outer两流与Job自然清零、3源文件工作区SHA及10新增case/family两case ordinal映射一致。参数XML仅有display名，映射按已审源码声明及唯一连续组，不伪造方法字段。
+
+[审核原件](evidence/g11-ci-pid-readiness-20261009/root-review/archive-review.json)。已准许开发两笔本地提交：三测试文件正常文本规范化；新证据/manifest/报告精确原字节及报告专用-text属性。开发停止Gradle，不合main/push。root合入后用新输入身份完整重验；旧P3仍保持不变且不冒充新结果。
+
+首轮CI现已终态：wrapper、Windows test及linked、Redis integration均成功，只有Ubuntu PID读取竞态失败，整体failure；原API终态已保存在同CI证据根。root新增失败文档提交后，旧Delivery.py正确拒绝HEAD变更的旧推送核对（HEAD changed after push），随后只读固定run API并显式核对旧cfd9d4ed，没有绕过修改冻结脚本。
