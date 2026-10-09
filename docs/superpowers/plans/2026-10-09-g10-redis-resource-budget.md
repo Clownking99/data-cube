@@ -71,4 +71,4 @@ root 独立读实现、断言和原件，必要时给同一开发会话具体返
 
 ## 当前检查点
 
-C6：P1a/P1b/P2已独立接受，产品edc41088与证据7ebf97d2合main为58e27c34。root在新UUID中完成完整定向291通过/1live跳过、clean全量4711通过/3live跳过、强制buildSrc8通过、jpackageImage和linked探针；863输入、2860编译文件与183镜像文件核对，核心哈希与P2一致。详见[协调记录C6](../verification/2026-10-09-g10-redis-coordination.md)。G10最终交付以[delivery-intent](../verification/evidence/g10-main-20261009/delivery-intent.json)所指实际精确SHA CI回执passed=true为准，不预报。完整原生/真实服务与系统资源局限保留，成功后再按[维护成本计划](2026-10-09-maintenance-cost-review.md)执行，二者不混合验收。
+C7：G10工程目标已完成。产品edc41088、证据7ebf97d2、受验main58e27c34；root新定向291通过/1live跳过、全量4711通过/3live跳过、buildSrc8、jpackageImage与linked探针通过，863输入/2860编译文件/183镜像核对。最终交付main `567a5293528a20c2d4eae6daafabe2242064b676` 已推送，Verify37874713840四任务success，日志与远端SHA核对、实际delivery-result passed=true。见[协调C7](../verification/2026-10-09-g10-redis-coordination.md)和[交付原件入口](../verification/evidence/g10-main-20261009/delivery-intent.json)。完整原生/真实服务与系统资源局限保留，不称完整发布验收。交付后按[维护成本计划](2026-10-09-maintenance-cost-review.md)独立整理，最新会话入口为[CURRENT](../../handoffs/CURRENT.md)。

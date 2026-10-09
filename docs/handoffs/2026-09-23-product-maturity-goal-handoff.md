@@ -1,5 +1,9 @@
 # DataCube 新会话交接：产品成熟度与首个目标
 
+> 当前状态、后续方向与待验项统一见[CURRENT](CURRENT.md)；本文件保留历史快照，以下“最新/当前”按当时日期理解。
+
+## 历史检查点
+
 **2026-10-09 当前任务：G10 Redis 资源预算已合main并完成本地独立复验，正在交付CI。** 产品edc41088、开发证据7ebf97d2、受验main58e27c34。P1a/P1b/P2已审，root新定向291通过/1live跳过、clean全量4711通过/3live跳过、buildSrc8通过、jpackageImage和linked探针通过；863输入、2860编译文件、183镜像文件及408测试类隔离核对，三核心哈希与P2一致。详见[G10协调C6](../superpowers/verification/2026-10-09-g10-redis-coordination.md)；最终推送/精确SHA CI按[delivery-intent](../superpowers/verification/evidence/g10-main-20261009/delivery-intent.json)指向的真实回执，passed=true才交付，不预报。完成后开始[维护成本整理](../superpowers/plans/2026-10-09-maintenance-cost-review.md)。完整原生、真实服务、RSS/系统边界及G8完整发布仍待验；旧跟进PAUSED，新跟进未创建，v3.2.9不动。下方均为历史检查点。
 
 **2026-10-09 G9最新：CI测试兼容修正已集成，main新本地复验通过。** 产品e7950123、修正6b8ceb93、main集成ef2b5b1d；526份返工原件独立核验。分支新完整G9定向1182/全量4664通过+3live跳过；root新受影响85、单列headless16跳过、clean全量4664通过+3live跳过、强制buildSrc8、重建镜像与外置linked探针通过，三核心产物SHA不变。首次CI两平台失败已保留，Windows初始化超时本地未复现但根因未知。最新证据/待验见[CI协调C10](../superpowers/verification/2026-10-09-g9-ci-portability-review.md)，最终新SHA CI和结案以[新delivery-intent](../superpowers/verification/evidence/g9-ci-main-20261009/delivery-intent.json)所指实际回执为准；成功后暂停datacube-g9，不启动下一目标。真实DB/pg_dump、原生/慢盘/文件系统局限、安装签名和完整M8仍待验；旧datacube/v3.2.9不变。下方为历史检查点。

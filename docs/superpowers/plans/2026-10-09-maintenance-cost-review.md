@@ -22,4 +22,12 @@
 - 文档/索引整理验证链接与引用；脚本变更用独占临时 fixture 证明计数/失败/跳过/路径约束，避免为低影响文档更改重跑整个产品全量。
 - 产品结构改动另按最小范围分批验证，保持 root 审查、唯一 Gradle 执行者和 main 精确 SHA 交付边界。
 
-当前状态：等待 G10 完成。已知候选仅为待测方向：多轮 evidence/脚本重复、交接顶部历史“最新”累积、AppShell/大型 pane 生命周期耦合、Windows FX 偶发初始化超时。尚未做本轮维护成本盘点，不声明已整理完成。
+## 当前检查点
+
+M1：G10已于main `567a5293528a20c2d4eae6daafabe2242064b676` 完成交付，Verify37874713840四任务通过。此后才开始本计划；没有把维护改造混入G10代码或验收。
+
+M2：只读[基线与优先级报告](../../maintenance/2026-10-09-maintenance-cost-baseline.md)已完成。允许范围28,985文件/809.55 MiB逻辑字节，证据27,764文件/798.19 MiB；381验证脚本、235不同blob；两个历史入口79处“最新”。数字附可重现采集器、新UUID合成fixture和实际CI/Gradle耗时，未将逻辑字节称可回收空间。
+
+M3：已落地[当前入口](../../handoffs/CURRENT.md)、[验证说明/证据索引](../../maintenance/verification-guide.md)、README与历史入口跳转；未来runner只完成[最小设计](../../maintenance/verification-runner-design.md)。同一6.1-sol会话只读提供四个候选，root独立核对源码后区分验证工具、测试进程夹具、Redis请求状态和Shell关闭入场的迁移/回滚/回归边界。未执行架构拆分、依赖升级、历史证据迁移或删除。
+
+M4：本轮合成采集器计数/脏输入/路径门禁已通过，文档链接与产品树检查由[验收回执](../verification/evidence/maintenance-cost-20261009/review-receipt.json)记录；没有为docs整理重新宣称本地产品全量通过。单独提交、推main及精确SHA CI按[交付入口](../verification/evidence/maintenance-cost-20261009/delivery-intent.json)实际passed=true结案。未验仍为真实服务/原生/签名安装及系统边界；Windows FX偶发初始化超时根因未知。下一轮优先新验证runner试点，本轮不自动开始上述代码改造。

@@ -77,6 +77,8 @@
 
 ## 本地构建与运行
 
+开发维护先读[当前交接](docs/handoffs/CURRENT.md)；验证方法与历史证据索引见[验证说明](docs/maintenance/verification-guide.md)，下一步建议见[维护成本基线](docs/maintenance/2026-10-09-maintenance-cost-baseline.md)。
+
 需要联网首次下载 Gradle 发行版、插件与 JavaFX 25 模块。
 
 ```bash

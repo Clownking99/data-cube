@@ -193,3 +193,11 @@ root完成本地产品提交 `edc4108841b3a7a70a37d0b984c6ba88df94cf98`、证据
 准入：本地P3接受，按既有授权仅推main，不fetch/tag/PR/发布。[delivery-intent](evidence/g10-main-20261009/delivery-intent.json)指定独占 `build/owned-g10-ci-bd83873215834d2883c2a4ac89d36e79/delivery-result.json` 保存最终SHA与四任务CI实况、远端身份、原始命令/响应/日志及哈希。只有该回执实际passed=true才算G10交付，当前不预报。回执不再提交以避免改变受验SHA。通过后才按独立维护计划开始盘点。
 
 未验保持：完整原生桌面、真实Redis/数据库、最大合法多会话RSS、DNS/阻塞write/native close/GC边界；CI临时Redis不是业务真库验收。既有G8安装/升级/回滚/签名等完整发布验收仍未完成。v3.2.9及旧PAUSED跟进不变，新跟进未创建。
+
+## C7：G10 实际交付完成
+
+最终main `567a5293528a20c2d4eae6daafabe2242064b676` 直连推送成功，未启用代理。[Verify37874713840](https://github.com/Clownking99/data-cube/actions/runs/37874713840)第一次执行四任务全部success：wrapper-validation、Linux测试、Windows测试与linked image、隔离Redis集成。root读取实际日志确认buildSrc:test/test/jlink，核对远端main相同SHA，delivery-intent所指delivery-result.json实际passed=true；其完整原件和哈希清单已冻结，后续不改写。
+
+491份main新原件和manifest、四份prose共496文件暂存Git blob逐字节核对后提交；提交后491原件重算及G10文档18个本地链接通过。产品/test/build仍与受验58e27c34一致。完整本地P3和精确SHA CI共同满足G10工程目标，C6外部/原生/发布局限原样保留。
+
+G10完成后，按维护者顺序启动[维护成本整理](../plans/2026-10-09-maintenance-cost-review.md)，其文件/提交/验证独立记录。[当前统一入口](../../handoffs/CURRENT.md)替代历史顶部的多个“最新”判断。没有新自动跟进；旧跟进PAUSED、v3.2.9未动。
