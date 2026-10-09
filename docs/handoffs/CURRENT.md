@@ -8,13 +8,15 @@
 - main 新隔离定向 **291 通过 / 1 live 跳过**，clean 全量 **4711 通过 / 3 live 跳过**，buildSrc **8 通过**，jpackageImage、183文件镜像审计和外置 linked 探针通过。11项 Redis FX 实际执行；跳过不算通过。[协调账本](../superpowers/verification/2026-10-09-g10-redis-coordination.md)保留首失败、修正和局限。
 - **维护成本首轮整理已落地。** 新增可复现的只读盘点、当前入口、验收索引和未来验证工具的最小设计；产品、测试及构建逻辑未改。[成本报告与优先级](../maintenance/2026-10-09-maintenance-cost-baseline.md)。本次整理的最终推送/CI以[交付入口](../superpowers/verification/evidence/maintenance-cost-20261009/delivery-intent.json)指向的实际回执为准。
 
-## 当前进行中
+## 本轮交付
 
-维护者继续授权后启动 **G11 验证 runner 共用内核**，范围为四个小内核与本轮新验证入口，原6.1-sol会话开发、root审查/集成。见[实施计划](../superpowers/plans/2026-10-09-g11-verification-core.md)、[协调账本](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。P1已独立审核通过：最终21项进程/阶段控制、Python契约与旧逻辑对照，唯一真实定向291通过/1 live跳过；1777份归档原件逐项长度/SHA与实际清单相符。早期日志丢失、错误归因等失败原件保留。P2已独立审核通过：全量4711通过/3 live跳过、buildSrc8通过、image/linked及完整合成矩阵通过，2022份封存原件与实际磁盘一致。开发正在精确本地提交，随后root合main并接管新隔离P3；尚未完成P3或main交付。
+**G11 验证 runner 共用内核已完成本地P3验收并合入main。** 工具48b51d63、开发证据6aefd9d1、合并4ddba09d，受验main62ea18d。root在新UUID重跑80项合成控制、定向291通过/1 live跳过、clean全量4711通过/3 live跳过、buildSrc8通过、jpackageImage与外置linked；11项Redis原生FX实际执行。P3的1900份原件已封存，跳过不算通过。
+
+[main验收报告与剩余边界](../superpowers/verification/2026-10-09-g11-main-verification.md)、[协调账本](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。实际最终推送SHA/四任务CI以[交付定位](../superpowers/verification/evidence/g11-p3-813154b3fa4c-package/delivery-intent.json)指向的本机push.json、delivery-result.json及原始日志为准；定位文件本身不代表CI成功。受验后只新增交付文档和证据，875个工程/工具输入未改。未自动启动下一轮。
 
 ## 后续候选
 
-G11按[最小设计](../maintenance/verification-runner-design.md)推进，只迁移本轮新验证。交付后再考虑整理测试专用受控 JVM 夹具的超时/退出结算。Redis 请求状态和 Shell 关闭入场拆分是后续独立候选，范围与必需回归见成本报告；本轮未实施架构改造。
+G11按[最小设计](../maintenance/verification-runner-design.md)落地，只迁移本轮新验证。后续再考虑整理测试专用受控 JVM 夹具的超时/退出结算。Redis 请求状态和 Shell 关闭入场拆分是后续独立候选，范围与必需回归见成本报告；本轮未实施架构改造。
 
 ## 待验与边界
 

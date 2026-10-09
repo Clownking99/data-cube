@@ -1,6 +1,6 @@
 # G11验证工具的最小设计与实现
 
-状态：G11实现已通过P1/P2独立审核，main P3验收与交付状态见[协调账本](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。依据是[G10实际协调诊断](../superpowers/verification/2026-10-09-g10-redis-coordination.md)及[维护成本基线](2026-10-09-maintenance-cost-baseline.md)。只迁移本轮新验证，旧冻结脚本和manifest不动。
+状态：G11实现已通过P1/P2和main新隔离P3独立审核，实际结果与交付定位见[main验收报告](../superpowers/verification/2026-10-09-g11-main-verification.md)。依据是[G10实际协调诊断](../superpowers/verification/2026-10-09-g10-redis-coordination.md)及[维护成本基线](2026-10-09-maintenance-cost-baseline.md)。只迁移本轮新验证，旧冻结脚本和manifest不动。
 
 ## 边界
 

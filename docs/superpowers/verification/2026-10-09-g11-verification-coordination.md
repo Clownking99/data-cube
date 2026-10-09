@@ -141,3 +141,28 @@ root对已完成v2 targeted运行独立脚本实际exit0：56XML套件292用例�
 [完整审核脚本和回执](evidence/g11-p2-root-review/completion-v2-review.json)。root审核夹具曾误取顶层runtimeParent及要求所有outer负例wrapperExit=1，分别实际退出1；后者正确原件为保留7/124。修正只读审核夹具后全套审核实际exit0，见reviewer-corrections.md；受验实现和原件未改，不将首次审核失败冒充通过。
 
 裁决：P2通过，已授权同一开发线程只按12工具+两属性文件+两报告+P1/P2 manifest明确原件本地提交，要求Git blob原字节核对；不合main、不推送、不再运行Gradle，旧.g10-verify-blobs.ps1保持未跟踪。root随后审核运输、合main并接管唯一Gradle，在新UUID完成P3。尚无P3/main新运行及最终CI证据，不宣称完整桌面/真实服务/发布验收。
+## C9：main集成与运输复核，root接管P3
+
+开发分两笔提交：48b51d63ee89edb8dcb0187d7dd43367c558f347（13工具/属性文件）、6aefd9d136058ec67cab688b28158dcc4416fb9d（3804证据/报告/属性文件）。root以4ddba09d6b848dca4532b575b6db930702c79211合入main；产品、测试、buildSrc、资源、构建和CI无差异。开发已停止Gradle及写入。
+
+首次运输核对实际exit1：仅P1报告被Git检出换行转换（原e5aeb50f...、检出97b36ea1...），P2报告/工具/证据字节均正确。root为两份G11报告追加精确-text规则，按HEAD blob恢复原字节，提交62ea18d1981e8ac65b4b727566786d56b6a65371；未改任一冻结证据根。独立transport_review.py重新实际exit0，3817文件精确集合和Git原始blob一致，[回执](evidence/g11-p2-root-review/main-transport.json)。首次失败单列transport-first-failure.json。
+
+root准备全新[g11-p3-813154b3fa4c-package](evidence/g11-p3-813154b3fa4c-package/preparation.json)，受验main62ea18d，875输入/12工具。共享工具字节与P2完全相同；一次性编排器只替换新前缀/main绑定并将assert改为显式require，SHA a4d749799719d130a748c6ebd7e0b609e46ac5f7e477b8c23f873d609573df19。冻结check-core内部合成目录保留g11-p2-synthetic名称，但嵌入本轮唯一g11-p3控制ID，均为本轮全新原件，非复用P2。
+
+已由root启动Python -I -S -B完整控制及五阶段序列，soleGradleOwner=root；每阶段新的独占UUID运行树。当前无P3通过声明，后续只以原始实际退出/XML/产物核对为准。下一步完成P3并封存、更新使用说明/交接，最后推main核对精确SHA四任务CI；尚未推送或改变tag。
+### C9.1：P3定向原件复核
+
+root当前main62ea18d，完整新合成序列已通过，targeted完成后立即独立读取原件：56套件292用例=291通过+1精确Redis live skip，0failure/error；875输入前后一致且与磁盘相同、408类型、12冻结工具、10进程/40日志身份均正确。回执见g11-p3-813154b3fa4c-root-review/targeted-review.json。原生headless=false，跳过不计通过；11项RedisPaneBudgetTest仍需在最终全量/镜像原件一起核对。
+
+clean全量已启动，buildSrc/image/linked仍未验；尚不计P3整体通过。只读进度查询曾猜错gradle进程子目录及command.json文件名，Get-Item返回1；没有修改或停止被测进程，正式sequence及实际退出独立记录，不将查询失败冒充Gradle失败。
+## C10：P3接受，封存并准备main交付
+
+root新P3实际Python/shell exit0，80项合成控制及五工程阶段完成。独立读取当前XML、原始进程/流、875输入/408类型/12工具/外部exe和镜像实物：定向291通过/1精确Redis live跳过；clean全量4711通过/3精确live跳过；buildSrc8通过/0跳过；image183文件与linked前后身份一致、26088类无408测试类型/框架/探针泄漏。四个linked命令0，驱动connectCalls0、Redis socketsSettled=true/realServices0。11项RedisPaneBudgetTest原生用例在定向和全量均实际通过，另一个关闭顺序unit未算native。
+
+验收脚本首次扫描运输后的P2清单遇到旧首失败留下的空目录缺席（Git不保存空目录），实际exit1；没有丢失文件。P3审核器增显式transported-archive，只容许这个精确根且manifest零文件时单列缺席，其余文件/非空根继续严格对照；完整重验exit0。旧P1/P2、共享12工具与正式序列原件均未改。P1的1777和P2的2022文件在main重算不变；错误记录没有删除或改成通过。
+
+P3封存1900文件/33218660字节，manifest SHA923c436ba191f2627d9b34ec24dee176b39f13bea4c1461c86fcdb675afc80d6，见g11-p3-813154b3fa4c-frozen/manifest.json。冻结包含实际工具、一次性编排/审查/封存脚本、五阶段/合成原件、交付脚本与定位；不复制整棵runtime、驱动、源码或JDK。详细结果见2026-10-09-g11-main-verification.md。
+
+裁决：P3本地接受。已更新CURRENT、验证使用说明、最小设计与计划检查点；新增文件/文档不改变工程输入。下一步精确暂存/本地提交，main-only push（必要时仅本次7897代理）并核对同SHA四任务Verify、原始日志与远端SHA。交付回执写入build/owned-g11-ci-c7f5f3e81c2c474e81269515c2730c1a，由已提交delivery-intent.json定位，避免CI完成后改变受验HEAD；只有实际delivery-result.json passed=true才记交付通过。当前检查点不提前声称CI完成。
+
+未验：完整桌面、真实Redis/关系库、签名安装升级回退及G10 RSS/阻塞OS等局限仍保留；private Job和实际handle不外推委托服务，故障注入不是实际不可杀进程。不fetch/tag/PR/发布、不创建后续开发任务或自动跟进。
