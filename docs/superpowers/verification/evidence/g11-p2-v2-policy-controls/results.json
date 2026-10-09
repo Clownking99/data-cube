@@ -1,0 +1,173 @@
+{
+  "schema": "p2-controls/v1",
+  "passed": true,
+  "cases": [
+    {
+      "name": "nested-test",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [\"com/datacube/XTest$Nested.class\"], \"missingClasses\": [], \"fileLeaks\": [], \"optionLeaks\": false}"
+    },
+    {
+      "name": "junit",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [\"org/junit/Test.class\"], \"missingClasses\": [], \"fileLeaks\": [], \"optionLeaks\": false}"
+    },
+    {
+      "name": "mockito",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [\"org/mockito/Mock.class\"], \"missingClasses\": [], \"fileLeaks\": [], \"optionLeaks\": false}"
+    },
+    {
+      "name": "testfx",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [\"org/testfx/FxRobot.class\"], \"missingClasses\": [], \"fileLeaks\": [], \"optionLeaks\": false}"
+    },
+    {
+      "name": "probe",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [\"G10LinkedRedisProbe.class\"], \"missingClasses\": [], \"fileLeaks\": [], \"optionLeaks\": false}"
+    },
+    {
+      "name": "acceptance",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [\"acceptance/A.class\"], \"missingClasses\": [], \"fileLeaks\": [], \"optionLeaks\": false}"
+    },
+    {
+      "name": "missing-required-class",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [], \"missingClasses\": [\"RedisDisplayLimits\"], \"fileLeaks\": [], \"optionLeaks\": false}"
+    },
+    {
+      "name": "cfg-user-home",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [], \"missingClasses\": [], \"fileLeaks\": [], \"optionLeaks\": true}"
+    },
+    {
+      "name": "cfg-temp",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [], \"missingClasses\": [], \"fileLeaks\": [], \"optionLeaks\": true}"
+    },
+    {
+      "name": "cfg-native-headless",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [], \"missingClasses\": [], \"fileLeaks\": [], \"optionLeaks\": true}"
+    },
+    {
+      "name": "manifest:home/profile.json",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [], \"missingClasses\": [], \"fileLeaks\": [\"home/profile.json\"], \"optionLeaks\": false}"
+    },
+    {
+      "name": "manifest:temp/a",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [], \"missingClasses\": [], \"fileLeaks\": [\"temp/a\"], \"optionLeaks\": false}"
+    },
+    {
+      "name": "manifest:acceptance/a",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [], \"missingClasses\": [], \"fileLeaks\": [\"acceptance/a\"], \"optionLeaks\": false}"
+    },
+    {
+      "name": "manifest:app/G10LinkedRedisProbe.class",
+      "actualRefusal": "IMAGE_AUDIT_REJECTED:{\"classLeaks\": [], \"missingClasses\": [], \"fileLeaks\": [\"app/G10LinkedRedisProbe.class\"], \"optionLeaks\": false}"
+    },
+    {
+      "name": "outside-runtime-parent-no-access",
+      "actualRefusal": "IMAGE_PATH_OUTSIDE_OWNED_RUNTIME"
+    },
+    {
+      "name": "modified-image-executable-identity",
+      "actualRefusal": "IMAGE_IDENTITY_CHANGED"
+    }
+  ],
+  "rolePolicy": [
+    {
+      "role": "jdk-jimage",
+      "actualRefusal": "EXECUTABLE_ROLE_PATH_MISMATCH",
+      "path": "C:\\owned\\jdk\\bin\\javac.exe"
+    },
+    {
+      "role": "image-java",
+      "actualRefusal": "EXECUTABLE_ROLE_PATH_MISMATCH",
+      "path": "C:\\foreign\\java.exe"
+    },
+    {
+      "role": "unknown",
+      "actualRefusal": "EXECUTABLE_ROLE_PATH_MISMATCH",
+      "path": "C:\\owned\\jdk\\bin\\java.exe"
+    },
+    {
+      "role": "jdk-java",
+      "actualRefusal": "FORBIDDEN_PATH",
+      "path": "C:\\never\\.testagent\\java.exe"
+    },
+    {
+      "case": "foreign-runtime-parent",
+      "actualRefusal": "UNADMITTED_IMAGE_RUNTIME"
+    },
+    {
+      "case": "owned-exe-hash-change",
+      "actualRefusal": "EXECUTABLE_IDENTITY_CHANGED"
+    },
+    {
+      "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+      "actualFailures": [],
+      "allowed": true,
+      "class": "com.datacube.redis.RedisLiveIntegrationTest",
+      "stage": "targeted"
+    },
+    {
+      "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+      "actualFailures": [],
+      "allowed": true,
+      "class": "com.datacube.redis.RedisLiveIntegrationTest",
+      "stage": "full"
+    },
+    {
+      "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()",
+      "actualFailures": [
+        "UNAPPROVED_SKIP:com.datacube.redis.RedisLiveIntegrationTest:standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()"
+      ],
+      "allowed": false,
+      "class": "com.datacube.redis.RedisLiveIntegrationTest",
+      "stage": "buildsrc"
+    },
+    {
+      "name": "oracleSafeDeploymentConvergesInDisposableSchemas()",
+      "actualFailures": [
+        "UNAPPROVED_SKIP:com.datacube.schemadiff.SchemaDiffLiveIntegrationTest:oracleSafeDeploymentConvergesInDisposableSchemas()"
+      ],
+      "allowed": false,
+      "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+      "stage": "targeted"
+    },
+    {
+      "name": "oracleSafeDeploymentConvergesInDisposableSchemas()",
+      "actualFailures": [],
+      "allowed": true,
+      "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+      "stage": "full"
+    },
+    {
+      "name": "oracleSafeDeploymentConvergesInDisposableSchemas()",
+      "actualFailures": [
+        "UNAPPROVED_SKIP:com.datacube.schemadiff.SchemaDiffLiveIntegrationTest:oracleSafeDeploymentConvergesInDisposableSchemas()"
+      ],
+      "allowed": false,
+      "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+      "stage": "buildsrc"
+    },
+    {
+      "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+      "actualFailures": [
+        "UNAPPROVED_SKIP:com.datacube.schemadiff.SchemaDiffLiveIntegrationTest:postgresqlSafeDeploymentConvergesInDisposableSchemas()"
+      ],
+      "allowed": false,
+      "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+      "stage": "targeted"
+    },
+    {
+      "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+      "actualFailures": [],
+      "allowed": true,
+      "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+      "stage": "full"
+    },
+    {
+      "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()",
+      "actualFailures": [
+        "UNAPPROVED_SKIP:com.datacube.schemadiff.SchemaDiffLiveIntegrationTest:postgresqlSafeDeploymentConvergesInDisposableSchemas()"
+      ],
+      "allowed": false,
+      "class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest",
+      "stage": "buildsrc"
+    }
+  ]
+}
