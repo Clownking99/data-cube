@@ -79,6 +79,22 @@ public final class PgDumpTestJobs {
                 (cfg, password, table, content, temporary) -> PgDumpRunner.run(cfg, password, table, content, temporary,
                         operation, control.policy(temporary.toPath())), Files::newOutputStream);
     }
+    public static long awaitPid(Path file) throws Exception {
+        awaitFile(PgDumpProcessHelper.pidReadyFile(file));
+        return readPublishedPid(file);
+    }
+    static long readPublishedPid(Path file) throws IOException {
+        if (!Files.exists(PgDumpProcessHelper.pidReadyFile(file))) {
+            throw new IOException("Synthetic PID has not been published");
+        }
+        try {
+            long pid = Long.parseLong(Files.readString(file));
+            if (pid <= 0) throw new IOException("Synthetic PID must be positive");
+            return pid;
+        } catch (NumberFormatException failure) {
+            throw new IOException("Synthetic PID is invalid", failure);
+        }
+    }
     public static void awaitFile(Path file) throws Exception {
         try (var watcher = FileSystems.getDefault().newWatchService()) {
             file.getParent().register(watcher, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_MODIFY);
