@@ -8,9 +8,13 @@
 - main 新隔离定向 **291 通过 / 1 live 跳过**，clean 全量 **4711 通过 / 3 live 跳过**，buildSrc **8 通过**，jpackageImage、183文件镜像审计和外置 linked 探针通过。11项 Redis FX 实际执行；跳过不算通过。[协调账本](../superpowers/verification/2026-10-09-g10-redis-coordination.md)保留首失败、修正和局限。
 - **维护成本首轮整理已落地。** 新增可复现的只读盘点、当前入口、验收索引和未来验证工具的最小设计；产品、测试及构建逻辑未改。[成本报告与优先级](../maintenance/2026-10-09-maintenance-cost-baseline.md)。本次整理的最终推送/CI以[交付入口](../superpowers/verification/evidence/maintenance-cost-20261009/delivery-intent.json)指向的实际回执为准。
 
-## 接下来
+## 当前进行中
 
-优先实施[未来验证 runner 的最小共用内核](../maintenance/verification-runner-design.md)，只迁移下一轮新验证。然后整理测试专用受控 JVM 夹具的超时/退出结算。Redis 请求状态和 Shell 关闭入场拆分是后续独立候选，范围与必需回归见成本报告；本轮未实施架构改造。
+维护者继续授权后启动 **G11 验证 runner 共用内核**，范围为四个小内核与本轮新验证入口，原6.1-sol会话开发、root审查/集成。见[实施计划](../superpowers/plans/2026-10-09-g11-verification-core.md)、[协调账本](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。当前P0，尚无新实现/测试通过声明。
+
+## 后续候选
+
+G11按[最小设计](../maintenance/verification-runner-design.md)推进，只迁移本轮新验证。交付后再考虑整理测试专用受控 JVM 夹具的超时/退出结算。Redis 请求状态和 Shell 关闭入场拆分是后续独立候选，范围与必需回归见成本报告；本轮未实施架构改造。
 
 ## 待验与边界
 
