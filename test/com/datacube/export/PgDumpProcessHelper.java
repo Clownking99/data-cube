@@ -33,12 +33,21 @@ public final class PgDumpProcessHelper {
                 Process child = new ProcessBuilder(List.of(java, "-XX:-UsePerfData", "-cp", System.getProperty("java.class.path"),
                         PgDumpProcessHelper.class.getName(), mode.equals("tree") ? "branch" : "child", out.toString(), control.toString()))
                         .inheritIO().start();
-                Files.writeString(control.resolve(mode.equals("branch") ? "grandchild-pid" : "child-pid"), Long.toString(child.pid()));
+                publishPid(control.resolve(mode.equals("branch") ? "grandchild-pid" : "child-pid"), child.pid());
                 await(control, "release-" + mode);
             }
             case "empty" -> {}
             default -> throw new IllegalArgumentException("Unknown synthetic mode");
         }
+    }
+    static Path pidReadyFile(Path pidFile) {
+        return pidFile.resolveSibling(pidFile.getFileName() + ".ready");
+    }
+    static void publishPid(Path pidFile, long pid) throws java.io.IOException {
+        if (pid <= 0) throw new IllegalArgumentException("Synthetic PID must be positive");
+        Files.writeString(pidFile, Long.toString(pid), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        // writeString has closed the payload before the existence-only completion event is published.
+        Files.createFile(pidReadyFile(pidFile));
     }
     private static void await(Path root, String name) throws Exception {
         try (var watcher = FileSystems.getDefault().newWatchService()) {

@@ -153,6 +153,31 @@ class PgDumpRunnerReliabilityTest {
             for (Thread worker : fake.workers) assertFalse(worker.isAlive());
         }
     }
+    @ParameterizedTest @ValueSource(strings = {"", "12", "123456"})
+    void pidReaderRejectsEmptyPartialAndCompletePayloadUntilPublication(String unpublished) throws Exception {
+        Path pidFile = Files.writeString(root.resolve("child-pid"), unpublished);
+        assertThrows(IOException.class, () -> PgDumpTestJobs.readPublishedPid(pidFile));
+        assertFalse(Files.exists(PgDumpProcessHelper.pidReadyFile(pidFile)));
+
+        // A valid numeric prefix must not be accepted as the final PID; publish only after closing the full payload.
+        Files.writeString(pidFile, "123456");
+        Files.createFile(PgDumpProcessHelper.pidReadyFile(pidFile));
+        assertEquals(123456L, PgDumpTestJobs.awaitPid(pidFile));
+    }
+    @ParameterizedTest @ValueSource(strings = {"child-pid", "grandchild-pid"})
+    void pidPublisherPublishesCompletePositivePayloadForBothFamilyRoles(String name) throws Exception {
+        Path pidFile = root.resolve(name);
+        PgDumpProcessHelper.publishPid(pidFile, 123456L);
+        assertTrue(Files.exists(PgDumpProcessHelper.pidReadyFile(pidFile)));
+        assertEquals("123456", Files.readString(pidFile));
+        assertEquals(123456L, PgDumpTestJobs.awaitPid(pidFile));
+    }
+    @ParameterizedTest @ValueSource(strings = {"", "0", "-1", "12x", "9223372036854775808"})
+    void publishedPidMustBeCompleteAndPositive(String invalid) throws Exception {
+        Path pidFile = Files.writeString(root.resolve("child-pid"), invalid);
+        Files.createFile(PgDumpProcessHelper.pidReadyFile(pidFile));
+        assertThrows(IOException.class, () -> PgDumpTestJobs.awaitPid(pidFile));
+    }
     @ParameterizedTest @ValueSource(strings = {"parent", "tree"})
     void capturedFamilyHoldingPipeIsStoppedAfterParentExitAndIndependentNeighborSurvives(String mode) throws Exception {
         Path neighborControl = Files.createDirectory(root.resolve("independent-control"));
@@ -161,12 +186,10 @@ class PgDumpRunnerReliabilityTest {
             try {
                 PgDumpTestJobs.awaitFile(neighborControl.resolve("ready-hang"));
                 job.start(); assertTrue(job.control.captured.await(5, TimeUnit.SECONDS));
-                PgDumpTestJobs.awaitFile(job.control.directory.resolve("child-pid"));
-                long child = Long.parseLong(Files.readString(job.control.directory.resolve("child-pid")));
+                long child = PgDumpTestJobs.awaitPid(job.control.directory.resolve("child-pid"));
                 assertTrue(job.control.awaitCaptured(child), job.control.diagnostic());
                 if (mode.equals("tree")) {
-                    PgDumpTestJobs.awaitFile(job.control.directory.resolve("grandchild-pid"));
-                    long grandchild = Long.parseLong(Files.readString(job.control.directory.resolve("grandchild-pid")));
+                    long grandchild = PgDumpTestJobs.awaitPid(job.control.directory.resolve("grandchild-pid"));
                     assertTrue(job.control.awaitCaptured(grandchild), job.control.diagnostic());
                 }
                 job.control.releaseHelper(); job.failed(); job.physical(); job.protectedFiles();
@@ -192,8 +215,8 @@ class PgDumpRunnerReliabilityTest {
                 handle.destroyForcibly();
             };
             try {
-                job.start(); PgDumpTestJobs.awaitFile(job.control.directory.resolve("child-pid"));
-                assertTrue(job.control.awaitCaptured(Long.parseLong(Files.readString(job.control.directory.resolve("child-pid")))));
+                job.start();
+                assertTrue(job.control.awaitCaptured(PgDumpTestJobs.awaitPid(job.control.directory.resolve("child-pid"))));
                 job.operation.cancel(); assertTrue(thrown.await(5, TimeUnit.SECONDS));
                 job.failed(); job.physical(); job.protectedFiles();
             } finally {
