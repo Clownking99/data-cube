@@ -1,0 +1,914 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" tests="16" skipped="0" failures="0" errors="0" timestamp="2026-10-09T07:01:38.958Z" hostname="WAKEUPMAN" time="0.978">
+  <properties/>
+  <testcase name="movementEntersDraftCheckpointButFreezeStopsLaterEdits()" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.109"/>
+  <testcase name="[1] true" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.089"/>
+  <testcase name="[2] false" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.054"/>
+  <testcase name="[1] 600, dark" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.063"/>
+  <testcase name="[2] 880, dark" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.05"/>
+  <testcase name="[3] 600, light" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.061"/>
+  <testcase name="[4] 880, light" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.065"/>
+  <testcase name="[1] admission" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.056"/>
+  <testcase name="[2] resources" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.043"/>
+  <testcase name="[3] tasks" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.051"/>
+  <testcase name="[4] file-busy" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.043"/>
+  <testcase name="[5] finalized" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.052"/>
+  <testcase name="[6] readonly" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.061"/>
+  <testcase name="[7] disabled" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.046"/>
+  <testcase name="toolbarOffersBothDirectionsWithoutConnecting()" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.061"/>
+  <testcase name="movingQualifiedTextDoesNotRequestCompletionAndPreservesExplicitExecutionRange()" classname="com.datacube.fx.SqlEditorMoveLinesIntegrationTest" time="0.066"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@18718007[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@18718007[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@26b8eb77[styleClass=label]'就绪'
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-keyword' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-keyword' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-number' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-number' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:38 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@193d4428[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@193d4428[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@df2aa48[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-keyword' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-keyword' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-string' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-string' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-number' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-number' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-comment' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-comment' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@7b97a51b[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@7b97a51b[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@29f71ed5[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-keyword' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-keyword' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-string' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-string' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-number' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-number' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-comment' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-comment' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@48e0052d[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@48e0052d[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@18c13ddf[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@66b64bde[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@66b64bde[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@7cb69499[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@463e05b3[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@463e05b3[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@553615f9[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@51fd590c[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@51fd590c[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@371702fc[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@3323e82a[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@3323e82a[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@762c004[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@c39123[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@c39123[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@3bcfcbb9[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@3b88ee98[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@3b88ee98[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@1d480d34[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@7c0712b7[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@7c0712b7[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@15396020[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@600d05cd[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@600d05cd[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@46590ae0[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@40d1913d[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@40d1913d[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@2440b35b[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@78a4b81b[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@78a4b81b[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@478fb017[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@69c2b3b3[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@69c2b3b3[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@190c6aba[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-environment, styleClass=label]''
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@6ebd5623[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@6ebd5623[styleClass=label]'尚未创建专用会话'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.code-area' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label[id=sql-result-summary, styleClass=label]'暂无查询结果'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg-muted' while resolving lookups for '-fx-text-fill' from inline style on Label@5e14f7c0[styleClass=label]'就绪'
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-keyword' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-keyword' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-comment' while resolving lookups for '-fx-fill' from rule '*.code-area *.text.sql-comment' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-brand-fg' while resolving lookups for '-fx-stroke' from rule '*.code-area *.caret' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-gutter-fg' while resolving lookups for '-fx-text-fill' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Could not resolve '-code-fg' while resolving lookups for '-fx-fill' from rule '*.code-area *.text' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+10月 09, 2026 3:01:39 下午 javafx.scene.CssStyleHelper calculateValue
+警告: Caught 'java.lang.ClassCastException' while converting value for '-fx-background-color' from rule '*.lineno' in stylesheet file:/C:/Users/hetia/AppData/Local/Temp/datacube-g11-f6619964c9e9423da2c0107b029f02de/build/main/resources/main/com/datacube/fx/sql-highlight.css
+]]></system-err>
+</testsuite>

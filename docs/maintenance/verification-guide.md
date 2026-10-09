@@ -4,7 +4,7 @@
 
 ## 现有执行方法
 
-G11当前实现为[scripts/verification](../../scripts/verification/run-stage.ps1)：四个小内核、阶段政策、镜像审计与有界外层owner。P1/P2与main P3已独立审核通过，见[main验收报告](../superpowers/verification/2026-10-09-g11-main-verification.md)。旧[G10 main runner](../superpowers/verification/evidence/g10-main-20261009/Run-P3.ps1)与[镜像审计](../superpowers/verification/evidence/g10-main-20261009/Run-Image-Audit.ps1)保留为历史原件，不再作为新轮次的整份复制模板。
+G11当前实现为[scripts/verification](../../scripts/verification/run-stage.ps1)：四个小内核、阶段政策、镜像审计与有界外层owner。首次P1/P2/P3通过后，修正后的新P3又被独立门禁检出退出观察矛盾，当前交付未接受；具体见[当前复验报告](../superpowers/verification/2026-10-09-g11-ci-correction-main.md)，[首次P3](../superpowers/verification/2026-10-09-g11-main-verification.md)只作历史证据。旧[G10 main runner](../superpowers/verification/evidence/g10-main-20261009/Run-P3.ps1)与[镜像审计](../superpowers/verification/evidence/g10-main-20261009/Run-Image-Audit.ps1)保留为历史原件，不再作为新轮次的整份复制模板。
 
 每轮把实际执行的12文件工具闭包与阶段spec冻结到新的具名证据目录，记录原字节/SHA；工程输入是显式允许名单，绑定当次提交，核对准入工程根内实际输入，不能仅信Git已跟踪集合。每阶段新UUID home/temp/build，保持唯一Gradle执行者；失败后新目录重验，旧原件不覆盖。开发冻结后由root独立审核，再接管main的新环境复验。
 
@@ -41,6 +41,7 @@ G11 Windows private Job在gate前归属，查询成员与等待实际handle后�
 | G11 P2冻结工程与镜像 | [root审核](../superpowers/verification/evidence/g11-p2-root-review/completion-v2-review.json) | [worker manifest](../superpowers/verification/evidence/g11-p2-frozen-20261009/manifest.json)、[五阶段定位](../superpowers/verification/evidence/g11-p2-package-v2/progress.json) |
 | G11 main独立P3 | [main验收报告](../superpowers/verification/2026-10-09-g11-main-verification.md) | [1900文件manifest](../superpowers/verification/evidence/g11-p3-813154b3fa4c-frozen/manifest.json)、[独立审核](../superpowers/verification/evidence/g11-p3-813154b3fa4c-root-review/completion-review.json) |
 | G11 main推送与精确SHA CI | [交付定位与判定](../superpowers/verification/2026-10-09-g11-main-verification.md#交付与未验) | [独占原始回执目录定位](../superpowers/verification/evidence/g11-p3-813154b3fa4c-package/delivery-intent.json) |
+| G11 PID修正后P3被拒绝 | [矛盾回执及独立裁决](../superpowers/verification/evidence/g11-p3-581b459dad08-root-review/round-verdict.json) | [1904文件REJECTED manifest](../superpowers/verification/evidence/g11-p3-581b459dad08-rejected-frozen/manifest.json)、[当前复验报告](../superpowers/verification/2026-10-09-g11-ci-correction-main.md) |
 
 ## 复现只读成本盘点
 

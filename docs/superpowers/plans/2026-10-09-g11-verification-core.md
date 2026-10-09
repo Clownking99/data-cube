@@ -8,6 +8,8 @@ main `3beb965746ade7d76224cb4aba03cafb7cfe2e34` 范围内干净，维护整理�
 
 新增 `scripts/verification/` 中的小内核与薄入口，PowerShell负责Windows范围/进程，Python负责XML与输入身份，不增加依赖包、Gradle插件或全局配置。只接入本轮新验证，不改写旧冻结runner/日志/manifest。不改产品、JUnit测试等待/过滤/skip策略或现有CI工作流；测试JVM夹具迁移、Redis请求状态/Shell关闭拆分不在本轮。
 
+交付阶段的必要局部修正：首轮精确SHA CI在旧PgDump测试中暴露PID文件存在但内容尚未写完的竞态。只修改三个测试文件的PID发布/读取协议并增加10个确定性回归；不延长等待、不改skip或产品、不迁移夹具。修正独立提交并绑定新main完成新验证；首失败和旧P3原件保留，裁决见协调账本C11–C13。
+
 ## 四个契约
 
 1. **New-OwnedScope**：显式repo、已有JDK/cache、阶段ID和新证据路径；新UUID home/temp/build，实测Windows短路径；清空子环境后仅注入明确OS变量与合成路径。不加载PowerShell profile或真实用户配置。输入/输出路径在访问前验证，拒绝禁止路径、越界、碰撞和重用run名；不得依赖可被优化关闭的assert作为唯一准入。
@@ -34,4 +36,4 @@ main `3beb965746ade7d76224cb4aba03cafb7cfe2e34` 范围内干净，维护整理�
 
 ## 当前检查点
 
-C10：P1/P2独立审核、工具及证据两笔提交、本地合main、root新隔离P3均完成。受验main62ea18d；定向291通过/1live跳过，全量4711通过/3live跳过，buildSrc8通过，image/linked与80项合成控制通过；1900份P3原件封存。实际证据、运输修正和未验边界见[main验收报告](../verification/2026-10-09-g11-main-verification.md)。最后交付只推main并核对精确SHA四任务CI，实际状态以报告指向的独占交付回执为准；本轮不自动启动后续候选。
+C14：首次本地P3已完成，首CI失败后的PID测试修正已合入main e368a1b1。新完整序列退出0、全量XML4721通过/3live跳过，但独立门禁发现java-version的passed与rootExited=false矛盾，拒绝整体P3；1904份原件已REJECTED封存。同一开发会话正在修正host退出事件发布、JSON日期身份和最终成功门禁，并增加确定性组合控制。实际缺口与后续验收要求见[当前main复验报告](../verification/2026-10-09-g11-ci-correction-main.md)及协调账本C14。共享工具改变后重新冻结并完成开发/新main完整验证，不能放宽审核器或重用旧通过；未推本轮main、不自动启动后续候选。

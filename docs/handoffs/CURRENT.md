@@ -10,11 +10,11 @@
 
 ## 本轮交付
 
-**G11 验证 runner 共用内核已完成本地P3验收并合入main。** 工具48b51d63、开发证据6aefd9d1、合并4ddba09d，受验main62ea18d。root在新UUID重跑80项合成控制、定向291通过/1 live跳过、clean全量4711通过/3 live跳过、buildSrc8通过、jpackageImage与外置linked；11项Redis原生FX实际执行。P3的1900份原件已封存，跳过不算通过。
+**G11 尚未完成交付，当前在修正独立复验发现的 runner 退出观察缺口。** 首次本地P3通过并封存1900份原件；cfd9d4ed的Verify37893270726随后在Ubuntu暴露旧PgDump测试PID发布竞态，其余三个任务成功。三个测试文件的最小协议修正52374f71及证据ca055cc5已合入main e368a1b1。
 
-[main验收报告与剩余边界](../superpowers/verification/2026-10-09-g11-main-verification.md)、[协调账本](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。实际最终推送SHA/四任务CI以[交付定位](../superpowers/verification/evidence/g11-p3-813154b3fa4c-package/delivery-intent.json)指向的本机push.json、delivery-result.json及原始日志为准；定位文件本身不代表CI成功。受验后只新增交付文档和证据，875个工程/工具输入未改。未自动启动下一轮。
+修正后root完整新序列实际退出0，原始XML为定向291通过/1跳过、全量4721通过/3跳过（含PID33例）、buildSrc8通过，image/linked已自然结束；但独立审核发现java-version回执同时声称passed与rootExited=false，拒绝本轮P3。原因已实测为短进程循环尾漏退出事件、JSON日期类型造成身份比较失配、最终成功门禁不完整。1904份原件以REJECTED封存，未推送此轮main、未重试CI到绿。
 
-当前远端交付尚未通过：cfd9d4ed的Verify37893270726在Ubuntu暴露旧PgDump测试PID就绪竞态；已下发原开发会话做最小协议修正与确定性回归，保留本轮原件并用新验证补齐，不盲重试CI。见协调账本C11。
+[当前复验与拒绝结论](../superpowers/verification/2026-10-09-g11-ci-correction-main.md)、[协调账本C14](../superpowers/verification/2026-10-09-g11-verification-coordination.md#c14独立门禁拒绝矛盾通过runner必要修正)。同一6.1-sol开发会话正在codex/g11-root-exit-observation-20261009实施最小修正和确定性控制；源码复审后才准入新冻结完整验证、main再复验及精确SHA CI。旧交付定位不能作为新提交成功证明，未自动启动下一轮。
 
 ## 后续候选
 

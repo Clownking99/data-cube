@@ -191,3 +191,19 @@ root逐行核对一次性stage.ps1及outer.py相对冻结共用版差异，只�
 [审核原件](evidence/g11-ci-pid-readiness-20261009/root-review/archive-review.json)。已准许开发两笔本地提交：三测试文件正常文本规范化；新证据/manifest/报告精确原字节及报告专用-text属性。开发停止Gradle，不合main/push。root合入后用新输入身份完整重验；旧P3仍保持不变且不冒充新结果。
 
 首轮CI现已终态：wrapper、Windows test及linked、Redis integration均成功，只有Ubuntu PID读取竞态失败，整体failure；原API终态已保存在同CI证据根。root新增失败文档提交后，旧Delivery.py正确拒绝HEAD变更的旧推送核对（HEAD changed after push），随后只读固定run API并显式核对旧cfd9d4ed，没有绕过修改冻结脚本。
+
+## C13：PID修正合入main，新完整P3启动
+
+开发提交52374f7112eca999ffb2a28551e5ef6b8f2b2946（三个测试文件）与ca055cc597fa92ce0d13b52ea892d2cd4bea72ef（精确证据/报告/属性）已经root审查后合入main e368a1b16bdee226925b363f06b4dc4f003c1f0f。独立audit_transport.py核对109个变更路径、103原件、manifest/报告和三源码Git blob；属性只增加一个报告保护规则，既有规则逻辑保留。main两份Java检出为CRLF，与受验开发字节只存在换行差异，完整文本一致；新运行绑定当前main实际磁盘SHA，不冒充旧工作区SHA。见g11-ci-pid-readiness-20261009/root-review/transport-before.json与transport-after.json。
+
+开发已停止Gradle与写入，旧.g10-verify-blobs.ps1保持未跟踪不读不动。root接管唯一Gradle，在全新g11-p3-581b459dad08-package准备875输入/12工具。控制器SHA844df3e07a93ecdb727fcf53608ef05e5b2700f2fe357a6c75597f988f39c48f，仅新前缀/受验main及显式require；受验共享12工具与上一轮冻结字节相同。实际Python -I -S -B序列已启动80项合成控制和五工程阶段。旧P3及首CI失败原件不改；当前没有修正后完整P3/CI通过声明。下一步逐阶段独立核对原始XML、日志、输入、镜像，再封存提交/推main及新SHA CI；仍不扩展下一轮或真实服务验收。
+
+## C14：独立门禁拒绝矛盾通过，runner必要修正
+
+目标仍是G11交付。新序列实际Python/shell exit0，五阶段已自然收尾，root不再运行Gradle。定向独立审核exit0：291通过/1live跳过、875输入/408类型/12工具、40日志一致。全量原始XML351suite/4724case，4721通过/3live跳过，PID33例实际全通过；buildSrc8通过；image/linked返回0。以上不能推成整体P3接受。
+
+root原审核器review_stage.py在full/java-version处实际exit1：process-receipt.json为passed/complete，却rootExited=false、rootExitCode=null。hostReceipt及同PID21608/startTime真实captured handle记录退出0，两流EOF；root-exit.json不存在。全轮进程回执和流哈希只发现这一处矛盾，见g11-p3-581b459dad08-root-review/round-verdict.json。没有放宽审核器；为持久保留诊断，针对同一不可变原件再捕获一次同样的审核拒绝exit1，未重跑工程。无退出事件的读取诊断曾产生FileNotFound，正是缺席事实，不算工具或Gradle失败。
+
+只读复现使用同一PowerShell7.6.5：默认ConvertFrom-Json将ISO startTimeUtc转为System.DateTime，字符串比较false；-DateKind String后strict身份字符串可匹配。源码还有host循环尾刚退出后break未统一发布exit事件，以及parent最终passed检查遗漏根退出观察的组合。已下发原6.1-sol会话从e368a1b1建codex/g11-root-exit-observation-20261009，最小方案准入：统一实际handle观察/原子且带身份的事件，晚读身份/严格比对，缺失/损坏/矛盾拒绝成功，首因tick/非零/取消/额度、Job和双流真实结算不退化。确定性组合控制先交源码审查；当前开发只可编辑/语法检查，未准入进程控制或Gradle，不提交/合main/push。
+
+本轮1904文件33165510字节已按g11-p3-581b459dad08-rejected-frozen/manifest.json封存，SHA40fed9cfd3b881fe62bd6e237d27eed090dd275316f75e08df9b11f060754b97，accepted=false/deliveryAllowed=false。原准备的交付/暂存脚本未执行，不创建通过回执，不推本轮main。旧冻结P1/P2/P3与首CI失败不改。下一步独立审核共享工具修正和确定性控制，再在新输入/工具身份下完整开发验证、集成main及新P3/精确SHA CI；当前完整交付、真实服务和发布验收均未完成。

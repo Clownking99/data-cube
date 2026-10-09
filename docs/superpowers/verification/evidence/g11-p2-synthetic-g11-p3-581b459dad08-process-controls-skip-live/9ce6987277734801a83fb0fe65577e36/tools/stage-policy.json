@@ -1,0 +1,21 @@
+{
+  "schema": "verification-stages/v1",
+  "stages": {
+    "targeted": {"tasks": ["cleanTest", "test"], "deadlineMs": 600000, "xml": "main/test-results/test", "skipPolicy": "redis-live"},
+    "full": {"tasks": ["clean", "test"], "deadlineMs": 900000, "xml": "main/test-results/test", "skipPolicy": "three-live"},
+    "buildsrc": {"tasks": [":buildSrc:test"], "deadlineMs": 180000, "xml": "buildSrc/test-results/test", "skipPolicy": "none"},
+    "image": {"tasks": ["jpackageImage"], "deadlineMs": 600000, "xml": null, "skipPolicy": null},
+    "linked": {"tasks": [], "deadlineMs": 120000, "xml": null, "skipPolicy": null}
+  },
+  "targetedFilters": ["com.datacube.redis.*", "com.datacube.fx.RedisPane*Test", "com.datacube.fx.*Close*Test", "com.datacube.fx.*Shutdown*Test", "com.datacube.fx.*Construction*Test", "com.datacube.fx.*Lifecycle*Test", "com.datacube.fx.ShutdownQuarantineTest", "com.datacube.fx.task.*", "com.datacube.fx.WindowShutdownControllerTest", "com.datacube.service.ConnectionManager*Test"],
+  "liveSkips": [
+    {"class": "com.datacube.redis.RedisLiveIntegrationTest", "name": "standaloneRedisSupportsFiveTypesScanTtlAndLifecycle()", "reason": "set DATACUBE_REDIS_HOST and DATACUBE_REDIS_PASSWORD to run live Redis smoke test", "stages": ["targeted", "full"]},
+    {"class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest", "name": "oracleSafeDeploymentConvergesInDisposableSchemas()", "reason": "Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set", "stages": ["full"]},
+    {"class": "com.datacube.schemadiff.SchemaDiffLiveIntegrationTest", "name": "postgresqlSafeDeploymentConvergesInDisposableSchemas()", "reason": "Schema Diff relational live smoke requires the explicit write gate and the complete provider environment set", "stages": ["full"]}
+  ],
+  "probeOrigins": [
+    {"file": "probes/G10LinkedRedisProbe.java", "source": "docs/superpowers/verification/evidence/g10-main-20261009/G10LinkedRedisProbe.java", "sha256": "894BE071161D30F21943418C205614C6475D976F9BF9D40F2626EE76ED2E63AE"},
+    {"file": "probes/MigrationRuntimeDriverProbe.java", "source": "docs/superpowers/verification/evidence/g10-main-20261009/MigrationRuntimeDriverProbe.java", "sha256": "3E2B9F562A6A222DB679FA48549E503E802E1A60C54A23F73BA2EFCDAD450862"}
+  ],
+  "auditOrigin": {"source": "docs/superpowers/verification/evidence/g10-main-20261009/Run-Image-Audit.ps1", "sha256": "CA1569E5F32D182B768A6222B50D39849BE4CA4E1065E5AD5E7928FCC548ECFB"}
+}
