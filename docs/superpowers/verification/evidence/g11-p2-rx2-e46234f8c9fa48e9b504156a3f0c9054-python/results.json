@@ -1,0 +1,156 @@
+{
+  "schema": "core-checks/v1",
+  "passed": true,
+  "cases": [
+    {
+      "name": "lexical:C:\\never\\.testagent\\x",
+      "passed": true,
+      "failure": "FORBIDDEN_PATH"
+    },
+    {
+      "name": "lexical:C:\\never\\.testagent \\x",
+      "passed": true,
+      "failure": "INVALID_PATH_COMPONENT"
+    },
+    {
+      "name": "lexical:C:\\never\\.testagent.\\x",
+      "passed": true,
+      "failure": "INVALID_PATH_COMPONENT"
+    },
+    {
+      "name": "lexical:C:\\never\\NUL.txt",
+      "passed": true,
+      "failure": "DEVICE_PATH"
+    },
+    {
+      "name": "lexical:C:\\never\\x:stream",
+      "passed": true,
+      "failure": "INVALID_PATH"
+    },
+    {
+      "name": "lexical:C:\\never\\..\\x",
+      "passed": true,
+      "failure": "INVALID_PATH_COMPONENT"
+    },
+    {
+      "name": "lexical:\\\\?\\C:\\never",
+      "passed": true,
+      "failure": "DEVICE_OR_NETWORK_PATH"
+    },
+    {
+      "name": "forbidden-with-zero-stat-calls",
+      "passed": true,
+      "failure": "FORBIDDEN_PATH"
+    },
+    {
+      "name": "forbidden-input-before-repo-stat",
+      "passed": true,
+      "failure": "FORBIDDEN_PATH"
+    },
+    {
+      "name": "duplicate-name-mixed-status",
+      "passed": true,
+      "receipt": {
+        "schema": "test-results/v1",
+        "suites": 1,
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1,
+        "cases": [
+          {
+            "file": "TEST-a.xml",
+            "ordinal": 0,
+            "suite": "a",
+            "class": "C",
+            "name": "same",
+            "status": "passed",
+            "reason": null
+          },
+          {
+            "file": "TEST-a.xml",
+            "ordinal": 1,
+            "suite": "a",
+            "class": "C",
+            "name": "same",
+            "status": "skipped",
+            "reason": "<skipped />"
+          }
+        ],
+        "duplicateDisplayNames": [
+          {
+            "file": "TEST-a.xml",
+            "class": "C",
+            "name": "same",
+            "ordinals": [
+              0,
+              1
+            ]
+          }
+        ],
+        "files": [
+          {
+            "path": "TEST-a.xml",
+            "length": 172,
+            "sha256": "4cccd00265e97640ebd367d6d693aba89b8406c40f6a4b858b95669e110aa68d"
+          }
+        ],
+        "passed": 1
+      }
+    },
+    {
+      "name": "contradictory",
+      "passed": true,
+      "failure": "CONTRADICTORY_CASE"
+    },
+    {
+      "name": "bad-count",
+      "passed": true,
+      "failure": "XML_COUNT_MISMATCH"
+    },
+    {
+      "name": "zero-cases",
+      "passed": true,
+      "failure": "ZERO_TEST_CASES"
+    },
+    {
+      "name": "damaged",
+      "passed": true,
+      "failure": "unclosed token: line 1, column 0"
+    },
+    {
+      "name": "entity",
+      "passed": true,
+      "failure": "XML_ENTITY_DECLARATION"
+    },
+    {
+      "name": "zero-xml",
+      "passed": true,
+      "failure": "INVALID_XML_FILE_COUNT"
+    },
+    {
+      "name": "windows-backslash-and-build-package",
+      "passed": true
+    },
+    {
+      "name": "input-change",
+      "passed": true,
+      "failure": "INPUT_CHANGED"
+    },
+    {
+      "name": "unknown-untracked-ignored-build-package",
+      "passed": true,
+      "failure": "INPUT_SET_MISMATCH:{\"unknown\": [\"src/legitimate/build/Ignored.java\"], \"missing\": []}"
+    },
+    {
+      "name": "missing-input",
+      "passed": true,
+      "failure": "MISSING_INPUT:src/legitimate/build/A.java"
+    },
+    {
+      "name": "duplicate-input",
+      "passed": true,
+      "failure": "DUPLICATE_INPUT"
+    }
+  ]
+}

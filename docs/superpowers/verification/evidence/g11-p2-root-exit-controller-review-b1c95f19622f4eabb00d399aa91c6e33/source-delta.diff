@@ -1,0 +1,19 @@
+--- a/scripts/verification/check-core.py
++++ b/scripts/verification/check-core.py
+@@ -8,6 +8,7 @@
+ import sys
+ import tempfile
+ import time
++import uuid
+ import xml.etree.ElementTree as ET
+ import ctypes
+ from ctypes import wintypes
+@@ -206,7 +207,7 @@
+                                ('compile-zero-xml','NONZERO_EXIT'),('compile-stat-failure','NONZERO_EXIT'),('nonzero-child-overflow','NONZERO_EXIT'),
+                                ('skip-live',None),('skip-native','UNAPPROVED_SKIP:'))
+         for mode, expected in matrix:
+-            name = "g11-p2-synthetic-" + directory.name + "-" + mode
++            name = "g11-p2-synthetic-" + uuid.uuid4().hex + "-" + mode
+             evidence = repo / "docs/superpowers/verification/evidence" / name
+             out_path=repo/'docs/superpowers/verification/evidence'/(name+'-owner')
+             spec={'repo':str(repo),'tools':str(Path(__file__).absolute().parent),'out':str(out_path),'stageEvidence':str(evidence),'mode':'fixture','inputSpec':None,'jdk':jdk,'cache':cache,'pwsh':pwsh,'python':python,'runtimeParent':tempfile.gettempdir(),'imageSourceScope':None,'deadlineSeconds':22,'fixture':mode,'processDeadlineMs':7000,'settleMs':1500,'streamCap':32768 if mode in ('overflow','cap-exact','cap-plus-one','nonzero-child-overflow') else 33554432,'outerFixture':None}
