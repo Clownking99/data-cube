@@ -1,0 +1,415 @@
+diff --git a/scripts/verification/OwnedProcessHost.ps1 b/scripts/verification/OwnedProcessHost.ps1
+index 1b888023..8714a1d8 100644
+--- a/scripts/verification/OwnedProcessHost.ps1
++++ b/scripts/verification/OwnedProcessHost.ps1
+@@ -45,43 +45,68 @@ foreach ($argument in $requestObject.argv) { $info.ArgumentList.Add([string]$arg
+ $process = [Diagnostics.Process]::new()
+ $process.StartInfo = $info
+ $stdout = [BoundedPump]::new(); $stderr = [BoundedPump]::new()
+-$failure = $null; $failureTick=[long]::MaxValue; $rootExit = $null; $started = $false; $secondary = [Collections.Generic.List[string]]::new()
++$failure = $null; $failureTick=[long]::MaxValue; $rootExit = $null; $rootExitTick=$null; $rootEventPublished=$false; $tailBoundaryForced=$false; $rootIdentity=$null; $started = $false; $secondary = [Collections.Generic.List[string]]::new()
+ function Save-FirstFailure([string]$Kind,[long]$Tick) {
+  if($Tick -lt $script:failureTick){if($null -ne $script:failure){$script:secondary.Add($script:failure)};$script:failure=$Kind;$script:failureTick=$Tick}
+  elseif($Kind -ne $script:failure){$script:secondary.Add($Kind)}
+ }
++function Write-AtomicObservation([string]$Path,$Value) {
++    $temporary=$Path+'.tmp'
++    $bytes=[Text.Encoding]::UTF8.GetBytes(($Value|ConvertTo-Json -Depth 8))
++    $file=[IO.File]::Open($temporary,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
++    try {$file.Write($bytes,0,$bytes.Length);$file.Flush($true)} finally {$file.Dispose()}
++    [IO.File]::Move($temporary,$Path)
++}
++function Observe-RootExit {
++    if(-not $script:started -or -not $process.HasExited){return}
++    if($null -eq $script:rootExitTick) {
++        $script:rootExit=$process.ExitCode
++        $script:rootExitTick=[Diagnostics.Stopwatch]::GetTimestamp()
++        if($script:rootExit -ne 0){Save-FirstFailure 'NONZERO_EXIT' $script:rootExitTick}
++    }
++    if(-not $script:rootEventPublished) {
++        Write-AtomicObservation $requestObject.rootExitEvent @{schema='root-exit/v1';pid=$rootIdentity.pid;startTimeUtc=$rootIdentity.startTimeUtc;exitCode=$script:rootExit;observationTick=$script:rootExitTick;elapsedMs=$watch.ElapsedMilliseconds}
++        $script:rootEventPublished=$true
++    }
++}
++$observationFault=$requestObject.observationFault
++if($observationFault -and ($requestObject.stage -ne 'fixture' -or $observationFault -notin @('exit-tail-zero','exit-tail-seven','exit-late-identity'))){throw 'HOST_FAULT_OUTSIDE_FIXTURE'}
+ try {
+     $started = $process.Start()
+-    @{pid=$process.Id;startTimeUtc=$process.StartTime.ToUniversalTime().ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath $requestObject.identity -Encoding utf8NoBOM
++    $rootIdentity=@{pid=$process.Id;startTimeUtc=$process.StartTime.ToUniversalTime().ToString('o')}
++    Write-AtomicObservation $requestObject.identity $rootIdentity
+     $outTask = $stdout.Drain($process.StandardOutput.BaseStream,$requestObject.stdout,[long]$requestObject.streamCap)
+     $errTask = $stderr.Drain($process.StandardError.BaseStream,$requestObject.stderr,[long]$requestObject.streamCap)
+     while ($watch.ElapsedMilliseconds -lt ($requestObject.deadlineMs - $requestObject.settleMs)) {
+-        if ($process.HasExited -and $null -eq $rootExit) {
+-            $rootExit=$process.ExitCode
+-            $tempEvent=$requestObject.rootExitEvent+'.tmp'
+-            $rootExitTick=[Diagnostics.Stopwatch]::GetTimestamp()
+-            @{exitCode=$rootExit;observationTick=$rootExitTick;elapsedMs=$watch.ElapsedMilliseconds}|ConvertTo-Json|Set-Content -LiteralPath $tempEvent -Encoding utf8NoBOM
+-            [IO.File]::Move($tempEvent,$requestObject.rootExitEvent)
+-            if ($rootExit -ne 0) { Save-FirstFailure 'NONZERO_EXIT' $rootExitTick }
++        Observe-RootExit
++        if($observationFault -and -not $process.HasExited) {
++            # The synthetic root cannot exit until this iteration has observed HasExited=false.
++            $tailBoundaryForced=$true
++            [IO.File]::WriteAllText($requestObject.identity+'.tail-release','release')
++            $remaining=[Math]::Max(0,($requestObject.deadlineMs-$requestObject.settleMs)-$watch.ElapsedMilliseconds)
++            $null=$process.WaitForExit([int]$remaining)
++            if($process.HasExited){$null=[Threading.Tasks.Task]::WaitAll(@($outTask,$errTask),[int][Math]::Max(0,($requestObject.deadlineMs-$requestObject.settleMs)-$watch.ElapsedMilliseconds))}
+         }
+         if ($stdout.Overflow -or $stderr.Overflow) { $tick=(@($stdout.FailureTick,$stderr.FailureTick)|Where-Object {$_ -gt 0}|Measure-Object -Minimum).Minimum;Save-FirstFailure 'LOG_LIMIT' ([long]$tick); break }
+         if ($stdout.Error -or $stderr.Error) { $tick=(@($stdout.FailureTick,$stderr.FailureTick)|Where-Object {$_ -gt 0}|Measure-Object -Minimum).Minimum;Save-FirstFailure 'PIPE_FAILURE' ([long]$tick); break }
+-        if ($process.HasExited -and $outTask.IsCompleted -and $errTask.IsCompleted) { break }
++        if ($process.HasExited -and $outTask.IsCompleted -and $errTask.IsCompleted) { Observe-RootExit; break }
+         Start-Sleep -Milliseconds 10
+     }
+-    if ($process.HasExited) { $rootExit=$process.ExitCode }
++    Observe-RootExit
+     if (-not $process.HasExited -or -not $outTask.IsCompleted -or -not $errTask.IsCompleted) {
+         if($watch.ElapsedMilliseconds -ge ($requestObject.deadlineMs-$requestObject.settleMs)){Save-FirstFailure 'DEADLINE' ([Diagnostics.Stopwatch]::GetTimestamp())}
+         else{$secondary.Add('STREAMS_OR_ROOT_INCOMPLETE_AT_FAILURE')}
+     }
+     # Publish before settlement so the parent preserves a first nonzero exit
+     # when it terminates the private job at the enclosing deadline.
+-    if ($process.HasExited) { $rootExit=$process.ExitCode }
+-    if ($null -eq $failure -and $rootExit -ne 0) { Save-FirstFailure 'NONZERO_EXIT' ([Diagnostics.Stopwatch]::GetTimestamp()) }
+-} catch { Save-FirstFailure ('START_OR_HOST_FAILURE:' + $_.Exception.Message) ([Diagnostics.Stopwatch]::GetTimestamp()) }
++    Observe-RootExit
++
++} catch { Save-FirstFailure ('START_OR_HOST_FAILURE:' + $_.Exception.Message) ([Diagnostics.Stopwatch]::GetTimestamp()) } finally {
++    try {Observe-RootExit} catch {Save-FirstFailure ('EXIT_EVENT_PUBLICATION_FAILED:'+ $_.Exception.Message) ([Diagnostics.Stopwatch]::GetTimestamp())}
++}
+ $receipt = [ordered]@{
+     schema='host-process/v1';started=$started;rootPid= $(if($started){$process.Id}else{$null});rootExitCode=$rootExit
+-    rootExited=($null -ne $rootExit);primaryFailure=$failure;primaryFailureTick=$failureTick;secondaryFailures=@($secondary)
++    rootExited=($null -ne $rootExit);rootStartTimeUtc=$(if($rootIdentity){$rootIdentity.startTimeUtc}else{$null});rootObservationTick=$rootExitTick;rootEventPublished=$rootEventPublished;tailBoundaryForced=$tailBoundaryForced;primaryFailure=$failure;primaryFailureTick=$failureTick;secondaryFailures=@($secondary)
+     stdout=@{bytesRead=$stdout.BytesRead;bytesWritten=$stdout.BytesWritten;eof=$stdout.Eof;truncated=$stdout.Overflow;error=$stdout.Error}
+     stderr=@{bytesRead=$stderr.BytesRead;bytesWritten=$stderr.BytesWritten;eof=$stderr.Eof;truncated=$stderr.Overflow;error=$stderr.Error}
+     streamsCompleted=($stdout.Eof -and $stderr.Eof);elapsedMs=$watch.ElapsedMilliseconds
+diff --git a/scripts/verification/VerificationCore.psm1 b/scripts/verification/VerificationCore.psm1
+index aadd2877..aa11fbc8 100644
+--- a/scripts/verification/VerificationCore.psm1
++++ b/scripts/verification/VerificationCore.psm1
+@@ -134,6 +134,44 @@ public sealed class OwnedJob : IDisposable {
+ '@
+ }
+ 
++function Assert-RootIdentity($Identity) {
++    if($null -eq $Identity -or $Identity -isnot [Collections.IDictionary] -or $Identity.Count -ne 2 -or -not $Identity.Contains('pid') -or -not $Identity.Contains('startTimeUtc')){throw 'ROOT_IDENTITY_SCHEMA'}
++    if(($Identity.pid -isnot [int] -and $Identity.pid -isnot [long]) -or $Identity.pid -le 0 -or $Identity.pid -gt [int]::MaxValue){throw 'ROOT_IDENTITY_PID'}
++    if($Identity.startTimeUtc -isnot [string] -or $Identity.startTimeUtc -cnotmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$'){throw 'ROOT_IDENTITY_TIME_TYPE'}
++    $time=[DateTime]::ParseExact($Identity.startTimeUtc,'o',[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind)
++    if($time.Kind -ne [DateTimeKind]::Utc -or -not [string]::Equals($time.ToString('o'),$Identity.startTimeUtc,[StringComparison]::Ordinal)){throw 'ROOT_IDENTITY_TIME'}
++}
++function Read-RootIdentity([string]$Path) {
++    $null=Assert-NoReparse $Path
++    if(-not [IO.File]::Exists($Path)){throw 'MISSING_ROOT_IDENTITY'}
++    $identity=Get-Content -LiteralPath $Path -Raw|ConvertFrom-Json -AsHashtable -DateKind String
++    Assert-RootIdentity $identity
++    return $identity
++}
++function Read-RootExitEvent([string]$Path,$Identity) {
++    $null=Assert-NoReparse $Path
++    if(-not [IO.File]::Exists($Path)){throw 'MISSING_ROOT_EXIT_EVENT'}
++    $event=Get-Content -LiteralPath $Path -Raw|ConvertFrom-Json -AsHashtable -DateKind String
++    Assert-RootExitEvent $event $Identity
++    return $event
++}
++function Assert-RootExitEvent($Event,$Identity) {
++    Assert-RootIdentity $Identity
++    $keys=@('schema','pid','startTimeUtc','exitCode','observationTick','elapsedMs')
++    if($null -eq $Event -or $Event -isnot [Collections.IDictionary] -or $Event.Count -ne $keys.Count -or @($keys|Where-Object {-not $Event.Contains($_)}).Count -or $Event.schema -cne 'root-exit/v1'){throw 'ROOT_EXIT_EVENT_SCHEMA'}
++    Assert-RootIdentity @{pid=$Event.pid;startTimeUtc=$Event.startTimeUtc}
++    if($Event.pid -ne $Identity.pid -or -not [string]::Equals($Event.startTimeUtc,$Identity.startTimeUtc,[StringComparison]::Ordinal)){throw 'ROOT_EXIT_EVENT_IDENTITY_MISMATCH'}
++    if(($Event.exitCode -isnot [int] -and $Event.exitCode -isnot [long]) -or $Event.exitCode -lt [int]::MinValue -or $Event.exitCode -gt [int]::MaxValue){throw 'ROOT_EXIT_EVENT_CODE'}
++    if(($Event.observationTick -isnot [int] -and $Event.observationTick -isnot [long]) -or $Event.observationTick -le 0 -or $Event.observationTick -gt [Diagnostics.Stopwatch]::GetTimestamp()){throw 'ROOT_EXIT_EVENT_TICK'}
++    if(($Event.elapsedMs -isnot [int] -and $Event.elapsedMs -isnot [long]) -or $Event.elapsedMs -lt 0){throw 'ROOT_EXIT_EVENT_ELAPSED'}
++}
++function Resolve-RootExitProof($Identity,$Event,$HostReceipt,$CapturedStart,$CapturedExit) {
++    Assert-RootExitEvent $Event $Identity
++    if($null -eq $HostReceipt -or $HostReceipt.started -isnot [bool] -or $HostReceipt.rootExited -isnot [bool] -or $HostReceipt.rootEventPublished -isnot [bool] -or ($HostReceipt.rootExitCode -isnot [int] -and $HostReceipt.rootExitCode -isnot [long]) -or ($HostReceipt.rootObservationTick -isnot [int] -and $HostReceipt.rootObservationTick -isnot [long]) -or $HostReceipt.schema -cne 'host-process/v1' -or -not $HostReceipt.started -or -not $HostReceipt.rootExited -or -not $HostReceipt.rootEventPublished -or $HostReceipt.rootPid -ne $Identity.pid -or $HostReceipt.rootStartTimeUtc -isnot [string] -or -not [string]::Equals($HostReceipt.rootStartTimeUtc,$Identity.startTimeUtc,[StringComparison]::Ordinal) -or $null -eq $HostReceipt.rootExitCode -or $HostReceipt.rootExitCode -ne $Event.exitCode -or $HostReceipt.rootObservationTick -ne $Event.observationTick){throw 'ROOT_EXIT_HOST_CONTRADICTION'}
++    if($null -ne $CapturedStart -and ($CapturedStart -isnot [string] -or -not [string]::Equals($CapturedStart,$Identity.startTimeUtc,[StringComparison]::Ordinal) -or $null -eq $CapturedExit -or $CapturedExit -ne $Event.exitCode)){throw 'ROOT_EXIT_CAPTURE_CONTRADICTION'}
++    return @{schema='root-exit-proof/v1';pid=$Identity.pid;startTimeUtc=$Identity.startTimeUtc;exitCode=$Event.exitCode;observationTick=$Event.observationTick;source=$(if($null -ne $CapturedStart){'host-held-root-handle-event-and-parent-captured-handle'}else{'host-held-root-handle-event'});parentCaptured=($null -ne $CapturedStart)}
++}
++
+ function New-OwnedScope {
+     param([Parameter(Mandatory)][string]$Repo,[Parameter(Mandatory)][string]$EvidenceRoot,
+           [Parameter(Mandatory)][string]$Jdk,[Parameter(Mandatory)][string]$Cache,
+@@ -224,8 +262,11 @@ function Invoke-OwnedProcess {
+     $directory=[IO.Path]::Combine($Scope.owned,'processes',$Name)
+     if([IO.Directory]::Exists($directory)) { throw 'PROCESS_COLLISION' }
+     $null=[IO.Directory]::CreateDirectory($directory)
++    $testFault=$(if($Scope -is [Collections.IDictionary] -and $Scope.Contains('testFault')){$Scope.testFault}else{$null})
++    $exitFaults=@('exit-tail-zero','exit-tail-seven','exit-late-identity','exit-no-capture-zero','exit-no-capture-seven','exit-missing-event','exit-corrupt-event','exit-wrong-pid','exit-wrong-time','exit-wrong-code','exit-missing-identity','exit-corrupt-identity','exit-summary-mismatch','exit-missing-seven','exit-cancel-missing','exit-budget-missing','exit-date-coercion','exit-root-is-host')
++    if($testFault -and ($Scope.stage -ne 'fixture' -or $testFault -notin (@('start-failure','assign-failure','unobserved-settlement')+$exitFaults))){throw 'FAULT_ADAPTER_OUTSIDE_FIXTURE'}
+     $request=[ordered]@{role=$Role;exe=$exePath;argv=@($Argv);cwd=$cwdPath;environment=$Scope.environment;deadlineMs=$DeadlineMs;settleMs=$SettleMs;streamCap=$StreamCap
+-        gate="$directory/gate";identity="$directory/root-identity.json";rootExitEvent="$directory/root-exit.json";stdout="$directory/stdout.bin";stderr="$directory/stderr.bin";receipt="$directory/host-receipt.json"}
++        stage=$Scope.stage;observationFault=$(if($testFault -in @('exit-tail-zero','exit-tail-seven','exit-late-identity')){$testFault}else{$null});gate="$directory/gate";identity="$directory/root-identity.json";rootExitEvent="$directory/root-exit.json";stdout="$directory/stdout.bin";stderr="$directory/stderr.bin";receipt="$directory/host-receipt.json"}
+     $requestPath="$directory/request.json"
+     $request|ConvertTo-Json -Depth 12|Set-Content -LiteralPath $requestPath -Encoding utf8NoBOM
+     $info=[Diagnostics.ProcessStartInfo]::new();$info.FileName=$Scope.paths.Pwsh;$info.WorkingDirectory=$cwdPath;$info.UseShellExecute=$false
+@@ -237,9 +278,8 @@ function Invoke-OwnedProcess {
+     $hostProcess=[Diagnostics.Process]::new();$hostProcess.StartInfo=$info
+     $job=[OwnedJob]::new();$failure=$null;$secondary=[Collections.Generic.List[string]]::new()
+     $captured=@{};$identities=@{};$termination=$false;$hostExit=$null;$hostReceipt=$null;$rootIdentity=$null;$observedRootExit=$null;$started=$false;$hostOutPump=$null;$hostErrPump=$null;$cancelled=$false
++    $rootProof=$null;$rootEvent=$null;$rootEvidenceError=$null
+     $failureTick=[long]::MaxValue
+-    $testFault=$(if($Scope -is [Collections.IDictionary] -and $Scope.Contains('testFault')){$Scope.testFault}else{$null})
+-    if($testFault -and $Scope.stage -ne 'fixture'){throw 'FAULT_ADAPTER_OUTSIDE_FIXTURE'}
+     try {
+     try {
+         if($watch.ElapsedMilliseconds -ge ($DeadlineMs-$SettleMs)){throw 'ADMISSION_DEADLINE'}
+@@ -255,15 +295,15 @@ function Invoke-OwnedProcess {
+         [IO.File]::WriteAllText($request.gate,'admitted')
+         while($watch.ElapsedMilliseconds -lt ($DeadlineMs-$SettleMs)) {
+             if($CancellationToken.IsCancellationRequested){$cancelled=$true;if($null -eq $failure){$failure='CANCELLED';$failureTick=[Diagnostics.Stopwatch]::GetTimestamp()}else{$secondary.Add('CANCELLED')};break}
+-            foreach($pidValue in $job.Pids()) {
++            foreach($pidValue in $(if($testFault -in @('exit-late-identity','exit-no-capture-zero','exit-no-capture-seven')){@()}else{$job.Pids()})) {
+                 if(-not $captured.ContainsKey($pidValue)) {
+                     try {$p=[Diagnostics.Process]::GetProcessById($pidValue);$null=$p.Handle;$identities[$pidValue]=$p.StartTime.ToUniversalTime().ToString('o');$captured[$pidValue]=$p} catch {$secondary.Add('CAPTURE_RACE')}
+                 }
+             }
+-            if($null -eq $rootIdentity -and [IO.File]::Exists($request.identity)) {
+-                try {$rootIdentity=Get-Content -LiteralPath $request.identity -Raw|ConvertFrom-Json} catch { }
++            if($testFault -ne 'exit-late-identity' -and $null -eq $rootIdentity -and [IO.File]::Exists($request.identity)) {
++                try {$rootIdentity=Read-RootIdentity $request.identity} catch { }
+             }
+-            if($null -ne $rootIdentity -and $captured.ContainsKey([int]$rootIdentity.pid) -and $identities[[int]$rootIdentity.pid] -eq $rootIdentity.startTimeUtc) {
++            if($null -ne $rootIdentity -and $captured.ContainsKey([int]$rootIdentity.pid) -and [string]::Equals($identities[[int]$rootIdentity.pid],$rootIdentity.startTimeUtc,[StringComparison]::Ordinal)) {
+                 $root=$captured[[int]$rootIdentity.pid]
+                 if($root.HasExited -and $null -eq $observedRootExit){$observedRootExit=$root.ExitCode;if($observedRootExit -ne 0 -and $null -eq $failure){$failure='NONZERO_EXIT';$failureTick=[Diagnostics.Stopwatch]::GetTimestamp()}}
+             }
+@@ -271,10 +311,17 @@ function Invoke-OwnedProcess {
+             if($hostProcess.HasExited) { break }
+             Start-Sleep -Milliseconds 10
+         }
+-        if([IO.File]::Exists($request.rootExitEvent)){$event=Get-Content -LiteralPath $request.rootExitEvent -Raw|ConvertFrom-Json;$observedRootExit=$event.exitCode;if($event.exitCode -ne 0 -and $event.observationTick -lt $failureTick){if($null -ne $failure -and $failure -ne 'NONZERO_EXIT'){$secondary.Add($failure)};$failure='NONZERO_EXIT';$failureTick=[long]$event.observationTick}}
++        # Read a directly observed event before settlement; final reconciliation below is mandatory.
++        try {
++            $rootIdentity=Read-RootIdentity $request.identity
++            $rootEvent=Read-RootExitEvent $request.rootExitEvent $rootIdentity
++            if($null -eq $observedRootExit){$observedRootExit=$rootEvent.exitCode}
++            if($rootEvent.exitCode -ne 0 -and $rootEvent.observationTick -lt $failureTick){if($null -ne $failure -and $failure -ne 'NONZERO_EXIT'){$secondary.Add($failure)};$failure='NONZERO_EXIT';$failureTick=[long]$rootEvent.observationTick}
++        } catch { } # Missing/incomplete evidence is rejected after actual settlement, never silently accepted.
++
+         if(-not $hostProcess.HasExited -and -not $cancelled -and $watch.ElapsedMilliseconds -ge ($DeadlineMs-$SettleMs)) {if($null -eq $failure){$failure='DEADLINE';$failureTick=[Diagnostics.Stopwatch]::GetTimestamp()}else{$secondary.Add('DEADLINE')}}
+         if($hostProcess.HasExited) {$hostExit=$hostProcess.ExitCode}
+-        if([IO.File]::Exists($request.receipt)) {$hostReceipt=Get-Content -LiteralPath $request.receipt -Raw|ConvertFrom-Json
++        if([IO.File]::Exists($request.receipt)) {$hostReceipt=Get-Content -LiteralPath $request.receipt -Raw|ConvertFrom-Json -DateKind String
+             if($null -ne $hostReceipt.primaryFailure -and [long]$hostReceipt.primaryFailureTick -lt $failureTick){if($null -ne $failure -and $failure -ne $hostReceipt.primaryFailure){$secondary.Add($failure)};$failure=$hostReceipt.primaryFailure;$failureTick=[long]$hostReceipt.primaryFailureTick}
+             foreach($reason in $hostReceipt.secondaryFailures){$secondary.Add($reason)}
+         }
+@@ -288,16 +335,53 @@ function Invoke-OwnedProcess {
+         }
+         while($watch.ElapsedMilliseconds -lt $DeadlineMs -and ($job.Pids().Count -gt 0 -or -not $hostOut.IsCompleted -or -not $hostErr.IsCompleted)) {Start-Sleep -Milliseconds 10}
+         if($hostProcess.HasExited){$hostExit=$hostProcess.ExitCode}
+-        if($null -ne $rootIdentity -and $captured.ContainsKey([int]$rootIdentity.pid) -and $identities[[int]$rootIdentity.pid] -eq $rootIdentity.startTimeUtc -and $captured[[int]$rootIdentity.pid].HasExited){$observedRootExit=$captured[[int]$rootIdentity.pid].ExitCode}
+-        $settled=$job.Pids().Count -eq 0 -and $hostProcess.HasExited -and $hostOut.IsCompleted -and $hostErr.IsCompleted
++        if($null -ne $rootIdentity -and $captured.ContainsKey([int]$rootIdentity.pid) -and [string]::Equals($identities[[int]$rootIdentity.pid],$rootIdentity.startTimeUtc,[StringComparison]::Ordinal) -and $captured[[int]$rootIdentity.pid].HasExited){$observedRootExit=$captured[[int]$rootIdentity.pid].ExitCode}
++        $settled=$job.Pids().Count -eq 0 -and $hostProcess.HasExited -and $hostOut.IsCompleted -and $hostErr.IsCompleted -and @($captured.Values|Where-Object {-not $_.HasExited}).Count -eq 0
+         if($testFault -eq 'unobserved-settlement'){$settled=$false}
+         if(-not $settled){if($null -eq $failure){$failure='OWNED_SETTLEMENT_INCOMPLETE'}else{$secondary.Add('OWNED_SETTLEMENT_INCOMPLETE')}}
+         if($null -eq $failure -and ($hostExit -ne 0 -or $hostOutPump.Error -or $hostErrPump.Error -or -not $hostOutPump.Eof -or -not $hostErrPump.Eof -or $null -eq $hostReceipt -or -not $hostReceipt.streamsCompleted -or $null -eq $hostReceipt.rootExitCode -or $hostReceipt.rootExitCode -ne 0)){ $failure='INCOMPLETE_PROCESS_RESULT' }
+     } catch {
+         if($null -eq $failure){$failure='PARENT_FAILURE:'+$_.Exception.Message};$settled=$false
+         try{$termination=$true;$job.Terminate()}catch{$secondary.Add('TERMINATION_REQUEST_FAILED')}
+-        if($started){try{if(-not $hostProcess.HasExited){$hostProcess.Kill()};while(-not $hostProcess.HasExited -and $watch.ElapsedMilliseconds -lt $DeadlineMs){Start-Sleep -Milliseconds 10};if($hostProcess.HasExited){$hostExit=$hostProcess.ExitCode;$settled=$job.Pids().Count -eq 0}}catch{$secondary.Add('DIRECT_HOST_SETTLEMENT_FAILED')}}
++        if($started){try{if(-not $hostProcess.HasExited){$hostProcess.Kill()};while(-not $hostProcess.HasExited -and $watch.ElapsedMilliseconds -lt $DeadlineMs){Start-Sleep -Milliseconds 10};if($hostProcess.HasExited){$hostExit=$hostProcess.ExitCode;$settled=$job.Pids().Count -eq 0 -and @($captured.Values|Where-Object {-not $_.HasExited}).Count -eq 0 -and (($null -eq $hostOutPump -and $null -eq $hostErrPump -and -not [IO.File]::Exists($request.gate)) -or ($null -ne $hostOutPump -and $null -ne $hostErrPump -and $hostOut.IsCompleted -and $hostErr.IsCompleted))}}catch{$secondary.Add('DIRECT_HOST_SETTLEMENT_FAILED')}}
++    }
++    try {
++        if($testFault -in @('exit-missing-event','exit-corrupt-event','exit-wrong-pid','exit-wrong-time','exit-wrong-code','exit-missing-identity','exit-corrupt-identity','exit-summary-mismatch','exit-missing-seven','exit-cancel-missing','exit-budget-missing','exit-date-coercion','exit-root-is-host')) {
++            foreach($path in @($request.identity,$request.rootExitEvent,$request.receipt)){if([IO.File]::Exists($path)){[IO.File]::Copy($path,$path+'.before-fixture-fault',$false)}}
++        }
++        if($testFault -in @('exit-missing-event','exit-missing-seven','exit-cancel-missing','exit-budget-missing')){[IO.File]::Delete($request.rootExitEvent)}
++        if($testFault -eq 'exit-corrupt-event'){[IO.File]::WriteAllText($request.rootExitEvent,'{broken')}
++        if($testFault -eq 'exit-missing-identity'){[IO.File]::Delete($request.identity)}
++        if($testFault -eq 'exit-corrupt-identity'){[IO.File]::WriteAllText($request.identity,'{broken')}
++        $rootIdentity=Read-RootIdentity $request.identity
++        if($testFault -eq 'exit-date-coercion'){$rootIdentity=Get-Content -LiteralPath $request.identity -Raw|ConvertFrom-Json -AsHashtable}
++        $rootEvent=Read-RootExitEvent $request.rootExitEvent $rootIdentity
++        if($testFault -in @('exit-wrong-pid','exit-wrong-time','exit-wrong-code')) {
++            switch($testFault){'exit-wrong-pid'{$rootEvent.pid++};'exit-wrong-time'{$rootEvent.startTimeUtc='2000-01-01T00:00:00.0000000Z'};'exit-wrong-code'{$rootEvent.exitCode=7}}
++            $rootEvent|ConvertTo-Json|Set-Content -LiteralPath $request.rootExitEvent -Encoding utf8NoBOM
++        }
++        if($testFault -eq 'exit-summary-mismatch'){$hostReceipt.rootExitCode=7;$hostReceipt|ConvertTo-Json -Depth 12|Set-Content -LiteralPath $request.receipt -Encoding utf8NoBOM}
++        if($testFault -eq 'exit-root-is-host') {
++            $rootIdentity.pid=$hostProcess.Id;$rootEvent.pid=$hostProcess.Id
++            $rootIdentity|ConvertTo-Json|Set-Content -LiteralPath $request.identity -Encoding utf8NoBOM
++            $rootEvent|ConvertTo-Json|Set-Content -LiteralPath $request.rootExitEvent -Encoding utf8NoBOM
++        }
++        if($rootIdentity.pid -eq $hostProcess.Id){throw 'ROOT_IDENTITY_IS_HOST'}
++        $capturedStart=$null;$capturedExit=$null
++        if($captured.ContainsKey([int]$rootIdentity.pid)) {
++            $capturedStart=$identities[[int]$rootIdentity.pid]
++            if($captured[[int]$rootIdentity.pid].HasExited){$capturedExit=$captured[[int]$rootIdentity.pid].ExitCode}
++        }
++        $rootProof=Resolve-RootExitProof $rootIdentity $rootEvent $hostReceipt $capturedStart $capturedExit
++        if($null -ne $observedRootExit -and $observedRootExit -ne $rootProof.exitCode){throw 'ROOT_EXIT_OBSERVATIONS_CONTRADICT'}
++        $observedRootExit=$rootProof.exitCode
++        if($observedRootExit -ne 0 -and $rootProof.observationTick -lt $failureTick){if($null -ne $failure -and $failure -ne 'NONZERO_EXIT'){$secondary.Add($failure)};$failure='NONZERO_EXIT';$failureTick=[long]$rootProof.observationTick}
++    } catch {
++        $rootProof=$null;$rootEvidenceError='ROOT_EXIT_EVIDENCE:'+ $_.Exception.Message
++        if($null -eq $failure){$failure=$rootEvidenceError;$failureTick=[Diagnostics.Stopwatch]::GetTimestamp()}else{$secondary.Add($rootEvidenceError)}
+     }
++    # A successful host summary alone cannot prove the root exited, nor override stream/Job settlement.
++    if($null -eq $failure -and ($null -eq $rootProof -or $null -eq $observedRootExit -or $observedRootExit -ne 0 -or -not $settled -or -not $hostReceipt.rootExited -or -not $hostReceipt.stdout.eof -or -not $hostReceipt.stderr.eof -or $hostReceipt.stdout.truncated -or $hostReceipt.stderr.truncated -or $hostReceipt.stdout.error -or $hostReceipt.stderr.error)){$failure='INCOMPLETE_ROOT_EXIT_RESULT'}
+     $descendants=@(foreach($key in $captured.Keys){$p=$captured[$key];@{pid=$key;startTimeUtc=$identities[$key];ownershipProof='private-job-member';exitObserved=$p.HasExited;exitCode=$(if($p.HasExited){$p.ExitCode}else{$null})}})
+     $receipt=[ordered]@{schema='process/v1';status=$(if($null -eq $failure){'passed'}else{'failed'});primaryFailure=$failure;secondaryFailures=@($secondary)
+         hostPid=$(if($started){$hostProcess.Id}else{$null});hostExited=$(if($started){$hostProcess.HasExited}else{$false});hostExitCode=$hostExit;hostReceipt=$hostReceipt;observedRootExitCode=$observedRootExit
+@@ -306,6 +390,7 @@ function Invoke-OwnedProcess {
+     $receipt['observationAdapterFault']=$testFault
+     $receipt['cancelled']=$cancelled
+     $receipt['primaryFailureTick']=$failureTick;$receipt['monotonicTickFrequency']=[Diagnostics.Stopwatch]::Frequency
++    $receipt['rootExitProof']=$rootProof;$receipt['rootExitEvidenceError']=$rootEvidenceError
+     $receipt['rootExitCode']=$observedRootExit;$receipt['rootExited']=($null -ne $observedRootExit)
+     foreach($name in @('stdout','stderr','host-stdout','host-stderr')) {
+         $complete=$false
+diff --git a/scripts/verification/check-core.py b/scripts/verification/check-core.py
+index 75f3611b..49262ac0 100644
+--- a/scripts/verification/check-core.py
++++ b/scripts/verification/check-core.py
+@@ -15,6 +15,15 @@ import tempfile
+ 
+ 
+ def fixture(mode, arguments):
++    if mode == 'exit-tail':
++        gate=Path(arguments[0]);code=int(arguments[1])
++        if code not in (0,7) or any(p.rstrip(' .').casefold() in ('.testagent','.git') for p in gate.parts):raise ValueError('INVALID_TAIL_FIXTURE')
++        end=time.monotonic()+15
++        while not gate.is_file():
++            if time.monotonic()>=end:raise RuntimeError('TAIL_GATE_DEADLINE')
++            time.sleep(.01)
++        os.write(1,b'tail boundary stdout\n');os.write(2,b'tail boundary stderr\n')
++        return code
+     if mode == "argv":
+         sys.stdout.write(json.dumps(arguments, ensure_ascii=False))
+         return 0
+@@ -176,7 +185,7 @@ class OuterOwner:
+             self.api.CloseHandle(self.handle)
+ 
+ 
+-def process_checks(repo, directory, pwsh, python, jdk, cache):
++def process_checks(repo, directory, pwsh, python, jdk, cache, matrix=None):
+     repo=repo.absolute();directory=directory.absolute()
+     directory.mkdir(exist_ok=False)
+     results = []
+@@ -186,7 +195,8 @@ def process_checks(repo, directory, pwsh, python, jdk, cache):
+     outer_spec=importlib.util.spec_from_file_location('matrix_outer',Path(__file__).absolute().with_name('run-owned.py'))
+     outer_module=importlib.util.module_from_spec(outer_spec);outer_spec.loader.exec_module(outer_module)
+     try:
+-        for mode, expected in (("normal", None), ("argv", None), ("nonzero", "NONZERO_EXIT"),
++        if matrix is None:
++            matrix=(("normal", None), ("argv", None), ("nonzero", "NONZERO_EXIT"),
+                                ("dual", None), ("continuous", "DEADLINE"), ("overflow", "LOG_LIMIT"),
+                                ("child-pipe", "DEADLINE"), ("nonzero-child-pipe", "NONZERO_EXIT"),
+                                ('detached-child','OWNED_DESCENDANT_REQUIRES_TERMINATION'),
+@@ -194,7 +204,8 @@ def process_checks(repo, directory, pwsh, python, jdk, cache):
+                                ('unobserved-settlement','OWNED_SETTLEMENT_INCOMPLETE'),
+                                ('cap-exact',None),('cap-plus-one','LOG_LIMIT'),('cancel','CANCELLED'),('tool-change','TOOL_IDENTITY_CHANGED'),
+                                ('compile-zero-xml','NONZERO_EXIT'),('compile-stat-failure','NONZERO_EXIT'),('nonzero-child-overflow','NONZERO_EXIT'),
+-                               ('skip-live',None),('skip-native','UNAPPROVED_SKIP:')):
++                               ('skip-live',None),('skip-native','UNAPPROVED_SKIP:'))
++        for mode, expected in matrix:
+             name = "g11-p2-synthetic-" + directory.name + "-" + mode
+             evidence = repo / "docs/superpowers/verification/evidence" / name
+             out_path=repo/'docs/superpowers/verification/evidence'/(name+'-owner')
+@@ -208,7 +219,7 @@ def process_checks(repo, directory, pwsh, python, jdk, cache):
+             finally:sys.argv=original_args
+             outer=json.loads((out_path/'result.json').read_text(encoding='utf-8'))
+             failure=outer['firstFailure']
+-            if failure=='NONZERO_EXIT' and code!=0:failure=None # Expected inner negative, not outer containment failure.
++            if expected is not None and failure=='NONZERO_EXIT' and code!=0:failure=None # Only an expected inner negative may explain outer NONZERO_EXIT.
+             outer_settlement=outer['settlement']
+             receipts = list(evidence.glob("*/stage-result.json"))
+             receipt = json.loads(receipts[0].read_text(encoding="utf-8-sig")) if len(receipts) == 1 else None
+@@ -219,8 +230,27 @@ def process_checks(repo, directory, pwsh, python, jdk, cache):
+             results.append(record)
+             (directory / (mode + "-check.json")).write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+             expected_ok=receipt is not None and (receipt['primaryFailure']==expected or (expected is not None and expected.endswith(':') and str(receipt['primaryFailure']).startswith(expected)))
++            if expected_ok:
++                expected_ok=(receipt['status']=='passed' and code==0) if expected is None else (receipt['status']=='failed' and code!=0)
+             if failure or not expected_ok or not record["neighborStillRunning"]:
+                 raise RuntimeError("PROCESS_CHECK_FAILED:" + mode)
++            if expected is None:
++                # Composite skip-policy receipts contain the actual process rather than root fields at the top level.
++                successful_process=receipt if receipt['schema']=='process/v1' else receipt.get('processReceipt')
++                if not isinstance(successful_process,dict) or successful_process.get('schema')!='process/v1' or successful_process.get('status')!='passed':raise RuntimeError('SUCCESSFUL_PROCESS_RECEIPT_MISSING:'+mode)
++                proof=successful_process.get('rootExitProof')
++                if successful_process.get('rootExited') is not True or successful_process.get('rootExitCode')!=0 or successful_process.get('observedRootExitCode')!=0 or not isinstance(proof,dict) or proof.get('exitCode')!=0 or successful_process.get('ownedSettlement')!='complete':raise RuntimeError('SUCCESSFUL_ROOT_EXIT_PROOF_MISSING:'+mode)
++            if mode.startswith('exit-'):
++                if receipt['observationAdapterFault']!=mode:raise RuntimeError('EXIT_FAULT_NOT_ACTUALLY_APPLIED')
++                if mode in ('exit-tail-zero','exit-tail-seven','exit-late-identity','exit-no-capture-zero','exit-no-capture-seven'):
++                    proof=receipt['rootExitProof'];wanted=7 if mode.endswith('seven') else 0
++                    if proof is None or receipt['rootExitCode']!=wanted or not receipt['rootExited'] or proof['exitCode']!=wanted or not isinstance(proof['startTimeUtc'],str):raise RuntimeError('ROOT_EXIT_PROOF_MISSING')
++                    if mode in ('exit-late-identity','exit-no-capture-zero','exit-no-capture-seven') and (proof['parentCaptured'] or receipt['capturedDescendants']):raise RuntimeError('MISSED_CAPTURE_CONTROL_NOT_APPLIED')
++                    if mode in ('exit-tail-zero','exit-tail-seven','exit-late-identity') and not receipt['hostReceipt']['tailBoundaryForced']:raise RuntimeError('TAIL_BOUNDARY_NOT_FORCED')
++                else:
++                    if not receipt['rootExitEvidenceError'] or receipt['status']=='passed' or receipt['rootExitProof'] is not None:raise RuntimeError('INVALID_EXIT_EVIDENCE_ACCEPTED')
++                    if mode=='exit-missing-seven' and (receipt['rootExitCode']!=7 or not any(x.startswith('ROOT_EXIT_EVIDENCE:') for x in receipt['secondaryFailures'])):raise RuntimeError('ROOT7_EVIDENCE_FIRST_CAUSE_LOST')
++                    if mode=='exit-cancel-missing' and not receipt['cancelled']:raise RuntimeError('CANCELLATION_NOT_ACTUAL')
+             if mode not in ('unobserved-settlement','start-failure') and receipt["ownedSettlement"] != "complete":
+                 raise RuntimeError("OWNED_EXIT_NOT_OBSERVED:" + mode)
+             if mode == "argv":
+@@ -253,6 +283,13 @@ def process_checks(repo, directory, pwsh, python, jdk, cache):
+     return {"schema": "process-checks/v1", "passed": True, "cases": results}
+ 
+ 
++def root_exit_checks(repo,directory,pwsh,python,jdk,cache):
++    matrix=[('exit-tail-zero',None),('exit-tail-seven','NONZERO_EXIT'),('exit-late-identity',None),('exit-no-capture-zero',None),('exit-no-capture-seven','NONZERO_EXIT')]
++    matrix.extend((name,'ROOT_EXIT_EVIDENCE:') for name in ('exit-missing-event','exit-corrupt-event','exit-wrong-pid','exit-wrong-time','exit-wrong-code','exit-missing-identity','exit-corrupt-identity','exit-summary-mismatch','exit-date-coercion','exit-root-is-host'))
++    matrix.extend([('exit-missing-seven','NONZERO_EXIT'),('exit-cancel-missing','CANCELLED'),('exit-budget-missing','DEADLINE')])
++    return process_checks(repo,directory,pwsh,python,jdk,cache,matrix)
++
++
+ def main():
+     parser = argparse.ArgumentParser()
+     parser.add_argument("--fixture")
+@@ -260,6 +297,7 @@ def main():
+     parser.add_argument("--check-tools")
+     parser.add_argument("--out")
+     parser.add_argument("--check-processes")
++    parser.add_argument("--check-root-exits")
+     parser.add_argument("--repo")
+     parser.add_argument("--pwsh")
+     parser.add_argument("--python")
+@@ -275,8 +313,9 @@ def main():
+                 if time.monotonic()>=end:raise RuntimeError('GATE_DEADLINE')
+                 time.sleep(.01)
+         return fixture(args.fixture, remaining[1:] if remaining[:1] == ["--"] else remaining)
+-    if args.check_processes:
+-        result = process_checks(Path(args.repo), Path(args.check_processes), args.pwsh, args.python, args.jdk, args.cache)
++    if args.check_processes or args.check_root_exits:
++        checker=root_exit_checks if args.check_root_exits else process_checks
++        result = checker(Path(args.repo), Path(args.check_root_exits or args.check_processes), args.pwsh, args.python, args.jdk, args.cache)
+         with Path(args.out).open("x", encoding="utf-8") as output:
+             json.dump(result, output, ensure_ascii=False, indent=2)
+         return 0
+diff --git a/scripts/verification/run-stage.ps1 b/scripts/verification/run-stage.ps1
+index 985510b8..b7b7cf77 100644
+--- a/scripts/verification/run-stage.ps1
++++ b/scripts/verification/run-stage.ps1
+@@ -30,7 +30,7 @@ if(-not $DeadlineMs){$DeadlineMs=$(if($Mode -eq 'fixture'){600000}else{$policy.s
+ function Run-Python([string]$Name,[string[]]$Arguments) {
+  $tokenSource=[Threading.CancellationTokenSource]::new()
+  try {
+-  if($Mode -eq 'fixture' -and $Fixture -eq 'cancel'){$tokenSource.CancelAfter(3000)}
++  if($Mode -eq 'fixture' -and $Fixture -in @('cancel','exit-cancel-missing')){$tokenSource.CancelAfter(3000)}
+   $result=Invoke-OwnedProcess -Scope $scope -Name $Name -Exe $scope.paths.Python -Argv (@('-I','-S','-B')+$Arguments) -Cwd $Repo -HostScript $hostScript -DeadlineMs $DeadlineMs -SettleMs $SettleMs -StreamCap $StreamCap -CancellationToken $tokenSource.Token
+  } finally {$tokenSource.Dispose()}
+  if($result.status -ne 'passed'){$failures.Add($result.primaryFailure)}
+@@ -48,8 +48,14 @@ function Apply-TestPolicy($Results,[string]$PolicyStage=$Mode) {
+ }
+ if($Mode -eq 'fixture') {
+  if($Fixture -in @('start-failure','assign-failure','unobserved-settlement')){$scope.testFault=$Fixture;$Fixture='normal'}
+- $fixtureMode=$(if($Fixture -eq 'cancel'){'continuous'}elseif($Fixture -in @('compile-zero-xml','compile-stat-failure')){'nonzero'}elseif($Fixture -in @('skip-live','skip-native')){'normal'}else{$Fixture})
++ $exitFaults=@('exit-tail-zero','exit-tail-seven','exit-late-identity','exit-no-capture-zero','exit-no-capture-seven','exit-missing-event','exit-corrupt-event','exit-wrong-pid','exit-wrong-time','exit-wrong-code','exit-missing-identity','exit-corrupt-identity','exit-summary-mismatch','exit-missing-seven','exit-cancel-missing','exit-budget-missing','exit-date-coercion','exit-root-is-host')
++ if($Fixture -in $exitFaults){$scope.testFault=$Fixture}
++
++ $fixtureMode=$(if($Fixture -in @('cancel','exit-cancel-missing')){'continuous'}elseif($Fixture -in @('compile-zero-xml','compile-stat-failure')){'nonzero'}elseif($Fixture -in @('skip-live','skip-native')){'normal'}else{$Fixture})
++ if($Fixture -in $exitFaults){$fixtureMode=$(if($Fixture -in @('exit-tail-zero','exit-tail-seven','exit-late-identity')){'exit-tail'}elseif($Fixture -in @('exit-no-capture-seven','exit-missing-seven')){'nonzero'}elseif($Fixture -in @('exit-cancel-missing','exit-budget-missing')){'continuous'}else{'normal'})}
+  $arguments=@($scope.tools['check-core.py'].frozen,'--fixture',$fixtureMode,'--','space value','中文','literal"quote','')
++ if($fixtureMode -eq 'exit-tail'){$arguments=@($scope.tools['check-core.py'].frozen,'--fixture','exit-tail','--',(Join-Path $scope.owned 'processes/fixture/root-identity.json.tail-release'),$(if($Fixture -eq 'exit-tail-seven'){'7'}else{'0'}))}
++
+  try {
+   if($Fixture -eq 'tool-change'){[IO.File]::AppendAllText($scope.tools['check-core.py'].frozen,"`n# synthetic mutation`n")}
+   $process=Run-Python 'fixture' $arguments
