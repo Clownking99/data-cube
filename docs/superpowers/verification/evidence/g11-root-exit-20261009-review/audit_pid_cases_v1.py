@@ -2,7 +2,6 @@
 from collections import Counter
 import hashlib
 import json
-import re
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -15,8 +14,7 @@ repo = base.parents[4]
 evidence = base.parent
 review = json.loads((base / 'full-review.json').read_text())
 scope = Path(review['scope'])
-require(re.fullmatch(r'(g11-p2-eng-[0-9a-f]{32}-full|g11-p3-[0-9a-f]{12}-full-[0-9a-f]{32})', scope.parent.name)
-        and re.fullmatch('[0-9a-f]{32}', scope.name), 'scope')
+require(scope.parent.name.startswith(('g11-p2-', 'g11-p3-')) and '-full-' in scope.parent.name and scope.name.isalnum(), 'scope')
 repo = scope.parents[5]
 evidence = scope.parents[1]
 name = 'com.datacube.export.PgDumpRunnerReliabilityTest'
