@@ -29,3 +29,5 @@
 四契约落在`VerificationCore.psm1`及`evidence_tools.py`，进程host、外层owner与镜像审计分别保持单独职责；`run-stage.ps1`和`stage-policy.json`负责本轮任务。两份Java probe保留G10来源原字节，仍外置编译运行。调用和额度见[验证说明](verification-guide.md)。实现用12文件闭包，没有新增依赖包、Gradle插件或更改产品/构建/CI。共享工具接入未修改JUnit；首轮CI随后暴露旧PgDump测试PID发布竞态，另以三个测试文件的最小协议修正和10个回归处理，详见[修正后main验收](../superpowers/verification/2026-10-09-g11-ci-correction-main.md)。测试等待、过滤器和skip策略保持不变。
 
 后续只复制受验工具快照，不再维护多份独立变体；执行证据仍保留各阶段快照、原始日志和XML。G11为证明错误路径保存了多轮失败和合成原件，短期证据字节增加；没有清理历史或宣称释放磁盘。下一步候选仍是受控JVM测试夹具合并，另立范围后再做；本轮不迁移夹具或拆分Redis/Shell。
+
+退出观察修正保持12文件闭包，只改四文件：host统一实际handle观察并原子发布带身份事件，parent保留UTC字符串并严格关联，最终成功必须有完整根退出证明；合成目录改独立UUID，避免Windows长路径使Python误判gate不存在。新增18项组合控制，完整矩阵98项。两次必要修正及编排/审核错误均保留原件；短命进程的未捕获分支明确以已准入host持有handle的事件证明，物理结算仍另行检查。最新main验证与未验范围见[修正后报告](../superpowers/verification/2026-10-09-g11-root-exit-main.md)。

@@ -1,6 +1,6 @@
 # G11 PID修正后main完整复验
 
-本报告接续[首次本地P3](2026-10-09-g11-main-verification.md)，以main `e368a1b16bdee226925b363f06b4dc4f003c1f0f`为新受验输入。当前阶段结果以本报告后续实际记录为准，首轮失败不被覆盖。
+本报告保留main `e368a1b16bdee226925b363f06b4dc4f003c1f0f`的被拒绝P3，接续[首次本地P3](2026-10-09-g11-main-verification.md)。本页结果和1904份REJECTED原件不改成通过；退出观察修正合入后的最新版本与交付判定见[新main报告](2026-10-09-g11-root-exit-main.md)。
 
 ## 修正与输入
 

@@ -265,3 +265,31 @@ root增强review_stage.py已实际审核五阶段：57个process的原始identit
 独立audit_engineering.py核对五阶段outer实际0、自然Job空、10外层原始日志；image实物183文件逐项身份与before/after相同，原始jimage26088类对408类型无测试/探针泄漏，cfg无隔离污染。四linked命令实际0，driver connectCalls0，Redis socketsSettled=true/realServices0。工程封存02cb7a0b73bd7647b3ddaead8fdf2395d5bc51cc4c1f5ea8368f82c1da77e479精确9根995文件20084399字节，独立audit_archive.py实际exit0。控制98 manifest、首targeted失败manifest与续接工程manifest分别保存，以精确SHA关联。
 
 裁决：开发验证通过，已授权同一线程仅两笔本地提交：四工具和本轮原件/报告/精确-text规则；必须.NET核对长路径原件并检查Git blob原字节，交付清单明确所有路径。不合main/push、不再运行Gradle，旧.g10文件保持不动。root主线审核文档现已提交a9ecaf99；开发源基线仍e368a1b1并加四修正。下一步审核运输后合main，root接管唯一Gradle执行新完整98控制和五阶段，最终精确SHA CI仍未完成。完整桌面/真实服务/发布验收不在本轮通过声明内。
+
+## C18：原字节运输接受，main集成并启动新完整P3
+
+开发四工具提交a59b3f15ae21c1514acfc5060b15ab41fe90c94b和3320路径证据提交258a03db12648b821e85273adcc16b25e1efc099已完成。root独立audit_transport.py核对两提交精确链、全分支3324路径集合、四份manifest3301原件、报告与属性增量，以及全部Git原始blob长度/SHA；额外路径只限四个已知源码/提案根与交付入口。报告bf22248eb2e02b8ce1e3b246f1057d11d37112ce5ab855085af39a6052b15b6b原字节一致。
+
+独立.NET逐项读取worker3324文件49529013字节与Git一致，最长266字符，其中8项超过259，全部保留。main以2c8fc13577337a9b5247351e0634e76ff3841999合入；main检出同3324文件49529013字节再次逐项完全相同，最长241。root运输审查提交69c14457先于集成；未push/fetch/tag/PR，旧.g10文件仍未跟踪且不读不动。
+
+开发已交接停写，root接管唯一Gradle。全新g11-p3-2ba76738625d-package绑定受验main2c8fc135、875输入、12已审工具和98控制；17入口manifest2aaa601bf03f0114ecfa2c8569cfd6102aee209cc19fededafb29f3a6ebc39fc，实际controller14f6ff7eb55ca20eb7988a04feec59bb55ab189cfd60b94b5b82cbd071d6404d。控制器基于原五阶段入口，只更新本轮身份/前缀并明确加入18新退出观察项，原21/21/31/7与各预算不改；这次P3完整新跑98和五工程阶段，不复用开发targeted续接结果。
+
+实际PowerShell -NoProfile调用Python -I -S -B已启动，operator-command与实际shell-exit分别保存，尚无新P3通过声明。原件和所有历史失败不变；下一步逐阶段强退出/原始XML/镜像独立审查，封存后才提交main并核对精确SHA CI。仍不宣称真实服务、完整桌面或发布验收。
+
+### C18.1：main新定向原件接受
+
+新P3当前已实际完成98控制序列并进入clean全量，root尚未接受整轮。对本轮targeted的增强独立review_stage.py实际exit0：56suite292case=291pass/1精确Redis live skip，875输入/408类型/12工具均与当前main一致；10process强退出事件/身份/host/已捕获handle和40原始流身份一致，真实root0与完整结算。见g11-p3-2ba76738625d-root-review/targeted-review.json。本轮未沿用开发targeted原件，main新UUID实际重编译执行；full/buildSrc/image/linked尚未完成。
+
+### C18.2：main新full/buildSrc原件接受
+
+本轮main2c8fc135的新full与buildSrc分别经增强review_stage.py独立actual0：full4724case=4721pass/3live skip，buildSrc8pass/0skip，均0failure/error；每阶段875输入/408类型/12工具和10process/40日志、强根退出证据一致。audit_cases精确核对三个live skip身份/原因、定向和全量各11 RedisPaneBudgetTest实际通过，关闭顺序unit另计。PID33case全量实际全过，与已审窄回归case名称多重集合一致。image已开始，尚未接受整轮P3或推送。
+
+## C19：新main完整P3独立接受，封存并进入精确SHA交付
+
+目标为完成本轮G11，不扩展后续候选。新P3实际controller/shell退出0，五阶段已自然结束，没有运行中的Gradle。root最后核对image/linked的强退出证据、原始日志、镜像实物和外置探针，全部接受：183文件、26088类、408测试类型无泄漏，四linked命令实际0，driver connectCalls=0，Redis socketsSettled=true/realServices=0；五阶段共57个process强证明、228内层日志、10外层日志。定向291pass/1skip、full4721pass/3skip、buildSrc8pass；PID33与原生11另行逐项接受，跳过仍是跳过。
+
+新98控制独立audit_p3_controls实际0：21/21/18/31/7，232日志和18强根退出证明一致，91派生控制根属于本轮保存的spec，未重用开发结果。audit_packet实际0再次核对17入口manifest2aaa601bf03f0114ecfa2c8569cfd6102aee209cc19fededafb29f3a6ebc39fc、实际controller14f6ff7eb55ca20eb7988a04feec59bb55ab189cfd60b94b5b82cbd071d6404d及operator argv/exit，12工具与当前源码逐字节一致；各阶段875输入/408类型均未变。
+
+本轮g11-p3-2ba76738625d-frozen/manifest.json已封存102根2501文件37637132字节，SHA fc70f285710a1d9baac4af58e0a0f1f4ee2130aaf1b3e12f51b23d987421acfb，accepted=true/deliveryAllowed=true。首次CI失败、1904拒绝原件、开发长路径/编排失败及审计器原失败均保持原样；本轮新P3没有失败。更新CURRENT、验证说明、设计现状和[最新main报告](2026-10-09-g11-root-exit-main.md)，受验main仍2c8fc135，最终仅文档/证据提交。
+
+下一步精确原字节暂存/提交、只推main并核对同SHA Verify四任务/原始日志/远端main；实际结果由新报告链接的delivery-intent及其独占build回执定位。本检查点不提前称远端CI通过。真实服务、完整桌面与发布验收仍未完成；开发停写，无新增线程/自动调度，不动tag，不自动启动下一轮。

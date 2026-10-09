@@ -36,4 +36,4 @@ main `3beb965746ade7d76224cb4aba03cafb7cfe2e34` 范围内干净，维护整理�
 
 ## 当前检查点
 
-C16：首CI失败后的PID测试修正已合入main e368a1b1；随后完整序列虽退出0，但独立门禁发现java-version的passed与rootExited=false矛盾，1904份原件已REJECTED封存。四文件退出观察修正及98项合成控制现已独立接受：短命退出事件、严格日期身份、最终成功门禁和原首因/结算要求均核对；首次长路径失败保留，不混入新通过。开发独占新冻结完整工程验证，尚未提交或合入main；root后续仍须新main完整98控制和五工程阶段、精确SHA CI。详见[当前main拒绝报告](../verification/2026-10-09-g11-ci-correction-main.md)及[协调账本C14–C16](../verification/2026-10-09-g11-verification-coordination.md)。不放宽审核器、不用旧通过代替新证据；未推本轮main、不自动启动后续候选。
+C19：源码a59b3f15与证据258a03db合入main2c8fc135，3324文件经Git/worker/main逐字节核对。root新隔离P3的98控制与五阶段全部独立接受：定向291通过/1跳过、全量4721通过/3跳过、buildSrc8通过，image/linked及强退出证明通过。2501原件封存SHA fc70f285710a1d9baac4af58e0a0f1f4ee2130aaf1b3e12f51b23d987421acfb；原失败保持不变，未放宽预算/跳过或审核器。详见[最新main报告](../verification/2026-10-09-g11-root-exit-main.md)与[协调账本C19](../verification/2026-10-09-g11-verification-coordination.md)。最终文档/证据提交仅推main；精确SHA CI实际结果由报告中的本轮交付入口定位，不在提交前预称远端通过。不自动启动后续候选。

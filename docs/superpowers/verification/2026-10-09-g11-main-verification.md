@@ -1,6 +1,6 @@
 # G11 main独立验收
 
-本报告记录修正前main62ea18d的首次本地P3，原件保持不变。随后cfd9d4ed的Verify37893270726在Ubuntu暴露旧PgDump测试PID发布竞态，整体CI失败；没有将本地通过冒充交付成功。当前结论与新输入身份见[PID修正后的main完整复验](2026-10-09-g11-ci-correction-main.md)，首失败见协调账本C11–C12。
+本报告记录修正前main62ea18d的首次本地P3，原件保持不变。随后cfd9d4ed的Verify37893270726在Ubuntu暴露旧PgDump测试PID发布竞态，整体CI失败；没有将本地通过冒充交付成功。[PID修正后的P3](2026-10-09-g11-ci-correction-main.md)随后因退出观察矛盾被拒绝；最新受验版本和交付判定见[退出观察修正后main报告](2026-10-09-g11-root-exit-main.md)。首失败见协调账本C11–C12。
 
 2026-10-09，root接管唯一Gradle执行。工具提交`48b51d63ee89edb8dcb0187d7dd43367c558f347`，开发证据提交`6aefd9d136058ec67cab688b28158dcc4416fb9d`，合并`4ddba09d6b848dca4532b575b6db930702c79211`，受验main为`62ea18d1981e8ac65b4b727566786d56b6a65371`。其后的交付文档和证据提交不改变875个工程/工具输入。
 

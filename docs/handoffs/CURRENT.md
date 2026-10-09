@@ -10,11 +10,11 @@
 
 ## 本轮交付
 
-**G11 尚未完成交付，当前在修正独立复验发现的 runner 退出观察缺口。** 首次本地P3通过并封存1900份原件；cfd9d4ed的Verify37893270726随后在Ubuntu暴露旧PgDump测试PID发布竞态，其余三个任务成功。三个测试文件的最小协议修正52374f71及证据ca055cc5已合入main e368a1b1。
+**G11 本地验收完成；远端交付结论以本轮实际回执为准。** 四文件退出观察修正a59b3f15和证据258a03db已合入受验main **2c8fc13577337a9b5247351e0634e76ff3841999**，3324文件在Git、worker和main间原字节一致。root随后在全新隔离目录完整执行98控制和五个工程阶段，并独立审查原始命令、退出、XML、镜像和进程结算，全部接受。
 
-修正后root完整新序列实际退出0，原始XML为定向291通过/1跳过、全量4721通过/3跳过（含PID33例）、buildSrc8通过，image/linked已自然结束；但独立审核发现java-version回执同时声称passed与rootExited=false，拒绝本轮P3。原因已实测为短进程循环尾漏退出事件、JSON日期类型造成身份比较失配、最终成功门禁不完整。1904份原件以REJECTED封存，未推送此轮main、未重试CI到绿。
+新P3定向 **291通过/1 live跳过**、clean全量 **4721通过/3 live跳过**、强制buildSrc **8通过/0跳过**；PID33项、Redis原生11项均实际通过，jpackageImage的183文件与外置linked探针通过。2501份原件已封存，跳过不算通过。[最新main验收报告](../superpowers/verification/2026-10-09-g11-root-exit-main.md)、[协调账本C19](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。
 
-[当前复验与拒绝结论](../superpowers/verification/2026-10-09-g11-ci-correction-main.md)、[协调账本C14–C16](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。同一6.1-sol开发会话的四文件最小修正已通过源码及98项合成原件审核，1357份封存文件和232份日志已独立重算；首次长路径控制失败保持REJECTED。开发现独占新冻结完整工程验证，尚未提交或合入main。root后续仍需新main完整P3和精确SHA CI；旧交付定位不能作为新提交成功证明，未自动启动下一轮。
+最终文档/证据提交沿用同一875工程输入和12工具。只推main并核对相同SHA的Verify四任务；最终commit、远端main、CI链接、原始日志和passed结论由[本轮交付入口](../superpowers/verification/evidence/g11-p3-2ba76738625d-package/delivery-intent.json)定位到独占build目录中的delivery-result.json及manifest。没有该回执或passed不为true时，不得宣称远端交付完成。首次CI的PID竞态失败、1904份矛盾退出REJECTED原件、开发长路径和用例误计失败均保留，不冒充通过。未自动启动下一轮。
 
 ## 后续候选
 
