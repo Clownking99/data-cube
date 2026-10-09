@@ -127,3 +127,17 @@ root 独立读取 `006-fx-mode-and-source-status` 的 argv 对应日志/exit/六
 准入裁决：P1b 阶段接受；允许同一开发会话执行 P2。保持独占 UUID home/temp/build、清空环境、mock/127.0.0.1 helper、现有本地工具及离线缓存；开发仍独占 Gradle。全量不得以强制 headless 大量跳过 FX 换绿；工具包实际失败与真实服务前置跳过分别记录。每阶段保存当前命令/退出/输入/原日志/XML/产物哈希，首次失败保留；新代码修复须说明影响并取得对应新结果。最终停写交审，尚不授权开发提交、合 main、推送或操作 tag。
 
 失败/未验：P1b 的首轮夹具失败、缓存锁权限失败、状态/模式行为失败均保留；P2全量/buildSrc/image、P3独立集成/精确SHA CI尚未完成。实际FX控件/mock不是完整原生桌面、真Redis或发布验收；最大合法多会话RSS、DNS/阻塞写/native close/GC局限保留。新自动跟进授权仍未答复、未创建；旧跟进保持PAUSED。下一步下发P2并独立复核新原件，通过后才进入P3；G10交付后再整理维护成本。
+
+### C4.1：P2 已启动，独立回执已完整提交
+
+P2 turn `01a11e52-eddb-7191-8b5c-bd06e4bc8346` active，已观察 cursor `431e0858-03dc-4a74-84cd-3c2876284d87:159`。开发仍为唯一 Gradle 执行者。root 读取新隔离脚本与仓库原 build.gradle，对应生成版本/图标/资源目录和 jpackage icon 均重定向独占 UUID build；版本、母版和 generator 的原逻辑保留。`001` 错把 jpackage DSL 方法读作属性，配置失败；`002` init script 无法直接解析 buildSrc 类，生成图标前失败。两轮没有产品测试通过，脚本快照及失败日志保留；`003` 改为读取 project buildscript classloader 后新执行，尚待最终结果核验。
+
+C4 已本地提交 `3ebd45110b633e86629379b9033b8dc697ccbda7`。root 的常规 Git add 多次 exit0 但七个新回执文件未进入索引（原因未确定，未把成功退出当提交证明）；没有生成缺件提交。随后用逐项白名单、拒绝 `.testagent`/越界/多级文件名的索引接口写入同一批准文件集合，逐字节核对 Git blob 与 frozen manifest 后才提交。没有目录扫描、禁用路径读取或外部操作；此次 Git 索引异常不是产品测试失败。该提交后 main 范围内干净、仅文档与原件，G10 产品尚未提交。
+
+### C4.2：完整定向通过，镜像审计与冻结范围修正
+
+root 独立解析 `003-complete-targeted` 的56份XML、前后863项输入、命令/exit/raw日志：292 total =291 pass+1真实Redis skip，0 failure/error、exit0，native FX未强制headless。全新目录的cleanTest显示UP-TO-DATE仅表示无旧结果可清理；test实际执行，8个任务执行。`004-clean-full` 已启动，当前未结算，不能记为通过。
+
+镜像脚本初审发现输入中408个test源码路径全部采用Windows反斜杠，原`^test/`匹配使测试类泄漏名单为空；已要求先规范分隔符并断言覆盖全部408项。开发已修正。其image相对路径替换经root检查实际为单反斜杠转换，不是另一个已确认缺陷。linked helper源码已读：加载新image中的命名产品模块，脚本socket显式127.0.0.1，检查确认DB恢复、普通错误消息/同socket继续、资源拒绝、展示和raw身份，并join/EOF结算；尚未执行成功，不先记绿。
+
+冻结脚本计划复制全部863输入及多轮全部class；root已在执行前裁决缩为最小原件集合，避免再复制未修改驱动jar和整个已版本化源/测试树。完整输入、全部编译产物/image仍保留长度/哈希清单；仅复制本G10新增/修改源/测试、实际launcher、Redis/两pane与新测试相关class、必要buildSrc工具/probe、产品jar/launcher。完整image保留在具名UUID路径并绑定manifest。此为尚未生成的P2原件选择，不删历史、不修改P1a/P1b、不减少测试或断言；维护成本正式盘点仍后置。下一步继续独立核验全量、buildSrc和image实际结果。
