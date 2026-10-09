@@ -129,3 +129,15 @@ root另准备独立[原件审核脚本](evidence/g11-p2-root-review/review_stage
 root对已完成v2 targeted运行独立脚本实际exit0：56XML套件292用例，291通过/1精确Redis live前置跳过，0失败/错误；875输入前后一致并逐项匹配当前磁盘，408类型覆盖，12工具source/frozen身份一致，10进程回执实际root0/完整结算，40日志长度/SHA相符。[原件审核回执](evidence/g11-p2-root-review/targeted-v2-review.json)。当前clean全量运行中，强制buildSrc/image/linked及P3仍未验，未将P1旧结果充作本轮证据。
 
 另将当时SHA仍为`e5aeb50f...`的[P1已接受完整报告](evidence/g11-p2-root-review/accepted-p1-worker-report.md)原字节保存，供后续报告追加P2内容后复核。下一步继续独立读取本轮全量及镜像原件，再裁决完整P2。
+
+## C8：P2独立审核通过，准许精确本地提交
+
+目标：核验全部冻结工程与合成原件并移交P3。root以独立review_stage.py实际退出0复核五阶段：定向291通过/1 Redis live跳过；全量4711通过/3精确live跳过；buildSrc8通过/0跳过；image和linked明确无XML的产物阶段，不计测试通过数。各阶段875输入/408类型/12工具前后及磁盘身份一致，5阶段进程日志共228份重算长度/SHA；均实际root0、完整结算。外层另10份日志身份正确，无终止请求且Job自然清零。
+
+独立audit_completion.py重算P1的69根1777文件32511490字节不变，P2的79根2022文件38054904字节与磁盘精确集合一致；manifest SHA分别ac3f1e6289e942d86dfd9d47f9e9f22bd942bae84a1d11a9ac71056740d1cc9a与0ba356b38c3257891b22de26c21820ddaf5edb7c0027eee2ad08300c5d329a0b。P2报告单独存于2026-10-09-g11-p2-worker.md；没有修改P1报告或冻结根。
+
+镜像实物183文件逐一重算，linked前后清单相同、4核心文件与marker/source result绑定正确；原始jimage的26088类对408测试类型无泄漏，六个Redis产品类存在，cfg/文件无测试隔离污染。四个linked命令实际0；原始驱动输出connectCalls=0，Redis输出socketsSettled=true、realServices=0。21 Python契约、21 core控制、31政策/角色/镜像控制及7 outer控制复核，66份存在的控制流日志重算一致；不存在的partial日志不视为完整零字节。负例首因、root7及邻居存活/实际Job清零保留。
+
+[完整审核脚本和回执](evidence/g11-p2-root-review/completion-v2-review.json)。root审核夹具曾误取顶层runtimeParent及要求所有outer负例wrapperExit=1，分别实际退出1；后者正确原件为保留7/124。修正只读审核夹具后全套审核实际exit0，见reviewer-corrections.md；受验实现和原件未改，不将首次审核失败冒充通过。
+
+裁决：P2通过，已授权同一开发线程只按12工具+两属性文件+两报告+P1/P2 manifest明确原件本地提交，要求Git blob原字节核对；不合main、不推送、不再运行Gradle，旧.g10-verify-blobs.ps1保持未跟踪。root随后审核运输、合main并接管唯一Gradle，在新UUID完成P3。尚无P3/main新运行及最终CI证据，不宣称完整桌面/真实服务/发布验收。

@@ -1,0 +1,5 @@
+2026-10-09 root审核夹具更正，非产品或受验工具失败。
+
+只读字段摘要首次使用不存在的runtimeParent顶层键（实际在paths.RuntimeParent）退出1；改为读取真实schema后退出0，没有写被审原件。
+
+audit_completion.py首次执行退出1于outer false pass：审核夹具错误地要求所有负例wrapperExit必须为1，而受验包装按契约保留根进程实际7。更正为正常必须0、负例必须非0，并保持nonzero两例actualExitCode必须7的独立断言；P2原件未改。首次执行已通过此前manifest、镜像、工程退出、Python/core与政策检查，但不将失败审核宣称整体通过；更正后必须完整重跑并生成新的审核回执。

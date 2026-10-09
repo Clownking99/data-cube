@@ -10,7 +10,7 @@
 
 ## 当前进行中
 
-维护者继续授权后启动 **G11 验证 runner 共用内核**，范围为四个小内核与本轮新验证入口，原6.1-sol会话开发、root审查/集成。见[实施计划](../superpowers/plans/2026-10-09-g11-verification-core.md)、[协调账本](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。P1已独立审核通过：最终21项进程/阶段控制、Python契约与旧逻辑对照，唯一真实定向291通过/1 live跳过；1777份归档原件逐项长度/SHA与实际清单相符。早期日志丢失、错误归因等失败原件保留。P2源码与新增镜像/进程控制已准入，现在冻结并执行完整工程验证；尚未完成P2/P3或main交付。
+维护者继续授权后启动 **G11 验证 runner 共用内核**，范围为四个小内核与本轮新验证入口，原6.1-sol会话开发、root审查/集成。见[实施计划](../superpowers/plans/2026-10-09-g11-verification-core.md)、[协调账本](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。P1已独立审核通过：最终21项进程/阶段控制、Python契约与旧逻辑对照，唯一真实定向291通过/1 live跳过；1777份归档原件逐项长度/SHA与实际清单相符。早期日志丢失、错误归因等失败原件保留。P2已独立审核通过：全量4711通过/3 live跳过、buildSrc8通过、image/linked及完整合成矩阵通过，2022份封存原件与实际磁盘一致。开发正在精确本地提交，随后root合main并接管新隔离P3；尚未完成P3或main交付。
 
 ## 后续候选
 
