@@ -1,6 +1,6 @@
-# 下一轮验证工具的最小设计
+# G11验证工具的最小设计与实现
 
-状态：设计已整理，**尚未实现或切换正式验证流程**。依据是[G10实际协调诊断](../superpowers/verification/2026-10-09-g10-redis-coordination.md)及[维护成本基线](2026-10-09-maintenance-cost-baseline.md)。只迁移下一轮新验证，旧冻结脚本和manifest不动。
+状态：G11实现已通过P1/P2独立审核，main P3验收与交付状态见[协调账本](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。依据是[G10实际协调诊断](../superpowers/verification/2026-10-09-g10-redis-coordination.md)及[维护成本基线](2026-10-09-maintenance-cost-baseline.md)。只迁移本轮新验证，旧冻结脚本和manifest不动。
 
 ## 边界
 
@@ -23,3 +23,9 @@
 4. 单独提交工具与入口切换。回滚恢复薄入口的旧调用；保留失败原件和两套执行身份。验收输出只保存必要源快照、完整哈希/当前XML/原日志，避免再次复制未修改驱动和整个源码树。
 
 完成标准是输出一致、错误不被吞、退出可证明、历史可复现和重复维护点减少。不能仅以代码行数下降或 CI 变快判成功。Windows FX 偶发初始化超时仍需独立诊断；不通过放宽等待、重试到绿或强制headless规避。
+
+## 实际落点与剩余成本
+
+四契约落在`VerificationCore.psm1`及`evidence_tools.py`，进程host、外层owner与镜像审计分别保持单独职责；`run-stage.ps1`和`stage-policy.json`负责本轮任务。两份Java probe保留G10来源原字节，仍外置编译运行。调用和额度见[验证说明](verification-guide.md)。实现用12文件闭包，没有新增依赖包、Gradle插件或更改产品/测试/构建/CI。
+
+后续只复制受验工具快照，不再维护多份独立变体；执行证据仍保留各阶段快照、原始日志和XML。G11为证明错误路径保存了多轮失败和合成原件，短期证据字节增加；没有清理历史或宣称释放磁盘。下一步候选仍是受控JVM测试夹具合并，另立范围后再做；本轮不迁移夹具或拆分Redis/Shell。

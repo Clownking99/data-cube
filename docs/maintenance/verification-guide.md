@@ -4,9 +4,15 @@
 
 ## 现有执行方法
 
-当前参考实现是[G10 main runner](../superpowers/verification/evidence/g10-main-20261009/Run-P3.ps1)与[镜像审计](../superpowers/verification/evidence/g10-main-20261009/Run-Image-Audit.ps1)。它们是冻结的历史执行原件，含本机 JDK/cache 路径、G10过滤器和408个测试源码的名单断言，**不是可原样套用到未来版本的通用脚本**。
+G11当前实现为[scripts/verification](../../scripts/verification/run-stage.ps1)：四个小内核、阶段政策、镜像审计与有界外层owner。P1/P2已审核通过，main P3验收结果见[协调账本](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。旧[G10 main runner](../superpowers/verification/evidence/g10-main-20261009/Run-P3.ps1)与[镜像审计](../superpowers/verification/evidence/g10-main-20261009/Run-Image-Audit.ps1)保留为历史原件，不再作为新轮次的整份复制模板。
 
-新一轮先复制到新的具名证据目录，核对实际工具路径、工程输入和过滤器，记录来源哈希与改动；每次运行用新编号和独占 UUID home/temp/build，保持唯一 Gradle 执行者。沿用环境清空、native FX 与 `--rerun-tasks`，保存每轮命令、实际退出、stdout/stderr、当前 XML、运行前后输入及产物身份。失败保留后新开一轮，不覆盖原件。开发冻结后由 root 独立审查，再接管 main 新环境复验。
+每轮把实际执行的12文件工具闭包与阶段spec冻结到新的具名证据目录，记录原字节/SHA；工程输入是显式允许名单，绑定当次提交，核对准入工程根内实际输入，不能仅信Git已跟踪集合。每阶段新UUID home/temp/build，保持唯一Gradle执行者；失败后新目录重验，旧原件不覆盖。开发冻结后由root独立审核，再接管main的新环境复验。
+
+G11入口的最外层是`python -I -S -B scripts/verification/run-owned.py --spec <绝对路径>`。spec必须明确repo、tools、out、stageEvidence、mode、inputSpec、jdk、cache、pwsh、python、runtimeParent、imageSourceScope、deadlineSeconds、fixture、processDeadlineMs、settleMs、streamCap、outerFixture十八字段。本轮五阶段依次为targeted/full/buildsrc/image/linked；linked的imageSourceScope必须指向前一成功image的scope.json。普通工程阶段fixture与outerFixture为null。完整本机示例来自G11新包的五个`*-spec.json`，只能在新的运行目录按当前路径生成，不能原样重跑冻结spec。
+
+当前准入名称仅涵盖G11的`g11-p2-`/`g11-p3-`证据根，工具闭包为精确12文件；未来轮次需要显式审查和扩展命名范围，而非伪装成G11或放开任意命令。阶段任务、过滤器、期限和精确live skip由[stage-policy.json](../../scripts/verification/stage-policy.json)决定。动态测试类型覆盖从实际受验源码推导；408是本轮实测数量，不是未来硬编码名单。
+
+XML只读本轮归档，suite与case四项计数分别比对；零文件/零case、损坏、重复suite、矛盾或超预算失败。合法同名参数case保留文件/suite/ordinal身份，不去重。单XML16MiB、合计128MiB、最多2000suite/100000case。内层stdout/stderr各32MiB、host各1MiB，外层每流1MiB；截断和不完整分别记录，不能作为成功日志。
 
 | 阶段 | 核对重点 |
 | --- | --- |
@@ -19,6 +25,8 @@
 
 取消 Future、空 ownership map、调用 destroyForcibly 均不能单独证明物理退出。只检查自有 PID/UUID 范围；真实外部服务另行授权。`.testagent` 始终禁读禁改禁枚举，Git与搜索带排除，文件集合尽量用精确白名单。
 
+G11 Windows private Job在gate前归属，查询成员与等待实际handle后才判结算。根0而残留child需要终止也会失败；root7先于后续管道问题时保留7，预算先发生则保留预算主因。归属失败仅覆盖已捕获直接root，不承诺WMI/service等委托进程，也不承诺同步OS调用永久阻塞时的物理硬期限。故障注入的未结算分支不是实际不可杀进程。Python采用隔离模式、PowerShell不加载profile；offline Gradle仍使用明确指定的既有依赖cache。
+
 ## 证据索引
 
 | 结论 | 审核入口 | 原件索引 |
@@ -29,6 +37,8 @@
 | G10 main 独立复验 | [P3 回执](../superpowers/verification/evidence/g10-main-20261009/receipt.json) | [main manifest](../superpowers/verification/evidence/g10-main-20261009/raw-manifest.json) |
 | G10 main 推送与 CI | [实际交付结果](../superpowers/verification/evidence/maintenance-cost-20261009/g10-delivery-result.json) | [完整原始响应/日志位置](../superpowers/verification/evidence/g10-main-20261009/delivery-intent.json) |
 | 维护成本盘点 | [报告](2026-10-09-maintenance-cost-baseline.md) | [最终采集器基线](../superpowers/verification/evidence/maintenance-cost-20261009/baseline-final-collector.json)、[耗时](../superpowers/verification/evidence/maintenance-cost-20261009/timings.json) |
+| G11 P1契约与试点 | [root审核](../superpowers/verification/evidence/g11-p1-root-preliminary/manifest-review.json) | [worker manifest](../superpowers/verification/evidence/g11-p1-frozen-20261009/manifest.json) |
+| G11 P2冻结工程与镜像 | [root审核](../superpowers/verification/evidence/g11-p2-root-review/completion-v2-review.json) | [worker manifest](../superpowers/verification/evidence/g11-p2-frozen-20261009/manifest.json)、[五阶段定位](../superpowers/verification/evidence/g11-p2-package-v2/progress.json) |
 
 ## 复现只读成本盘点
 
