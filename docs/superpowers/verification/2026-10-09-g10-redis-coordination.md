@@ -79,3 +79,23 @@ P1a 必须补足两个约束：
 P1b按已审P0依次完成纯格式化/retention/树与页面候选、console接入、browser接入和真实可执行的FX mock回归。格式化/页面拒绝必须恢复控件并保留旧结果/游标/来源，不能把预览变成可保存值；原始行身份不能取自截断显示。无效UTF-8 key整页明确拒绝已接受，不新增binary key编辑器。UI只允许当前模式真正完整且底层读取完整的数据保存；不能用切模式绕过不完整读取，完整raw可恢复出完整合法模式的情形应保留正常编辑能力。单飞与一个最新待处理意图，不扩大通用queue/AppShell。
 
 失败/未验：首轮脚本启动失败保留；真实Redis、原生桌面、最大合法多会话RSS、P1b、P2全量/buildSrc/image及P3集成/CI仍未完成。自动跟进授权未答复，未创建新自动化。下一步下发P1b，完成新定向后停写交审；G10最终交付后才开始维护成本整理。
+
+## C3：P1b 实施中，纯展示首轮证据与独立修正
+
+当前目标：继续有界展示与候选提交，开发 turn `01a11e2d-78eb-77a3-a6f8-fc68d46ca39b` active，已观察cursor `431e0858-03dc-4a74-84cd-3c2876284d87:132`。C2 已本地提交main `c8e43772db6f2a7e30fb567af07b6215dc9754db`，产品仍在aed5未提交。开发先落地Redis局部 display limits、retention、bounded projections、key snapshot及树构造；这些是同一P1b的局部职责拆分，不引入通用框架或维护成本重构。
+
+root 复读现有两pane和通用queue，补充两个来源/所有权验收：旧TreeCell菜单、详情按钮、modal返回必须绑定其产生时的session/source/generation，不能在切DB后使用this.session发送旧key；queue关闭会丢弃FX回调，新open/ping中的会话不能仅靠成功回调接管/释放，pane.close必须能关闭factory已返回的opening session，返回之前仅承诺迟到自关。两项均已正式下发同一开发会话。
+
+首版helper审查发现集合页先形成全部显示rows、最后才累计pageChars，可能先分配1000行×2格×4Ki再按256Ki拒绝；已要求改为逐行累计，最多一个有界被拒行，后续元素不得访问。malformed UTF-8的固定说明也必须计入editorChars。新测试已加入可观察尾部访问的guarded List和tiny editor，但尚待修正后的新执行，不能用首轮结果覆盖。
+
+验证：root 重新解析 `g10-redis-20261009-p1b-worker/001-pure-first` 当前XML，16 total/16 pass、0 failure/error/skip、exit0，输入before/after一致。该证据属于修改前首轮纯helper，不是FX、整页早停修正或P1b最终验收。root未运行Gradle。P1a原件冻结不动。
+
+失败/未验：P1b仍在实现，两个pane、跨DB旧操作、opening-session关闭、FX控件恢复和最终冻结均未完成；没有新增真服务/桌面/发布验收声明。自动跟进授权未答复，旧跟进保持暂停。下一步继续审新代码和原始结果，P1b停写通过后才准入P2。
+
+### C3.1：浏览器待处理刷新被旧树选择失效
+
+root 继续只读审查两个 pane 接入。控制台已将格式化放在工作线程，输入准入不先构造新全文，输出与历史双维淘汰，回调 finally 恢复控件；仍待实际 FX 测试。浏览器新实现将候选 UI 安装完成后才发布 session/snapshot，安装失败恢复旧树、详情和分页控件；opening session 在 PING 前可被 pane.close 找到。以上为源码观察，不代替执行证据。
+
+发现并下发具体修正：已有同 DB 树且读取未结束时，requestRefresh 挂起 Refresh(gen2)，随后点击旧树另一键会在 loadKey 中先递增 generation 为 gen3，但 pendingRefresh=true 又阻止替换 pending；finish 调用 startRefresh(gen2) 后立即因 stale 返回，刷新和键选择均丢失。tree 未被 updateControls 禁用，因此用户可触发。要求在改变 generation 前落实已挂起刷新优先，或正确合并最新意图；补实际请求、最终来源和 busy 恢复的 FX mock 断言，保持单飞及至多一个待处理意图。
+
+当前开发仍 active，已观察 cursor `431e0858-03dc-4a74-84cd-3c2876284d87:135`。root 没有运行 Gradle、修改开发源码或准入 P2。main 范围内仅本协调记录有未提交变化；没有新增自动化。
