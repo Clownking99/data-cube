@@ -99,3 +99,31 @@ root 继续只读审查两个 pane 接入。控制台已将格式化放在工作
 发现并下发具体修正：已有同 DB 树且读取未结束时，requestRefresh 挂起 Refresh(gen2)，随后点击旧树另一键会在 loadKey 中先递增 generation 为 gen3，但 pendingRefresh=true 又阻止替换 pending；finish 调用 startRefresh(gen2) 后立即因 stale 返回，刷新和键选择均丢失。tree 未被 updateControls 禁用，因此用户可触发。要求在改变 generation 前落实已挂起刷新优先，或正确合并最新意图；补实际请求、最终来源和 busy 恢复的 FX mock 断言，保持单飞及至多一个待处理意图。
 
 当前开发仍 active，已观察 cursor `431e0858-03dc-4a74-84cd-3c2876284d87:135`。root 没有运行 Gradle、修改开发源码或准入 P2。main 范围内仅本协调记录有未提交变化；没有新增自动化。
+
+### C3.2：纯阶段新增通过，FX 首轮失败保留
+
+当前目标：P1b 实际 FX mock 交互验证，仍未冻结。C3/C3.1 已本地提交 `8888f1f099942cb567b15c4beb161efc17346583`。root 独立读取 `002-pane-compile-pure` 的 argv、exit、stdout/stderr 和五份 XML：839 项输入 before/after 相同，20 total/20 pass、0 failure/error/skip、exit0；包含 early-stop/tiny-notice 修正。运行明确 headless=true，此阶段不声称执行了 FX 控件交互。
+
+新测试源码审查下发两项纠正：zset 行修改测试要经过实际 UI 使用的共享 action，不能新增仅测试可达的替代分支；提取 updateRow 后 list 修改一律刷新 cursor0 会退回第一页，应保留当前页，并用实际截断的 index 显示证明发送的是原始 long 身份。pendingRefresh 在 loadKey 改变 generation 前已加 guard，尚待执行证据。
+
+`003-fx-first` 明确 headless=false，已实际运行但 exit1，原日志保留 29 tests / 8 failures。root 已读原失败：八项在测试查控件时找不到 SplitPane/ScrollPane 下的 redis-keys/database/console-output，不能算产品行为通过，也不能改为跳过规避。需修正测试控件遍历后重新执行，再判定交互行为；一次关闭阶段通过也不代表整个 FX 阶段完成。尚未运行 P2，全量/buildSrc/image/真服务/原生桌面局限仍在。
+
+### C3.3：FX 行为修正的新通过，尚待最终冻结
+
+`004` 因 Gradle wrapper cache lock 权限失败，未编译产品；原件保留，后续受控提权使用新编号运行。`005` exit1、30 tests/3 failures，已实际走到交互断言。产品状态文本把长错误放前面，截断后丢失来源和“未完整加载”，开发已将关键状态前置；模式切换从依赖 onAction 改为监听 valueProperty，保证没有 skin 时也一致更新编辑权限。list 修改保留页偏移、zset 分数编辑使用实际共享路径的新断言已加入。
+
+root 独立读取 `006-fx-mode-and-source-status` 的 argv 对应日志/exit/六份 XML，841 项输入前后一致，headless=false、exit0，30 total/30 pass、0 failure/error/skip，其中 RedisPaneBudgetTest 10 项实际执行。它是当次输入的通过，仍非最终冻结。需补旧 action 调用后同 FX callback 中不启动请求的断言，防止异步写未执行就被 fixture.close 取消造成假通过；另补 collection 合法旧页→超限最终页→保留旧表/raw/next→同 cursor 重试成功的实际 FX 回归，不能只靠纯 helper 拒绝断言。
+
+当前目标仍 P1b。root 未运行 Gradle，开发继续唯一执行；完成上述后停写交审，不扩大新功能或维护重构，不提前执行 P2。尚无 G10 合 main、推送或发布验收结论。
+
+## C4：P1b 独立验收通过，准入 P2 工程验证
+
+当前目标：冻结 G10 产品范围，执行完整定向、clean 全量、强制 buildSrc:test、jpackageImage 和隔离镜像/linked 探针。开发 P1b turn `01a11e2d-78eb-77a3-a6f8-fc68d46ca39b` 已完成停写，cursor `431e0858-03dc-4a74-84cd-3c2876284d87:157`。main `8888f1f0`，开发 HEAD `66edd24f`，G10 产品仍未暂存/提交。根会话未运行 Gradle。
+
+独立审查已完成八个 P1b 产品文件及三份新测试的来源、页提交、输入与输出预算、二进制身份和关闭路径。C3 各项发现已修正；最终新增 collection 回归证明旧 next17 在超限 cursor0 及值页安装异常后都不推进，随后同 cursor 重试成功；旧 DEL/旧 HSET action 在 FX callback 内不改变 activeRequest、busy 保持 false，避免未执行的异步写被收尾取消所造成的假通过。
+
+[独立验收回执与核验脚本](evidence/g10-redis-20261009-p1b-review/receipt.json)重新计算 P1a 全部284项和 P1b 全部212项原件长度/哈希，全部一致；P1a 六个产品文件仍与该阶段最终输入一致。P1b manifest SHA256 `1a4e9c6580159c4e00b1ece2f7b09e8907e7f41aacd7c84659bf1b32b74c23f9`。`007-p1b-final-targeted` 841项输入 before/after/当前一致，15份XML重新解析为88 total = **87 pass + 1 live Redis skip**，0 failure/error、exit0，11项FX mock实际执行且无skip；headless=false、8个Gradle任务实际执行。argv、原日志、exit和失败历史均已独立阅读。根回执不重复复制整个开发证据目录，只保留报告/manifest/binding原件与核验结果。
+
+准入裁决：P1b 阶段接受；允许同一开发会话执行 P2。保持独占 UUID home/temp/build、清空环境、mock/127.0.0.1 helper、现有本地工具及离线缓存；开发仍独占 Gradle。全量不得以强制 headless 大量跳过 FX 换绿；工具包实际失败与真实服务前置跳过分别记录。每阶段保存当前命令/退出/输入/原日志/XML/产物哈希，首次失败保留；新代码修复须说明影响并取得对应新结果。最终停写交审，尚不授权开发提交、合 main、推送或操作 tag。
+
+失败/未验：P1b 的首轮夹具失败、缓存锁权限失败、状态/模式行为失败均保留；P2全量/buildSrc/image、P3独立集成/精确SHA CI尚未完成。实际FX控件/mock不是完整原生桌面、真Redis或发布验收；最大合法多会话RSS、DNS/阻塞写/native close/GC局限保留。新自动跟进授权仍未答复、未创建；旧跟进保持PAUSED。下一步下发P2并独立复核新原件，通过后才进入P3；G10交付后再整理维护成本。
