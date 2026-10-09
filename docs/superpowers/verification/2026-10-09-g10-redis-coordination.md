@@ -33,3 +33,18 @@ main 为 b6622c95d5efc0b240dc7ae4b788f44542c87b5a，范围内干净。G9 最终�
 root 已纠正计划中错误内容边界的歧义：新的预算/协议/期限拒绝及审计日志使用固定安全信息；正常、完整、在行长/总量预算内的顶层 server error 保留既有诊断消息和连接可继续语义。不得为本轮把所有 server error 改成固定摘要或普遍放宽旧精确消息断言。嵌套错误若未读完整响应可用固定类别拒绝并丢弃连接。此裁决及“先交可审 P0，不再扩展调查”已直接下发开发会话。
 
 验证：本检查点为源代码与契约审查，无新增 Gradle 运行；C0/C0.1 的四项合成诊断仍为已复现待修缺陷。自动跟进明确授权问题仍待维护者答复，未创建新的调度。下一步读取实际 P0 报告、给出具体准入/修正、移交唯一 Gradle 执行权；必要时继续等待同一开发会话，不另建线程或代理。
+
+## C1：P0 独立审查完成，准入 P1a
+
+当前目标：实施协议/请求预算、读取期限与最小连接恢复修正；暂不进入 P1b UI 或 P2 全量冻结。开发 P0 turn 已完成，cursor `431e0858-03dc-4a74-84cd-3c2876284d87:90`。root 完整阅读 291 行报告并保存[原件快照与哈希](evidence/g10-redis-20261009-p0-review/raw-manifest.json)。main 为 `e805a770e0e23e31ec551371eb0e01299010f367`；开发仍 `66edd24f`，仅 P0 报告未跟踪，无产品/测试更改。受限 Git 工作区读取首次 exit128，独立提权只读重试 exit0；不是产品失败或验收证据。
+
+审查裁决：接受集中不可变预算、迭代 RESP2 解码、分配前 UTF-8/帧预检、typed failure/delivery、共享读取期限、独占 lease 身份、最后确认 DB、manager 短状态锁及代际校验。接受报告对 RSS、DNS/阻塞写、native close 的明确局限。完整顶层 server error 消息兼容要求不变。
+
+P1a 必须补足两个约束：
+
+1. raw 会话上下文无法恢复时应持续失效，不能 discard 后下一调用又按旧 DB/旧 AUTH 静默重建。直接 SELECT 的完整 OK 仍可可靠追踪；无法解析目标却得到 OK，或 MULTI/EXEC 间接 SELECT、RESET、raw AUTH 等造成无法完整追踪的状态，不扩大为完整 CLI 状态机。允许最小保守恢复保护：这类状态一旦使恢复不可信，连接损坏后禁止自动重试及新显式调用静默恢复，明确要求新会话；测试至少证明 raw AUTH、事务中 SELECT、RESET 与非法 SELECT 成功回包均不会在错误上下文发送后继业务。若选择发送前限制，必须窄化、明确兼容影响并独立审查。官方 [SELECT](https://redis.io/docs/latest/commands/select/) 说明 DB 属于连接；[RESET](https://redis.io/docs/latest/commands/reset/) 会改变 DB、认证及其他会话状态，不能只跟踪构造 DB。
+2. manager 清除映射不代表关闭成功。closeAll 要尝试全部 snapshot，保留/汇总关闭失败，不能吞掉 Error 或用空 map 宣称物理完成；关闭中迟到创建、配置变化和重新显式打开分别验证。修改仅限 Redis manager，不扩展全局 ConnectionManager/AppShell。
+
+改动与验证：本检查点只有审查和原件归档，未运行 Gradle，无 G10 通过声明。P1a 执行权交给同一 6.1-sol 会话，其成为唯一 Gradle 执行者；root 只读代码和新原件。开发先完成 P1a 新定向证据并停写交审，root 接受后才准入 P1b。P2 的 clean 全量、buildSrc、jpackageImage 后置，不用 P0 或旧 XML 代替。
+
+失败/未验：已复现的四项缺陷尚待修复；复杂 raw 上下文、预算、物理关闭、UI 均未取得新通过证据。自动跟进授权仍待答复，未创建新自动化，旧两个跟进继续 PAUSED。下一步正式下发 P1a 并跟踪实际实现，G10 完成交付后再做维护成本整理。
