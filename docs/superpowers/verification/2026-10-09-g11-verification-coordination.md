@@ -93,3 +93,39 @@ root已直接读取worker `g11-p1-targeted-001/943306aa3f28470cb7ae679ca20b0529`
 下发同一会话P2：最小扩展全量、强制buildSrc、jpackageImage、既有外置linked审计。只读参考G10探针并绑定来源，jimage/javac/owned image java均需明确role/path/hash准入，实际类型名单动态推导。允许的live skip按现有源码逐项列明，image无XML是独立阶段，不削弱测试零XML门禁。先交P2源码供root审，再冻结并新UUID完整core矩阵/定向/clean全量/buildSrc/image/linked；旧P1根不修改。开发仍独占Gradle，暂不提交/合并/推送。
 
 失败/未验：本检查点没有P2工程运行证据；P3/main集成及精确SHA CI尚未执行。下一步审查薄入口与产物审计实现后准入P2运行；不扩展产品、JVM夹具迁移或架构重构。
+
+### C5.1：P2源码增量审查
+
+P1审核证据与检查点本地提交`ac3488949b0ef6fa12cd8c62a13d42d62cd595c2`，46个精确文件经原字节暂存核对；未推送。worker继续基于099dd677实施，不同步root的审核文档，不争用Gradle。
+
+新增阶段政策已核对现有任务、10个定向filter及源码中的三个live前置skip：targeted仅Redis，full允许另两个精确SchemaDiff case，buildSrc不准skip。linked沿用两个G10外置probe，新增javac/jimage/image-java角色路径准入。root首审发现source.runtime只验UUID叶名仍可触及错误父目录，已要求访问marker前约束到创建scope时实际准入的temp父根，并核对marker的scope值、使用前source result/manifest与image核心文件身份。首段PowerShell修正已落盘，Python镜像工具和完整入口仍在实现，尚未裁决通过。
+
+另要求P2最外层owner显式清空继承环境、日志预算和有限结算，并冻结自身实际字节。P1内层受控环境/日志证据仍成立，但不能将外层包装作为P2预算例外。下一步完整源码/合成控制审查后才运行工程阶段；本检查点没有新增测试通过数。
+
+### C5.2：外层包装源码返工
+
+root读取新增run-owned.py，发现递归rglob工具目录没有访问前禁止路径/链接剪枝、Popen之后Job assignment失败未回收直接进程且丢回执、close曾强制结束遗留成员却未纳入最终非零判定、非零根退出后迟闭pipe可能只归deadline，以及P2限定前缀无法让同冻结版本用于P3。已下发精确修正：显式工具闭包及实际wrapper/导入身份，Start/assignment失败持有直接对象有限回收和保存回执，根错误/流/Job结算分别记录，残留/未知不得通过，本轮P2/P3具名证据前缀。没有执行该首版包装，属于源码返工，不能记为运行失败或通过。
+
+薄入口已完成多阶段首版，image生成与linked读取有输入交叉校验及镜像前后清单核对；完整冻结与合成负例尚未完成。下一步只审修正和控制结果，仍不准入Gradle。
+
+root另以纯路径字符串实测`Path.Combine(...,'probes/One.java')`保留混合分隔符，而GetFullPath转换为反斜杠，两者`-eq`为false（exit0，不访问该合成字符串路径）。已要求source/frozen/expected身份比较统一词法规范化，避免新probe子目录误拒绝所有命令；内层Python统一`-I -S -B`，避免image_tools导入同目录模块向冻结闭包旁写字节码。此为静态缺口及字符串控制，不计工程测试通过。
+
+## C6：P2源码准入，冻结后开始完整验证
+
+目标：审完新增多阶段入口/镜像绑定/外层owner后，移交开发独占工程验证。root已读取修正后的完整入口、image_tools及run-owned、角色与文件身份检查；路径规范化、RuntimeParent/marker范围、镜像前后清单、输入交叉绑定与Python禁止旁写均已落地。两个外置probe与G10来源逐字节一致。
+
+开发source-controls-003保留31项镜像/角色/skip控制；outer-source-controls-001有七项真实自有helper控制。root直接读取每例原始result、控制脚本及实际输出，重算10份存在的日志长度/SHA：[源码准入回执](evidence/g11-p2-root-review/source-controls-review.json)。正常root/wrapper均0；Start失败rootExit=null；assignment故障仅direct-root-handle范围并观察实际退出；root0残留child在close前确有成员51952，回收后empty且wrapper1；root7+迟闭pipe/子流超限保持7；overflow主因OUTER_LOG_FAILURE、根终止124、两流各保留1048576字节。Start/assignment无日志文件的partial字段不被当作完整零字节日志。
+
+裁决：源码准入通过，已下发同会话自主冻结并顺序执行完整core21控制/Python契约/P2政策及外层控制，再targeted、clean全量、强制buildSrc、image、linked。临时控制不是最终冻结版本证据，需新目录重验。所有权范围仍有明确限制；未执行root Gradle、没有P2工程通过声明或发布验收。
+
+root另准备独立[原件审核脚本](evidence/g11-p2-root-review/review_stage.py)，仅AST语法检查exit0，尚未审核任何P2工程run；脚本不导入受验实现，直接重算输入/工具/日志和XML。下一步等待冻结工程原件，独立核对后才提交/集成及P3。
+
+## C7：P2冻结版合成完成，定向原件接受
+
+开发冻结v1首次编排先创建了process-controls目录，随后core再要求新建而失败exit1；sequence.log和sequence-result.json原件保留。v2只修正归档编排器的重复创建与新目录名，12个受验共享文件未改。root独立逐项重算v2包12文件，与当前工作源码长度/字节/SHA一致；[冻结审核](evidence/g11-p2-root-review/frozen-v2-review.json)记录当次归档控制器SHA `853c05437eed258e351d2aec74a30fba41edd5feb14f916fd4856dd4f005ee61`。该一次性控制器使用assert做辅助编排断言，实际入口使用`-I -S -B`而非优化模式；四项可复用准入契约显式拒绝，root另独立核对原件，不以控制器汇总作为唯一门禁。
+
+开发报告冻结版Python契约、21进程控制、31政策/镜像/角色控制、7外层控制已通过，进入工程顺序执行。root已读相应case与冻结入口；完整最终原件manifest仍待P2结束核对。父级Git属性限定`verification/** -text`及`g11-*/** -text`，旧属性行保留、旧冻结根未新增属性文件；提交后还需逐项核对Git blob和main检出字节。
+
+root对已完成v2 targeted运行独立脚本实际exit0：56XML套件292用例，291通过/1精确Redis live前置跳过，0失败/错误；875输入前后一致并逐项匹配当前磁盘，408类型覆盖，12工具source/frozen身份一致，10进程回执实际root0/完整结算，40日志长度/SHA相符。[原件审核回执](evidence/g11-p2-root-review/targeted-v2-review.json)。当前clean全量运行中，强制buildSrc/image/linked及P3仍未验，未将P1旧结果充作本轮证据。
+
+另将当时SHA仍为`e5aeb50f...`的[P1已接受完整报告](evidence/g11-p2-root-review/accepted-p1-worker-report.md)原字节保存，供后续报告追加P2内容后复核。下一步继续独立读取本轮全量及镜像原件，再裁决完整P2。
