@@ -161,3 +161,35 @@ main检查点 `949958b9`；handoff已添加G10进行中入口（尚未提交）�
 root独立重建408个测试类名单检查实际module-index、cfg和文件清单，未发现测试/probe/合成profile/验收参数泄漏。三核心产物SHA为exe `6c32ddb83447c5754b5484b7d0c0f501cf48ad515993f96143388d2b4a32074f`，cfg `e53f0d480a7462920e5d0b6df5e12bb24bbaa011298317a090ca174fbcc6153d`，modules `6fe70009ef582903716ab4f301f23d4ba65a035b2640bc921780f14020638c91`。stderr的12条javac failed与12条java failed前缀消息实际内容为JAVA_TOOL_OPTIONS提示，原件保留；任务退出、后续外置编译/运行与产物审计通过，不声称stderr为空。
 
 准入裁决：接受P2，允许同一开发会话只进行两个本地提交（产品/测试、报告/冻结证据），逐项检查raw Git blob后停写；不再执行Gradle、不合main、不推送。root随后核对提交和范围、合main、新UUID定向/clean全量/强制buildSrc/image及linked复验，再更新交接与实际CI结果。main复验不得沿用分支结果。原生桌面、真实Redis/数据库、最大合法多会话RSS、DNS/阻塞write/native close/GC及完整发布验收仍未完成；维护成本整理仍在G10交付后。
+
+### C5.1：root 接管 Git 收尾，main 已合入
+
+开发的提交收尾再次因模型容量失败，未生成提交，仅暂存23个产品/测试文件。root核对后接管；开发已确认完全停写，不再运行Git/Gradle。其工作区仅留未暂存临时核验脚本 `.g10-verify-blobs.ps1`，不纳入交付。
+
+root完成本地产品提交 `edc4108841b3a7a70a37d0b984c6ba88df94cf98`、证据提交 `7ebf97d248f96f1b954406b09132e4e9d43f7a2e`，随后合main为 `58e27c341a16664e9e9018da56661feb9627e485`。1165项证据提交逐个Git blob与原始字节核对；新增父目录属性只匹配三个G10冻结目录，保留CRLF原件。未改写冻结manifest或失败历史。
+
+[main合并回执](evidence/g10-main-20261009/merge-receipt.json)重新核对1160项原件及3个manifest的实际main文件/Git blob完全一致，863个编译输入与开发侧仅存在Git检出行尾差异，归一化后完全一致。产品/test的diff --check通过；对全部原件运行空白检查会将保留的CRLF日志逐行报警，该诊断不作为产品失败，也不以重写原件消除。新P3脚本只改UUID前缀/编号，实际新执行绑定main字节。
+
+当前目标：root独占Gradle，开始新UUID的001完整定向，后续串行clean全量、强制buildSrc、jpackageImage与linked探针。尚无main通过结论、推送或G10交付；维护成本盘点继续后置。自动跟进未获答复，未创建。
+
+## C6：main 新隔离复验通过，进入推送与精确 SHA CI
+
+当前目标：完成G10工程交付。受验main为 `58e27c341a16664e9e9018da56661feb9627e485`，后继提交仅含文档/验收原件；没有新的产品修改。root独占Gradle串行执行各轮，全部采用清空环境、新UUID合成home/temp/build、离线缓存和native FX。
+
+| main新验证 | 原始结果 |
+| --- | --- |
+| 001 完整定向 | 56 suites，292 total：291 passed、1 live Redis skipped；0失败/error，exit0，2m37s |
+| 002 clean 全量 | 351 suites，4714 total：4711 passed、3 live skipped；0失败/error，exit0，6m41s |
+| 003 强制buildSrc:test | 1 suite、8 passed、0 skipped，exit0，9s，4实际任务 |
+| 004 强制jpackageImage | exit0，2m7s，14实际任务 |
+| 005 新镜像/linked审计 | 183文件，408测试类名单完整检查，0类/profile/验收选项泄漏；四子命令exit0、无timeout且实际退出 |
+
+[main独立回执](evidence/g10-main-20261009/receipt.json)重新解析suite属性与实际testcase/skipped节点，863输入在所有运行前后及当前main一致；全量1817、buildSrc3、image1040编译文件分别保存完整哈希清单。定向及全量中的11项Redis FX测试实际执行，均无skip。新目录的clean/cleanTest为UP-TO-DATE表示无旧文件可删，compile/test等8个任务实际执行，未使用历史XML。3项live跳过为Redis、Oracle及PostgreSQL SchemaDiff前置条件，不记通过。
+
+核心镜像SHA：exe `6c32ddb83447c5754b5484b7d0c0f501cf48ad515993f96143388d2b4a32074f`；cfg `e53f0d480a7462920e5d0b6df5e12bb24bbaa011298317a090ca174fbcc6153d`；modules `6fe70009ef582903716ab4f301f23d4ba65a035b2640bc921780f14020638c91`，均与P2一致。新的命名模块探针确认DB7重连恢复、精确普通server error后同socket继续、巨大声明13字节拒绝、显示/候选/raw身份预算。loopback peer EOF/join和子PID真实退出已核实；[进程结算](evidence/g10-main-20261009/process-settlement.json)只覆盖本轮记录的wrapper/probe及自有UUID命令范围，不泛称所有后台任务停止。
+
+失败/诊断：main产品无失败。临时Python引号错误、冻结CRLF原件的空白诊断见[工具事实摘要](evidence/g10-main-20261009/coordinator-diagnostics.md)，后续实际解析/精确src-test检查通过；不是重跑测试换绿。镜像stderr保留JAVA_TOOL_OPTIONS带javac/java failed前缀的消息，实际构建、外置编译/执行均exit0，未删除或将stderr说成空。
+
+准入：本地P3接受，按既有授权仅推main，不fetch/tag/PR/发布。[delivery-intent](evidence/g10-main-20261009/delivery-intent.json)指定独占 `build/owned-g10-ci-bd83873215834d2883c2a4ac89d36e79/delivery-result.json` 保存最终SHA与四任务CI实况、远端身份、原始命令/响应/日志及哈希。只有该回执实际passed=true才算G10交付，当前不预报。回执不再提交以避免改变受验SHA。通过后才按独立维护计划开始盘点。
+
+未验保持：完整原生桌面、真实Redis/数据库、最大合法多会话RSS、DNS/阻塞write/native close/GC边界；CI临时Redis不是业务真库验收。既有G8安装/升级/回滚/签名等完整发布验收仍未完成。v3.2.9及旧PAUSED跟进不变，新跟进未创建。

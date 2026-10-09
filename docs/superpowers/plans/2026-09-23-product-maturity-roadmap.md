@@ -1,5 +1,7 @@
 # DataCube 产品成熟度推进计划
 
+**2026-10-09 当前：G10 Redis资源预算本地P3通过，进入精确SHA CI交付。** 产品edc41088、main集成58e27c34；新定向291通过/1live跳过、全量4711通过/3live跳过、buildSrc8、jpackageImage与linked探针通过。见[G10计划](2026-10-09-g10-redis-resource-budget.md)、[独立协调C6](../verification/2026-10-09-g10-redis-coordination.md)与[最终交付回执入口](../verification/evidence/g10-main-20261009/delivery-intent.json)。通过后按已授权[维护成本计划](2026-10-09-maintenance-cost-review.md)推进。外部/原生与G8完整发布待验不变；以下为历史检查点。
+
 **2026-10-09 G9最新：CI测试兼容修正已集成，main新本地复验通过。** 产品e7950123、修正6b8ceb93、main集成ef2b5b1d；526份返工原件独立核验。分支新完整G9定向1182/全量4664通过+3live跳过；root新受影响85、单列headless16跳过、clean全量4664通过+3live跳过、强制buildSrc8、重建镜像与外置linked探针通过，三核心产物SHA不变。首次CI两平台失败已保留，Windows初始化超时本地未复现但根因未知。最新证据/待验见[CI协调C10](../verification/2026-10-09-g9-ci-portability-review.md)，最终新SHA CI和结案以[新delivery-intent](../verification/evidence/g9-ci-main-20261009/delivery-intent.json)所指实际回执为准；成功后暂停datacube-g9，不启动下一目标。真实DB/pg_dump、原生/慢盘/文件系统局限、安装签名和完整M8仍待验；旧datacube/v3.2.9不变。下方为历史检查点。
 
 **2026-10-09 G9 当前检查点：main本地集成和独立复验完成。** 产品e7950123、开发证据b76b75c、main集成5b9dfeca。分支/main分别新定向1181通过、clean全量4663通过/3 live跳过、强制buildSrc8、jpackageImage及183文件镜像/外置SQL-XLSX探针通过，三核心产物SHA一致。开发47代码与既有阶段审核一致，844输入前后绑定、3565开发文件Git字节核验；失败与跳过保留。详细证据及结构保守类型限制见[协调账本C7](../verification/2026-10-08-g9-table-export-coordination.md)。最终main推送/精确SHA Verify以[delivery-intent](../verification/evidence/g9-main-20261009/delivery-intent.json)指向的实际回执为准，成功后暂停datacube-g9，不启动下一目标。真库/pg_dump、原生桌面/chooser/Excel、慢盘与文件系统竞争、安装签名及完整M8仍未验；旧datacube保持PAUSED、v3.2.9不动，G1-G8历史编号不变。
