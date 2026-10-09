@@ -14,7 +14,7 @@
 
 修正后root完整新序列实际退出0，原始XML为定向291通过/1跳过、全量4721通过/3跳过（含PID33例）、buildSrc8通过，image/linked已自然结束；但独立审核发现java-version回执同时声称passed与rootExited=false，拒绝本轮P3。原因已实测为短进程循环尾漏退出事件、JSON日期类型造成身份比较失配、最终成功门禁不完整。1904份原件以REJECTED封存，未推送此轮main、未重试CI到绿。
 
-[当前复验与拒绝结论](../superpowers/verification/2026-10-09-g11-ci-correction-main.md)、[协调账本C14](../superpowers/verification/2026-10-09-g11-verification-coordination.md#c14独立门禁拒绝矛盾通过runner必要修正)。同一6.1-sol开发会话正在codex/g11-root-exit-observation-20261009实施最小修正和确定性控制；源码复审后才准入新冻结完整验证、main再复验及精确SHA CI。旧交付定位不能作为新提交成功证明，未自动启动下一轮。
+[当前复验与拒绝结论](../superpowers/verification/2026-10-09-g11-ci-correction-main.md)、[协调账本C14–C16](../superpowers/verification/2026-10-09-g11-verification-coordination.md)。同一6.1-sol开发会话的四文件最小修正已通过源码及98项合成原件审核，1357份封存文件和232份日志已独立重算；首次长路径控制失败保持REJECTED。开发现独占新冻结完整工程验证，尚未提交或合入main。root后续仍需新main完整P3和精确SHA CI；旧交付定位不能作为新提交成功证明，未自动启动下一轮。
 
 ## 后续候选
 

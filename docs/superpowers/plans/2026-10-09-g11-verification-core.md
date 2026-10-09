@@ -36,4 +36,4 @@ main `3beb965746ade7d76224cb4aba03cafb7cfe2e34` 范围内干净，维护整理�
 
 ## 当前检查点
 
-C14：首次本地P3已完成，首CI失败后的PID测试修正已合入main e368a1b1。新完整序列退出0、全量XML4721通过/3live跳过，但独立门禁发现java-version的passed与rootExited=false矛盾，拒绝整体P3；1904份原件已REJECTED封存。同一开发会话正在修正host退出事件发布、JSON日期身份和最终成功门禁，并增加确定性组合控制。实际缺口与后续验收要求见[当前main复验报告](../verification/2026-10-09-g11-ci-correction-main.md)及协调账本C14。共享工具改变后重新冻结并完成开发/新main完整验证，不能放宽审核器或重用旧通过；未推本轮main、不自动启动后续候选。
+C16：首CI失败后的PID测试修正已合入main e368a1b1；随后完整序列虽退出0，但独立门禁发现java-version的passed与rootExited=false矛盾，1904份原件已REJECTED封存。四文件退出观察修正及98项合成控制现已独立接受：短命退出事件、严格日期身份、最终成功门禁和原首因/结算要求均核对；首次长路径失败保留，不混入新通过。开发独占新冻结完整工程验证，尚未提交或合入main；root后续仍须新main完整98控制和五工程阶段、精确SHA CI。详见[当前main拒绝报告](../verification/2026-10-09-g11-ci-correction-main.md)及[协调账本C14–C16](../verification/2026-10-09-g11-verification-coordination.md)。不放宽审核器、不用旧通过代替新证据；未推本轮main、不自动启动后续候选。

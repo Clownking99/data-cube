@@ -207,3 +207,37 @@ root原审核器review_stage.py在full/java-version处实际exit1：process-rece
 只读复现使用同一PowerShell7.6.5：默认ConvertFrom-Json将ISO startTimeUtc转为System.DateTime，字符串比较false；-DateKind String后strict身份字符串可匹配。源码还有host循环尾刚退出后break未统一发布exit事件，以及parent最终passed检查遗漏根退出观察的组合。已下发原6.1-sol会话从e368a1b1建codex/g11-root-exit-observation-20261009，最小方案准入：统一实际handle观察/原子且带身份的事件，晚读身份/严格比对，缺失/损坏/矛盾拒绝成功，首因tick/非零/取消/额度、Job和双流真实结算不退化。确定性组合控制先交源码审查；当前开发只可编辑/语法检查，未准入进程控制或Gradle，不提交/合main/push。
 
 本轮1904文件33165510字节已按g11-p3-581b459dad08-rejected-frozen/manifest.json封存，SHA40fed9cfd3b881fe62bd6e237d27eed090dd275316f75e08df9b11f060754b97，accepted=false/deliveryAllowed=false。原准备的交付/暂存脚本未执行，不创建通过回执，不推本轮main。旧冻结P1/P2/P3与首CI失败不改。下一步独立审核共享工具修正和确定性控制，再在新输入/工具身份下完整开发验证、集成main及新P3/精确SHA CI；当前完整交付、真实服务和发布验收均未完成。
+
+## C15：退出观察修正源码准入，移交合成验证
+
+拒绝轮次与检查点已本地提交854507bca10e94c68bd70424ec16290a878e31a8，1916文件（1904封存原件及其manifest/文档/运输审查），索引原字节逐项相同；提交后范围内干净，未推送。7份更新文档的93个本地链接存在。
+
+root阅读同一开发会话的最终四文件diff808b5ceba61f1a82e47d8fa43ca7dd3d93e76cc9efd9400d7bb74f4b382a7580：host统一实际handle退出观察、原子identity/event及首次tick；parent显式String日期解析、强PID/startTime关联、晚读身份和event/host/捕获handle交叉验证；成功必须有rootExitProof、0退出、真实Job/流/已捕获handle完整收尾。短命root不要求parent必然轮询捕获，证明来源明确为已准入host持有handle的带身份事件，不能仅靠host汇总或PID。
+
+预审修正两点已落实：pre-gate assignment失败在未启pump时保留实际direct host已退出/Job空的结算事实，状态仍失败、不虚构root证明或EOF；process_checks正例强制passed且outer实际0、负例强制failed且实际非0，成功process及复合skip-live的嵌套process均要求根退出证明，不能把所有outer非零都当作预期负例吞掉。已有21项预期与预算不放宽。
+
+源码准入回执g11-root-exit-20261009-review/source-admission.json逐项重算12工具，只有OwnedProcessHost.ps1、VerificationCore.psm1、run-stage.ps1、check-core.py变更，均保持LF；原PID三测试、其他8工具与产品不变。新18项覆盖循环尾0/7、迟读/空capture、缺失/损坏/身份/码/summary矛盾、日期类型、root/host混淆及7/取消/预算首因。源码/语法通过不是控制通过。
+
+已授权开发独占新冻结合成验证：21 Python+21原process+18新root-exit+31 policy+7 outer共98项；root不运行控制或Gradle。此时不准入工程/提交/合main/push，任何首失败保留并按必要diff诊断。下一步独立审核98项原始身份事件、实际退出/流/Job和邻居，接受后才下发新冻结完整工程；后续controller必须显式接入18新项，不能复用仅80项或旧工具SHA作为新证据。
+
+### C15.1：新控制首失败保留，未准入工程
+
+开发新冻结包g11-p2-root-exit-controls-e6244da5d13b4af9aa887578b0fe2935在21 Python与21原process组后停止：首个新项exit-tail-zero实际DEADLINE，controller-result.json passed=false；其余17新项、policy和outer组未运行，不计通过。case原件显示outer非零、host被期限收尾、缺root-exit事件被ROOT_EXIT_EVIDENCE拒绝，未产生矛盾passed；邻居存活/外层实际Job清零。root只读请求确认helper收到指定tail gate路径与0参数，gate实物长度7存在、stderr/host-stderr为空。具体源因仍诊断中，不推断为产品失败或延长预算。
+
+已要求开发只读核对helper分支、.NET/Python路径可见性与长路径等，报告实际诊断和必要最小diff；不直接重跑、不改原冻结controller。该一次性controller的assert在实际-I-S-B下启用，但下一新版本改显式require，旧身份/实际首失败保留。没有Gradle运行权限或新交付通过声明。
+
+### C15.2：长路径源因接受，新冻结98项重验准入
+
+root读取两套实际argv/exit0和原始双流：尾部门路径264字符，PowerShell7.6.5/.NET10.0.11下Exists=true、内容release；Python3.12.14 is_file=false/stat WinError3，规范路径与host相同。不是尾部协议无门，也未加长预算。必要diff仅check-core.py导入stdlib uuid并将synthetic根改为固定前缀+独立UUID+mode，原scope/Job/预算/18项及21原预期不变；下一新controller将所有assert转显式require，旧已执行控制器不改。
+
+root以.NET只读逐项复核首失败49根/736文件/8413693字节精确集合与SHA，manifest95a136cd033d36fdcee971106b3e84bc6d01cf056cbaa352099e52ff7fac3624，仍accepted=false；原件包含264字符长路径文件，未重命名或删除。见g11-root-exit-20261009-review/rejected-controls-review.json。新check-core SHA d96581bf2fbd32dc0e388317eff43fc36452ae7e90c727bba53d2293c9364e3e，controller47200cd5876a23e6fd59f652f3a7b7c6ef34fbbdad0a07c45f98ba370b0d4c55；其他11工具与前次源码准入相同，path-fix-admission.json保存12文件身份。
+
+已授权开发在新冻结目录从头执行完整98项，不把旧42项补入新通过数，按实际保存spec派生短UUID归档根并验证所属本轮。开发继续独占控制，root不运行Gradle/进程控制；尚不准入工程/提交/合main/push。下一步读取新控制实际结果，若再失败先保留并定位源因，不能调整预算或跳过门禁。
+
+## C16：98项原件独立接受，开发接管工程验证
+
+目标仍为G11当前交付。root独立audit_controls.py实际exit0，确认rx2封存91根/1357文件/16591899字节，manifest b2de1c70097c8baa033030a469dbca6e10a2d133b4ee924d2325e08ffaedcce9；逐项重算12当前/冻结工具、16entry及operator，实际controller/archive退出均0。21 Python、21旧process、18退出观察、31政策/角色/镜像、7 outer合计98；39进程案例按实际spec的短UUID派生归档根，预算不改，逐个核对raw stage/process/outer/邻居与实际wait，232日志身份正确，18份强根退出证明与原event/identity/host/捕获handle一致。见g11-root-exit-20261009-review/controls-review.json。
+
+新增尾边界0/7和迟读身份确有tailBoundaryForced，空capture不伪造捕获；缺失/损坏/身份及summary矛盾均拒绝通过，7/取消/期限先因保留。短根跟原长路径失败原件分开，旧失败不变。root审核器首轮exit1源于错误要求parent首tick等于host：parent先观察root17836的7，tick7623430718739早于host7623430721775；修正为正且不晚于host、原event和实际captured7交叉验证后退出0。v1和auditor-first-failure.json保留，无受验控制重跑。一次只读文件名查询误用-spec.json而实际是-owner-spec.json，未修改任何受验原件。
+
+已向同一开发线程交付唯一Gradle执行权：保持12工具与工程输入不变，新UUID冻结工程控制器，完整targeted/clean full/强制buildSrc/image/linked。已接受98控制按manifest绑定同版本，无需为只增加工程编排重复控制；root后续新P3仍需完整98和五阶段。开发当前不提交/合main/push，root不运行Gradle。工程与main新P3/精确SHA CI尚未通过，下一步独立审阅工程原件。未启动下一轮、真实服务或发布验收。
