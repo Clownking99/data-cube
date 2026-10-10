@@ -2,6 +2,13 @@
 
 更新：2026-10-10（Asia/Shanghai）。此页是后续会话的首个入口；历史交接中的“当前/最新”均按各自日期理解。
 
+## 当前发布修复（本地通过，远端发布待回执）
+
+v3.2.11 的发布构建曾在合成更新 helper 的总等待期限处失败，原 tag 保留。仅三个测试文件的分阶段等待、失败诊断和实际退出清理修复已合入受验 main `bb84b72a47f5ed21ce9833b609a301e29b4a9ebd`，生产 helper 和原更新状态/镜像断言不变。
+
+root 在全新隔离环境的首次正式序列全部通过：更新定向 92/0 跳过、clean 全量 4740/3 live 跳过、buildSrc 8/0 跳过、jpackageImage 和正式 linked。183 文件镜像身份已复核。开发 P2 的 linked 首失败仍保留，诊断未复现不能证明旧收尾问题已修复。真实数据库与真实安装更新未执行。
+
+[本轮验收报告](../superpowers/verification/2026-10-10-release-helper-main.md)及[检查点](../superpowers/plans/2026-10-10-release-helper-timeout-fix.md)记录原件和局限。最终 main 推送、精确 SHA CI 与 v3.2.12 实际程序包发布结果以报告的交付入口为准；没有 `passed=true` 回执，不宣称发布完成。
 ## 当前缺陷修复
 
 维护者截图报告的Redis非UTF-8键导致整页加载失败已修复，并合入受验main **af3fe27369973c2d0254e712968f5984b8dc2b86**（源码c33b9ef4、证据20778239）。原始字节身份贯穿键操作，二进制/空键显示明确，分页预算与旧Binding保护保留。root在main新隔离环境实际定向303通过/1 live跳过、clean全量4733通过/3 live跳过、buildSrc 8通过/0跳过、jpackageImage及linked通过；14项Redis原生测试均执行。1200原件已封存。[main验收报告](../superpowers/verification/2026-10-10-redis-binary-key-main.md)和[分阶段计划](../superpowers/plans/2026-10-10-redis-binary-key-fix.md)保留首失败与修正。
