@@ -17,8 +17,9 @@ if(-not $ScopePath) {
  & $scope.tools['run-stage.ps1'].frozen -Repo $Repo -ScopePath $scopePath -Mode $Mode -InputSpec $InputSpec -Fixture $Fixture -DeadlineMs $DeadlineMs -SettleMs $SettleMs -StreamCap $StreamCap -ImageSourceScope $ImageSourceScope
  exit $LASTEXITCODE
 }
+if([IO.Path]::GetFileName($ScopePath) -cne 'scope.json'){throw 'SCOPE_FILE_IDENTITY_MISMATCH'}
+$null=Assert-VerificationEvidencePath $Repo ([IO.Path]::GetDirectoryName($ScopePath)) 'owned'
 $null=Assert-NoReparse $ScopePath
-if(-not $ScopePath.StartsWith((Join-Path $Repo 'docs/superpowers/verification/evidence/g11-'),[StringComparison]::OrdinalIgnoreCase)){throw 'SCOPE_PATH_OUTSIDE_EVIDENCE'}
 $scope=Get-Content -LiteralPath $ScopePath -Raw|ConvertFrom-Json -AsHashtable
 if($ScopePath -ne (Join-Path $scope.owned 'scope.json')){throw 'SCOPE_FILE_IDENTITY_MISMATCH'}
 if($scope.paths.Repo -ne (Assert-AdmittedPath $Repo)){throw 'REPO_SCOPE_MISMATCH'}

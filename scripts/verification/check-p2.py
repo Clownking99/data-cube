@@ -83,9 +83,10 @@ foreach($pair in @(@('jdk-jimage','C:\owned\jdk\bin\javac.exe'),@('image-java','
 }
 $scope.imageBinding=@{schema='owned-image-binding/v1';sourceRuntime=('C:\foreign\datacube-g11-'+('a'*32));image=('C:\foreign\datacube-g11-'+('a'*32)+'\build\main\jpackage\DataCube')}
 try{$null=Assert-OwnedExecutableRole $scope 'C:\foreign\java.exe' 'image-java';throw 'MISSING_PARENT_REFUSAL'}catch{if($_.Exception.Message -eq 'MISSING_PARENT_REFUSAL'){throw};$rows.Add(@{actualRefusal=$_.Exception.Message;case='foreign-runtime-parent'})}
-$fakeJdk=Join-Path $Out 'owned-fake-jdk';$null=[IO.Directory]::CreateDirectory((Join-Path $fakeJdk 'bin'))
+$fakeOwned=Join-Path $Out ([guid]::NewGuid().ToString('N'))
+$fakeJdk=Join-Path $fakeOwned 'owned-fake-jdk';$null=[IO.Directory]::CreateDirectory((Join-Path $fakeJdk 'bin'))
 $fakeJava=Join-Path $fakeJdk 'bin/java.exe';[IO.File]::WriteAllText($fakeJava,'owned fake executable data only')
-$fakeScope=@{schema='owned-scope/v1';stage='fixture';owned=$Out;paths=@{Repo=$repo;Jdk=$fakeJdk;Cache=$Out;Pwsh=(Get-Process -Id $PID).Path;Python=(Get-Process -Id $PID).Path;RuntimeParent=$Out};tools=@{'OwnedProcessHost.ps1'=@{frozen=(Join-Path $Out 'missing-owned-host.ps1')}};executables=@{}}
+$fakeScope=@{schema='owned-scope/v1';stage='fixture';owned=$fakeOwned;paths=@{Repo=$repo;Jdk=$fakeJdk;Cache=$fakeOwned;Pwsh=(Get-Process -Id $PID).Path;Python=(Get-Process -Id $PID).Path;RuntimeParent=$fakeOwned};tools=@{'OwnedProcessHost.ps1'=@{frozen=(Join-Path $fakeOwned 'missing-owned-host.ps1')}};executables=@{}}
 $fakeScope.executables[$fakeJava]=@{sha256=('0'*64);length=1}
 try{$null=Invoke-OwnedProcess -Scope $fakeScope -Name 'hash-refusal' -Exe $fakeJava -Role 'jdk-java' -Argv @() -Cwd $repo -HostScript $fakeScope.tools['OwnedProcessHost.ps1'].frozen;throw 'MISSING_HASH_REFUSAL'}catch{if($_.Exception.Message -ne 'EXECUTABLE_IDENTITY_CHANGED'){throw};$rows.Add(@{case='owned-exe-hash-change';actualRefusal=$_.Exception.Message})}
 $policy=Get-Content -LiteralPath (Join-Path $Tools 'stage-policy.json') -Raw|ConvertFrom-Json -AsHashtable

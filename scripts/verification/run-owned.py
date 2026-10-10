@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -38,6 +39,10 @@ class Pump:
         except Exception as error:self.failureTick=time.monotonic_ns();self.error=type(error).__name__+':'+str(error)
 
 
+def admitted_run_name(name):
+    return name.startswith(('g11-p2-','g11-p3-')) or bool(re.fullmatch(r'redis-binary-p[23]-[0-9a-f]{32}(?:-[a-z][a-z0-9-]{0,63})?',name))
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--spec',required=True);args=parser.parse_args()
     spec=evidence.load(args.spec)
@@ -47,7 +52,7 @@ def main():
     source_image=evidence.admitted_path(spec['imageSourceScope']) if spec['imageSourceScope'] else None
     prefix=paths['repo']/'docs/superpowers/verification/evidence'
     for key in ('out','stageEvidence'):
-        if paths[key].parent!=prefix or not paths[key].name.startswith(('g11-p2-','g11-p3-')):raise RuntimeError('OUTER_EVIDENCE_OUTSIDE_G11_P2_P3')
+        if paths[key].parent!=prefix or not admitted_run_name(paths[key].name):raise RuntimeError('OUTER_EVIDENCE_OUTSIDE_G11_P2_P3')
     if spec['mode'] not in ('targeted','full','buildsrc','image','linked','fixture'):raise RuntimeError('INVALID_OUTER_STAGE')
     if spec['mode']!='fixture' and ('inputSpec' not in paths or spec['fixture'] is not None):raise RuntimeError('INVALID_OUTER_STAGE_SPEC')
     outer_cases={'normal':'normal','nonzero-child-pipe':'nonzero-child-pipe','detached-child':'detached-child','overflow':'overflow','nonzero-child-overflow':'nonzero-child-overflow','start-failure':'sleep','assign-failure':'sleep'}
@@ -57,9 +62,12 @@ def main():
     if type(spec['deadlineSeconds']) is not int or not 10<=spec['deadlineSeconds']<=1100:raise RuntimeError('INVALID_OUTER_DEADLINE')
     if paths['tools']!=Path(__file__).absolute().parent:raise RuntimeError('OUTER_FROZEN_TOOL_ROOT_MISMATCH')
     permitted_work=paths['repo']/'scripts/verification'
-    permitted_frozen=paths['tools'].is_relative_to(prefix) and any(p.startswith(('g11-p2-','g11-p3-')) for p in paths['tools'].relative_to(prefix).parts[:1])
+    relative_tools=paths['tools'].relative_to(prefix) if paths['tools'].is_relative_to(prefix) else None
+    permitted_frozen=relative_tools is not None and bool(relative_tools.parts) and admitted_run_name(relative_tools.parts[0])
+    if permitted_frozen and relative_tools.parts[0].startswith('redis-binary-') and (len(relative_tools.parts)!=2 or relative_tools.parts[1]!='tools'):raise RuntimeError('OUTER_TOOL_ROOT_OUTSIDE_RUN')
     if paths['tools']!=permitted_work and not permitted_frozen:raise RuntimeError('OUTER_TOOL_ROOT_OUTSIDE_RUN')
-    if source_image and (source_image.name!='scope.json' or source_image.parents[1].parent!=prefix or not source_image.parents[1].name.startswith(('g11-p2-','g11-p3-'))):raise RuntimeError('OUTER_IMAGE_SOURCE_OUTSIDE_RUN')
+    if source_image and (source_image.name!='scope.json' or source_image.parents[1].parent!=prefix or not admitted_run_name(source_image.parents[1].name)):raise RuntimeError('OUTER_IMAGE_SOURCE_OUTSIDE_RUN')
+    if source_image and source_image.parents[1].name.startswith('redis-binary-') and not re.fullmatch(r'[0-9a-f]{32}',source_image.parent.name):raise RuntimeError('OUTER_IMAGE_SOURCE_OUTSIDE_RUN')
     for path in (*paths.values(),*((source_image,) if source_image else ())):evidence.no_links(path)
     paths['out'].mkdir(exist_ok=False)
     environment={k:os.environ[k] for k in ('SystemRoot','WINDIR','PATH','COMSPEC','PATHEXT') if k in os.environ}

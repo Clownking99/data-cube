@@ -5,6 +5,18 @@ function Get-VerificationToolPaths {
     return @('VerificationCore.psm1','OwnedProcessHost.ps1','evidence_tools.py','run-stage.ps1','isolated.gradle','check-core.py','check-p2.py','stage-policy.json','image_tools.py','run-owned.py','probes/G10LinkedRedisProbe.java','probes/MigrationRuntimeDriverProbe.java')
 }
 
+# Existing G11 admission is retained. New runs have a named, direct evidence root
+# and a UUID owned child; this is a lexical check before any filesystem access.
+function Assert-VerificationEvidencePath([string]$Repo,[string]$Path,[ValidateSet('root','owned')][string]$Kind) {
+    $repoPath=Assert-AdmittedPath $Repo;$full=Assert-AdmittedPath $Path
+    $parent=[IO.Path]::Combine($repoPath,'docs','superpowers','verification','evidence')
+    if($full.StartsWith(($parent+[IO.Path]::DirectorySeparatorChar+'g11-'),[StringComparison]::OrdinalIgnoreCase)){return $full}
+    $run=$(if($Kind -eq 'owned'){[IO.Path]::GetDirectoryName($full)}else{$full})
+    if([IO.Path]::GetDirectoryName($run) -ne $parent -or [IO.Path]::GetFileName($run) -cnotmatch '^redis-binary-p[23]-[0-9a-f]{32}(?:-[a-z][a-z0-9-]{0,63})?$') {throw 'UNADMITTED_NAMED_EVIDENCE'}
+    if($Kind -eq 'owned' -and [IO.Path]::GetFileName($full) -cnotmatch '^[0-9a-f]{32}$'){throw 'UNADMITTED_NAMED_SCOPE'}
+    return $full
+}
+
 function Assert-OwnedExecutableRole($Scope,[string]$Exe,[string]$Role) {
     # Pure lexical admission: wrong roles/foreign paths fail before metadata.
     $full=Assert-AdmittedPath $Exe
@@ -26,8 +38,8 @@ function Assert-OwnedExecutableRole($Scope,[string]$Exe,[string]$Role) {
 function Bind-OwnedImage($Scope,[string]$SourceScopePath) {
     if($Scope.stage -ne 'linked'){throw 'IMAGE_BINDING_OUTSIDE_LINKED_STAGE'}
     $sourcePath=Assert-AdmittedPath $SourceScopePath
-    $prefix=[IO.Path]::Combine($Scope.paths.Repo,'docs','superpowers','verification','evidence','g11-')
-    if(-not $sourcePath.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($sourcePath) -ne 'scope.json'){throw 'UNOWNED_IMAGE_SOURCE_SCOPE'}
+    $null=Assert-VerificationEvidencePath $Scope.paths.Repo ([IO.Path]::GetDirectoryName($sourcePath)) 'owned'
+    if([IO.Path]::GetFileName($sourcePath) -ne 'scope.json'){throw 'UNOWNED_IMAGE_SOURCE_SCOPE'}
     $null=Assert-NoReparse $sourcePath
     $source=Get-Content -LiteralPath $sourcePath -Raw|ConvertFrom-Json -AsHashtable
     if($source.stage -ne 'image' -or $source.paths.Repo -ne $Scope.paths.Repo -or $sourcePath -ne [IO.Path]::Combine($source.owned,'scope.json')){throw 'INVALID_IMAGE_SOURCE_SCOPE'}
@@ -180,10 +192,9 @@ function New-OwnedScope {
     if(-not $RuntimeParent){$RuntimeParent=([IO.Path]::GetTempPath()).TrimEnd([char]92,[char]47)}
     $paths=@{}
     foreach ($name in @('Repo','EvidenceRoot','Jdk','Cache','Pwsh','Python','RuntimeParent')) { $paths[$name]=Assert-AdmittedPath (Get-Variable $name -ValueOnly) }
+    $null=Assert-VerificationEvidencePath $paths.Repo $paths.EvidenceRoot 'root'
     foreach ($name in $paths.Keys) { $null=Assert-NoReparse $paths[$name] }
     if ($Stage -notmatch '^[a-z][a-z0-9-]{0,63}$') { throw 'INVALID_STAGE' }
-    $prefix=[IO.Path]::Combine($paths.Repo,'docs','superpowers','verification','evidence','g11-')
-    if (-not $paths.EvidenceRoot.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { throw 'EVIDENCE_OUTSIDE_NEW_G11' }
     if ([IO.Directory]::Exists($paths.EvidenceRoot) -or [IO.File]::Exists($paths.EvidenceRoot)) { throw 'RUN_COLLISION' }
     foreach ($name in @('Repo','Jdk','Cache','RuntimeParent')) { if (-not [IO.Directory]::Exists($paths[$name])) { throw "MISSING_$name" } }
     foreach ($name in @('Pwsh','Python')) { if (-not [IO.File]::Exists($paths[$name])) { throw "MISSING_$name" } }
@@ -236,8 +247,7 @@ function Invoke-OwnedProcess {
     if($Name -notmatch '^[a-z][a-z0-9-]{0,63}$' -or $DeadlineMs -le $SettleMs -or $SettleMs -lt 100 -or $StreamCap -lt 1) { throw 'INVALID_PROCESS_POLICY' }
     $exePath=Assert-AdmittedPath $Exe;$cwdPath=Assert-AdmittedPath $Cwd;$hostPath=Assert-AdmittedPath $HostScript
     foreach($path in @($Scope.paths.Repo,$Scope.paths.Jdk,$Scope.paths.Cache,$Scope.paths.Pwsh,$Scope.paths.Python,$Scope.owned)){ $null=Assert-AdmittedPath $path }
-    $ownedPrefix=[IO.Path]::Combine($Scope.paths.Repo,'docs','superpowers','verification','evidence','g11-')
-    if(-not $Scope.owned.StartsWith($ownedPrefix,[StringComparison]::OrdinalIgnoreCase)){throw 'UNADMITTED_SCOPE'}
+    $null=Assert-VerificationEvidencePath $Scope.paths.Repo $Scope.owned 'owned'
     $Role=Assert-OwnedExecutableRole $Scope $exePath $Role
     if($Scope.schema -ne 'owned-scope/v1' -or $cwdPath -notin @($Scope.paths.Repo,$Scope.owned) -or $hostPath -ne $Scope.tools['OwnedProcessHost.ps1'].frozen){throw 'UNADMITTED_PROCESS_REQUEST'}
     foreach($exe in @($exePath,$Scope.paths.Pwsh)){$null=Assert-NoReparse $exe;if((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -ne $Scope.executables[$exe].sha256 -or ([IO.FileInfo]$exe).Length -ne $Scope.executables[$exe].length){throw 'EXECUTABLE_IDENTITY_CHANGED'}}
@@ -403,4 +413,4 @@ function Invoke-OwnedProcess {
     return [pscustomobject]$receipt
     } finally {foreach($p in $captured.Values){$p.Dispose()};$hostProcess.Dispose();$job.Dispose()}
 }
-Export-ModuleMember -Function Assert-AdmittedPath,Assert-NoReparse,New-OwnedScope,Invoke-OwnedProcess,Get-VerificationToolPaths,Assert-OwnedExecutableRole,Bind-OwnedImage
+Export-ModuleMember -Function Assert-AdmittedPath,Assert-NoReparse,New-OwnedScope,Invoke-OwnedProcess,Get-VerificationToolPaths,Assert-OwnedExecutableRole,Bind-OwnedImage,Assert-VerificationEvidencePath

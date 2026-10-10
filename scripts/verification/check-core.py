@@ -207,7 +207,8 @@ def process_checks(repo, directory, pwsh, python, jdk, cache, matrix=None):
                                ('compile-zero-xml','NONZERO_EXIT'),('compile-stat-failure','NONZERO_EXIT'),('nonzero-child-overflow','NONZERO_EXIT'),
                                ('skip-live',None),('skip-native','UNAPPROVED_SKIP:'))
         for mode, expected in matrix:
-            name = "g11-p2-synthetic-" + uuid.uuid4().hex + "-" + mode
+            run_prefix = "redis-binary-p2-" if directory.name.startswith('redis-binary-p2-') else "redis-binary-p3-" if directory.name.startswith('redis-binary-p3-') else "g11-p2-synthetic-"
+            name = run_prefix + uuid.uuid4().hex + "-" + mode
             evidence = repo / "docs/superpowers/verification/evidence" / name
             out_path=repo/'docs/superpowers/verification/evidence'/(name+'-owner')
             spec={'repo':str(repo),'tools':str(Path(__file__).absolute().parent),'out':str(out_path),'stageEvidence':str(evidence),'mode':'fixture','inputSpec':None,'jdk':jdk,'cache':cache,'pwsh':pwsh,'python':python,'runtimeParent':tempfile.gettempdir(),'imageSourceScope':None,'deadlineSeconds':22,'fixture':mode,'processDeadlineMs':7000,'settleMs':1500,'streamCap':32768 if mode in ('overflow','cap-exact','cap-plus-one','nonzero-child-overflow') else 33554432,'outerFixture':None}
