@@ -10,7 +10,7 @@ G11当前实现为[scripts/verification](../../scripts/verification/run-stage.ps
 
 G11入口的最外层是`python -I -S -B scripts/verification/run-owned.py --spec <绝对路径>`。spec必须明确repo、tools、out、stageEvidence、mode、inputSpec、jdk、cache、pwsh、python、runtimeParent、imageSourceScope、deadlineSeconds、fixture、processDeadlineMs、settleMs、streamCap、outerFixture十八字段。本轮五阶段依次为targeted/full/buildsrc/image/linked；linked的imageSourceScope必须指向前一成功image的scope.json。普通工程阶段fixture与outerFixture为null。完整本机示例来自G11新包的五个`*-spec.json`，只能在新的运行目录按当前路径生成，不能原样重跑冻结spec。
 
-当前准入名称仅涵盖G11的`g11-p2-`/`g11-p3-`证据根，工具闭包为精确12文件；未来轮次需要显式审查和扩展命名范围，而非伪装成G11或放开任意命令。阶段任务、过滤器、期限和精确live skip由[stage-policy.json](../../scripts/verification/stage-policy.json)决定。动态测试类型覆盖从实际受验源码推导；408是本轮实测数量，不是未来硬编码名单。
+当前准入名称保留G11的`g11-p2-`/`g11-p3-`，另经本次独立审查加入`redis-binary-p[23]-<32位小写UUID>[-suffix]`，仅允许evidence直属运行根、owned UUID子目录及精确工具/镜像来源层级；70条新名称边界、98共享控制和实际同根冲突拒绝证据见[Redis二进制键修复计划](../superpowers/plans/2026-10-10-redis-binary-key-fix.md)。工具闭包仍为精确12文件，内部G11运行时命名保留；未来轮次仍需显式审查命名范围。阶段任务、过滤器、期限和精确live skip由[stage-policy.json](../../scripts/verification/stage-policy.json)决定。动态测试类型覆盖从实际受验源码推导；历史408和本次410都是实测数量，不是未来硬编码名单。
 
 XML只读本轮归档，suite与case四项计数分别比对；零文件/零case、损坏、重复suite、矛盾或超预算失败。合法同名参数case保留文件/suite/ordinal身份，不去重。单XML16MiB、合计128MiB、最多2000suite/100000case。内层stdout/stderr各32MiB、host各1MiB，外层每流1MiB；截断和不完整分别记录，不能作为成功日志。
 
@@ -33,6 +33,7 @@ G11 Windows private Job在gate前归属，查询成员与等待实际handle后�
 
 | 结论 | 审核入口 | 原件索引 |
 | --- | --- | --- |
+| Redis二进制键修复 main | [main验收报告](../superpowers/verification/2026-10-10-redis-binary-key-main.md) | [1200原件manifest](../superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-frozen/manifest.json)、[本轮精确SHA交付入口](../superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-package/delivery-intent.json) |
 | G10 协议准入与恢复 | [P1a root 回执](../superpowers/verification/evidence/g10-redis-20261009-p1a-review/receipt.json) | [worker manifest](../superpowers/verification/evidence/g10-redis-20261009-p1a-worker/raw-manifest.json) |
 | G10 展示、保留与生命周期 | [P1b root 回执](../superpowers/verification/evidence/g10-redis-20261009-p1b-review/receipt.json) | [worker manifest](../superpowers/verification/evidence/g10-redis-20261009-p1b-worker/raw-manifest.json) |
 | G10 开发侧工程验证 | [P2 root 回执](../superpowers/verification/evidence/g10-redis-20261009-p2-review/receipt.json) | [worker manifest](../superpowers/verification/evidence/g10-redis-20261009-p2-worker/raw-manifest.json) |

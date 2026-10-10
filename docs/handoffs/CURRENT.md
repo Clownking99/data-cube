@@ -1,6 +1,12 @@
 # DataCube 当前状态
 
-更新：2026-10-09（Asia/Shanghai）。此页是后续会话的首个入口；历史交接中的“当前/最新”均按各自日期理解。
+更新：2026-10-10（Asia/Shanghai）。此页是后续会话的首个入口；历史交接中的“当前/最新”均按各自日期理解。
+
+## 当前缺陷修复
+
+维护者截图报告的Redis非UTF-8键导致整页加载失败已修复，并合入受验main **af3fe27369973c2d0254e712968f5984b8dc2b86**（源码c33b9ef4、证据20778239）。原始字节身份贯穿键操作，二进制/空键显示明确，分页预算与旧Binding保护保留。root在main新隔离环境实际定向303通过/1 live跳过、clean全量4733通过/3 live跳过、buildSrc 8通过/0跳过、jpackageImage及linked通过；14项Redis原生测试均执行。1200原件已封存。[main验收报告](../superpowers/verification/2026-10-10-redis-binary-key-main.md)和[分阶段计划](../superpowers/plans/2026-10-10-redis-binary-key-fix.md)保留首失败与修正。
+
+最终文档/证据提交及main推送、精确SHA Verify四任务的结论以[本轮交付入口](../superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-package/delivery-intent.json)定位的`delivery-result.json`为准，只有`passed=true`才表示远端交付完成。v3.2.10仍指向a39ffc47，本次截图版本未确认，真实连接未访问；未自动打tag或发布下一版。
 
 ## 已完成
 
