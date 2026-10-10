@@ -1,0 +1,271 @@
+diff --git a/test/com/datacube/update/PortableUpdateHelperTest.java b/test/com/datacube/update/PortableUpdateHelperTest.java
+index 8aadf479..7fcede25 100644
+--- a/test/com/datacube/update/PortableUpdateHelperTest.java
++++ b/test/com/datacube/update/PortableUpdateHelperTest.java
+@@ -9,7 +9,6 @@ import org.junit.jupiter.params.provider.ValueSource;
+ import java.nio.charset.StandardCharsets;
+ import java.nio.file.*;
+ import java.util.*;
+-import java.util.concurrent.TimeUnit;
+ import static org.junit.jupiter.api.Assertions.*;
+ import static com.datacube.update.UpdateTestSupport.*;
+ 
+@@ -104,19 +103,10 @@ class PortableUpdateHelperTest {
+         }
+     }
+     private String run(String script,int expectedExit) throws Exception {
+-        Path harness=directory.resolve("harness-"+UUID.randomUUID()+".ps1");
+-        // Windows PowerShell 5.1 needs BOM to parse literal Unicode test paths.
+-        Files.writeString(harness,"\uFEFF"+script,StandardCharsets.UTF_8);
+-        Path output=directory.resolve("output-"+UUID.randomUUID()+".txt");
+-        String powershell=Path.of(System.getenv().getOrDefault("SystemRoot","C:\\Windows"),
+-                "System32","WindowsPowerShell","v1.0","powershell.exe").toString();
+-        Process process=new ProcessBuilder(powershell,"-NoProfile","-NonInteractive","-File",harness.toString())
+-                .redirectErrorStream(true).redirectOutput(output.toFile()).start();
+-        try {
+-            assertTrue(process.waitFor(20,TimeUnit.SECONDS),"synthetic helper did not finish");
+-            assertEquals(expectedExit,process.exitValue(),Files.readString(output));
+-            return Files.readString(output);
+-        } finally {if(process.isAlive()) process.destroyForcibly();}
++        var receipt=new UpdateHelperProcess().run(directory,script,expectedExit);
++        return new String(Base64.getDecoder().decode(receipt.stdoutBase64()),StandardCharsets.UTF_8)
++                + new String(Base64.getDecoder().decode(receipt.stderrBase64()),StandardCharsets.UTF_8);
+     }
++
+     static String ps(String value){return "'"+value.replace("'","''")+"'";}
+ }
+diff --git a/test/com/datacube/update/UpdateHelperProcess.java b/test/com/datacube/update/UpdateHelperProcess.java
+new file mode 100644
+--- /dev/null
++++ b/test/com/datacube/update/UpdateHelperProcess.java
+@@ -0,0 +1,116 @@
++package com.datacube.update;
++
++import java.io.IOException;
++import java.nio.charset.StandardCharsets;
++import java.nio.file.*;
++import java.security.MessageDigest;
++import java.time.Duration;
++import java.util.*;
++import java.util.concurrent.TimeUnit;
++import java.util.function.*;
++
++/** Only the synthetic update-helper tests: bootstrap acknowledgement, execution and physical exit. */
++final class UpdateHelperProcess {
++    static final int OUTPUT_LIMIT=64*1024;
++    enum Phase { STARTUP, EXECUTION, EXIT, INTERRUPTED }
++    record Budgets(Duration startup, Duration execution, Duration cleanup) {
++        static Budgets normal() { return new Budgets(Duration.ofSeconds(90), Duration.ofSeconds(20), Duration.ofSeconds(10)); }
++    }
++    @FunctionalInterface interface Starter { Process start(ProcessBuilder command, Path ready) throws IOException; }
++    record Receipt(Phase phase, Process actualProcess, long pid, Integer exit, boolean terminationRequested, boolean exited,
++                   boolean interrupted, long startupNanos, long executionNanos, long cleanupNanos, Budgets budgets, List<String> command,
++                   Path stdout, Path stderr, String stdoutHash, String stderrHash, String stdoutBase64, String stderrBase64,
++                   long stdoutLength, long stderrLength, boolean outputComplete) {
++        String diagnostic() { return "phase="+phase+" pid="+pid+" exit="+exit+" terminationRequested="+terminationRequested
++                +" exited="+exited+" interrupted="+interrupted+" startupNanos="+startupNanos+" executionNanos="+executionNanos
++                +" cleanupNanos="+cleanupNanos+" budgets="+budgets+" command="+command+" stdout="+stdout+" sha256="+stdoutHash+" base64="+stdoutBase64
++                +" stdoutLength="+stdoutLength+" stderrLength="+stderrLength+" outputComplete="+outputComplete+" outputLimit="+OUTPUT_LIMIT
++                +" stderr="+stderr+" sha256="+stderrHash+" base64="+stderrBase64; }
++    }
++    static final class Failure extends AssertionError {
++        final Receipt receipt;
++        Failure(String reason, Receipt receipt) { super(reason+"; "+receipt.diagnostic()); this.receipt=receipt; }
++    }
++    private final Budgets budgets;
++    private final Starter starter;
++    private final LongSupplier clock;
++    private final BiConsumer<Phase,Process> observation;
++    UpdateHelperProcess() { this(Budgets.normal(), (command, ready)->command.start(), System::nanoTime, (phase, process)->{}); }
++    UpdateHelperProcess(Budgets budgets, Starter starter, LongSupplier clock, BiConsumer<Phase,Process> observation) {
++        this.budgets=budgets; this.starter=starter; this.clock=clock; this.observation=observation;
++    }
++    Receipt run(Path directory, String script, int expectedExit) throws Exception {
++        Path own=Files.createDirectory(directory.resolve("update-process-"+UUID.randomUUID()));
++        Path body=own.resolve("harness.ps1"), bootstrap=own.resolve("bootstrap.ps1"), ready=own.resolve("bootstrap.ready");
++        Path stdout=own.resolve("stdout.bin"),stderr=own.resolve("stderr.bin");
++        // BOM is required by Windows PowerShell 5.1 for literal Unicode fixture paths.
++        Files.writeString(body,"\uFEFF"+script,StandardCharsets.UTF_8);
++        Files.writeString(bootstrap,"\uFEFF$ErrorActionPreference='Stop'\ntry {\n[IO.File]::WriteAllText("
++                +PortableUpdateHelperTest.ps(ready.toString())+",'ready')\n& "+PortableUpdateHelperTest.ps(body.toString())
++                +"\nif($null -ne $LASTEXITCODE){exit $LASTEXITCODE}\nexit 0\n} catch { Write-Error $_ -ErrorAction Continue; exit 1 }\n",StandardCharsets.UTF_8);
++        String executable=Path.of(System.getenv().getOrDefault("SystemRoot","C:\\Windows"),
++                "System32","WindowsPowerShell","v1.0","powershell.exe").toString();
++        List<String> command=List.of(executable,"-NoProfile","-NonInteractive","-File",bootstrap.toString());
++        ProcessBuilder builder=new ProcessBuilder(command).redirectOutput(stdout.toFile()).redirectError(stderr.toFile());
++        Process process=null;Phase phase=Phase.STARTUP;String reason=null;boolean interrupted=false,terminated=false,acknowledged=false;
++        long begin=clock.getAsLong(),executionStart=-1,end=begin,cleanupNanos=0;Integer exit=null;boolean exited=false;
++        try {
++        try {
++            process=starter.start(builder,ready); process.getOutputStream().close(); observation.accept(Phase.STARTUP,process);
++            while(true) {
++                long now=clock.getAsLong();
++                if(phase==Phase.STARTUP && now-begin>=budgets.startup().toNanos()) { reason="STARTUP_TIMEOUT";break; }
++                if(phase==Phase.STARTUP && Files.exists(ready) && Files.readString(ready).equals("ready")) {
++                    acknowledged=true;executionStart=now;phase=Phase.EXECUTION;observation.accept(phase,process);
++                }
++                if(!process.isAlive()) { phase=Phase.EXIT;break; }
++                long elapsed=now-(phase==Phase.STARTUP?begin:executionStart);
++                long limit=(phase==Phase.STARTUP?budgets.startup():budgets.execution()).toNanos();
++                if(elapsed>=limit) { reason=phase==Phase.STARTUP?"STARTUP_TIMEOUT":"EXECUTION_TIMEOUT";break; }
++                process.waitFor(Math.max(1,Math.min(25,TimeUnit.NANOSECONDS.toMillis(limit-elapsed))),TimeUnit.MILLISECONDS);
++            }
++        } catch(InterruptedException failure) { interrupted=true;phase=Phase.INTERRUPTED;reason="INTERRUPTED"; }
++        catch(IOException failure) { reason=phase+"_IO: "+failure; }
++        finally {
++            long cleanupStart=System.nanoTime();
++            if(process!=null) {
++                if(process.isAlive()) { terminated=true;process.destroyForcibly(); }
++                long deadline=System.nanoTime()+budgets.cleanup().toNanos();
++                while(process.isAlive() && System.nanoTime()<deadline) {
++                    try { process.waitFor(Math.max(1,TimeUnit.NANOSECONDS.toMillis(deadline-System.nanoTime())),TimeUnit.MILLISECONDS); }
++                    catch(InterruptedException failure) { interrupted=true; }
++                }
++                exited=!process.isAlive();if(exited)exit=process.exitValue();
++            }
++            end=clock.getAsLong();cleanupNanos=System.nanoTime()-cleanupStart;
++        }
++        try {
++            Captured out=capture(stdout),err=capture(stderr);
++            Receipt receipt=new Receipt(phase,process,process==null?-1:process.pid(),exit,terminated,exited,interrupted,
++                    (executionStart<0?end:executionStart)-begin,executionStart<0?0:end-executionStart,cleanupNanos,budgets,command,stdout,stderr,
++                    out.hash(),err.hash(),Base64.getEncoder().encodeToString(out.bytes()),Base64.getEncoder().encodeToString(err.bytes()),
++                    out.length(),err.length(),out.complete() && err.complete());
++            System.out.println("UPDATE_HELPER_RECEIPT "+receipt.diagnostic());
++            if(process==null)throw new Failure(reason,receipt);
++            if(!exited)throw new Failure("PHYSICAL_EXIT_NOT_OBSERVED; firstFailure="+reason,receipt);
++            if(reason!=null)throw new Failure(reason,receipt);
++            if(!receipt.outputComplete())throw new Failure("OUTPUT_LIMIT",receipt);
++            if(exit!=expectedExit)throw new Failure("EXPECTED_EXIT_"+expectedExit,receipt);
++            if(!acknowledged)throw new Failure("BOOTSTRAP_NOT_ACKNOWLEDGED",receipt);
++            return receipt;
++        } catch(IOException failure) {
++            throw new AssertionError("OUTPUT_READ_FAILURE; firstFailure="+reason+" phase="+phase+" pid="+(process==null?-1:process.pid())+" exited="+exited,failure);
++        }
++        } finally { if(interrupted)Thread.currentThread().interrupt(); }
++    }
++    private record Captured(byte[] bytes,long length,String hash,boolean complete) { }
++    private static Captured capture(Path path) throws Exception {
++        if(!Files.exists(path))return new Captured(new byte[0],0,hash(new byte[0]),true);
++        long length=Files.size(path);byte[] bytes;
++        try(var input=Files.newInputStream(path)){bytes=input.readNBytes(OUTPUT_LIMIT+1);}
++        boolean complete=length<=OUTPUT_LIMIT && bytes.length<=OUTPUT_LIMIT;
++        return new Captured(bytes.length>OUTPUT_LIMIT?Arrays.copyOf(bytes,OUTPUT_LIMIT):bytes,length,
++                complete?hash(bytes):"NOT_COMPLETE",complete);
++    }
++    private static String hash(byte[] bytes) throws Exception { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
++}
+diff --git a/test/com/datacube/update/UpdateHelperProcessTest.java b/test/com/datacube/update/UpdateHelperProcessTest.java
+new file mode 100644
+--- /dev/null
++++ b/test/com/datacube/update/UpdateHelperProcessTest.java
+@@ -0,0 +1,109 @@
++package com.datacube.update;
++
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.condition.EnabledOnOs;
++import org.junit.jupiter.api.condition.OS;
++import org.junit.jupiter.api.io.TempDir;
++import java.io.*;
++import java.nio.file.*;
++import java.time.Duration;
++import java.util.concurrent.*;
++import java.util.concurrent.atomic.*;
++import static org.junit.jupiter.api.Assertions.*;
++
++@EnabledOnOs(OS.WINDOWS)
++class UpdateHelperProcessTest {
++    @TempDir Path directory;
++    @Test void controlledSlowBootstrapHasItsOwnBudgetRatherThanConsumingExecutionBudget() throws Exception {
++        System.out.println("MODEL_ONLY: deterministic Process/clock, not an OS termination proof");
++        AtomicLong clock=new AtomicLong();AtomicReference<ModelProcess> own=new AtomicReference<>();
++        var runner=new UpdateHelperProcess(budgets(200,50), (command,ready)->{
++            var process=new ModelProcess(clock,ready,100,125);own.set(process);return process;
++        },clock::get,(phase,process)->{});
++        var receipt=runner.run(directory,"exit 0",0);
++        assertTrue(receipt.startupNanos()>Duration.ofMillis(50).toNanos());
++        assertEquals(Duration.ofMillis(25).toNanos(),receipt.executionNanos());
++        assertTrue(receipt.exited());assertFalse(receipt.terminationRequested());assertFalse(own.get().destroyed);
++    }
++    @Test void missingBootstrapAcknowledgementTimesOutAndObservesControlledExit() {
++        System.out.println("MODEL_ONLY: deterministic missing acknowledgement, not an OS termination proof");
++        AtomicLong clock=new AtomicLong();AtomicReference<ModelProcess> own=new AtomicReference<>();
++        var runner=new UpdateHelperProcess(budgets(100,50),(command,ready)->{
++            var process=new ModelProcess(clock,ready,Long.MAX_VALUE,Long.MAX_VALUE);own.set(process);return process;
++        },clock::get,(phase,process)->{});
++        var failure=assertThrows(UpdateHelperProcess.Failure.class,()->runner.run(directory,"exit 0",0));
++        assertTrue(failure.getMessage().startsWith("STARTUP_TIMEOUT"));assertEquals(UpdateHelperProcess.Phase.STARTUP,failure.receipt.phase());
++        assertTrue(own.get().destroyed);assertTrue(failure.receipt.exited());assertEquals(137,failure.receipt.exit());
++    }
++    @Test void nonzeroActualPowerShellRetainsBothRawStreamsAndExitCode() throws Exception {
++        var failure=assertThrows(UpdateHelperProcess.Failure.class,()->new UpdateHelperProcess().run(directory,
++                "[Console]::Out.WriteLine('synthetic stdout'); [Console]::Error.WriteLine('synthetic stderr'); exit 7",0));
++        assertEquals(7,failure.receipt.exit());assertEquals(UpdateHelperProcess.Phase.EXIT,failure.receipt.phase());
++        assertTrue(Files.readString(failure.receipt.stdout()).contains("synthetic stdout"));
++        assertTrue(Files.readString(failure.receipt.stderr()).contains("synthetic stderr"));
++        assertTrue(failure.receipt.exited());assertFalse(failure.receipt.terminationRequested());assertDead(failure.receipt);
++    }
++    @Test void zeroExitWithoutBootstrapAcknowledgementCannotBeReportedAsSuccess() {
++        AtomicLong clock=new AtomicLong();
++        var runner=new UpdateHelperProcess(budgets(100,50),(command,ready)->new ModelProcess(clock,ready,Long.MAX_VALUE,25),clock::get,(phase,process)->{});
++        var failure=assertThrows(UpdateHelperProcess.Failure.class,()->runner.run(directory,"exit 0",0));
++        assertTrue(failure.getMessage().startsWith("BOOTSTRAP_NOT_ACKNOWLEDGED"));assertEquals(0,failure.receipt.exit());assertTrue(failure.receipt.exited());
++    }
++    @Test void oversizedActualOutputIsBoundedAndNeverGivenACompleteHash() {
++        var failure=assertThrows(UpdateHelperProcess.Failure.class,()->new UpdateHelperProcess().run(directory,
++                "[Console]::Out.Write('x'*65537)",0));
++        assertTrue(failure.getMessage().startsWith("OUTPUT_LIMIT"));assertEquals(65537,failure.receipt.stdoutLength());
++        assertFalse(failure.receipt.outputComplete());assertEquals("NOT_COMPLETE",failure.receipt.stdoutHash());
++        assertEquals(UpdateHelperProcess.OUTPUT_LIMIT,java.util.Base64.getDecoder().decode(failure.receipt.stdoutBase64()).length);
++        assertDead(failure.receipt);
++    }
++    @Test void stuckExecutionTerminatesActualOwnedPowerShellOnlyAfterBodyEntry() {
++        Path entered=directory.resolve("blocked-body-entered");AtomicBoolean execution=new AtomicBoolean();
++        var runner=new UpdateHelperProcess(UpdateHelperProcess.Budgets.normal(),(command,ready)->command.start(),
++                ()->System.nanoTime()+(execution.get() && Files.exists(entered)?Duration.ofSeconds(21).toNanos():0),
++                (phase,process)->{if(phase==UpdateHelperProcess.Phase.EXECUTION)execution.set(true);});
++        var failure=assertThrows(UpdateHelperProcess.Failure.class,()->runner.run(directory,
++                "[IO.File]::WriteAllText("+PortableUpdateHelperTest.ps(entered.toString())+",'entered'); $gate=[Threading.ManualResetEvent]::new($false); $null=$gate.WaitOne()",0));
++        assertTrue(Files.exists(entered),"actual body must enter before the controlled execution clock expires");
++        assertTrue(failure.getMessage().startsWith("EXECUTION_TIMEOUT"));assertEquals(UpdateHelperProcess.Phase.EXECUTION,failure.receipt.phase());
++        assertTrue(failure.receipt.terminationRequested());assertTrue(failure.receipt.exited());assertDead(failure.receipt);
++    }
++    @Test void interruptedExecutionRestoresInterruptOnlyAfterActualOwnedProcessSettles() throws Exception {
++        Path entered=directory.resolve("interrupted-body-entered");CountDownLatch inBody=new CountDownLatch(1);AtomicBoolean execution=new AtomicBoolean();
++        AtomicReference<UpdateHelperProcess.Failure> result=new AtomicReference<>();
++        AtomicReference<Throwable> unexpected=new AtomicReference<>();AtomicBoolean restored=new AtomicBoolean();
++        var runner=new UpdateHelperProcess(UpdateHelperProcess.Budgets.normal(),(command,ready)->command.start(),
++                ()->{if(execution.get() && Files.exists(entered))inBody.countDown();return System.nanoTime();},
++                (phase,process)->{if(phase==UpdateHelperProcess.Phase.EXECUTION)execution.set(true);});
++        Thread worker=Thread.ofVirtual().start(()->{
++            try { runner.run(directory,"[IO.File]::WriteAllText("+PortableUpdateHelperTest.ps(entered.toString())+",'entered'); $gate=[Threading.ManualResetEvent]::new($false); $null=$gate.WaitOne()",0);unexpected.set(new AssertionError("interruption not reported")); }
++            catch(UpdateHelperProcess.Failure failure){result.set(failure);restored.set(Thread.currentThread().isInterrupted());}
++            catch(Throwable failure){unexpected.set(failure);}
++        });
++        try { assertTrue(inBody.await(90,TimeUnit.SECONDS),"actual body not entered");worker.interrupt();worker.join(12000); }
++        finally { if(worker.isAlive()){worker.interrupt();worker.join(12000);} }
++        assertFalse(worker.isAlive(),"test worker did not settle");assertNull(unexpected.get());assertNotNull(result.get());
++        assertEquals(UpdateHelperProcess.Phase.INTERRUPTED,result.get().receipt.phase());assertTrue(restored.get());
++        assertTrue(result.get().receipt.terminationRequested());assertTrue(result.get().receipt.exited());assertDead(result.get().receipt);
++    }
++    private static UpdateHelperProcess.Budgets budgets(long startup,long execution){return new UpdateHelperProcess.Budgets(Duration.ofMillis(startup),Duration.ofMillis(execution),Duration.ofSeconds(1));}
++    private static void assertDead(UpdateHelperProcess.Receipt receipt){assertNotNull(receipt.actualProcess());assertFalse(receipt.actualProcess().isAlive(),"actual owned Process remains alive");assertEquals(receipt.exit(),receipt.actualProcess().exitValue());}
++    private static final class ModelProcess extends Process {
++        final AtomicLong clock;final Path ready;final long readyAt,exitAt;boolean alive=true,destroyed;int exit;
++        ModelProcess(AtomicLong clock,Path ready,long readyAt,long exitAt){this.clock=clock;this.ready=ready;this.readyAt=TimeUnit.MILLISECONDS.toNanos(readyAt);this.exitAt=TimeUnit.MILLISECONDS.toNanos(exitAt);}
++        public OutputStream getOutputStream(){return OutputStream.nullOutputStream();}
++        public InputStream getInputStream(){return InputStream.nullInputStream();}
++        public InputStream getErrorStream(){return InputStream.nullInputStream();}
++        public int waitFor(){return exitValue();}
++        public boolean waitFor(long time,TimeUnit unit){
++            long tick=clock.addAndGet(unit.toNanos(time));
++            try {if(tick>=readyAt && !Files.exists(ready))Files.writeString(ready,"ready");}catch(IOException failure){throw new UncheckedIOException(failure);}
++            if(tick>=exitAt)alive=false;return !alive;
++        }
++        public int exitValue(){if(alive)throw new IllegalThreadStateException();return exit;}
++        public boolean isAlive(){return alive;}
++        public void destroy(){alive=false;destroyed=true;exit=137;}
++        public Process destroyForcibly(){destroy();return this;}
++        public long pid(){return 99999999;}
++    }
++}
