@@ -75,3 +75,15 @@ main准备入口首次拒绝非Java文件换行差异，未启动任何工程命
 五阶段实际完成且controller退出0、入口身份未变。root新main审查接受定向303通过/1 live跳过、clean全量4733通过/3 live跳过、buildSrc 8通过/0跳过、183文件镜像及四linked命令。当前精确方法集6+2+14+5在定向和全量均通过；878输入、410类型、12工具、实际根退出/host/EOF/Job全部核对。镜像包含RedisKey.class，没有测试类泄漏；合成驱动/Redis探针不连接真实服务。
 
 13根1200原件、21986312字节封存SHA e3f7ec2cfd9bf7fe2de0df67454ffdcac28be8046d8c66e798961c7944c4438a，冻结后不再写入。[main报告](../verification/2026-10-10-redis-binary-key-main.md)汇总本轮通过与未验。下一步文档/证据提交沿用相同受验工程输入，仅推main并核对相同SHA CI；实际远端结论由交付入口指向的原始回执确认。真库、截图安装版本及完整桌面/发布验收继续单列未验，不移动旧tag、不自动发版或扩范围。
+
+### C6：首轮 CI 拒绝及 checkout 最小补正
+
+3af30f12ea225c872b1d65b831ab0a136ef05e18已直接推送（无需代理），但Verify 38034885345的Windows job114163146217在checkout报Filename too long，后续Java/tests均未启动。其余三任务成功，整体明确不接受；完整API/日志及失败裁决保存于redis-binary-p3-daea00f81fc04ab9a7ccd87e5842bc9e-ci。旧v3.2.10注解对象da691fb5和peeled a39ffc47未变化。
+
+仍由既有6.1-sol线程在独立codex/redis-binary-ci-longpaths-20261010分支修正：仅给Verify、Release两处Windows-capable checkout各加4行步骤级环境，Git配置仅对子进程有效，Linux矩阵COUNT=0。任务、过滤器、权限、发布触发条件及其他所有行不变；不触发发布。合成独占Git仓库实际387字符路径在false时退出128、true时退出0，同一commit/blob的68原字节一致；9个实际命令及Job空结算、41文件269574字节均经root独立复核，封存9b999249226d964e8c3bec8f5130d1cb08d911a5d68e3138034052b51dc5621b。
+
+root已授权精确44路径本地提交。后续记录两个workflow与本地P3旧输入的精确哈希迁移，其余876工程输入和12工具不变；不把本地旧输入测试说成新workflow已执行。下一步合main并推送新的精确SHA Verify，实际结论见[新交付入口](../verification/evidence/redis-binary-p3-daea00f81fc04ab9a7ccd87e5842bc9e-ci/delivery-intent.json)。原本地五阶段仍有效，真实连接/完整桌面/发布继续未验，不重写旧冻结目录。
+
+### C7：CI 补正集成完成
+
+补正提交c5f129497c3f2ab4c303eaf4c71352219aa4d1e5的44路径经root独立Git blob核验，42份证据在worker/Git/main保持原字节。已合入main e24c356c45d92e88fb2ace27c95d91ff55aaaed1。对照P3实际输入，只两个workflow变化，其他876输入和12工具原字节一致；[输入迁移](../verification/evidence/redis-binary-p3-daea00f81fc04ab9a7ccd87e5842bc9e-ci/input-delta.json)与[运输回执](../verification/evidence/redis-binary-p3-daea00f81fc04ab9a7ccd87e5842bc9e-ci/transport-main.json)记录。下一步将补正审查、首失败与当前交接提交后，仅推main，等待新精确SHA全部四个CI任务实际成功；旧失败轮次不重标通过，Release仍不触发。

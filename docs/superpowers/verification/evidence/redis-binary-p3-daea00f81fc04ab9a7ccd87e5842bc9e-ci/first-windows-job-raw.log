@@ -1,0 +1,242 @@
+﻿2026-10-10T07:34:29.9300705Z Current runner version: '2.337.0'
+2026-10-10T07:34:29.9319490Z ##[group]Runner Image Provisioner
+2026-10-10T07:34:29.9320001Z Hosted Compute Agent
+2026-10-10T07:34:29.9320328Z Version: 20260901.588
+2026-10-10T07:34:29.9320735Z Commit: f88ec8081b781fac6c440065ac7ff9e710ce3d0b
+2026-10-10T07:34:29.9321461Z Build Date: 2026-09-01T19:56:44Z
+2026-10-10T07:34:29.9321893Z Worker ID: {142b78df-5f1b-4968-b9c0-c6f6e781ac3b}
+2026-10-10T07:34:29.9322302Z Azure Region: centralus
+2026-10-10T07:34:29.9322640Z ##[endgroup]
+2026-10-10T07:34:29.9323468Z ##[group]Operating System
+2026-10-10T07:34:29.9323813Z Microsoft Windows Server 2025
+2026-10-10T07:34:29.9324133Z 10.0.26100
+2026-10-10T07:34:29.9324431Z Datacenter
+2026-10-10T07:34:29.9324719Z ##[endgroup]
+2026-10-10T07:34:29.9325039Z ##[group]Runner Image
+2026-10-10T07:34:29.9325373Z Image: windows-2025-vs2026
+2026-10-10T07:34:29.9325755Z Version: 20260925.250.1
+2026-10-10T07:34:29.9326713Z Included Software: https://github.com/actions/runner-images/blob/win25-vs2026/20260925.250/images/windows/Windows2025-VS2026-Readme.md
+2026-10-10T07:34:29.9327602Z Image Release: https://github.com/actions/runner-images/releases/tag/win25-vs2026%2F20260925.250
+2026-10-10T07:34:29.9328168Z ##[endgroup]
+2026-10-10T07:34:29.9328773Z ##[group]GITHUB_TOKEN Permissions
+2026-10-10T07:34:29.9330024Z Contents: read
+2026-10-10T07:34:29.9330351Z Metadata: read
+2026-10-10T07:34:29.9330700Z ##[endgroup]
+2026-10-10T07:34:29.9332027Z Secret source: Actions
+2026-10-10T07:34:29.9332517Z Cache mode: write
+2026-10-10T07:34:29.9332936Z Prepare workflow directory
+2026-10-10T07:34:29.9570127Z Prepare all required actions
+2026-10-10T07:34:29.9602281Z Getting action download info
+2026-10-10T07:34:30.2016682Z Download action repository 'actions/checkout@v6' (SHA:d23441a48e516b6c34aea4fa41551a30e30af803)
+2026-10-10T07:34:30.2839618Z Download action repository 'actions/setup-java@v5' (SHA:b6effb05e454b25005698d916606bdc6ffcbf961)
+2026-10-10T07:34:30.7752119Z Download action repository 'gradle/actions@v6' (SHA:3f5f9adaf7d9fecd50b5935e54106014257a94e6)
+2026-10-10T07:34:31.9949303Z Complete job name: Test (windows-latest)
+2026-10-10T07:34:32.4155565Z ##[group]Run actions/checkout@v6
+2026-10-10T07:34:32.4156311Z with:
+2026-10-10T07:34:32.4156549Z   repository: Clownking99/data-cube
+2026-10-10T07:34:32.4158121Z   token: ***
+2026-10-10T07:34:32.4158328Z   ssh-strict: true
+2026-10-10T07:34:32.4158524Z   ssh-user: git
+2026-10-10T07:34:32.4158754Z   persist-credentials: true
+2026-10-10T07:34:32.4159005Z   clean: true
+2026-10-10T07:34:32.4159219Z   sparse-checkout-cone-mode: true
+2026-10-10T07:34:32.4159452Z   fetch-depth: 1
+2026-10-10T07:34:32.4159652Z   fetch-tags: false
+2026-10-10T07:34:32.4159872Z   show-progress: true
+2026-10-10T07:34:32.4160086Z   lfs: false
+2026-10-10T07:34:32.4160297Z   submodules: false
+2026-10-10T07:34:32.4160509Z   set-safe-directory: true
+2026-10-10T07:34:32.4160739Z   allow-unsafe-pr-checkout: false
+2026-10-10T07:34:32.4161122Z ##[endgroup]
+2026-10-10T07:34:32.5217235Z Syncing repository: Clownking99/data-cube
+2026-10-10T07:34:32.5218130Z ##[group]Getting Git version info
+2026-10-10T07:34:32.5218391Z Working directory is 'D:\a\data-cube\data-cube'
+2026-10-10T07:34:32.5720333Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-10T07:34:32.9293795Z git version 2.55.0.windows.5
+2026-10-10T07:34:32.9318704Z ##[endgroup]
+2026-10-10T07:34:32.9331321Z Temporarily overriding HOME='D:\a\_temp\69601034-87f4-49a7-b495-683b95732ebd' before making global git config changes
+2026-10-10T07:34:32.9331692Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-10T07:34:32.9338396Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\data-cube\data-cube
+2026-10-10T07:34:32.9886322Z Deleting the contents of 'D:\a\data-cube\data-cube'
+2026-10-10T07:34:32.9889200Z ##[group]Determining repository object format
+2026-10-10T07:34:32.9891465Z ##[endgroup]
+2026-10-10T07:34:32.9891942Z ##[group]Initializing the repository
+2026-10-10T07:34:32.9899947Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\data-cube\data-cube
+2026-10-10T07:34:33.0630842Z Initialized empty Git repository in D:/a/data-cube/data-cube/.git/
+2026-10-10T07:34:33.0665947Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/Clownking99/data-cube
+2026-10-10T07:34:33.1235276Z ##[endgroup]
+2026-10-10T07:34:33.1235543Z ##[group]Disabling automatic garbage collection
+2026-10-10T07:34:33.1242849Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-10-10T07:34:33.1475244Z ##[endgroup]
+2026-10-10T07:34:33.1475838Z ##[group]Setting up auth
+2026-10-10T07:34:33.1476389Z Removing SSH command configuration
+2026-10-10T07:34:33.1484258Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-10T07:34:33.1693230Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-10T07:34:34.4342492Z Removing HTTP extra header
+2026-10-10T07:34:34.4349934Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-10T07:34:34.4545443Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-10T07:34:34.8146212Z Removing includeIf entries pointing to credentials config files
+2026-10-10T07:34:34.8154309Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-10T07:34:34.8337929Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-10T07:34:35.1898845Z [command]"C:\Program Files\Git\bin\git.exe" config --file D:\a\_temp\git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-10-10T07:34:35.2105651Z [command]"C:\Program Files\Git\bin\git.exe" config --local includeIf.gitdir:D:/a/data-cube/data-cube/.git.path D:\a\_temp\git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:35.2297691Z [command]"C:\Program Files\Git\bin\git.exe" config --local includeIf.gitdir:D:/a/data-cube/data-cube/.git/worktrees/*.path D:\a\_temp\git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:35.2548280Z [command]"C:\Program Files\Git\bin\git.exe" config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:35.2756869Z [command]"C:\Program Files\Git\bin\git.exe" config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:35.3000992Z ##[endgroup]
+2026-10-10T07:34:35.3012788Z ##[group]Fetching the repository
+2026-10-10T07:34:35.3013377Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +3af30f12ea225c872b1d65b831ab0a136ef05e18:refs/remotes/origin/main
+2026-10-10T07:34:39.0006389Z From https://github.com/Clownking99/data-cube
+2026-10-10T07:34:39.0006974Z  * [new ref]           3af30f12ea225c872b1d65b831ab0a136ef05e18 -> origin/main
+2026-10-10T07:34:39.0044135Z [command]"C:\Program Files\Git\bin\git.exe" branch --list --remote origin/main
+2026-10-10T07:34:39.0322071Z   origin/main
+2026-10-10T07:34:39.0351727Z [command]"C:\Program Files\Git\bin\git.exe" rev-parse refs/remotes/origin/main
+2026-10-10T07:34:39.0522926Z 3af30f12ea225c872b1d65b831ab0a136ef05e18
+2026-10-10T07:34:39.0541070Z ##[endgroup]
+2026-10-10T07:34:39.0541299Z ##[group]Determining the checkout info
+2026-10-10T07:34:39.0542566Z ##[endgroup]
+2026-10-10T07:34:39.0547938Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-10-10T07:34:39.0840940Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-10-10T07:34:39.1020909Z ##[group]Checking out the ref
+2026-10-10T07:34:39.1027263Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force -B main refs/remotes/origin/main
+2026-10-10T07:34:40.5287252Z Updating files:  10% (5002/47013)
+2026-10-10T07:34:40.5868437Z Updating files:  11% (5172/47013)
+2026-10-10T07:34:40.6490452Z Updating files:  12% (5642/47013)
+2026-10-10T07:34:40.7276621Z Updating files:  13% (6112/47013)
+2026-10-10T07:34:40.7870372Z Updating files:  14% (6582/47013)
+2026-10-10T07:34:40.8555767Z Updating files:  15% (7052/47013)
+2026-10-10T07:34:40.9144878Z Updating files:  16% (7523/47013)
+2026-10-10T07:34:40.9817196Z Updating files:  17% (7993/47013)
+2026-10-10T07:34:41.0427831Z Updating files:  18% (8463/47013)
+2026-10-10T07:34:41.0964320Z Updating files:  19% (8933/47013)
+2026-10-10T07:34:41.1767042Z Updating files:  20% (9403/47013)
+2026-10-10T07:34:41.1828358Z Updating files:  21% (9873/47013)
+2026-10-10T07:34:41.2533228Z Updating files:  21% (9904/47013)
+2026-10-10T07:34:41.8034745Z Updating files:  22% (10343/47013)
+2026-10-10T07:34:41.8568238Z Updating files:  23% (10813/47013)
+2026-10-10T07:34:41.9520174Z Updating files:  24% (11284/47013)
+2026-10-10T07:34:42.0104465Z Updating files:  25% (11754/47013)
+2026-10-10T07:34:42.0659537Z Updating files:  26% (12224/47013)
+2026-10-10T07:34:42.1212299Z Updating files:  27% (12694/47013)
+2026-10-10T07:34:42.1777732Z Updating files:  28% (13164/47013)
+2026-10-10T07:34:42.1975908Z Updating files:  29% (13634/47013)
+2026-10-10T07:34:42.2309892Z Updating files:  29% (13805/47013)
+2026-10-10T07:34:42.2896941Z Updating files:  30% (14104/47013)
+2026-10-10T07:34:42.3423667Z Updating files:  31% (14575/47013)
+2026-10-10T07:34:42.4004765Z Updating files:  32% (15045/47013)
+2026-10-10T07:34:42.4511578Z Updating files:  33% (15515/47013)
+2026-10-10T07:34:42.5086779Z Updating files:  34% (15985/47013)
+2026-10-10T07:34:42.5658854Z Updating files:  35% (16455/47013)
+2026-10-10T07:34:42.6182792Z Updating files:  36% (16925/47013)
+2026-10-10T07:34:43.2004781Z Updating files:  37% (17395/47013)
+2026-10-10T07:34:43.2036585Z Updating files:  37% (17838/47013)
+2026-10-10T07:34:43.2615967Z Updating files:  38% (17865/47013)
+2026-10-10T07:34:43.3154461Z Updating files:  39% (18336/47013)
+2026-10-10T07:34:43.3697485Z Updating files:  40% (18806/47013)
+2026-10-10T07:34:43.4253113Z Updating files:  41% (19276/47013)
+2026-10-10T07:34:43.4858072Z Updating files:  42% (19746/47013)
+2026-10-10T07:34:43.5666477Z Updating files:  43% (20216/47013)
+2026-10-10T07:34:43.6343106Z Updating files:  44% (20686/47013)
+2026-10-10T07:34:43.7058169Z Updating files:  45% (21156/47013)
+2026-10-10T07:34:43.8545159Z Updating files:  46% (21626/47013)
+2026-10-10T07:34:43.9159255Z Updating files:  47% (22097/47013)
+2026-10-10T07:34:43.9756031Z Updating files:  48% (22567/47013)
+2026-10-10T07:34:44.3761298Z Updating files:  49% (23037/47013)
+2026-10-10T07:34:44.4752997Z Updating files:  49% (23093/47013)
+2026-10-10T07:34:44.5669459Z Updating files:  50% (23507/47013)
+2026-10-10T07:34:44.6284589Z Updating files:  51% (23977/47013)
+2026-10-10T07:34:44.7003272Z Updating files:  52% (24447/47013)
+2026-10-10T07:34:44.7709800Z Updating files:  53% (24917/47013)
+2026-10-10T07:34:44.8348585Z Updating files:  54% (25388/47013)
+2026-10-10T07:34:44.9045231Z Updating files:  55% (25858/47013)
+2026-10-10T07:34:44.9765127Z Updating files:  56% (26328/47013)
+2026-10-10T07:34:45.0357256Z Updating files:  57% (26798/47013)
+2026-10-10T07:34:45.0922472Z Updating files:  58% (27268/47013)
+2026-10-10T07:34:45.1504497Z Updating files:  59% (27738/47013)
+2026-10-10T07:34:45.2023530Z Updating files:  60% (28208/47013)
+2026-10-10T07:34:45.2183841Z Updating files:  60% (28568/47013)
+2026-10-10T07:34:45.2883574Z Updating files:  61% (28678/47013)
+2026-10-10T07:34:45.3446743Z Updating files:  62% (29149/47013)
+2026-10-10T07:34:45.4131061Z Updating files:  63% (29619/47013)
+2026-10-10T07:34:45.6061703Z Updating files:  64% (30089/47013)
+2026-10-10T07:34:45.6614689Z Updating files:  65% (30559/47013)
+2026-10-10T07:34:45.7151266Z Updating files:  66% (31029/47013)
+2026-10-10T07:34:45.7693931Z Updating files:  67% (31499/47013)
+2026-10-10T07:34:45.7718019Z ##[error]error: unable to create file docs/superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-full-00e2b227dde74458b9057b6b43637b23/8566128013754f819562707ed9e3a4dc/xml/TEST-com.datacube.provider.jdbc.DriverCancellationClassificationTest.xml: Filename too long
+2026-10-10T07:34:45.7727189Z ##[error]error: unable to create file docs/superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-full-00e2b227dde74458b9057b6b43637b23/8566128013754f819562707ed9e3a4dc/xml/TEST-com.datacube.provider.oracle.OracleSchemaIdentifierNormalizerTest.xml: Filename too long
+2026-10-10T07:34:45.7730536Z ##[error]error: unable to create file docs/superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-full-00e2b227dde74458b9057b6b43637b23/8566128013754f819562707ed9e3a4dc/xml/TEST-com.datacube.provider.oracle.OracleSchemaSnapshotCancellationTest.xml: Filename too long
+2026-10-10T07:34:45.7733743Z ##[error]error: unable to create file docs/superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-full-00e2b227dde74458b9057b6b43637b23/8566128013754f819562707ed9e3a4dc/xml/TEST-com.datacube.provider.oracle.OracleSqlRunnerExecutionControlTest.xml: Filename too long
+2026-10-10T07:34:45.7736937Z ##[error]error: unable to create file docs/superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-full-00e2b227dde74458b9057b6b43637b23/8566128013754f819562707ed9e3a4dc/xml/TEST-com.datacube.provider.postgres.PgSchemaIdentifierNormalizerTest.xml: Filename too long
+2026-10-10T07:34:45.7740491Z ##[error]error: unable to create file docs/superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-full-00e2b227dde74458b9057b6b43637b23/8566128013754f819562707ed9e3a4dc/xml/TEST-com.datacube.provider.postgres.PgSchemaSnapshotCancellationTest.xml: Filename too long
+2026-10-10T07:34:45.8358699Z Updating files:  68% (31969/47013)
+2026-10-10T07:34:45.8963318Z Updating files:  69% (32439/47013)
+2026-10-10T07:34:45.9577866Z Updating files:  70% (32910/47013)
+2026-10-10T07:34:46.0864890Z Updating files:  71% (33380/47013)
+2026-10-10T07:34:46.1465432Z Updating files:  72% (33850/47013)
+2026-10-10T07:34:46.2032561Z Updating files:  73% (34320/47013)
+2026-10-10T07:34:46.2207690Z Updating files:  73% (34709/47013)
+2026-10-10T07:34:46.2903841Z Updating files:  74% (34790/47013)
+2026-10-10T07:34:46.3581535Z Updating files:  75% (35260/47013)
+2026-10-10T07:34:46.4227858Z Updating files:  76% (35730/47013)
+2026-10-10T07:34:46.4844183Z Updating files:  77% (36201/47013)
+2026-10-10T07:34:46.5448300Z Updating files:  78% (36671/47013)
+2026-10-10T07:34:46.6086430Z Updating files:  79% (37141/47013)
+2026-10-10T07:34:46.6787952Z Updating files:  80% (37611/47013)
+2026-10-10T07:34:46.7431045Z Updating files:  81% (38081/47013)
+2026-10-10T07:34:46.8116856Z Updating files:  82% (38551/47013)
+2026-10-10T07:34:46.9436065Z Updating files:  83% (39021/47013)
+2026-10-10T07:34:47.0069186Z Updating files:  84% (39491/47013)
+2026-10-10T07:34:47.0723673Z Updating files:  85% (39962/47013)
+2026-10-10T07:34:47.1408742Z Updating files:  86% (40432/47013)
+2026-10-10T07:34:47.2041879Z Updating files:  87% (40902/47013)
+2026-10-10T07:34:47.2059325Z Updating files:  87% (41354/47013)
+2026-10-10T07:34:47.2873367Z Updating files:  88% (41372/47013)
+2026-10-10T07:34:47.3545371Z Updating files:  89% (41842/47013)
+2026-10-10T07:34:47.4380642Z Updating files:  90% (42312/47013)
+2026-10-10T07:34:47.5179504Z Updating files:  91% (42782/47013)
+2026-10-10T07:34:47.5885012Z Updating files:  92% (43252/47013)
+2026-10-10T07:34:47.6504227Z Updating files:  93% (43723/47013)
+2026-10-10T07:34:47.7164857Z Updating files:  94% (44193/47013)
+2026-10-10T07:34:47.7763931Z Updating files:  95% (44663/47013)
+2026-10-10T07:34:47.8394838Z Updating files:  96% (45133/47013)
+2026-10-10T07:34:47.9033719Z Updating files:  97% (45603/47013)
+2026-10-10T07:34:48.0702515Z Updating files:  98% (46073/47013)
+2026-10-10T07:34:48.1371459Z Updating files:  99% (46543/47013)
+2026-10-10T07:34:48.1371699Z Updating files: 100% (47013/47013)
+2026-10-10T07:34:48.1371848Z Updating files: 100% (47013/47013), done.
+2026-10-10T07:34:48.1928650Z Switched to a new branch 'main'
+2026-10-10T07:34:48.1937549Z branch 'main' set up to track 'origin/main'.
+2026-10-10T07:34:48.2105636Z ##[error]The process 'C:\Program Files\Git\bin\git.exe' failed with exit code 1
+2026-10-10T07:34:48.2463733Z Post job cleanup.
+2026-10-10T07:34:48.3656027Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-10-10T07:34:48.3841866Z git version 2.55.0.windows.5
+2026-10-10T07:34:48.3884197Z Temporarily overriding HOME='D:\a\_temp\c076d173-f83e-4c99-968b-12b2cc990e31' before making global git config changes
+2026-10-10T07:34:48.3884747Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-10T07:34:48.3890777Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\data-cube\data-cube
+2026-10-10T07:34:48.4076870Z Removing SSH command configuration
+2026-10-10T07:34:48.4084290Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-10-10T07:34:48.4297438Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-10-10T07:34:48.8257587Z Removing HTTP extra header
+2026-10-10T07:34:48.8265317Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-10T07:34:48.8482219Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-10-10T07:34:49.2302013Z Removing includeIf entries pointing to credentials config files
+2026-10-10T07:34:49.2312195Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-10T07:34:49.2496620Z includeif.gitdir:D:/a/data-cube/data-cube/.git.path
+2026-10-10T07:34:49.2496989Z includeif.gitdir:D:/a/data-cube/data-cube/.git/worktrees/*.path
+2026-10-10T07:34:49.2497306Z includeif.gitdir:/github/workspace/.git.path
+2026-10-10T07:34:49.2497798Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-10T07:34:49.2524401Z [command]"C:\Program Files\Git\bin\git.exe" config --local --get-all includeif.gitdir:D:/a/data-cube/data-cube/.git.path
+2026-10-10T07:34:49.2691115Z D:\a\_temp\git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:49.2717734Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset includeif.gitdir:D:/a/data-cube/data-cube/.git.path D:\a\_temp\git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:49.2904739Z [command]"C:\Program Files\Git\bin\git.exe" config --local --get-all includeif.gitdir:D:/a/data-cube/data-cube/.git/worktrees/*.path
+2026-10-10T07:34:49.3071123Z D:\a\_temp\git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:49.3100874Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset includeif.gitdir:D:/a/data-cube/data-cube/.git/worktrees/*.path D:\a\_temp\git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:49.3300521Z [command]"C:\Program Files\Git\bin\git.exe" config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-10T07:34:49.3467465Z /github/runner_temp/git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:49.3492312Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:49.3681004Z [command]"C:\Program Files\Git\bin\git.exe" config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-10T07:34:49.3840520Z /github/runner_temp/git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:49.3864947Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config
+2026-10-10T07:34:49.4068332Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-10-10T07:34:49.7575324Z Removing credentials config 'D:\a\_temp\git-credentials-93904148-fc61-4794-ab5f-9d0fb75c17ee.config'
+2026-10-10T07:34:49.7729090Z Cleaning up orphan processes

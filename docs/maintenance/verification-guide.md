@@ -33,7 +33,7 @@ G11 Windows private Job在gate前归属，查询成员与等待实际handle后�
 
 | 结论 | 审核入口 | 原件索引 |
 | --- | --- | --- |
-| Redis二进制键修复 main | [main验收报告](../superpowers/verification/2026-10-10-redis-binary-key-main.md) | [1200原件manifest](../superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-frozen/manifest.json)、[本轮精确SHA交付入口](../superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-package/delivery-intent.json) |
+| Redis二进制键修复 main | [main验收报告](../superpowers/verification/2026-10-10-redis-binary-key-main.md) | [1200原件manifest](../superpowers/verification/evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-frozen/manifest.json)、[Windows checkout补正后精确SHA交付入口](../superpowers/verification/evidence/redis-binary-p3-daea00f81fc04ab9a7ccd87e5842bc9e-ci/delivery-intent.json) |
 | G10 协议准入与恢复 | [P1a root 回执](../superpowers/verification/evidence/g10-redis-20261009-p1a-review/receipt.json) | [worker manifest](../superpowers/verification/evidence/g10-redis-20261009-p1a-worker/raw-manifest.json) |
 | G10 展示、保留与生命周期 | [P1b root 回执](../superpowers/verification/evidence/g10-redis-20261009-p1b-review/receipt.json) | [worker manifest](../superpowers/verification/evidence/g10-redis-20261009-p1b-worker/raw-manifest.json) |
 | G10 开发侧工程验证 | [P2 root 回执](../superpowers/verification/evidence/g10-redis-20261009-p2-review/receipt.json) | [worker manifest](../superpowers/verification/evidence/g10-redis-20261009-p2-worker/raw-manifest.json) |

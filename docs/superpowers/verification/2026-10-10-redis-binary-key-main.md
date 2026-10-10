@@ -27,6 +27,10 @@ root独立审查开发源码、原始证据和Git运输后，在main新UUID合�
 
 ## 交付与待验
 
-本地验收通过。文档/证据最终提交仍绑定相同878工程输入和12工具，随后只推main；最终SHA、远端main、相同SHA的Verify四任务与原始日志以[本轮交付入口](evidence/redis-binary-p3-703d50245ffb4b799a3616f70ce0ba39-package/delivery-intent.json)定位的`delivery-result.json`为准。只有该回执`passed=true`才表示远端交付完成。
+本地验收通过。首次文档提交3af30f12的Verify 38034885345整体失败：Windows在checkout遇到证据路径过长，Java/tests尚未开始；Linux、Redis集成、wrapper校验成功不抵消这一失败。[首失败结果与完整日志](evidence/redis-binary-p3-daea00f81fc04ab9a7ccd87e5842bc9e-ci/first-run.json)保留。
+
+后续只给Verify和Release两处Windows checkout增加步骤级`core.longpaths`配置，Linux矩阵COUNT=0，不改全局配置、产品、测试、任务、权限或发布触发条件。独占合成仓库中，同一387字符路径、同一commit和blob，关闭时退出128并报Filename too long，开启后退出0且68原字节一致；root逐项审核41原件及9个实际Git命令。[独立补正审查](evidence/redis-binary-p3-daea00f81fc04ab9a7ccd87e5842bc9e-ci/review.json)。
+
+本次补正不重跑未改变的本地Java工程；已有本地五阶段仍只对应其实际受验输入。新的878输入中精确记录两个workflow前后哈希，其余876及12工具完全不变，不能称全部878原字节未变。新的最终SHA、远端main、相同SHA Verify四任务和原始日志以[CI补正后交付入口](evidence/redis-binary-p3-daea00f81fc04ab9a7ccd87e5842bc9e-ci/delivery-intent.json)定位的`delivery-result.json`为准。只有新回执`passed=true`才表示远端交付完成；未触发Release来验证发布步骤。
 
 截图中的已安装版本未独立确认，其真实连接没有访问；真实Redis/数据库复测、完整人工桌面及发布验收仍未完成。测试使用mock、合成profile、专用UUID目录与受控本机helper。`.testagent`和原有凭据、配置、SQL历史、业务数据未读取；不fetch/tag/PR/发布/安装更新。v3.2.10和v3.2.9保持不动，不自动扩展下一轮。
