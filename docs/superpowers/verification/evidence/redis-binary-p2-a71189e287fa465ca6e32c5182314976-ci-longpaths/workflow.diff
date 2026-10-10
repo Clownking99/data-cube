@@ -1,0 +1,30 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index ee4aa13c..a0a08da1 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -29,6 +29,10 @@ jobs:
+     steps:
+       - name: Checkout
+         uses: actions/checkout@v6
++        env:
++          GIT_CONFIG_COUNT: '1'
++          GIT_CONFIG_KEY_0: core.longpaths
++          GIT_CONFIG_VALUE_0: 'true'
+         with:
+           fetch-depth: 0
+ 
+diff --git a/.github/workflows/verify.yml b/.github/workflows/verify.yml
+index ea76f7f7..5f0ff310 100644
+--- a/.github/workflows/verify.yml
++++ b/.github/workflows/verify.yml
+@@ -33,6 +33,10 @@ jobs:
+             gradle: .\gradlew.bat
+     steps:
+       - uses: actions/checkout@v6
++        env:
++          GIT_CONFIG_COUNT: ${{ runner.os == 'Windows' && '1' || '0' }}
++          GIT_CONFIG_KEY_0: core.longpaths
++          GIT_CONFIG_VALUE_0: 'true'
+       - uses: actions/setup-java@v5
+         with:
+           distribution: temurin

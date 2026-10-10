@@ -1,0 +1,105 @@
+{
+  "passed": true,
+  "baseCommit": "3af30f12ea225c872b1d65b831ab0a136ef05e18",
+  "windowsCheckouts": 2,
+  "totalCheckouts": 6,
+  "coverage": [
+    {
+      "workflow": ".github/workflows/verify.yml",
+      "job": "wrapper-validation",
+      "runner": "ubuntu-latest",
+      "matrixOS": [],
+      "checkoutLine": 20,
+      "windows": false,
+      "stepEnvironment": false
+    },
+    {
+      "workflow": ".github/workflows/verify.yml",
+      "job": "test",
+      "runner": "${{ matrix.os }}",
+      "matrixOS": [
+        "ubuntu-latest",
+        "windows-latest"
+      ],
+      "checkoutLine": 35,
+      "windows": true,
+      "stepEnvironment": true
+    },
+    {
+      "workflow": ".github/workflows/verify.yml",
+      "job": "redis-integration",
+      "runner": "ubuntu-latest",
+      "matrixOS": [],
+      "checkoutLine": 60,
+      "windows": false,
+      "stepEnvironment": false
+    },
+    {
+      "workflow": ".github/workflows/release.yml",
+      "job": "build",
+      "runner": "windows-latest",
+      "matrixOS": [],
+      "checkoutLine": 31,
+      "windows": true,
+      "stepEnvironment": true
+    },
+    {
+      "workflow": ".github/workflows/schema-diff-integration.yml",
+      "job": "postgresql",
+      "runner": "ubuntu-latest",
+      "matrixOS": [],
+      "checkoutLine": 26,
+      "windows": false,
+      "stepEnvironment": false
+    },
+    {
+      "workflow": ".github/workflows/schema-diff-integration.yml",
+      "job": "oracle",
+      "runner": "ubuntu-latest",
+      "matrixOS": [],
+      "checkoutLine": 57,
+      "windows": false,
+      "stepEnvironment": false
+    }
+  ],
+  "workflowChecks": [
+    {
+      "path": ".github/workflows/verify.yml",
+      "onlyExpectedStepBlocksChanged": true,
+      "addedStepEnvBlocks": [
+        {
+          "line": 36,
+          "count": "GIT_CONFIG_COUNT: ${{ runner.os == 'Windows' && '1' || '0' }}"
+        }
+      ],
+      "workerLength": 2533,
+      "workerSha256": "cc0bf8374e1b6631fa15502f576064e72c3a7b747299a4a670384cfe447f6580"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "onlyExpectedStepBlocksChanged": true,
+      "addedStepEnvBlocks": [
+        {
+          "line": 32,
+          "count": "GIT_CONFIG_COUNT: '1'"
+        }
+      ],
+      "workerLength": 5610,
+      "workerSha256": "b716e4e2ccb0e214946b868741b8e43bbf3dbb454c3e52a0ce4e5efd22cdb409"
+    },
+    {
+      "path": ".github/workflows/schema-diff-integration.yml",
+      "onlyExpectedStepBlocksChanged": true,
+      "addedStepEnvBlocks": [],
+      "workerLength": 3304,
+      "workerSha256": "1fefeaecc3f03f6c690ed2c7da896a20e34c14a9b5fae5954194db151f04797c"
+    }
+  ],
+  "trackedEngineeringChanges": [
+    ".github/workflows/release.yml",
+    ".github/workflows/verify.yml"
+  ],
+  "inputCount": 878,
+  "environmentScope": "Only actions/checkout step. Linux matrix COUNT=0 ignores KEY/VALUE; later steps inherit no added Git env.",
+  "unchanged": "All remaining workflow lines, jobs, filters, permissions and triggers identical to base; production/tests/shared tools unchanged."
+}
