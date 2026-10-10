@@ -1,0 +1,1039 @@
+diff --git a/scripts/verification/VerificationCore.psm1 b/scripts/verification/VerificationCore.psm1
+index aa11fbc8..9c40d266 100644
+--- a/scripts/verification/VerificationCore.psm1
++++ b/scripts/verification/VerificationCore.psm1
+@@ -5,6 +5,18 @@ function Get-VerificationToolPaths {
+     return @('VerificationCore.psm1','OwnedProcessHost.ps1','evidence_tools.py','run-stage.ps1','isolated.gradle','check-core.py','check-p2.py','stage-policy.json','image_tools.py','run-owned.py','probes/G10LinkedRedisProbe.java','probes/MigrationRuntimeDriverProbe.java')
+ }
+ 
++# Existing G11 admission is retained. New runs have a named, direct evidence root
++# and a UUID owned child; this is a lexical check before any filesystem access.
++function Assert-VerificationEvidencePath([string]$Repo,[string]$Path,[ValidateSet('root','owned')][string]$Kind) {
++    $repoPath=Assert-AdmittedPath $Repo;$full=Assert-AdmittedPath $Path
++    $parent=[IO.Path]::Combine($repoPath,'docs','superpowers','verification','evidence')
++    if($full.StartsWith(($parent+[IO.Path]::DirectorySeparatorChar+'g11-'),[StringComparison]::OrdinalIgnoreCase)){return $full}
++    $run=$(if($Kind -eq 'owned'){[IO.Path]::GetDirectoryName($full)}else{$full})
++    if([IO.Path]::GetDirectoryName($run) -ne $parent -or [IO.Path]::GetFileName($run) -cnotmatch '^redis-binary-p[23]-[0-9a-f]{32}(?:-[a-z][a-z0-9-]{0,63})?$') {throw 'UNADMITTED_NAMED_EVIDENCE'}
++    if($Kind -eq 'owned' -and [IO.Path]::GetFileName($full) -cnotmatch '^[0-9a-f]{32}$'){throw 'UNADMITTED_NAMED_SCOPE'}
++    return $full
++}
++
+ function Assert-OwnedExecutableRole($Scope,[string]$Exe,[string]$Role) {
+     # Pure lexical admission: wrong roles/foreign paths fail before metadata.
+     $full=Assert-AdmittedPath $Exe
+@@ -26,8 +38,8 @@ function Assert-OwnedExecutableRole($Scope,[string]$Exe,[string]$Role) {
+ function Bind-OwnedImage($Scope,[string]$SourceScopePath) {
+     if($Scope.stage -ne 'linked'){throw 'IMAGE_BINDING_OUTSIDE_LINKED_STAGE'}
+     $sourcePath=Assert-AdmittedPath $SourceScopePath
+-    $prefix=[IO.Path]::Combine($Scope.paths.Repo,'docs','superpowers','verification','evidence','g11-')
+-    if(-not $sourcePath.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($sourcePath) -ne 'scope.json'){throw 'UNOWNED_IMAGE_SOURCE_SCOPE'}
++    $null=Assert-VerificationEvidencePath $Scope.paths.Repo ([IO.Path]::GetDirectoryName($sourcePath)) 'owned'
++    if([IO.Path]::GetFileName($sourcePath) -ne 'scope.json'){throw 'UNOWNED_IMAGE_SOURCE_SCOPE'}
+     $null=Assert-NoReparse $sourcePath
+     $source=Get-Content -LiteralPath $sourcePath -Raw|ConvertFrom-Json -AsHashtable
+     if($source.stage -ne 'image' -or $source.paths.Repo -ne $Scope.paths.Repo -or $sourcePath -ne [IO.Path]::Combine($source.owned,'scope.json')){throw 'INVALID_IMAGE_SOURCE_SCOPE'}
+@@ -182,8 +194,7 @@ function New-OwnedScope {
+     foreach ($name in @('Repo','EvidenceRoot','Jdk','Cache','Pwsh','Python','RuntimeParent')) { $paths[$name]=Assert-AdmittedPath (Get-Variable $name -ValueOnly) }
+     foreach ($name in $paths.Keys) { $null=Assert-NoReparse $paths[$name] }
+     if ($Stage -notmatch '^[a-z][a-z0-9-]{0,63}$') { throw 'INVALID_STAGE' }
+-    $prefix=[IO.Path]::Combine($paths.Repo,'docs','superpowers','verification','evidence','g11-')
+-    if (-not $paths.EvidenceRoot.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { throw 'EVIDENCE_OUTSIDE_NEW_G11' }
++    $null=Assert-VerificationEvidencePath $paths.Repo $paths.EvidenceRoot 'root'
+     if ([IO.Directory]::Exists($paths.EvidenceRoot) -or [IO.File]::Exists($paths.EvidenceRoot)) { throw 'RUN_COLLISION' }
+     foreach ($name in @('Repo','Jdk','Cache','RuntimeParent')) { if (-not [IO.Directory]::Exists($paths[$name])) { throw "MISSING_$name" } }
+     foreach ($name in @('Pwsh','Python')) { if (-not [IO.File]::Exists($paths[$name])) { throw "MISSING_$name" } }
+@@ -236,8 +247,7 @@ function Invoke-OwnedProcess {
+     if($Name -notmatch '^[a-z][a-z0-9-]{0,63}$' -or $DeadlineMs -le $SettleMs -or $SettleMs -lt 100 -or $StreamCap -lt 1) { throw 'INVALID_PROCESS_POLICY' }
+     $exePath=Assert-AdmittedPath $Exe;$cwdPath=Assert-AdmittedPath $Cwd;$hostPath=Assert-AdmittedPath $HostScript
+     foreach($path in @($Scope.paths.Repo,$Scope.paths.Jdk,$Scope.paths.Cache,$Scope.paths.Pwsh,$Scope.paths.Python,$Scope.owned)){ $null=Assert-AdmittedPath $path }
+-    $ownedPrefix=[IO.Path]::Combine($Scope.paths.Repo,'docs','superpowers','verification','evidence','g11-')
+-    if(-not $Scope.owned.StartsWith($ownedPrefix,[StringComparison]::OrdinalIgnoreCase)){throw 'UNADMITTED_SCOPE'}
++    $null=Assert-VerificationEvidencePath $Scope.paths.Repo $Scope.owned 'owned'
+     $Role=Assert-OwnedExecutableRole $Scope $exePath $Role
+     if($Scope.schema -ne 'owned-scope/v1' -or $cwdPath -notin @($Scope.paths.Repo,$Scope.owned) -or $hostPath -ne $Scope.tools['OwnedProcessHost.ps1'].frozen){throw 'UNADMITTED_PROCESS_REQUEST'}
+     foreach($exe in @($exePath,$Scope.paths.Pwsh)){$null=Assert-NoReparse $exe;if((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -ne $Scope.executables[$exe].sha256 -or ([IO.FileInfo]$exe).Length -ne $Scope.executables[$exe].length){throw 'EXECUTABLE_IDENTITY_CHANGED'}}
+@@ -403,4 +413,4 @@ function Invoke-OwnedProcess {
+     return [pscustomobject]$receipt
+     } finally {foreach($p in $captured.Values){$p.Dispose()};$hostProcess.Dispose();$job.Dispose()}
+ }
+-Export-ModuleMember -Function Assert-AdmittedPath,Assert-NoReparse,New-OwnedScope,Invoke-OwnedProcess,Get-VerificationToolPaths,Assert-OwnedExecutableRole,Bind-OwnedImage
++Export-ModuleMember -Function Assert-AdmittedPath,Assert-NoReparse,New-OwnedScope,Invoke-OwnedProcess,Get-VerificationToolPaths,Assert-OwnedExecutableRole,Bind-OwnedImage,Assert-VerificationEvidencePath
+diff --git a/scripts/verification/check-core.py b/scripts/verification/check-core.py
+index 481bf878..e289a19c 100644
+--- a/scripts/verification/check-core.py
++++ b/scripts/verification/check-core.py
+@@ -207,7 +207,8 @@ def process_checks(repo, directory, pwsh, python, jdk, cache, matrix=None):
+                                ('compile-zero-xml','NONZERO_EXIT'),('compile-stat-failure','NONZERO_EXIT'),('nonzero-child-overflow','NONZERO_EXIT'),
+                                ('skip-live',None),('skip-native','UNAPPROVED_SKIP:'))
+         for mode, expected in matrix:
+-            name = "g11-p2-synthetic-" + uuid.uuid4().hex + "-" + mode
++            run_prefix = "redis-binary-p2-" if directory.name.startswith('redis-binary-p2-') else "redis-binary-p3-" if directory.name.startswith('redis-binary-p3-') else "g11-p2-synthetic-"
++            name = run_prefix + uuid.uuid4().hex + "-" + mode
+             evidence = repo / "docs/superpowers/verification/evidence" / name
+             out_path=repo/'docs/superpowers/verification/evidence'/(name+'-owner')
+             spec={'repo':str(repo),'tools':str(Path(__file__).absolute().parent),'out':str(out_path),'stageEvidence':str(evidence),'mode':'fixture','inputSpec':None,'jdk':jdk,'cache':cache,'pwsh':pwsh,'python':python,'runtimeParent':tempfile.gettempdir(),'imageSourceScope':None,'deadlineSeconds':22,'fixture':mode,'processDeadlineMs':7000,'settleMs':1500,'streamCap':32768 if mode in ('overflow','cap-exact','cap-plus-one','nonzero-child-overflow') else 33554432,'outerFixture':None}
+diff --git a/scripts/verification/run-owned.py b/scripts/verification/run-owned.py
+index 9c58978e..af214e82 100644
+--- a/scripts/verification/run-owned.py
++++ b/scripts/verification/run-owned.py
+@@ -4,6 +4,7 @@ import hashlib
+ import importlib.util
+ import json
+ import os
++import re
+ from pathlib import Path
+ import subprocess
+ import sys
+@@ -38,6 +39,10 @@ class Pump:
+         except Exception as error:self.failureTick=time.monotonic_ns();self.error=type(error).__name__+':'+str(error)
+ 
+ 
++def admitted_run_name(name):
++    return name.startswith(('g11-p2-','g11-p3-')) or bool(re.fullmatch(r'redis-binary-p[23]-[0-9a-f]{32}(?:-[a-z][a-z0-9-]{0,63})?',name))
++
++
+ def main():
+     parser=argparse.ArgumentParser();parser.add_argument('--spec',required=True);args=parser.parse_args()
+     spec=evidence.load(args.spec)
+@@ -47,7 +52,7 @@ def main():
+     source_image=evidence.admitted_path(spec['imageSourceScope']) if spec['imageSourceScope'] else None
+     prefix=paths['repo']/'docs/superpowers/verification/evidence'
+     for key in ('out','stageEvidence'):
+-        if paths[key].parent!=prefix or not paths[key].name.startswith(('g11-p2-','g11-p3-')):raise RuntimeError('OUTER_EVIDENCE_OUTSIDE_G11_P2_P3')
++        if paths[key].parent!=prefix or not admitted_run_name(paths[key].name):raise RuntimeError('OUTER_EVIDENCE_OUTSIDE_G11_P2_P3')
+     if spec['mode'] not in ('targeted','full','buildsrc','image','linked','fixture'):raise RuntimeError('INVALID_OUTER_STAGE')
+     if spec['mode']!='fixture' and ('inputSpec' not in paths or spec['fixture'] is not None):raise RuntimeError('INVALID_OUTER_STAGE_SPEC')
+     outer_cases={'normal':'normal','nonzero-child-pipe':'nonzero-child-pipe','detached-child':'detached-child','overflow':'overflow','nonzero-child-overflow':'nonzero-child-overflow','start-failure':'sleep','assign-failure':'sleep'}
+@@ -57,9 +62,12 @@ def main():
+     if type(spec['deadlineSeconds']) is not int or not 10<=spec['deadlineSeconds']<=1100:raise RuntimeError('INVALID_OUTER_DEADLINE')
+     if paths['tools']!=Path(__file__).absolute().parent:raise RuntimeError('OUTER_FROZEN_TOOL_ROOT_MISMATCH')
+     permitted_work=paths['repo']/'scripts/verification'
+-    permitted_frozen=paths['tools'].is_relative_to(prefix) and any(p.startswith(('g11-p2-','g11-p3-')) for p in paths['tools'].relative_to(prefix).parts[:1])
++    relative_tools=paths['tools'].relative_to(prefix) if paths['tools'].is_relative_to(prefix) else None
++    permitted_frozen=relative_tools is not None and bool(relative_tools.parts) and admitted_run_name(relative_tools.parts[0])
++    if permitted_frozen and relative_tools.parts[0].startswith('redis-binary-') and (len(relative_tools.parts)!=2 or relative_tools.parts[1]!='tools'):raise RuntimeError('OUTER_TOOL_ROOT_OUTSIDE_RUN')
+     if paths['tools']!=permitted_work and not permitted_frozen:raise RuntimeError('OUTER_TOOL_ROOT_OUTSIDE_RUN')
+-    if source_image and (source_image.name!='scope.json' or source_image.parents[1].parent!=prefix or not source_image.parents[1].name.startswith(('g11-p2-','g11-p3-'))):raise RuntimeError('OUTER_IMAGE_SOURCE_OUTSIDE_RUN')
++    if source_image and (source_image.name!='scope.json' or source_image.parents[1].parent!=prefix or not admitted_run_name(source_image.parents[1].name)):raise RuntimeError('OUTER_IMAGE_SOURCE_OUTSIDE_RUN')
++    if source_image and source_image.parents[1].name.startswith('redis-binary-') and not re.fullmatch(r'[0-9a-f]{32}',source_image.parent.name):raise RuntimeError('OUTER_IMAGE_SOURCE_OUTSIDE_RUN')
+     for path in (*paths.values(),*((source_image,) if source_image else ())):evidence.no_links(path)
+     paths['out'].mkdir(exist_ok=False)
+     environment={k:os.environ[k] for k in ('SystemRoot','WINDIR','PATH','COMSPEC','PATHEXT') if k in os.environ}
+diff --git a/scripts/verification/run-stage.ps1 b/scripts/verification/run-stage.ps1
+index b7b7cf77..c6848006 100644
+--- a/scripts/verification/run-stage.ps1
++++ b/scripts/verification/run-stage.ps1
+@@ -17,8 +17,8 @@ if(-not $ScopePath) {
+  & $scope.tools['run-stage.ps1'].frozen -Repo $Repo -ScopePath $scopePath -Mode $Mode -InputSpec $InputSpec -Fixture $Fixture -DeadlineMs $DeadlineMs -SettleMs $SettleMs -StreamCap $StreamCap -ImageSourceScope $ImageSourceScope
+  exit $LASTEXITCODE
+ }
++$null=Assert-VerificationEvidencePath $Repo ([IO.Path]::GetDirectoryName($ScopePath)) 'owned'
+ $null=Assert-NoReparse $ScopePath
+-if(-not $ScopePath.StartsWith((Join-Path $Repo 'docs/superpowers/verification/evidence/g11-'),[StringComparison]::OrdinalIgnoreCase)){throw 'SCOPE_PATH_OUTSIDE_EVIDENCE'}
+ $scope=Get-Content -LiteralPath $ScopePath -Raw|ConvertFrom-Json -AsHashtable
+ if($ScopePath -ne (Join-Path $scope.owned 'scope.json')){throw 'SCOPE_FILE_IDENTITY_MISMATCH'}
+ if($scope.paths.Repo -ne (Assert-AdmittedPath $Repo)){throw 'REPO_SCOPE_MISMATCH'}
+diff --git a/src/com/datacube/fx/RedisKeyBrowserPane.java b/src/com/datacube/fx/RedisKeyBrowserPane.java
+index e01c78e1..9c40efcb 100644
+--- a/src/com/datacube/fx/RedisKeyBrowserPane.java
++++ b/src/com/datacube/fx/RedisKeyBrowserPane.java
+@@ -48,7 +48,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
+     private boolean busy,installing,pendingRefresh;
+     private long nextRequest,activeRequest,valueEpoch;
+     private Runnable pending;
+-    private String desiredKey,displayedKey;
++    private RedisKey desiredKey,displayedKey;
+     private KeyMeta displayedMeta;
+     private Binding displayedBinding;
+     private long displayedPageOffset;
+@@ -124,7 +124,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
+         if(busy) { requestRefresh(); return; }
+         String delimiter=separator.getText(); RedisKeySnapshot old=snapshot; RedisSession captured=session; long gen=++generation; desiredKey=null;
+         submit(gen,()-> {
+-            KeyTreeBuilder.Node model=KeyTreeBuilder.build(List.copyOf(old.keys().keySet()),delimiter,limits);
++            KeyTreeBuilder.Node model=KeyTreeBuilder.buildKeys(List.copyOf(old.keys().keySet()),delimiter,limits);
+             RedisKeySnapshot next=new RedisKeySnapshot(old.keys(),old.rawBytes(),model,old.cursor(),old.database(),old.match(),delimiter);
+             return new ScanResult(next,treeModel(model),captured,false);
+         },this::installScan,this::discardScan,"重建键树...");
+@@ -142,13 +142,13 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
+         catch(Error closing) { if(original!=closing) closing.addSuppressed(original); throw closing; }
+     }
+     private boolean live(long gen) { return !closed && gen==generation; }
+-    private record TreeModel(String label,String key,List<TreeModel> children) {}
++    private record TreeModel(String label,RedisKey key,List<TreeModel> children) {}
+     private TreeModel treeModel(KeyTreeBuilder.Node node) {
+         RedisDisplaySupport.Bounded label=new RedisDisplaySupport.Bounded(limits.labelChars()); label.append(node.segment());
+         if(!node.children().isEmpty()) { label.append(" ("); label.append(Integer.toString(node.keyCount())); label.append(")"); }
+-        if(node.fullKey()!=null && !node.children().isEmpty()) label.append(" •");
++        if(node.key()!=null && !node.children().isEmpty()) label.append(" •");
+         List<TreeModel> children=new ArrayList<>(0); for(var child:node.children()) children.add(treeModel(child));
+-        return new TreeModel(label.finish().text(),node.fullKey(),List.copyOf(children)); // Input depth already <=32.
++        return new TreeModel(label.finish().text(),node.key(),List.copyOf(children)); // Input depth already <=32.
+     }
+     private record ScanResult(RedisKeySnapshot snapshot,TreeModel tree,RedisSession lease,boolean fresh) {}
+     private TreeItem<TreeEntry> treeItem(ScanResult result) {
+@@ -194,21 +194,21 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
+         if(close) closeSession.accept(result.lease());
+     }
+     private boolean sourceCurrent() { return snapshot!=null && session!=null && wantedDb==sessionDb && snapshot.database()==sessionDb; }
+-    private record Binding(RedisSession session,RedisKeySnapshot source,int db,long generation,long epoch,String key,boolean value) {}
+-    private Binding sourceBinding(String key) { return sourceCurrent()?new Binding(session,snapshot,sessionDb,generation,valueEpoch,key,false):null; }
++    private record Binding(RedisSession session,RedisKeySnapshot source,int db,long generation,long epoch,RedisKey key,boolean value) {}
++    private Binding sourceBinding(RedisKey key) { return sourceCurrent()?new Binding(session,snapshot,sessionDb,generation,valueEpoch,key,false):null; }
+     private boolean valid(Binding binding) {
+         return binding!=null && !closed && binding.session()==session && binding.source()==snapshot && binding.db()==wantedDb
+                 && binding.db()==sessionDb && binding.generation()==generation
+                 && (!binding.value() || binding.epoch()==valueEpoch && binding.key().equals(displayedKey) && binding.key().equals(desiredKey));
+     }
+-    private void loadKey(String key) {
++    private void loadKey(RedisKey key) {
+         if(closed || !sourceCurrent() || !snapshot.keys().containsKey(key)) return;
+         if(busy && pendingRefresh) return; // The pending refresh owns its generation; old tree selections lose priority.
+         desiredKey=key; long gen=++generation; updateControls();
+         if(busy) { if(!pendingRefresh) pending=()->startKey(key,gen); return; }
+         startKey(key,gen);
+     }
+-    private void startKey(String key,long gen) {
++    private void startKey(RedisKey key,long gen) {
+         if(!live(gen) || !sourceCurrent()) return;
+         Binding binding=new Binding(session,snapshot,sessionDb,gen,valueEpoch+1,key,true);
+         submit(gen,()-> {
+@@ -219,7 +219,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
+     private record KeyMeta(String type,long ttl) {}
+     private record StringData(long length,RedisDisplaySupport.StringViews views) {}
+     private record Loaded(Binding binding,KeyMeta meta,Object data) {}
+-    private Object readValue(RedisSession captured,String key,String type,long cursor,boolean full) {
++    private Object readValue(RedisSession captured,RedisKey key,String type,long cursor,boolean full) {
+         return switch(type.toLowerCase(Locale.ROOT)) {
+             case "string" -> {
+                 long length=captured.strlen(key);
+@@ -254,9 +254,9 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
+         status.setText("db"+loaded.binding().db()+" · 已读取键");
+     }
+     private List<Node> header(Binding binding,KeyMeta meta) {
+-        Label key=new Label(RedisDisplaySupport.label(binding.key(),limits.labelChars()).text());
++        Label key=new Label(binding.key().display(limits.labelChars()));
+         Label type=new Label(meta.type().toUpperCase(Locale.ROOT));
+-        Button rename=new Button("重命名"); rename.setOnAction(e->promptValue("新键名",limits.singleKeyBytes(),binding,value->mutate(binding,s->{requireKey(value); s.rename(binding.key(),value);return null;},()->requestRefresh())));
++        Button rename=new Button("重命名"); rename.setOnAction(e->promptValue("新键名",limits.singleKeyBytes(),binding,value->mutate(binding,s->{requireKey(value); s.rename(binding.key(),RedisKey.utf8(value));return null;},()->requestRefresh())));
+         Button delete=new Button("删除"); delete.setOnAction(e->confirmDelete(binding));
+         Button reload=new Button("刷新"); reload.setOnAction(e->{if(valid(binding)) loadKey(binding.key());});
+         HBox keyBar=new HBox(6,key,type,rename,reload,delete); keyBar.setAlignment(Pos.CENTER_LEFT);
+@@ -284,7 +284,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
+     }
+     private List<Node> collectionEditor(Binding binding,String type,RedisDisplaySupport.CollectionPage page) {
+         TableView<RedisDisplaySupport.Row> table=table(type,page.rows()); HBox tools=new HBox(6);
+-        String key=binding.key();
++        RedisKey key=binding.key();
+         long offset=type.equalsIgnoreCase("list")?page.next()-page.rows().size():0;
+         switch(type.toLowerCase(Locale.ROOT)) {
+             case "hash" -> {
+@@ -341,7 +341,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
+         } return null;},()->loadPage(binding,type,0,false));
+     }
+     private void createKey() {
+-        Binding binding=sourceBinding(""); if(busy || !valid(binding)) return;
++        Binding binding=sourceBinding(RedisKey.utf8("")); if(busy || !valid(binding)) return;
+         ChoiceDialog<String> choice=new ChoiceDialog<>("String","String","Hash","List","Set","ZSet"); choice.setTitle("新建 Redis 键");
+         choice.showAndWait().ifPresent(kind->{ if(!valid(binding)) return;
+             Dialog<List<String>> dialog=new Dialog<>(); ButtonType ok=new ButtonType("确定",ButtonBar.ButtonData.OK_DONE); dialog.getDialogPane().getButtonTypes().addAll(ok,ButtonType.CANCEL);
+@@ -363,9 +363,10 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
+     private void confirmDelete(Binding binding) {
+         if(busy || !valid(binding)) return;
+         Runnable action=deleteAction(binding); Alert alert=new Alert(Alert.AlertType.CONFIRMATION,"确定删除键？",ButtonType.YES,ButtonType.NO);
+-        alert.setHeaderText(RedisDisplaySupport.label(binding.key(),limits.labelChars()).text()); alert.showAndWait(); if(alert.getResult()==ButtonType.YES) action.run();
++        alert.setHeaderText(binding.key().display(limits.labelChars())); alert.showAndWait(); if(alert.getResult()==ButtonType.YES) action.run();
+     }
+-    Runnable deleteAction(String key) { return deleteAction(sourceBinding(key)); }
++    Runnable deleteAction(String key) { return deleteAction(RedisKey.utf8(key)); }
++    Runnable deleteAction(RedisKey key) { return deleteAction(sourceBinding(key)); }
+     private Runnable deleteAction(Binding binding) { return ()->mutate(binding,s->s.del(binding.key()),this::requestRefresh); }
+     private void promptValue(String label,int cap,Binding binding,Consumer<String> action) {
+         if(!valid(binding) || busy) return;
+@@ -419,13 +420,17 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
+         synchronized(sessionLock){current=session; created=opening; session=null; opening=null;}
+         BestEffortCloseSequence.run(()->{if(current!=null) closeSession.accept(current);},()->{if(created!=null && created!=current) closeSession.accept(created);});
+     }
+-    private record TreeEntry(String label,String key,RedisKeySnapshot source,RedisSession session) { @Override public String toString(){return label;} }
++    private record TreeEntry(String label,RedisKey key,RedisKeySnapshot source,RedisSession session) { @Override public String toString(){return label;} }
++    Runnable copyKeyAction(RedisKey key) { return ()->{
++        try { ClipboardContent content=new ClipboardContent();content.putString(key.clipboardText(limits.editorChars()));Clipboard.getSystemClipboard().setContent(content); }
++        catch(RuntimeException failure) { warn(message(failure)); }
++    }; }
+     private final class KeyCell extends TreeCell<TreeEntry> {
+         @Override protected void updateItem(TreeEntry item,boolean empty) {
+             super.updateItem(item,empty); if(empty || item==null){setText(null);setContextMenu(null);return;}
+             setText(item.label()); if(item.key()==null){setContextMenu(null);return;}
+-            MenuItem copy=new MenuItem("复制键名"); copy.setOnAction(e->{ClipboardContent content=new ClipboardContent();content.putString(item.key());Clipboard.getSystemClipboard().setContent(content);});
+-            MenuItem rename=new MenuItem("重命名"); rename.setOnAction(e->{Binding bind=cellBinding(item); if(valid(bind)) promptValue("新键名",limits.singleKeyBytes(),bind,value->mutate(bind,s->{requireKey(value);s.rename(item.key(),value);return null;},RedisKeyBrowserPane.this::requestRefresh));});
++            MenuItem copy=new MenuItem(item.key().text()==null?"复制键（十六进制）":"复制键名"); copy.setOnAction(e->copyKeyAction(item.key()).run());
++            MenuItem rename=new MenuItem("重命名"); rename.setOnAction(e->{Binding bind=cellBinding(item); if(valid(bind)) promptValue("新键名",limits.singleKeyBytes(),bind,value->mutate(bind,s->{requireKey(value);s.rename(item.key(),RedisKey.utf8(value));return null;},RedisKeyBrowserPane.this::requestRefresh));});
+             MenuItem delete=new MenuItem("删除"); delete.setOnAction(e->{Binding bind=cellBinding(item);if(valid(bind))confirmDelete(bind);});
+             setContextMenu(new ContextMenu(copy,rename,delete));
+         }
+diff --git a/src/com/datacube/redis/KeyTreeBuilder.java b/src/com/datacube/redis/KeyTreeBuilder.java
+index 9d20b089..f7d60099 100644
+--- a/src/com/datacube/redis/KeyTreeBuilder.java
++++ b/src/com/datacube/redis/KeyTreeBuilder.java
+@@ -2,6 +2,7 @@ package com.datacube.redis;
+ 
+ import java.util.ArrayDeque;
+ import java.util.ArrayList;
++import java.util.AbstractList;
+ import java.util.Iterator;
+ import java.util.LinkedHashSet;
+ import java.util.List;
+@@ -10,18 +11,40 @@ import java.util.TreeMap;
+ 
+ /** Stable prefix tree; checks precede splitting, node allocation and freezing. */
+ public final class KeyTreeBuilder {
+-    public record Node(String segment,String fullKey,List<Node> children,int keyCount) {}
++    public record Node(String segment,RedisKey key,List<Node> children,int keyCount) {
++        /** Compatibility projection for text-only callers; never use this as command identity. */
++        public String fullKey() { return key==null?null:key.text(); }
++    }
+     private KeyTreeBuilder() {}
+     public static Node build(List<String> keys,String separator) { return build(keys,separator,RedisDisplayLimits.DEFAULT); }
+     public static Node build(List<String> keys,String separator,RedisDisplayLimits limits) {
++        if(keys!=null && keys.size()>RedisResourceLimits.DEFAULT.arrayElements()) throw RedisDisplaySupport.rejected();
++        List<RedisKey> identities=new AbstractList<>() {
++            @Override public int size() { return keys==null?0:keys.size(); }
++            @Override public RedisKey get(int index) {
++                String key=keys.get(index); if(key==null) return null;
++                RespCodec.utf8Length(key,limits.singleKeyBytes());
++                return RedisKey.utf8(key);
++            }
++        };
++        return buildKeys(identities,separator,limits);
++    }
++    public static Node buildKeys(List<RedisKey> keys,String separator,RedisDisplayLimits limits) {
+         String delimiter=separator==null ? "" : separator;
+         if(delimiter.length()>limits.separatorChars() || keys!=null && keys.size()>RedisResourceLimits.DEFAULT.arrayElements()) throw RedisDisplaySupport.rejected();
+-        Mutable root=new Mutable(""); int nodes=1; long bytes=0; LinkedHashSet<String> seen=new LinkedHashSet<>();
+-        for(String key:keys==null ? List.<String>of() : keys) {
+-            if(key==null || seen.contains(key)) continue;
+-            int length=RespCodec.utf8Length(key,limits.singleKeyBytes());
++        Mutable root=new Mutable(""); int nodes=1; long bytes=0; LinkedHashSet<RedisKey> seen=new LinkedHashSet<>();
++        for(RedisKey identity:keys==null ? List.<RedisKey>of() : keys) {
++            if(identity==null || seen.contains(identity)) continue;
++            int length=identity.size();
++            if(length>limits.singleKeyBytes()) throw RedisDisplaySupport.rejected();
+             if(seen.size()>=limits.keys() || length>limits.keyBytes()-bytes) throw RedisDisplaySupport.rejected();
+-            seen.add(key); bytes+=length;
++            seen.add(identity); bytes+=length;
++            String key=identity.text();
++            if(key==null || key.isEmpty()) {
++                if(nodes>=limits.treeNodes()) throw RedisDisplaySupport.rejected();
++                nodes++; Mutable leaf=new Mutable(identity.treeLabel(limits.labelChars(),seen.size()));
++                leaf.key=identity; root.rawLeaves.add(leaf); continue;
++            }
+             Mutable current=root; int from=0,depth=0;
+             while(true) {
+                 if(++depth>limits.depth()) throw RedisDisplaySupport.rejected();
+@@ -30,29 +53,32 @@ public final class KeyTreeBuilder {
+                 Mutable child=current.children.get(part);
+                 if(child==null) {
+                     if(nodes>=limits.treeNodes()) throw RedisDisplaySupport.rejected();
+-                    nodes++; child=new Mutable(part); current.children.put(part,child);
++                    nodes++; child=new Mutable(RedisKey.textSegment(part,limits.labelChars())); current.children.put(part,child);
+                 }
+                 current=child;
+                 if(next<0) break;
+                 from=next+delimiter.length();
+             }
+-            current.fullKey=key;
++            current.key=identity;
+         }
+         ArrayDeque<Frame> stack=new ArrayDeque<>(); stack.push(new Frame(root));
+         while(true) {
+             Frame frame=stack.peek();
+             if(frame.children.hasNext()) { stack.push(new Frame(frame.children.next())); continue; }
+-            Node frozen=new Node(frame.source.segment,frame.source.fullKey,List.copyOf(frame.frozen),frame.count);
++            Node frozen=new Node(frame.source.segment,frame.source.key,List.copyOf(frame.frozen),frame.count);
+             stack.pop(); if(stack.isEmpty()) return frozen;
+             stack.peek().frozen.add(frozen); stack.peek().count+=frozen.keyCount();
+         }
+     }
+     private static final class Mutable {
+-        final String segment; final Map<String,Mutable> children=new TreeMap<>(); String fullKey;
++        final String segment; final Map<String,Mutable> children=new TreeMap<>(); final List<Mutable> rawLeaves=new ArrayList<>(); RedisKey key;
+         Mutable(String segment) { this.segment=segment; }
+     }
+     private static final class Frame {
+         final Mutable source; final Iterator<Mutable> children; final List<Node> frozen=new ArrayList<>(0); int count;
+-        Frame(Mutable source) { this.source=source; children=source.children.values().iterator(); count=source.fullKey==null ? 0 : 1; }
++        Frame(Mutable source) {
++            this.source=source; List<Mutable> ordered=new ArrayList<>(source.children.values()); ordered.addAll(source.rawLeaves);
++            children=ordered.iterator(); count=source.key==null ? 0 : 1;
++        }
+     }
+ }
+diff --git a/src/com/datacube/redis/RedisKeySnapshot.java b/src/com/datacube/redis/RedisKeySnapshot.java
+index c51d1cb7..4f979958 100644
+--- a/src/com/datacube/redis/RedisKeySnapshot.java
++++ b/src/com/datacube/redis/RedisKeySnapshot.java
+@@ -6,25 +6,26 @@ import java.util.List;
+ import java.util.Map;
+ 
+ /** Entire SCAN page candidate. The caller commits it only after installation succeeds. */
+-public record RedisKeySnapshot(Map<String,Integer> keys,long rawBytes,KeyTreeBuilder.Node tree,
++public record RedisKeySnapshot(Map<RedisKey,Integer> keys,long rawBytes,KeyTreeBuilder.Node tree,
+                                long cursor,int database,String match,String separator) {
++    public RedisKeySnapshot {
++        keys=Collections.unmodifiableMap(new LinkedHashMap<>(keys));
++    }
+     public static RedisKeySnapshot candidate(RedisKeySnapshot previous,RedisSession.ScanPage page,
+                                               int database,String match,String separator,RedisDisplayLimits limits) {
+         if(match.length()>limits.matchChars() || separator.length()>limits.separatorChars()
+                 || page.values().size()>RedisResourceLimits.DEFAULT.arrayElements()) throw RedisDisplaySupport.rejected();
+         if(previous!=null && (previous.database()!=database || !previous.match().equals(match) || !previous.separator().equals(separator))) throw RedisDisplaySupport.rejected();
+-        Map<String,Integer> keys=new LinkedHashMap<>(); long bytes=0;
++        Map<RedisKey,Integer> keys=new LinkedHashMap<>(); long bytes=0;
+         if(previous!=null) { keys.putAll(previous.keys()); bytes=previous.rawBytes(); }
+         for(byte[] raw:page.values()) {
+             if(raw==null || raw.length>limits.singleKeyBytes()) throw RedisDisplaySupport.rejected();
+-            RedisDisplaySupport.Preview decoded=RedisDisplaySupport.text(raw,limits.singleKeyBytes(),false);
+-            if(decoded==null || !decoded.complete()) throw new IllegalArgumentException("键页包含无法按 UTF-8 往返的键；未完整加载，保留原结果");
+-            String key=decoded.text();
++            RedisKey key=RedisKey.of(raw);
+             if(keys.containsKey(key)) continue;
+             if(keys.size()>=limits.keys() || raw.length>limits.keyBytes()-bytes) throw RedisDisplaySupport.rejected();
+             bytes+=raw.length; keys.put(key,raw.length);
+         }
+-        KeyTreeBuilder.Node tree=KeyTreeBuilder.build(List.copyOf(keys.keySet()),separator,limits);
+-        return new RedisKeySnapshot(Collections.unmodifiableMap(keys),bytes,tree,page.cursor(),database,match,separator);
++        KeyTreeBuilder.Node tree=KeyTreeBuilder.buildKeys(List.copyOf(keys.keySet()),separator,limits);
++        return new RedisKeySnapshot(keys,bytes,tree,page.cursor(),database,match,separator);
+     }
+ }
+diff --git a/src/com/datacube/redis/RedisSession.java b/src/com/datacube/redis/RedisSession.java
+index cf360c29..bdb3420f 100644
+--- a/src/com/datacube/redis/RedisSession.java
++++ b/src/com/datacube/redis/RedisSession.java
+@@ -46,30 +46,58 @@ public final class RedisSession implements AutoCloseable {
+         return text(call("TYPE", key), 128);
+     }
+ 
++    public String type(RedisKey key) {
++        return text(call("TYPE", key), 128);
++    }
++
+     public long ttl(String key) {
+         return integer(call("TTL", key));
+     }
+ 
++    public long ttl(RedisKey key) {
++        return integer(call("TTL", key));
++    }
++
+     public boolean expire(String key, long seconds) {
+         return integer(call("EXPIRE", key, seconds)) != 0;
+     }
+ 
++    public boolean expire(RedisKey key, long seconds) {
++        return integer(call("EXPIRE", key, seconds)) != 0;
++    }
++
+     public boolean persist(String key) {
+         return integer(call("PERSIST", key)) != 0;
+     }
+ 
++    public boolean persist(RedisKey key) {
++        return integer(call("PERSIST", key)) != 0;
++    }
++
+     public boolean del(String key) {
+         return integer(call("DEL", key)) != 0;
+     }
+ 
++    public boolean del(RedisKey key) {
++        return integer(call("DEL", key)) != 0;
++    }
++
+     public void rename(String key, String newKey) {
+         expectOk(call("RENAME", key, newKey), "RENAME");
+     }
+ 
++    public void rename(RedisKey key, RedisKey newKey) {
++        expectOk(call("RENAME", key, newKey), "RENAME");
++    }
++
+     public boolean exists(String key) {
+         return integer(call("EXISTS", key)) != 0;
+     }
+ 
++    public boolean exists(RedisKey key) {
++        return integer(call("EXISTS", key)) != 0;
++    }
++
+     public long dbsize() {
+         return integer(call("DBSIZE"));
+     }
+@@ -93,18 +121,34 @@ public final class RedisSession implements AutoCloseable {
+         return bytesOrNull(call("GET", key));
+     }
+ 
++    public byte[] get(RedisKey key) {
++        return bytesOrNull(call("GET", key));
++    }
++
+     public long strlen(String key) {
+         return integer(call("STRLEN", key));
+     }
+ 
++    public long strlen(RedisKey key) {
++        return integer(call("STRLEN", key));
++    }
++
+     public byte[] getrange(String key, long start, long end) {
+         return bytesOrNull(call("GETRANGE", key, start, end));
+     }
+ 
++    public byte[] getrange(RedisKey key, long start, long end) {
++        return bytesOrNull(call("GETRANGE", key, start, end));
++    }
++
+     public void set(String key, byte[] value) {
+         expectOk(call("SET", key, value), "SET");
+     }
+ 
++    public void set(RedisKey key, byte[] value) {
++        expectOk(call("SET", key, value), "SET");
++    }
++
+     public HashScanPage hscan(String key, long cursor, int count) {
+         ScanPage page = scanPage(call("HSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
+         requirePairs(page.values(), "HSCAN");
+@@ -115,50 +159,104 @@ public final class RedisSession implements AutoCloseable {
+         return new HashScanPage(page.cursor(), List.copyOf(entries));
+     }
+ 
++    public HashScanPage hscan(RedisKey key, long cursor, int count) {
++        ScanPage page = scanPage(call("HSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
++        requirePairs(page.values(), "HSCAN");
++        List<HashEntry> entries = new ArrayList<>(page.values().size() / 2);
++        for (int i = 0; i + 1 < page.values().size(); i += 2) {
++            entries.add(new HashEntry(page.values().get(i), page.values().get(i + 1)));
++        }
++        return new HashScanPage(page.cursor(), List.copyOf(entries));
++    }
++
+     public boolean hset(String key, byte[] field, byte[] value) {
+         return integer(call("HSET", key, field, value)) != 0;
+     }
+ 
++    public boolean hset(RedisKey key, byte[] field, byte[] value) {
++        return integer(call("HSET", key, field, value)) != 0;
++    }
++
+     public boolean hdel(String key, byte[] field) {
+         return integer(call("HDEL", key, field)) != 0;
+     }
+ 
++    public boolean hdel(RedisKey key, byte[] field) {
++        return integer(call("HDEL", key, field)) != 0;
++    }
++
+     public long llen(String key) {
+         return integer(call("LLEN", key));
+     }
+ 
++    public long llen(RedisKey key) {
++        return integer(call("LLEN", key));
++    }
++
+     public List<byte[]> lrange(String key, long start, long stop) {
+         return byteList(call("LRANGE", key, start, stop));
+     }
+ 
++    public List<byte[]> lrange(RedisKey key, long start, long stop) {
++        return byteList(call("LRANGE", key, start, stop));
++    }
++
+     public long lpush(String key, byte[] value) {
+         return integer(call("LPUSH", key, value));
+     }
+ 
++    public long lpush(RedisKey key, byte[] value) {
++        return integer(call("LPUSH", key, value));
++    }
++
+     public long rpush(String key, byte[] value) {
+         return integer(call("RPUSH", key, value));
+     }
+ 
++    public long rpush(RedisKey key, byte[] value) {
++        return integer(call("RPUSH", key, value));
++    }
++
+     public void lset(String key, long index, byte[] value) {
+         expectOk(call("LSET", key, index, value), "LSET");
+     }
+ 
++    public void lset(RedisKey key, long index, byte[] value) {
++        expectOk(call("LSET", key, index, value), "LSET");
++    }
++
+     public long lrem(String key, long count, byte[] value) {
+         return integer(call("LREM", key, count, value));
+     }
+ 
++    public long lrem(RedisKey key, long count, byte[] value) {
++        return integer(call("LREM", key, count, value));
++    }
++
+     public ScanPage sscan(String key, long cursor, int count) {
+         return scanPage(call("SSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
+     }
+ 
++    public ScanPage sscan(RedisKey key, long cursor, int count) {
++        return scanPage(call("SSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
++    }
++
+     public boolean sadd(String key, byte[] member) {
+         return integer(call("SADD", key, member)) != 0;
+     }
+ 
++    public boolean sadd(RedisKey key, byte[] member) {
++        return integer(call("SADD", key, member)) != 0;
++    }
++
+     public boolean srem(String key, byte[] member) {
+         return integer(call("SREM", key, member)) != 0;
+     }
+ 
++    public boolean srem(RedisKey key, byte[] member) {
++        return integer(call("SREM", key, member)) != 0;
++    }
++
+     public ZScanPage zscan(String key, long cursor, int count) {
+         ScanPage page = scanPage(call("ZSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
+         requirePairs(page.values(), "ZSCAN");
+@@ -173,18 +271,44 @@ public final class RedisSession implements AutoCloseable {
+         return new ZScanPage(page.cursor(), List.copyOf(entries));
+     }
+ 
++    public ZScanPage zscan(RedisKey key, long cursor, int count) {
++        ScanPage page = scanPage(call("ZSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
++        requirePairs(page.values(), "ZSCAN");
++        List<ScoredValue> entries = new ArrayList<>(page.values().size() / 2);
++        for (int i = 0; i + 1 < page.values().size(); i += 2) {
++            try {
++                entries.add(new ScoredValue(page.values().get(i), Double.parseDouble(text(page.values().get(i + 1), 128))));
++            } catch (NumberFormatException invalid) {
++                throw RedisException.rejected(RedisException.Kind.PROTOCOL, RedisException.Delivery.REPLIED);
++            }
++        }
++        return new ZScanPage(page.cursor(), List.copyOf(entries));
++    }
++
+     public boolean zadd(String key, double score, byte[] member) {
+         return integer(call("ZADD", key, Double.toString(score), member)) != 0;
+     }
+ 
++    public boolean zadd(RedisKey key, double score, byte[] member) {
++        return integer(call("ZADD", key, Double.toString(score), member)) != 0;
++    }
++
+     public boolean zrem(String key, byte[] member) {
+         return integer(call("ZREM", key, member)) != 0;
+     }
+ 
++    public boolean zrem(RedisKey key, byte[] member) {
++        return integer(call("ZREM", key, member)) != 0;
++    }
++
+     public long zcard(String key) {
+         return integer(call("ZCARD", key));
+     }
+ 
++    public long zcard(RedisKey key) {
++        return integer(call("ZCARD", key));
++    }
++
+     public Object raw(String... args) {
+         return call((Object[]) args);
+     }
+diff --git a/src/com/datacube/redis/RespCodec.java b/src/com/datacube/redis/RespCodec.java
+index dd35e43c..62343649 100644
+--- a/src/com/datacube/redis/RespCodec.java
++++ b/src/com/datacube/redis/RespCodec.java
+@@ -30,6 +30,8 @@ final class RespCodec {
+             if (args[i] instanceof byte[] bytes) {
+                 System.arraycopy(bytes, 0, frame, offset, bytes.length);
+                 offset += bytes.length;
++            } else if(args[i] instanceof RedisKey key) {
++                byte[] bytes=key.bytes(); System.arraycopy(bytes,0,frame,offset,bytes.length); offset+=bytes.length;
+             } else offset = writeUtf8(textArgument(args[i]), frame, offset);
+             frame[offset++] = '\r';
+             frame[offset++] = '\n';
+@@ -42,7 +44,7 @@ final class RespCodec {
+         preflight(args, limits); // Before getBytes and the argument matrix.
+         byte[][] result = new byte[args.length][];
+         for (int i = 0; i < args.length; i++) {
+-            result[i] = args[i] instanceof byte[] bytes ? bytes : textArgument(args[i]).getBytes(StandardCharsets.UTF_8);
++            result[i] = args[i] instanceof byte[] bytes ? bytes : args[i] instanceof RedisKey key ? key.bytes() : textArgument(args[i]).getBytes(StandardCharsets.UTF_8);
+         }
+         return result;
+     }
+@@ -61,7 +63,7 @@ final class RespCodec {
+         long frame = 1L + digits(args.length) + 2;
+         for (int i = 0; i < args.length; i++) {
+             Object arg = Objects.requireNonNull(args[i], "Redis command argument");
+-            int length = arg instanceof byte[] bytes ? bytes.length : utf8Length(textArgument(arg), limits.requestPayloadBytes());
++            int length = arg instanceof byte[] bytes ? bytes.length : arg instanceof RedisKey key ? key.size() : utf8Length(textArgument(arg), limits.requestPayloadBytes());
+             if (length > limits.requestPayloadBytes() - payload) throw requestFailure();
+             payload += length;
+             frame += 1L + digits(length) + 2 + length + 2;
+diff --git a/test/com/datacube/fx/RedisPaneBudgetTest.java b/test/com/datacube/fx/RedisPaneBudgetTest.java
+index 0c2ffba3..3c43084d 100644
+--- a/test/com/datacube/fx/RedisPaneBudgetTest.java
++++ b/test/com/datacube/fx/RedisPaneBudgetTest.java
+@@ -70,14 +70,14 @@ class RedisPaneBudgetTest {
+             Object current=FxUiTestSupport.call(()->tree(fixture.pane).getRoot());fixture.hook.set(()->{throw new IllegalStateException("synthetic tree installation failure");});fixture.arm();fixture.fire("redis-refresh");fixture.failed();
+             FxUiTestSupport.call(()->{assertSame(current,tree(fixture.pane).getRoot());assertEquals(3,snapshot(fixture.pane).keys().size());return null;});
+             fixture.hook.set(()->{});fixture.arm();fixture.fire("redis-refresh");fixture.installed();
+-            FxUiTestSupport.call(()->{assertEquals(List.of("c"),List.copyOf(snapshot(fixture.pane).keys().keySet()));return null;});
++            FxUiTestSupport.call(()->{assertEquals(List.of("c"),snapshot(fixture.pane).keys().keySet().stream().map(RedisKey::text).toList());return null;});
+         }
+     }
+     @Test void pendingRefreshWinsOldTreeSelectionAndLatestDbIntentIsNotDropped() throws Exception {
+         gate();CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);List<Integer> opened=new CopyOnWriteArrayList<>();AtomicInteger scans=new AtomicInteger();
+         try(Browser fixture=new Browser(db->{opened.add(db);return args->{if(command(args).equals("SCAN")){scans.incrementAndGet();return scan(0,"a","b");}if(command(args).equals("GET") && key(args).equals("a")){entered.countDown();awaitIgnoringInterrupt(release);}return normal(args,bytes(keySafe(args)));};},SMALL)) {
+             fixture.installed();fixture.arm();fixture.select("a");await(entered);fixture.fire("redis-refresh");fixture.select("b");release.countDown();fixture.installed();
+-            FxUiTestSupport.call(()->{assertFalse(field(fixture.pane,"busy",Boolean.class));assertNull(field(fixture.pane,"displayedKey",String.class));assertEquals(0,snapshot(fixture.pane).database());return null;});assertEquals(2,scans.get());
++            FxUiTestSupport.call(()->{assertFalse(field(fixture.pane,"busy",Boolean.class));assertNull(field(fixture.pane,"displayedKey",RedisKey.class));assertEquals(0,snapshot(fixture.pane).database());return null;});assertEquals(2,scans.get());
+             CountDownLatch enteredAgain=new CountDownLatch(1),releaseAgain=new CountDownLatch(1);
+             fixture.handlerOverride.set(args->{if(command(args).equals("GET")){enteredAgain.countDown();awaitIgnoringInterrupt(releaseAgain);}return normal(args,bytes("value"));});fixture.arm();fixture.select("a");await(enteredAgain);
+             fixture.db(1);fixture.db(2);fixture.select("b");fixture.handlerOverride.set(null);releaseAgain.countDown();fixture.installed();
+@@ -88,7 +88,7 @@ class RedisPaneBudgetTest {
+         gate();CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
+         try(Browser fixture=new Browser(db->args->{if(command(args).equals("SCAN"))return scan(0,"a","b");if(command(args).equals("GET") && key(args).equals("a")){entered.countDown();awaitIgnoringInterrupt(release);}return normal(args,bytes(keySafe(args)));},SMALL)) {
+             fixture.installed();fixture.arm();fixture.select("a");await(entered);fixture.select("b");release.countDown();fixture.installed();
+-            FxUiTestSupport.call(()->{assertEquals("b",field(fixture.pane,"displayedKey",String.class));assertEquals("b",find(fixture.pane.getNode(),"redis-string-editor",TextArea.class).getText());return null;});
++            FxUiTestSupport.call(()->{assertEquals(RedisKey.utf8("b"),field(fixture.pane,"displayedKey",RedisKey.class));assertEquals("b",find(fixture.pane.getNode(),"redis-string-editor",TextArea.class).getText());return null;});
+         } finally {release.countDown();}
+     }
+     @Test void failedDbSwitchRetainsReadonlyOldSourceAndOldActionCannotMutateNewSession() throws Exception {
+@@ -172,6 +172,80 @@ class RedisPaneBudgetTest {
+         }
+     }
+     private static ConnConfig config(){return new ConnConfig("synthetic","synthetic",DbType.REDIS,"127.0.0.1",1,"0","","",Map.of());}
++    @Test void binaryKeySelectionAndFiveEditorsSendOriginalKeyBytesAndInvalidateOldBinding() throws Exception {
++        gate();byte[] raw={(byte)0xff,0,':','\n'},value={1,2},field={0,(byte)0xfe};RedisKey identity=RedisKey.of(raw);
++        List<byte[][]> writes=new CopyOnWriteArrayList<>();AtomicReference<String> type=new AtomicReference<>("string");
++        try(Browser fixture=new Browser(db->args->{
++            String command=command(args);
++            if(command.equals("SCAN"))return List.of(bytes("0"),List.of(bytes("user:a"),raw.clone(),new byte[0],raw.clone()));
++            if(command.equals("PING"))return bytes("PONG");
++            assertArrayEquals(raw,args[1],command);
++            return switch(command){
++                case "TYPE"->bytes(type.get());case "TTL"->-1L;case "STRLEN"->2L;case "GET","GETRANGE"->value;
++                case "HSCAN"->List.of(bytes("0"),List.of(field,value));case "LRANGE"->List.of(value);case "LLEN"->1L;
++                case "SSCAN"->List.of(bytes("0"),List.of(value));case "ZSCAN"->List.of(bytes("0"),List.of(value,bytes("1")));
++                case "SET","HSET","LSET","SADD","ZADD","DEL"->{writes.add(args);yield command.equals("SET")||command.equals("LSET")?bytes("OK"):1L;}
++                default->throw new AssertionError(command);
++            };
++        },SMALL)) {
++            fixture.installed();FxUiTestSupport.call(()->{assertEquals(3,snapshot(fixture.pane).keys().size());return null;});
++            fixture.arm();fixture.select(identity);fixture.installed();
++            FxUiTestSupport.call(()->{mode(fixture.pane).setValue(RedisDisplaySupport.Mode.HEX);assertEquals("01 02",find(fixture.pane.getNode(),"redis-string-editor",TextArea.class).getText());return null;});
++            fixture.arm();fixture.fire("redis-string-save");fixture.installed();
++            for(String kind:List.of("hash","list","set","zset")) {
++                type.set(kind);fixture.arm();fixture.selectAgain(identity);fixture.installed();fixture.arm();
++                FxUiTestSupport.call(()->{var row=values(fixture.pane).getItems().getFirst();
++                    if(kind.equals("set"))fixture.pane.addMemberAction(kind,value,0).run();
++                    else if(kind.equals("zset"))fixture.pane.updateScoreAction(row.rawA(),"2").run();
++                    else fixture.pane.updateRowAction(kind,row,value).run();return null;});fixture.installed();
++            }
++            assertEquals(List.of("SET","HSET","LSET","SADD","ZADD"),writes.stream().map(RedisPaneBudgetTest::command).toList());
++            for(var args:writes)assertArrayEquals(raw,args[1]);assertArrayEquals(field,writes.get(1)[2]);
++            assertArrayEquals(value,writes.get(0)[2]);assertArrayEquals(value,writes.get(1)[3]);assertEquals("0",new String(writes.get(2)[2],UTF_8));
++            assertArrayEquals(value,writes.get(2)[3]);assertArrayEquals(value,writes.get(3)[2]);assertEquals("2.0",new String(writes.get(4)[2],UTF_8));assertArrayEquals(value,writes.get(4)[3]);
++            Runnable oldEdit=FxUiTestSupport.call(()->fixture.pane.updateScoreAction(value,"3"));
++            Runnable oldDelete=FxUiTestSupport.call(()->fixture.pane.deleteAction(identity));
++            fixture.arm();fixture.fire("redis-refresh");fixture.installed();
++            FxUiTestSupport.call(()->{long request=field(fixture.pane,"activeRequest",Long.class);oldEdit.run();oldDelete.run();assertEquals(request,field(fixture.pane,"activeRequest",Long.class));return null;});
++            fixture.arm();fixture.select(identity);fixture.installed();
++            Runnable beforeDbEdit=FxUiTestSupport.call(()->fixture.pane.updateScoreAction(value,"3"));
++            Runnable beforeDbDelete=FxUiTestSupport.call(()->fixture.pane.deleteAction(identity));
++            fixture.arm();fixture.db(1);fixture.installed();
++            FxUiTestSupport.call(()->{long request=field(fixture.pane,"activeRequest",Long.class);beforeDbEdit.run();beforeDbDelete.run();assertEquals(request,field(fixture.pane,"activeRequest",Long.class));return null;});
++            fixture.arm();fixture.select(identity);fixture.installed();
++            Runnable beforeCloseEdit=FxUiTestSupport.call(()->fixture.pane.updateScoreAction(value,"3"));
++            Runnable beforeCloseDelete=FxUiTestSupport.call(()->fixture.pane.deleteAction(identity));
++            FxUiTestSupport.call(()->{fixture.pane.close();long request=field(fixture.pane,"activeRequest",Long.class);beforeCloseEdit.run();beforeCloseDelete.run();assertEquals(request,field(fixture.pane,"activeRequest",Long.class));return null;});assertEquals(5,writes.size());
++        }
++    }
++    @Test void binaryScanOverflowAndInstallFailureKeepOriginalTreeAndCursor() throws Exception {
++        gate();byte[] a={(byte)0xff},b={0},c={1};AtomicInteger scans=new AtomicInteger();
++        var limits=new RedisDisplayLimits(64,3,128,3,32,2,128,64,32,4,8,32,32,2,16,128,32);
++        try(Browser fixture=new Browser(db->args->{if(command(args).equals("SCAN"))return switch(scans.incrementAndGet()){
++            case 1->List.of(bytes("7"),List.of(a));case 2->List.of(bytes("0"),List.of(b,c));default->List.of(bytes("0"),List.of(a.clone(),b));};return normal(args,bytes("value"));},limits)) {
++            fixture.installed();Object old=FxUiTestSupport.call(()->tree(fixture.pane).getRoot());fixture.arm();fixture.fire("redis-load-more");fixture.failed();
++            FxUiTestSupport.call(()->{assertSame(old,tree(fixture.pane).getRoot());assertEquals(7,snapshot(fixture.pane).cursor());assertEquals(1,snapshot(fixture.pane).keys().size());return null;});
++            fixture.hook.set(()->{throw new IllegalStateException("synthetic binary install refusal");});fixture.arm();fixture.fire("redis-load-more");fixture.failed();
++            FxUiTestSupport.call(()->{assertSame(old,tree(fixture.pane).getRoot());assertEquals(7,snapshot(fixture.pane).cursor());return null;});
++            fixture.hook.set(()->{});fixture.arm();fixture.fire("redis-load-more");fixture.installed();
++            FxUiTestSupport.call(()->{assertEquals(2,snapshot(fixture.pane).keys().size());assertEquals(2,snapshot(fixture.pane).rawBytes());assertEquals(0,snapshot(fixture.pane).cursor());return null;});
++        }
++    }
++    @Test void delayedBinaryValueCannotOverwriteDifferentRawSelection() throws Exception {
++        gate();byte[] first={(byte)0xff},second={(byte)0xfe};RedisKey last=RedisKey.of(second);
++        CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
++        try(Browser fixture=new Browser(db->args->{
++            if(command(args).equals("SCAN"))return List.of(bytes("0"),List.of(first,second));
++            if(command(args).equals("GET")){
++                if(java.util.Arrays.equals(first,args[1])){entered.countDown();awaitIgnoringInterrupt(release);return bytes("old");}
++                assertArrayEquals(second,args[1]);return bytes("new");
++            }
++            return normal(args,bytes("value"));
++        },SMALL)) {
++            fixture.installed();fixture.arm();fixture.select(RedisKey.of(first));await(entered);fixture.select(last);release.countDown();fixture.installed();
++            FxUiTestSupport.call(()->{assertEquals(last,field(fixture.pane,"displayedKey",RedisKey.class));assertEquals("new",find(fixture.pane.getNode(),"redis-string-editor",TextArea.class).getText());return null;});
++        }finally{release.countDown();}
++    }
+     private static Object normal(byte[][] args,byte[] value){return switch(command(args)){case "PING"->bytes("PONG");case "TYPE"->bytes("string");case "TTL"->-1L;case "STRLEN"->(long)value.length;case "GET","GETRANGE"->value;case "DEL"->1L;default->throw new AssertionError("Unexpected synthetic command: "+command(args));};}
+     private static String keySafe(byte[][] args){return args.length>1?key(args):"value";}
+     private static void execute(RedisConsolePane pane,String text)throws Exception{FxUiTestSupport.call(()->{TextField input=find(pane.getNode(),"redis-console-input",TextField.class);input.setText(text);input.fireEvent(new ActionEvent());return null;});}
+@@ -202,6 +276,13 @@ class RedisPaneBudgetTest {
+         void db(int db)throws Exception{FxUiTestSupport.call(()->{find(pane.getNode(),"redis-database",ComboBox.class).setValue(db);return null;});}
+         void select(String key)throws Exception{FxUiTestSupport.call(()->{TreeItem<Object> selected=findItem(tree(pane).getRoot(),key);tree(pane).getSelectionModel().select(selected);return null;});}
+         void selectAgain(String key)throws Exception{FxUiTestSupport.call(()->{tree(pane).getSelectionModel().clearSelection();return null;});select(key);}
++        void select(RedisKey key)throws Exception{FxUiTestSupport.call(()->{TreeItem<Object> item=findIdentity(tree(pane).getRoot(),key);assertNotNull(item);tree(pane).getSelectionModel().select(item);return null;});}
++        void selectAgain(RedisKey key)throws Exception{FxUiTestSupport.call(()->{tree(pane).getSelectionModel().clearSelection();return null;});select(key);}
++        private static TreeItem<Object> findIdentity(TreeItem<Object> item,RedisKey key)throws Exception{
++            var accessor=item.getValue().getClass().getDeclaredMethod("key");accessor.setAccessible(true);
++            if(key.equals(accessor.invoke(item.getValue())))return item;
++            for(var child:item.getChildren()){var found=findIdentity(child,key);if(found!=null)return found;}return null;
++        }
+         private static TreeItem<Object> findItem(TreeItem<Object> root,String key){if(root.getValue().toString().equals(key))return root;for(var child:root.getChildren()){TreeItem<Object> found=findItemOrNull(child,key);if(found!=null)return found;}throw new AssertionError("key missing");}
+         private static TreeItem<Object> findItemOrNull(TreeItem<Object> item,String key){if(item.getValue().toString().equals(key))return item;for(var child:item.getChildren()){TreeItem<Object> found=findItemOrNull(child,key);if(found!=null)return found;}return null;}
+         @Override public void close()throws Exception{pane.close();runner.close();}
+diff --git a/test/com/datacube/redis/RedisDisplayBudgetTest.java b/test/com/datacube/redis/RedisDisplayBudgetTest.java
+index 76fa1c62..eb62e265 100644
+--- a/test/com/datacube/redis/RedisDisplayBudgetTest.java
++++ b/test/com/datacube/redis/RedisDisplayBudgetTest.java
+@@ -53,8 +53,9 @@ class RedisDisplayBudgetTest {
+         assertEquals(2,duplicate.keys().size()); assertEquals(4,duplicate.rawBytes()); assertEquals(-1,duplicate.cursor());
+         var empty=RedisKeySnapshot.candidate(duplicate,page(3),0,"*",":",SMALL); assertEquals(3,empty.cursor());
+         assertThrows(IllegalArgumentException.class,()->RedisKeySnapshot.candidate(first,page(0,"c","d"),0,"*",":",SMALL));
+-        assertEquals(7,first.cursor()); assertEquals(List.of("a:b","a"),List.copyOf(first.keys().keySet()));
+-        assertThrows(IllegalArgumentException.class,()->RedisKeySnapshot.candidate(first,new RedisSession.ScanPage(0,List.of(new byte[]{-1})),0,"*",":",SMALL));
++        assertEquals(7,first.cursor()); assertEquals(List.of("a:b","a"),first.keys().keySet().stream().map(RedisKey::text).toList());
++        var mixed=RedisKeySnapshot.candidate(first,new RedisSession.ScanPage(0,List.of(new byte[]{-1})),0,"*",":",SMALL);
++        assertEquals(3,mixed.keys().size());assertTrue(mixed.keys().containsKey(RedisKey.of(new byte[]{-1})));assertEquals(0,mixed.cursor());assertEquals(7,first.cursor());
+         assertThrows(IllegalArgumentException.class,()->RedisKeySnapshot.candidate(first,page(0,"a:b:c:d"),0,"*",":",SMALL));
+     }
+     @Test void countIsOnlyAHintAndKeyByteTreeDepthAndNodeBoundariesAreIndependent() {
+diff --git a/src/com/datacube/redis/RedisKey.java b/src/com/datacube/redis/RedisKey.java
+new file mode 100644
+--- /dev/null
++++ b/src/com/datacube/redis/RedisKey.java
+@@ -0,0 +1,69 @@
++package com.datacube.redis;
++
++import java.nio.charset.StandardCharsets;
++import java.util.Arrays;
++import java.util.Objects;
++
++/** Immutable Redis bulk-string identity. Display projections never round-trip into commands. */
++public final class RedisKey {
++    private final byte[] raw;
++    private final int hash;
++    private final String text;
++
++    private RedisKey(byte[] raw) {
++        this.raw=raw.clone();
++        hash=Arrays.hashCode(this.raw);
++        var decoded=RedisDisplaySupport.text(this.raw,Math.max(1,this.raw.length),false);
++        String candidate=decoded==null?null:decoded.text();
++        // Newlines, format/bidi controls and invisible separators are not tree paths.
++        text=candidate!=null && candidate.codePoints().allMatch(cp->!Character.isISOControl(cp)
++                && Character.getType(cp)!=Character.FORMAT && cp!=0x2028 && cp!=0x2029)?candidate:null;
++    }
++    /** Factories reject a key exceeding the default request payload before copying/encoding.
++     * The browser applies its smaller key/page budgets; RespCodec checks the entire command. */
++    public static RedisKey of(byte[] raw) {
++        Objects.requireNonNull(raw,"raw key");
++        if(raw.length>RedisResourceLimits.DEFAULT.requestPayloadBytes()) throw RedisDisplaySupport.rejected();
++        return new RedisKey(raw);
++    }
++    public static RedisKey utf8(String text) {
++        Objects.requireNonNull(text,"key");
++        RespCodec.utf8Length(text,RedisResourceLimits.DEFAULT.requestPayloadBytes());
++        for(int i=0;i<text.length();i++) {
++            char c=text.charAt(i);
++            if(Character.isHighSurrogate(c)) {
++                if(++i>=text.length() || !Character.isLowSurrogate(text.charAt(i))) throw new IllegalArgumentException("键名包含无效 Unicode");
++            } else if(Character.isLowSurrogate(c)) throw new IllegalArgumentException("键名包含无效 Unicode");
++        }
++        return of(text.getBytes(StandardCharsets.UTF_8));
++    }
++    public int size() { return raw.length; }
++    public byte[] bytes() { return raw.clone(); }
++    /** Null means a non-text key; empty String is a valid, distinct key. */
++    public String text() { return text; }
++    public String display(int cap) {
++        if(raw.length==0) return RedisDisplaySupport.label("⟦empty⟧",cap).text();
++        if(text!=null) return RedisDisplaySupport.label(text.startsWith("⟦")?"⟦text⟧ "+text:text,cap).text();
++        return RedisDisplaySupport.hex(raw,cap,"⟦hex "+raw.length+"B⟧ ","").text();
++    }
++    String treeLabel(int cap,int ordinal) {
++        if(text!=null || raw.length==0) return display(cap);
++        return RedisDisplaySupport.hex(raw,cap,"⟦hex#"+ordinal+" "+raw.length+"B⟧ ","").text();
++    }
++    static String textSegment(String segment,int cap) {
++        return RedisDisplaySupport.label(segment.startsWith("⟦")?"⟦text⟧ "+segment:segment,cap).text();
++    }
++    /** Text remains literal; non-text copies as complete, explicitly labelled hex. */
++    public String clipboardText(int cap) {
++        if(text!=null) {
++            if(text.length()>cap) throw RedisDisplaySupport.rejected();
++            return text;
++        }
++        var hex=RedisDisplaySupport.hex(raw,cap,"hex:","");
++        if(!hex.complete()) throw RedisDisplaySupport.rejected();
++        return hex.text();
++    }
++    @Override public boolean equals(Object other) { return other instanceof RedisKey key && Arrays.equals(raw,key.raw); }
++    @Override public int hashCode() { return hash; }
++    @Override public String toString() { return display(128); }
++}
+diff --git a/test/com/datacube/redis/RedisBinaryKeyTest.java b/test/com/datacube/redis/RedisBinaryKeyTest.java
+new file mode 100644
+--- /dev/null
++++ b/test/com/datacube/redis/RedisBinaryKeyTest.java
+@@ -0,0 +1,81 @@
++package com.datacube.redis;
++
++import org.junit.jupiter.api.Test;
++import java.util.AbstractList;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.List;
++import java.util.concurrent.atomic.AtomicInteger;
++import static java.nio.charset.StandardCharsets.UTF_8;
++import static org.junit.jupiter.api.Assertions.*;
++
++class RedisBinaryKeyTest {
++    private static RedisDisplayLimits limits(int keys,int bytes,int nodes,int depth) {
++        return RedisDisplayBudgetTest.limits(32,keys,bytes,nodes,depth,2,16,128,32);
++    }
++    @Test void contentIdentityDefensivelyCopiesInputsAndReturnedArrays() {
++        byte[] raw={(byte)0xff,0,':'};RedisKey key=RedisKey.of(raw),equal=RedisKey.of(raw.clone());
++        int hash=key.hashCode();raw[0]=1;byte[] exposed=key.bytes();exposed[1]=2;
++        assertEquals(equal,key);assertEquals(hash,key.hashCode());assertEquals(equal.hashCode(),key.hashCode());
++        assertArrayEquals(new byte[]{(byte)0xff,0,':'},key.bytes());
++        assertNotEquals(RedisKey.utf8("�\0:"),key);assertNotEquals("hex:ff003a",key);
++    }
++    @Test void mixedPageKeepsTextBinaryControlsEmptyAndDistinctTextLookalikes() {
++        byte[] binary={(byte)0xff};byte[] control="a:\n".getBytes(UTF_8);
++        String lookalike="⟦hex#2 1B⟧ ff";
++        var page=new RedisSession.ScanPage(19,List.of("user:a".getBytes(UTF_8),binary,control,new byte[0],binary.clone(),lookalike.getBytes(UTF_8),"�".getBytes(UTF_8)));
++        var snapshot=RedisKeySnapshot.candidate(null,page,0,"*",":",RedisDisplayLimits.DEFAULT);
++        assertEquals(6,snapshot.keys().size());assertEquals(6,snapshot.tree().keyCount());assertEquals(19,snapshot.cursor());
++        assertEquals(page.values().stream().mapToInt(v->v.length).sum()-1,snapshot.rawBytes());
++        assertEquals("user",snapshot.tree().children().getFirst().segment());
++        assertEquals(RedisKey.utf8("user:a"),snapshot.tree().children().getFirst().children().getFirst().key());
++        var leaves=flatten(snapshot.tree());assertTrue(leaves.contains(RedisKey.of(binary)));assertTrue(leaves.contains(RedisKey.of(control)));assertTrue(leaves.contains(RedisKey.of(new byte[0])));
++        assertNotEquals(RedisKey.of(binary).display(64),RedisKey.utf8(lookalike).display(64));
++        assertNull(RedisKey.of(control).text());assertNull(RedisKey.utf8("a\u202eb").text());
++        assertEquals("",RedisKey.of(new byte[0]).text());assertEquals("⟦empty⟧",RedisKey.of(new byte[0]).display(32));
++        assertThrows(UnsupportedOperationException.class,()->snapshot.keys().clear());
++        binary[0]=0;assertTrue(snapshot.keys().containsKey(RedisKey.of(new byte[]{(byte)0xff})));
++    }
++    private static List<RedisKey> flatten(KeyTreeBuilder.Node node) {
++        List<RedisKey> result=new ArrayList<>();if(node.key()!=null)result.add(node.key());for(var child:node.children())result.addAll(flatten(child));return result;
++    }
++    @Test void sameBoundedPreviewDoesNotMergeRawKeysOrTextNamespace() {
++        byte[] a=new byte[64],b=new byte[64];Arrays.fill(a,(byte)0xff);Arrays.fill(b,(byte)0xff);b[63]=0;
++        RedisKey ka=RedisKey.of(a),kb=RedisKey.of(b);
++        assertEquals(ka.display(32),kb.display(32));assertNotEquals(ka,kb);
++        var tree=KeyTreeBuilder.buildKeys(List.of(ka,kb,RedisKey.utf8("⟦hex#1 64B⟧ ffff")),":",RedisDisplayLimits.DEFAULT);
++        assertEquals(3,tree.keyCount());assertEquals(3,flatten(tree).size());
++        assertEquals(3,tree.children().stream().map(KeyTreeBuilder.Node::segment).distinct().count());
++        assertTrue(tree.children().getFirst().segment().startsWith("⟦text⟧"));
++    }
++    @Test void pagesDeduplicateByBytesChargeRawBudgetAndRejectWholeCandidate() {
++        var small=limits(2,2,3,1);byte[] ff={(byte)0xff};
++        var first=RedisKeySnapshot.candidate(null,new RedisSession.ScanPage(7,List.of(ff)),0,"*",":",small);
++        var next=RedisKeySnapshot.candidate(first,new RedisSession.ScanPage(-1,List.of(ff.clone(),new byte[]{0})),0,"*",":",small);
++        assertEquals(2,next.keys().size());assertEquals(2,next.rawBytes());assertEquals(-1,next.cursor());
++        assertThrows(IllegalArgumentException.class,()->RedisKeySnapshot.candidate(next,new RedisSession.ScanPage(0,List.of(new byte[]{1})),0,"*",":",small));
++        assertEquals(-1,next.cursor());assertEquals(2,next.keys().size());
++        assertEquals(0,RedisKeySnapshot.candidate(next,new RedisSession.ScanPage(0,List.of()),0,"*",":",small).cursor());
++        assertThrows(IllegalArgumentException.class,()->RedisKeySnapshot.candidate(null,new RedisSession.ScanPage(0,List.of(ff,new byte[]{0})),0,"*",":",limits(3,4,2,1)));
++        assertThrows(IllegalArgumentException.class,()->RedisKeySnapshot.candidate(null,new RedisSession.ScanPage(0,List.of(new byte[5])),0,"*",":",limits(3,4,8,1)));
++    }
++    @Test void legacyTreeConversionStopsAtFirstCountOrByteBudgetRefusal() {
++        for(var budget:List.of(limits(1,4,8,1),limits(3,1,8,1))) {
++            AtomicInteger reads=new AtomicInteger();
++            List<String> controlled=new AbstractList<>() {
++                public int size(){return 3;}
++                public String get(int index){reads.incrementAndGet();if(index>=2)throw new AssertionError("visited after budget refusal");return index==0?"a":"b";}
++            };
++            assertThrows(IllegalArgumentException.class,()->KeyTreeBuilder.build(controlled,":",budget));assertEquals(2,reads.get());
++        }
++    }
++    @Test void clipboardIsCompleteLiteralTextOrExplicitHexAndFactoriesRejectBeforeEncoding() {
++        assertEquals("user:中文",RedisKey.utf8("user:中文").clipboardText(32));
++        assertEquals("hex:ff000a",RedisKey.of(new byte[]{(byte)0xff,0,10}).clipboardText(32));
++        assertEquals("",RedisKey.of(new byte[0]).clipboardText(1));
++        assertThrows(IllegalArgumentException.class,()->RedisKey.of(new byte[]{-1,0,1}).clipboardText(8));
++        assertThrows(IllegalArgumentException.class,()->RedisKey.utf8("\ud800"));
++        assertThrows(RedisException.class,()->RedisKey.utf8("x".repeat(RedisResourceLimits.DEFAULT.requestPayloadBytes()+1)));
++        assertThrows(IllegalArgumentException.class,()->RedisKey.of(new byte[RedisResourceLimits.DEFAULT.requestPayloadBytes()+1]));
++    }
++}
+diff --git a/test/com/datacube/redis/RedisBinaryKeySessionTest.java b/test/com/datacube/redis/RedisBinaryKeySessionTest.java
+new file mode 100644
+--- /dev/null
++++ b/test/com/datacube/redis/RedisBinaryKeySessionTest.java
+@@ -0,0 +1,46 @@
++package com.datacube.redis;
++
++import org.junit.jupiter.api.Test;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.concurrent.atomic.AtomicInteger;
++import static java.nio.charset.StandardCharsets.UTF_8;
++import static org.junit.jupiter.api.Assertions.*;
++
++class RedisBinaryKeySessionTest {
++    @Test void everyTypedKeyCommandUsesOriginalBulkBytesIncludingRenameAndEmptyKey() {
++        for(byte[] raw:List.of(new byte[]{(byte)0xff,0,':','\n'},new byte[0])) {
++            List<String> commands=new ArrayList<>();RedisKey key=RedisKey.of(raw),target=RedisKey.of(new byte[]{0,(byte)0xfe});
++            RedisSession session=new RedisSession(args->{
++                String command=new String(args[0],UTF_8);commands.add(command);assertArrayEquals(raw,args[1],command);
++                // Mutating executor-owned arrays must not change any future command or key identity.
++                if(args[1].length>0)args[1][0]=7;
++                return switch(command){
++                    case "TYPE"->"string".getBytes(UTF_8);case "GET","GETRANGE"->new byte[]{1};
++                    case "SET","LSET"->"OK".getBytes(UTF_8);
++                    case "RENAME"->{assertArrayEquals(target.bytes(),args[2]);yield "OK".getBytes(UTF_8);}
++                    case "HSCAN","SSCAN","ZSCAN"->List.of("0".getBytes(UTF_8),List.of());
++                    case "LRANGE"->List.of();default->1L;
++                };
++            },()->{});
++            session.type(key);session.ttl(key);session.expire(key,10);session.persist(key);session.del(key);session.rename(key,target);session.exists(key);
++            session.get(key);session.strlen(key);session.getrange(key,0,3);session.set(key,new byte[]{1});
++            session.hscan(key,0,1);session.hset(key,new byte[]{2},new byte[]{3});session.hdel(key,new byte[]{2});
++            session.llen(key);session.lrange(key,0,1);session.lpush(key,new byte[]{1});session.rpush(key,new byte[]{1});session.lset(key,0,new byte[]{1});session.lrem(key,1,new byte[]{1});
++            session.sscan(key,0,1);session.sadd(key,new byte[]{1});session.srem(key,new byte[]{1});
++            session.zscan(key,0,1);session.zadd(key,1,new byte[]{1});session.zrem(key,new byte[]{1});session.zcard(key);
++            assertEquals(List.of("TYPE","TTL","EXPIRE","PERSIST","DEL","RENAME","EXISTS","GET","STRLEN","GETRANGE","SET","HSCAN","HSET","HDEL","LLEN","LRANGE","LPUSH","RPUSH","LSET","LREM","SSCAN","SADD","SREM","ZSCAN","ZADD","ZREM","ZCARD"),commands);
++            assertArrayEquals(raw,key.bytes());
++        }
++    }
++    @Test void wholeCommandPreflightChargesRawKeyBytesAndRetainsStringFacadeBudget() {
++        AtomicInteger calls=new AtomicInteger();var tiny=RespBudgetTest.limits(4,4,20,64,8,4,2,8,64,4,1000);
++        RedisSession session=new RedisSession(args->{calls.incrementAndGet();return "OK".getBytes(UTF_8);},()->{},tiny);
++        RedisKey key=RedisKey.of(new byte[]{(byte)0xff,0,1});
++        session.set(key,new byte[]{1,2});assertEquals(1,calls.get()); // SET(3)+raw key(3)+value(2)=8; display is much longer.
++        assertThrows(RedisException.class,()->session.set(key,new byte[]{1,2,3}));
++        assertThrows(RedisException.class,()->session.set("x".repeat(100000),new byte[0]));assertEquals(1,calls.get());
++        byte[][] args=RespCodec.arguments(new Object[]{"GET",key},tiny);assertArrayEquals(key.bytes(),args[1]);
++        assertArrayEquals(RespCodec.encode("GET".getBytes(UTF_8),key.bytes()),RespCodec.encodeArguments(new Object[]{"GET",key},tiny));
++    }
++}

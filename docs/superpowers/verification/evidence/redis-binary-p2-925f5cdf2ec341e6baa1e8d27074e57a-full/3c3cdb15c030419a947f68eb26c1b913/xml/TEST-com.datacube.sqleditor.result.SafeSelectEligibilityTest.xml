@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.datacube.sqleditor.result.SafeSelectEligibilityTest" tests="146" skipped="0" failures="0" errors="0" timestamp="2026-10-10T06:58:23.327Z" hostname="WAKEUPMAN" time="0.032">
+  <properties/>
+  <testcase name="[1] select order_sequence.currval from dual" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select &quot;ORDER_SEQUENCE&quot;.&quot;CURRVAL&quot; from dual" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="ignoresPostgresLexicalDecoysAndNestedSetOperations()" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="rejectsBlankOrDuplicateResultLabels()" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[1] select side_effecting_zero_arg from dual" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select app.side_effecting_zero_arg from dual" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[3] select app.pkg.side_effecting_zero_arg from dual" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select &quot;SIDE_EFFECTING_ZERO_ARG&quot; from dual" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[5] select &quot;APP&quot;.&quot;PKG&quot;.&quot;SIDE_EFFECTING_ZERO_ARG&quot; from dual" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="rejectsUnclosedOracleAlternativeQuote()" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[1] select * from people" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select id from app.people" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[3] select * from security_barrier_view" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select t.* from people t" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[5] select dangerous_type 'payload'" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[6] select app.dangerous_type 'payload'" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[7] select &quot;dangerous_type&quot; 'payload'" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[8] select payload + 1 from events" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[9] select id = 1 from events" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[10] select id from events where id in (1, 2)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[11] select E'payload' AS text" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[12] select date '2026-08-30' AS value" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[1] select * from SYS.DUAL" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select * from SYS.&quot;DUAL&quot;" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[3] select * from &quot;SYS&quot;.DUAL" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[4] select * from &quot;SYS&quot;.&quot;DUAL&quot;" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[5] select DUAL.* from SYS.DUAL" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[6] select d.* from SYS.DUAL d" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[7] select &quot;D&quot;.* from &quot;SYS&quot;.&quot;DUAL&quot; &quot;D&quot;" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[1] select id, (score + bonus) total from users where (active = true or active is null)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select id, (score) grouped_score from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[3] select nested.id from (select id from users where id in (1, 2)) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select (select id from settings where settings.owner_id = users.id) setting_id from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[5] select id from users where exists (select 1 from roles where roles.user_id = users.id)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[6] select id from users where id = any (select user_id from roles)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[7] select id from users where id = all (select user_id from roles)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[8] select id from users where id = some (select user_id from roles)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[9] select department from users group by (department)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[10] select id from users order by (id)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[11] select distinct(id) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[1] select arbitrary_udf(id) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select app.arbitrary_udf(id) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[3] select &quot;arbitrary_udf&quot;(id) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select app.&quot;arbitrary_udf&quot;(id) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[5] select &quot;危险调用&quot;(id) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[6] select 危险调用(id) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[7] select app.values() from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[8] select by(1) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[9] select join(1) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[10] select on(1) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[11] select as(1) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[12] select values(1) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[13] select lower(name) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[14] select count(*) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[15] select coalesce(name, '') from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[16] select arbitrary_udf /* trivia */ (id) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[17] select &quot;app&quot;.&quot;arbitrary_udf&quot; /* trivia */ (id) from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[18] select (select nested_udf(id) from users) as computed" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[19] select * from (select nested_udf(id) from users) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[20] select set_config('search_path', 'public', false)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[21] select pg_notify('channel', 'payload')" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[22] select dblink('service=remote', 'select 1')" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[23] select pg_read_file('/tmp/data')" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[24] select utl_http.request('https://example.invalid') from dual" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[1] select nextval('order_sequence')" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select setval('order_sequence', 7)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[3] select pg_advisory_lock(7)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select pg_advisory_xact_lock(7)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[5] select pg_try_advisory_lock(7)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[6] select pg_advisory_lock_shared(7)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[7] select pg_try_advisory_xact_lock_shared(7)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[8] select pg_advisory_unlock(7)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[9] select pg_advisory_unlock_all()" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[10] select coalesce(nextval('order_sequence'), 0)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[11] select (select pg_advisory_lock(7))" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[12] select pg_catalog.&quot;nextval&quot;('order_sequence')" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[13] select order_sequence.nextval from dual" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[14] select dbms_lock.request(7) from dual" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="rejectsOracleDatabaseLinkReferences()" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[1] select U&amp;&quot;nextv\0061l&quot;('order_sequence')" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select pg_catalog.U&amp;&quot;setv\0061l&quot;('order_sequence', 7)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[3] select coalesce(u&amp;&quot;pg_\0061dvisory_lock&quot;(7), 0)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select (select U&amp;&quot;PG_\0061DVISORY_LOCK&quot;(7))" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[5] select U&amp;&quot;ordinary_name&quot; from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="ignoresOracleAlternativeQuotedTextWhileRejectingTheAmbiguousProjectionShape()" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="rejectsNestedOracleLockVariants()" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="rejectsUnsupportedControlCharactersInEveryLexicalRegion()" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[1] select * from dual" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select d.* from DUAL d" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[3] select * from &quot;DUAL&quot;" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select * from CURRENT_SCHEMA.DUAL" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[5] select * from &quot;APP&quot;.&quot;DUAL&quot;" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[6] select * from &quot;sys&quot;.&quot;DUAL&quot;" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[7] select * from &quot;SYS&quot;.&quot;dual&quot;" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[8] select * from &quot;Sys&quot;.&quot;Dual&quot;" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[9] select * from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[10] select users.* from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[11] select u.* from app.users u" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[12] select * from remote_synonym" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[13] select v.* from app.side_effecting_view v" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[14] select * from SYS.OTHER_OBJECT" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[1] update users set active = false" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[2] select 1; select 2" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[3] with q as (select 1) select * from q" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select id from a union select id from b" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[5] select id from a intersect select id from b" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[6] select id from a except select id from b" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[7] select id from a minus select id from b" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[8] select * into copied_users from users" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[9] select * from jobs for update" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[10] select * from jobs for no key update" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[11] select * from jobs for share" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[12] select * from jobs for key share" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[1] select 1" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[2] select 1 AS id" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[3] select (1) AS id" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select 'Ada' AS name" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[5] select true AS active" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[6] select false AS inactive, null AS missing" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[7] select ((12345)) AS value" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[8] select $$FROM views; dangerous_type 'payload'; payload + 1$$ AS text" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="rejectsWhitespaceAndControlOracleAlternativeQuoteDelimitersInBothScans()" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[1] select * from (with q as (select 1) select * from q) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select (with q as (select 1) select * from q) as nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[3] select * from (select * from jobs for update) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select * from (select * from jobs for no key update) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[5] select * from (select * from jobs for share) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[6] select * from (select * from jobs for key share) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[7] select * from (select * from jobs for update skip locked) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[8] select * from (select * from jobs for /* lock */ update) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[9] select * from (select * from jobs for /*x*/ no key /*x*/ update of jobs skip locked) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[10] select * from (select * into copied_jobs from jobs) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[11] select * from (select * from jobs lock in share mode) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[12] select * from (with /* cte */ q as (select 1) select * from q) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[13] select * from (/*x*/ with recursive q as (select 1) select * from q) nested" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="recognizesPairedAndSingleCharacterOracleQuotesWithoutAdmittingTheirProjectionShape()" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[1] select 'unterminated" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select &quot;unterminated" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.001"/>
+  <testcase name="[3] select /* unterminated" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select $tag$unterminated" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[5] select (1" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[6] select 1)" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[1] select payload ## 1 from events" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[2] select 1::dangerous_type" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[3] select payload @@@ 1 from events" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <testcase name="[4] select 1 || 2 from events" classname="com.datacube.sqleditor.result.SafeSelectEligibilityTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

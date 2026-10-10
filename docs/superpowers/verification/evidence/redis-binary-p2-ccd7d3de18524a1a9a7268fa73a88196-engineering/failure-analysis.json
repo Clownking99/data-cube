@@ -1,0 +1,27 @@
+{
+  "actualOperatorExit": 1,
+  "actualTargetedExit": 1,
+  "primaryFailure": "NONZERO_EXIT",
+  "testFailures": [
+    {
+      "classname": "com.datacube.fx.AppShellTableExportShutdownTest",
+      "name": "[1] missing",
+      "failure": "SqlDraftCoordinator$Failure: SQL draft runtime: BUSY",
+      "phase": "Existing workspace fixture seed() before pg_dump task execution"
+    }
+  ],
+  "counts": {
+    "tests": 303,
+    "passed": 301,
+    "skipped": 1,
+    "failures": 1,
+    "errors": 0
+  },
+  "binaryRegressionPassed": {
+    "RedisBinaryKeyTest": 6,
+    "RedisBinaryKeySessionTest": 2,
+    "RedisPaneBudgetTest": 14
+  },
+  "causeAssessment": "Existing fixture explicit saveWorkspace may overlap asynchronous layout save; single fresh identical-input retry, no assertion/product/tool changes.",
+  "laterStagesStarted": false
+}
