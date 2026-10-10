@@ -1,0 +1,88 @@
+--- frozen/VerificationCore.psm1
++++ diagnostic/VerificationCore.psm1
+@@ -289,7 +289,29 @@
+     $job=[OwnedJob]::new();$failure=$null;$secondary=[Collections.Generic.List[string]]::new()
+     $captured=@{};$identities=@{};$termination=$false;$hostExit=$null;$hostReceipt=$null;$rootIdentity=$null;$observedRootExit=$null;$started=$false;$hostOutPump=$null;$hostErrPump=$null;$cancelled=$false
+     $rootProof=$null;$rootEvent=$null;$rootEvidenceError=$null
+-    $failureTick=[long]::MaxValue
++    # DIAGNOSTIC ONLY: observations and held handles may change scheduling.
++    $diagEvents=[Collections.Generic.List[object]]::new();$diagRows=[Collections.Generic.List[object]]::new();$diagHandles=@{};$diagOverflow=$false
++    $queryJob={param([string]$site)
++        $before=[Diagnostics.Stopwatch]::GetTimestamp();$members=@($job.Pids());$after=[Diagnostics.Stopwatch]::GetTimestamp()
++        if($diagRows.Count -lt 4096){
++            $states=@(foreach($member in $members){
++                $entry=[ordered]@{pid=$member;startTimeUtc=$null;exitObserved=$null;exitCode=$null;error=$null}
++                try {
++                    if(-not $diagHandles.ContainsKey($member) -and $diagHandles.Count -lt 128){$candidate=[Diagnostics.Process]::GetProcessById($member);$null=$candidate.Handle;$diagHandles[$member]=$candidate}
++                    if($diagHandles.ContainsKey($member)){$held=$diagHandles[$member];$entry.startTimeUtc=$held.StartTime.ToUniversalTime().ToString('o');$entry.exitObserved=$held.HasExited;if($entry.exitObserved){$entry.exitCode=$held.ExitCode}}
++                    else{$entry.error='DIAGNOSTIC_HANDLE_CAP'}
++                }catch{$entry.error=$_.Exception.GetType().FullName+':'+$_.Exception.Message}
++                $entry
++            })
++            $diagRows.Add(@{site=$site;queryBeforeTick=$before;queryAfterTick=$after;members=$members;identities=$states;terminationRequested=$termination;hostExited=$(if($started){$hostProcess.HasExited}else{$null})})
++        }else{$script:diagOverflow=$true}
++        return ,$members
++    }
++    $terminateJob={
++        $diagEvents.Add(@{event='termination-request';tick=[Diagnostics.Stopwatch]::GetTimestamp()})
++        try {$job.Terminate();$diagEvents.Add(@{event='termination-return';tick=[Diagnostics.Stopwatch]::GetTimestamp();succeeded=$true})}
++        catch {$diagEvents.Add(@{event='termination-return';tick=[Diagnostics.Stopwatch]::GetTimestamp();succeeded=$false;error=$_.Exception.Message});throw}
++    }
+     try {
+     try {
+         if($watch.ElapsedMilliseconds -ge ($DeadlineMs-$SettleMs)){throw 'ADMISSION_DEADLINE'}
+@@ -305,7 +327,7 @@
+         [IO.File]::WriteAllText($request.gate,'admitted')
+         while($watch.ElapsedMilliseconds -lt ($DeadlineMs-$SettleMs)) {
+             if($CancellationToken.IsCancellationRequested){$cancelled=$true;if($null -eq $failure){$failure='CANCELLED';$failureTick=[Diagnostics.Stopwatch]::GetTimestamp()}else{$secondary.Add('CANCELLED')};break}
+-            foreach($pidValue in $(if($testFault -in @('exit-late-identity','exit-no-capture-zero','exit-no-capture-seven')){@()}else{$job.Pids()})) {
++            foreach($pidValue in $(if($testFault -in @('exit-late-identity','exit-no-capture-zero','exit-no-capture-seven')){@()}else{(& $queryJob 'query-01')})) {
+                 if(-not $captured.ContainsKey($pidValue)) {
+                     try {$p=[Diagnostics.Process]::GetProcessById($pidValue);$null=$p.Handle;$identities[$pidValue]=$p.StartTime.ToUniversalTime().ToString('o');$captured[$pidValue]=$p} catch {$secondary.Add('CAPTURE_RACE')}
+                 }
+@@ -337,23 +359,23 @@
+         }
+         elseif($null -eq $failure){$failure='MISSING_HOST_RECEIPT'}
+         $graceUntil=[Math]::Min($DeadlineMs-$SettleMs,$watch.ElapsedMilliseconds+1000)
+-        while($job.Pids().Count -gt 0 -and $watch.ElapsedMilliseconds -lt $graceUntil){Start-Sleep -Milliseconds 10}
+-        $membersBeforeTermination=@($job.Pids())
+-        if($job.Pids().Count -gt 0) {
++        while((& $queryJob 'query-02').Count -gt 0 -and $watch.ElapsedMilliseconds -lt $graceUntil){Start-Sleep -Milliseconds 10}
++        $membersBeforeTermination=@((& $queryJob 'query-03'))
++        if((& $queryJob 'query-04').Count -gt 0) {
+             if($null -eq $failure){$failure='OWNED_DESCENDANT_REQUIRES_TERMINATION'}
+-            $termination=$true;try {$job.Terminate()} catch {$secondary.Add('TERMINATION_REQUEST_FAILED')}
+-        }
+-        while($watch.ElapsedMilliseconds -lt $DeadlineMs -and ($job.Pids().Count -gt 0 -or -not $hostOut.IsCompleted -or -not $hostErr.IsCompleted)) {Start-Sleep -Milliseconds 10}
++            $termination=$true;try {& $terminateJob} catch {$secondary.Add('TERMINATION_REQUEST_FAILED')}
++        }
++        while($watch.ElapsedMilliseconds -lt $DeadlineMs -and ((& $queryJob 'query-05').Count -gt 0 -or -not $hostOut.IsCompleted -or -not $hostErr.IsCompleted)) {Start-Sleep -Milliseconds 10}
+         if($hostProcess.HasExited){$hostExit=$hostProcess.ExitCode}
+         if($null -ne $rootIdentity -and $captured.ContainsKey([int]$rootIdentity.pid) -and [string]::Equals($identities[[int]$rootIdentity.pid],$rootIdentity.startTimeUtc,[StringComparison]::Ordinal) -and $captured[[int]$rootIdentity.pid].HasExited){$observedRootExit=$captured[[int]$rootIdentity.pid].ExitCode}
+-        $settled=$job.Pids().Count -eq 0 -and $hostProcess.HasExited -and $hostOut.IsCompleted -and $hostErr.IsCompleted -and @($captured.Values|Where-Object {-not $_.HasExited}).Count -eq 0
++        $settled=(& $queryJob 'query-06').Count -eq 0 -and $hostProcess.HasExited -and $hostOut.IsCompleted -and $hostErr.IsCompleted -and @($captured.Values|Where-Object {-not $_.HasExited}).Count -eq 0
+         if($testFault -eq 'unobserved-settlement'){$settled=$false}
+         if(-not $settled){if($null -eq $failure){$failure='OWNED_SETTLEMENT_INCOMPLETE'}else{$secondary.Add('OWNED_SETTLEMENT_INCOMPLETE')}}
+         if($null -eq $failure -and ($hostExit -ne 0 -or $hostOutPump.Error -or $hostErrPump.Error -or -not $hostOutPump.Eof -or -not $hostErrPump.Eof -or $null -eq $hostReceipt -or -not $hostReceipt.streamsCompleted -or $null -eq $hostReceipt.rootExitCode -or $hostReceipt.rootExitCode -ne 0)){ $failure='INCOMPLETE_PROCESS_RESULT' }
+     } catch {
+         if($null -eq $failure){$failure='PARENT_FAILURE:'+$_.Exception.Message};$settled=$false
+-        try{$termination=$true;$job.Terminate()}catch{$secondary.Add('TERMINATION_REQUEST_FAILED')}
+-        if($started){try{if(-not $hostProcess.HasExited){$hostProcess.Kill()};while(-not $hostProcess.HasExited -and $watch.ElapsedMilliseconds -lt $DeadlineMs){Start-Sleep -Milliseconds 10};if($hostProcess.HasExited){$hostExit=$hostProcess.ExitCode;$settled=$job.Pids().Count -eq 0 -and @($captured.Values|Where-Object {-not $_.HasExited}).Count -eq 0 -and (($null -eq $hostOutPump -and $null -eq $hostErrPump -and -not [IO.File]::Exists($request.gate)) -or ($null -ne $hostOutPump -and $null -ne $hostErrPump -and $hostOut.IsCompleted -and $hostErr.IsCompleted))}}catch{$secondary.Add('DIRECT_HOST_SETTLEMENT_FAILED')}}
++        try{$termination=$true;& $terminateJob}catch{$secondary.Add('TERMINATION_REQUEST_FAILED')}
++        if($started){try{if(-not $hostProcess.HasExited){$hostProcess.Kill()};while(-not $hostProcess.HasExited -and $watch.ElapsedMilliseconds -lt $DeadlineMs){Start-Sleep -Milliseconds 10};if($hostProcess.HasExited){$hostExit=$hostProcess.ExitCode;$settled=(& $queryJob 'query-07').Count -eq 0 -and @($captured.Values|Where-Object {-not $_.HasExited}).Count -eq 0 -and (($null -eq $hostOutPump -and $null -eq $hostErrPump -and -not [IO.File]::Exists($request.gate)) -or ($null -ne $hostOutPump -and $null -ne $hostErrPump -and $hostOut.IsCompleted -and $hostErr.IsCompleted))}}catch{$secondary.Add('DIRECT_HOST_SETTLEMENT_FAILED')}}
+     }
+     try {
+         if($testFault -in @('exit-missing-event','exit-corrupt-event','exit-wrong-pid','exit-wrong-time','exit-wrong-code','exit-missing-identity','exit-corrupt-identity','exit-summary-mismatch','exit-missing-seven','exit-cancel-missing','exit-budget-missing','exit-date-coercion','exit-root-is-host')) {
+@@ -411,6 +433,11 @@
+     }
+     $receipt|ConvertTo-Json -Depth 16|Set-Content -LiteralPath "$directory/process-receipt.json" -Encoding utf8NoBOM
+     return [pscustomobject]$receipt
+-    } finally {foreach($p in $captured.Values){$p.Dispose()};$hostProcess.Dispose();$job.Dispose()}
++    } finally {
++        try {
++            $final=@(foreach($key in $diagHandles.Keys){$held=$diagHandles[$key];@{pid=$key;startTimeUtc=$held.StartTime.ToUniversalTime().ToString('o');exitObserved=$held.HasExited;exitCode=$(if($held.HasExited){$held.ExitCode}else{$null})}})
++            @{diagnosticOnly=$true;queryCap=4096;handleCap=128;overflow=($diagOverflow -or $script:diagOverflow);rows=@($diagRows);events=@($diagEvents);finalHeldHandles=$final;failure=$failure;failureTick=$failureTick;terminationRequested=$termination;completedTick=[Diagnostics.Stopwatch]::GetTimestamp()}|ConvertTo-Json -Depth 16|Set-Content -LiteralPath "$directory/job-observations.json" -Encoding utf8NoBOM
++        } finally {foreach($held in $diagHandles.Values){$held.Dispose()};foreach($p in $captured.Values){$p.Dispose()};$hostProcess.Dispose();$job.Dispose()}
++    }
+ }
+ Export-ModuleMember -Function Assert-AdmittedPath,Assert-NoReparse,New-OwnedScope,Invoke-OwnedProcess,Get-VerificationToolPaths,Assert-OwnedExecutableRole,Bind-OwnedImage,Assert-VerificationEvidencePath
