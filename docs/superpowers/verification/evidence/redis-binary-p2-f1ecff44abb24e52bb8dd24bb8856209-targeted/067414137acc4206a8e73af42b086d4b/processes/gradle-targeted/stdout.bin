@@ -1,0 +1,48 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:compileJava
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes
+> Task :buildSrc:jar
+> Task :cleanTest UP-TO-DATE
+> Task :compileJava
+> Task :generateBrandIcons
+> Task :generateVersionProperties
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+
+> Task :processTestResources NO-SOURCE
+> Task :testClasses
+
+> Task :test
+
+AppShellTableExportShutdownTest > actualUiReportsClientRequirementsWithoutRawFailureOrOutput(String) > [1] missing FAILED
+    java.util.concurrent.ExecutionException: com.datacube.config.SqlDraftCoordinator$Failure: SQL draft runtime: BUSY
+        at java.base/java.util.concurrent.CompletableFuture.wrapInExecutionException(CompletableFuture.java:345)
+        at java.base/java.util.concurrent.CompletableFuture.reportGet(CompletableFuture.java:440)
+        at java.base/java.util.concurrent.CompletableFuture.get(CompletableFuture.java:2117)
+        at com.datacube.fx.AppShellWorkspaceShutdownTest$Fixture.seed(AppShellWorkspaceShutdownTest.java:219)
+        at com.datacube.fx.AppShellTableExportShutdownTest.seed(AppShellTableExportShutdownTest.java:42)
+        at com.datacube.fx.AppShellTableExportShutdownTest.actualUiReportsClientRequirementsWithoutRawFailureOrOutput(AppShellTableExportShutdownTest.java:175)
+
+        Caused by:
+        com.datacube.config.SqlDraftCoordinator$Failure: SQL draft runtime: BUSY
+            at app//com.datacube.config.SqlDraftCoordinator.refused(SqlDraftCoordinator.java:437)
+            at app//com.datacube.config.SqlDraftCoordinator.workspaceOperation(SqlDraftCoordinator.java:267)
+            at app//com.datacube.config.SqlDraftCoordinator.saveWorkspace(SqlDraftCoordinator.java:249)
+            at app//com.datacube.fx.AppShellWorkspaceShutdownTest$Fixture.lambda$seed$0(AppShellWorkspaceShutdownTest.java:219)
+            at app//com.datacube.fx.FxUiTestSupport.lambda$call$0(FxUiTestSupport.java:29)
+            at java.base@25.0.1/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+            at app//com.sun.javafx.application.PlatformImpl.lambda$runLater$0(PlatformImpl.java:424)
+            at app//com.sun.glass.ui.InvokeLaterDispatcher$Future.run(InvokeLaterDispatcher.java:95)
+            at app//com.sun.glass.ui.win.WinApplication._runLoop(Native Method)
+            at app//com.sun.glass.ui.win.WinApplication.lambda$runLoop$0(WinApplication.java:168)
+            at java.base@25.0.1/java.lang.Thread.run(Thread.java:1474)
+
+> Task :test FAILED
+
+[Incubating] Problems report is available at: file:///C:/Users/hetia/AppData/Local/Temp/datacube-g11-4077bee5c11448e8a82d27acac839295/build/main/reports/problems/problems-report.html
+9 actionable tasks: 8 executed, 1 up-to-date

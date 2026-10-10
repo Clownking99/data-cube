@@ -48,7 +48,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
     private boolean busy,installing,pendingRefresh;
     private long nextRequest,activeRequest,valueEpoch;
     private Runnable pending;
-    private String desiredKey,displayedKey;
+    private RedisKey desiredKey,displayedKey;
     private KeyMeta displayedMeta;
     private Binding displayedBinding;
     private long displayedPageOffset;
@@ -124,7 +124,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
         if(busy) { requestRefresh(); return; }
         String delimiter=separator.getText(); RedisKeySnapshot old=snapshot; RedisSession captured=session; long gen=++generation; desiredKey=null;
         submit(gen,()-> {
-            KeyTreeBuilder.Node model=KeyTreeBuilder.build(List.copyOf(old.keys().keySet()),delimiter,limits);
+            KeyTreeBuilder.Node model=KeyTreeBuilder.buildKeys(List.copyOf(old.keys().keySet()),delimiter,limits);
             RedisKeySnapshot next=new RedisKeySnapshot(old.keys(),old.rawBytes(),model,old.cursor(),old.database(),old.match(),delimiter);
             return new ScanResult(next,treeModel(model),captured,false);
         },this::installScan,this::discardScan,"重建键树...");
@@ -142,13 +142,13 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
         catch(Error closing) { if(original!=closing) closing.addSuppressed(original); throw closing; }
     }
     private boolean live(long gen) { return !closed && gen==generation; }
-    private record TreeModel(String label,String key,List<TreeModel> children) {}
+    private record TreeModel(String label,RedisKey key,List<TreeModel> children) {}
     private TreeModel treeModel(KeyTreeBuilder.Node node) {
         RedisDisplaySupport.Bounded label=new RedisDisplaySupport.Bounded(limits.labelChars()); label.append(node.segment());
         if(!node.children().isEmpty()) { label.append(" ("); label.append(Integer.toString(node.keyCount())); label.append(")"); }
-        if(node.fullKey()!=null && !node.children().isEmpty()) label.append(" •");
+        if(node.key()!=null && !node.children().isEmpty()) label.append(" •");
         List<TreeModel> children=new ArrayList<>(0); for(var child:node.children()) children.add(treeModel(child));
-        return new TreeModel(label.finish().text(),node.fullKey(),List.copyOf(children)); // Input depth already <=32.
+        return new TreeModel(label.finish().text(),node.key(),List.copyOf(children)); // Input depth already <=32.
     }
     private record ScanResult(RedisKeySnapshot snapshot,TreeModel tree,RedisSession lease,boolean fresh) {}
     private TreeItem<TreeEntry> treeItem(ScanResult result) {
@@ -194,21 +194,21 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
         if(close) closeSession.accept(result.lease());
     }
     private boolean sourceCurrent() { return snapshot!=null && session!=null && wantedDb==sessionDb && snapshot.database()==sessionDb; }
-    private record Binding(RedisSession session,RedisKeySnapshot source,int db,long generation,long epoch,String key,boolean value) {}
-    private Binding sourceBinding(String key) { return sourceCurrent()?new Binding(session,snapshot,sessionDb,generation,valueEpoch,key,false):null; }
+    private record Binding(RedisSession session,RedisKeySnapshot source,int db,long generation,long epoch,RedisKey key,boolean value) {}
+    private Binding sourceBinding(RedisKey key) { return sourceCurrent()?new Binding(session,snapshot,sessionDb,generation,valueEpoch,key,false):null; }
     private boolean valid(Binding binding) {
         return binding!=null && !closed && binding.session()==session && binding.source()==snapshot && binding.db()==wantedDb
                 && binding.db()==sessionDb && binding.generation()==generation
                 && (!binding.value() || binding.epoch()==valueEpoch && binding.key().equals(displayedKey) && binding.key().equals(desiredKey));
     }
-    private void loadKey(String key) {
+    private void loadKey(RedisKey key) {
         if(closed || !sourceCurrent() || !snapshot.keys().containsKey(key)) return;
         if(busy && pendingRefresh) return; // The pending refresh owns its generation; old tree selections lose priority.
         desiredKey=key; long gen=++generation; updateControls();
         if(busy) { if(!pendingRefresh) pending=()->startKey(key,gen); return; }
         startKey(key,gen);
     }
-    private void startKey(String key,long gen) {
+    private void startKey(RedisKey key,long gen) {
         if(!live(gen) || !sourceCurrent()) return;
         Binding binding=new Binding(session,snapshot,sessionDb,gen,valueEpoch+1,key,true);
         submit(gen,()-> {
@@ -219,7 +219,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
     private record KeyMeta(String type,long ttl) {}
     private record StringData(long length,RedisDisplaySupport.StringViews views) {}
     private record Loaded(Binding binding,KeyMeta meta,Object data) {}
-    private Object readValue(RedisSession captured,String key,String type,long cursor,boolean full) {
+    private Object readValue(RedisSession captured,RedisKey key,String type,long cursor,boolean full) {
         return switch(type.toLowerCase(Locale.ROOT)) {
             case "string" -> {
                 long length=captured.strlen(key);
@@ -254,9 +254,9 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
         status.setText("db"+loaded.binding().db()+" · 已读取键");
     }
     private List<Node> header(Binding binding,KeyMeta meta) {
-        Label key=new Label(RedisDisplaySupport.label(binding.key(),limits.labelChars()).text());
+        Label key=new Label(binding.key().display(limits.labelChars()));
         Label type=new Label(meta.type().toUpperCase(Locale.ROOT));
-        Button rename=new Button("重命名"); rename.setOnAction(e->promptValue("新键名",limits.singleKeyBytes(),binding,value->mutate(binding,s->{requireKey(value); s.rename(binding.key(),value);return null;},()->requestRefresh())));
+        Button rename=new Button("重命名"); rename.setOnAction(e->promptValue("新键名",limits.singleKeyBytes(),binding,value->mutate(binding,s->{requireKey(value); s.rename(binding.key(),RedisKey.utf8(value));return null;},()->requestRefresh())));
         Button delete=new Button("删除"); delete.setOnAction(e->confirmDelete(binding));
         Button reload=new Button("刷新"); reload.setOnAction(e->{if(valid(binding)) loadKey(binding.key());});
         HBox keyBar=new HBox(6,key,type,rename,reload,delete); keyBar.setAlignment(Pos.CENTER_LEFT);
@@ -284,7 +284,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
     }
     private List<Node> collectionEditor(Binding binding,String type,RedisDisplaySupport.CollectionPage page) {
         TableView<RedisDisplaySupport.Row> table=table(type,page.rows()); HBox tools=new HBox(6);
-        String key=binding.key();
+        RedisKey key=binding.key();
         long offset=type.equalsIgnoreCase("list")?page.next()-page.rows().size():0;
         switch(type.toLowerCase(Locale.ROOT)) {
             case "hash" -> {
@@ -341,7 +341,7 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
         } return null;},()->loadPage(binding,type,0,false));
     }
     private void createKey() {
-        Binding binding=sourceBinding(""); if(busy || !valid(binding)) return;
+        Binding binding=sourceBinding(RedisKey.utf8("")); if(busy || !valid(binding)) return;
         ChoiceDialog<String> choice=new ChoiceDialog<>("String","String","Hash","List","Set","ZSet"); choice.setTitle("新建 Redis 键");
         choice.showAndWait().ifPresent(kind->{ if(!valid(binding)) return;
             Dialog<List<String>> dialog=new Dialog<>(); ButtonType ok=new ButtonType("确定",ButtonBar.ButtonData.OK_DONE); dialog.getDialogPane().getButtonTypes().addAll(ok,ButtonType.CANCEL);
@@ -363,9 +363,10 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
     private void confirmDelete(Binding binding) {
         if(busy || !valid(binding)) return;
         Runnable action=deleteAction(binding); Alert alert=new Alert(Alert.AlertType.CONFIRMATION,"确定删除键？",ButtonType.YES,ButtonType.NO);
-        alert.setHeaderText(RedisDisplaySupport.label(binding.key(),limits.labelChars()).text()); alert.showAndWait(); if(alert.getResult()==ButtonType.YES) action.run();
+        alert.setHeaderText(binding.key().display(limits.labelChars())); alert.showAndWait(); if(alert.getResult()==ButtonType.YES) action.run();
     }
-    Runnable deleteAction(String key) { return deleteAction(sourceBinding(key)); }
+    Runnable deleteAction(String key) { return deleteAction(RedisKey.utf8(key)); }
+    Runnable deleteAction(RedisKey key) { return deleteAction(sourceBinding(key)); }
     private Runnable deleteAction(Binding binding) { return ()->mutate(binding,s->s.del(binding.key()),this::requestRefresh); }
     private void promptValue(String label,int cap,Binding binding,Consumer<String> action) {
         if(!valid(binding) || busy) return;
@@ -419,13 +420,17 @@ public final class RedisKeyBrowserPane implements AutoCloseable {
         synchronized(sessionLock){current=session; created=opening; session=null; opening=null;}
         BestEffortCloseSequence.run(()->{if(current!=null) closeSession.accept(current);},()->{if(created!=null && created!=current) closeSession.accept(created);});
     }
-    private record TreeEntry(String label,String key,RedisKeySnapshot source,RedisSession session) { @Override public String toString(){return label;} }
+    private record TreeEntry(String label,RedisKey key,RedisKeySnapshot source,RedisSession session) { @Override public String toString(){return label;} }
+    Runnable copyKeyAction(RedisKey key) { return ()->{
+        try { ClipboardContent content=new ClipboardContent();content.putString(key.clipboardText(limits.editorChars()));Clipboard.getSystemClipboard().setContent(content); }
+        catch(RuntimeException failure) { warn(message(failure)); }
+    }; }
     private final class KeyCell extends TreeCell<TreeEntry> {
         @Override protected void updateItem(TreeEntry item,boolean empty) {
             super.updateItem(item,empty); if(empty || item==null){setText(null);setContextMenu(null);return;}
             setText(item.label()); if(item.key()==null){setContextMenu(null);return;}
-            MenuItem copy=new MenuItem("复制键名"); copy.setOnAction(e->{ClipboardContent content=new ClipboardContent();content.putString(item.key());Clipboard.getSystemClipboard().setContent(content);});
-            MenuItem rename=new MenuItem("重命名"); rename.setOnAction(e->{Binding bind=cellBinding(item); if(valid(bind)) promptValue("新键名",limits.singleKeyBytes(),bind,value->mutate(bind,s->{requireKey(value);s.rename(item.key(),value);return null;},RedisKeyBrowserPane.this::requestRefresh));});
+            MenuItem copy=new MenuItem(item.key().text()==null?"复制键（十六进制）":"复制键名"); copy.setOnAction(e->copyKeyAction(item.key()).run());
+            MenuItem rename=new MenuItem("重命名"); rename.setOnAction(e->{Binding bind=cellBinding(item); if(valid(bind)) promptValue("新键名",limits.singleKeyBytes(),bind,value->mutate(bind,s->{requireKey(value);s.rename(item.key(),RedisKey.utf8(value));return null;},RedisKeyBrowserPane.this::requestRefresh));});
             MenuItem delete=new MenuItem("删除"); delete.setOnAction(e->{Binding bind=cellBinding(item);if(valid(bind))confirmDelete(bind);});
             setContextMenu(new ContextMenu(copy,rename,delete));
         }

@@ -70,14 +70,14 @@ class RedisPaneBudgetTest {
             Object current=FxUiTestSupport.call(()->tree(fixture.pane).getRoot());fixture.hook.set(()->{throw new IllegalStateException("synthetic tree installation failure");});fixture.arm();fixture.fire("redis-refresh");fixture.failed();
             FxUiTestSupport.call(()->{assertSame(current,tree(fixture.pane).getRoot());assertEquals(3,snapshot(fixture.pane).keys().size());return null;});
             fixture.hook.set(()->{});fixture.arm();fixture.fire("redis-refresh");fixture.installed();
-            FxUiTestSupport.call(()->{assertEquals(List.of("c"),List.copyOf(snapshot(fixture.pane).keys().keySet()));return null;});
+            FxUiTestSupport.call(()->{assertEquals(List.of("c"),snapshot(fixture.pane).keys().keySet().stream().map(RedisKey::text).toList());return null;});
         }
     }
     @Test void pendingRefreshWinsOldTreeSelectionAndLatestDbIntentIsNotDropped() throws Exception {
         gate();CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);List<Integer> opened=new CopyOnWriteArrayList<>();AtomicInteger scans=new AtomicInteger();
         try(Browser fixture=new Browser(db->{opened.add(db);return args->{if(command(args).equals("SCAN")){scans.incrementAndGet();return scan(0,"a","b");}if(command(args).equals("GET") && key(args).equals("a")){entered.countDown();awaitIgnoringInterrupt(release);}return normal(args,bytes(keySafe(args)));};},SMALL)) {
             fixture.installed();fixture.arm();fixture.select("a");await(entered);fixture.fire("redis-refresh");fixture.select("b");release.countDown();fixture.installed();
-            FxUiTestSupport.call(()->{assertFalse(field(fixture.pane,"busy",Boolean.class));assertNull(field(fixture.pane,"displayedKey",String.class));assertEquals(0,snapshot(fixture.pane).database());return null;});assertEquals(2,scans.get());
+            FxUiTestSupport.call(()->{assertFalse(field(fixture.pane,"busy",Boolean.class));assertNull(field(fixture.pane,"displayedKey",RedisKey.class));assertEquals(0,snapshot(fixture.pane).database());return null;});assertEquals(2,scans.get());
             CountDownLatch enteredAgain=new CountDownLatch(1),releaseAgain=new CountDownLatch(1);
             fixture.handlerOverride.set(args->{if(command(args).equals("GET")){enteredAgain.countDown();awaitIgnoringInterrupt(releaseAgain);}return normal(args,bytes("value"));});fixture.arm();fixture.select("a");await(enteredAgain);
             fixture.db(1);fixture.db(2);fixture.select("b");fixture.handlerOverride.set(null);releaseAgain.countDown();fixture.installed();
@@ -88,7 +88,7 @@ class RedisPaneBudgetTest {
         gate();CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
         try(Browser fixture=new Browser(db->args->{if(command(args).equals("SCAN"))return scan(0,"a","b");if(command(args).equals("GET") && key(args).equals("a")){entered.countDown();awaitIgnoringInterrupt(release);}return normal(args,bytes(keySafe(args)));},SMALL)) {
             fixture.installed();fixture.arm();fixture.select("a");await(entered);fixture.select("b");release.countDown();fixture.installed();
-            FxUiTestSupport.call(()->{assertEquals("b",field(fixture.pane,"displayedKey",String.class));assertEquals("b",find(fixture.pane.getNode(),"redis-string-editor",TextArea.class).getText());return null;});
+            FxUiTestSupport.call(()->{assertEquals(RedisKey.utf8("b"),field(fixture.pane,"displayedKey",RedisKey.class));assertEquals("b",find(fixture.pane.getNode(),"redis-string-editor",TextArea.class).getText());return null;});
         } finally {release.countDown();}
     }
     @Test void failedDbSwitchRetainsReadonlyOldSourceAndOldActionCannotMutateNewSession() throws Exception {
@@ -172,6 +172,80 @@ class RedisPaneBudgetTest {
         }
     }
     private static ConnConfig config(){return new ConnConfig("synthetic","synthetic",DbType.REDIS,"127.0.0.1",1,"0","","",Map.of());}
+    @Test void binaryKeySelectionAndFiveEditorsSendOriginalKeyBytesAndInvalidateOldBinding() throws Exception {
+        gate();byte[] raw={(byte)0xff,0,':','\n'},value={1,2},field={0,(byte)0xfe};RedisKey identity=RedisKey.of(raw);
+        List<byte[][]> writes=new CopyOnWriteArrayList<>();AtomicReference<String> type=new AtomicReference<>("string");
+        try(Browser fixture=new Browser(db->args->{
+            String command=command(args);
+            if(command.equals("SCAN"))return List.of(bytes("0"),List.of(bytes("user:a"),raw.clone(),new byte[0],raw.clone()));
+            if(command.equals("PING"))return bytes("PONG");
+            assertArrayEquals(raw,args[1],command);
+            return switch(command){
+                case "TYPE"->bytes(type.get());case "TTL"->-1L;case "STRLEN"->2L;case "GET","GETRANGE"->value;
+                case "HSCAN"->List.of(bytes("0"),List.of(field,value));case "LRANGE"->List.of(value);case "LLEN"->1L;
+                case "SSCAN"->List.of(bytes("0"),List.of(value));case "ZSCAN"->List.of(bytes("0"),List.of(value,bytes("1")));
+                case "SET","HSET","LSET","SADD","ZADD","DEL"->{writes.add(args);yield command.equals("SET")||command.equals("LSET")?bytes("OK"):1L;}
+                default->throw new AssertionError(command);
+            };
+        },SMALL)) {
+            fixture.installed();FxUiTestSupport.call(()->{assertEquals(3,snapshot(fixture.pane).keys().size());return null;});
+            fixture.arm();fixture.select(identity);fixture.installed();
+            FxUiTestSupport.call(()->{mode(fixture.pane).setValue(RedisDisplaySupport.Mode.HEX);assertEquals("01 02",find(fixture.pane.getNode(),"redis-string-editor",TextArea.class).getText());return null;});
+            fixture.arm();fixture.fire("redis-string-save");fixture.installed();
+            for(String kind:List.of("hash","list","set","zset")) {
+                type.set(kind);fixture.arm();fixture.selectAgain(identity);fixture.installed();fixture.arm();
+                FxUiTestSupport.call(()->{var row=values(fixture.pane).getItems().getFirst();
+                    if(kind.equals("set"))fixture.pane.addMemberAction(kind,value,0).run();
+                    else if(kind.equals("zset"))fixture.pane.updateScoreAction(row.rawA(),"2").run();
+                    else fixture.pane.updateRowAction(kind,row,value).run();return null;});fixture.installed();
+            }
+            assertEquals(List.of("SET","HSET","LSET","SADD","ZADD"),writes.stream().map(RedisPaneBudgetTest::command).toList());
+            for(var args:writes)assertArrayEquals(raw,args[1]);assertArrayEquals(field,writes.get(1)[2]);
+            assertArrayEquals(value,writes.get(0)[2]);assertArrayEquals(value,writes.get(1)[3]);assertEquals("0",new String(writes.get(2)[2],UTF_8));
+            assertArrayEquals(value,writes.get(2)[3]);assertArrayEquals(value,writes.get(3)[2]);assertEquals("2.0",new String(writes.get(4)[2],UTF_8));assertArrayEquals(value,writes.get(4)[3]);
+            Runnable oldEdit=FxUiTestSupport.call(()->fixture.pane.updateScoreAction(value,"3"));
+            Runnable oldDelete=FxUiTestSupport.call(()->fixture.pane.deleteAction(identity));
+            fixture.arm();fixture.fire("redis-refresh");fixture.installed();
+            FxUiTestSupport.call(()->{long request=field(fixture.pane,"activeRequest",Long.class);oldEdit.run();oldDelete.run();assertEquals(request,field(fixture.pane,"activeRequest",Long.class));return null;});
+            fixture.arm();fixture.select(identity);fixture.installed();
+            Runnable beforeDbEdit=FxUiTestSupport.call(()->fixture.pane.updateScoreAction(value,"3"));
+            Runnable beforeDbDelete=FxUiTestSupport.call(()->fixture.pane.deleteAction(identity));
+            fixture.arm();fixture.db(1);fixture.installed();
+            FxUiTestSupport.call(()->{long request=field(fixture.pane,"activeRequest",Long.class);beforeDbEdit.run();beforeDbDelete.run();assertEquals(request,field(fixture.pane,"activeRequest",Long.class));return null;});
+            fixture.arm();fixture.select(identity);fixture.installed();
+            Runnable beforeCloseEdit=FxUiTestSupport.call(()->fixture.pane.updateScoreAction(value,"3"));
+            Runnable beforeCloseDelete=FxUiTestSupport.call(()->fixture.pane.deleteAction(identity));
+            FxUiTestSupport.call(()->{fixture.pane.close();long request=field(fixture.pane,"activeRequest",Long.class);beforeCloseEdit.run();beforeCloseDelete.run();assertEquals(request,field(fixture.pane,"activeRequest",Long.class));return null;});assertEquals(5,writes.size());
+        }
+    }
+    @Test void binaryScanOverflowAndInstallFailureKeepOriginalTreeAndCursor() throws Exception {
+        gate();byte[] a={(byte)0xff},b={0},c={1};AtomicInteger scans=new AtomicInteger();
+        var limits=new RedisDisplayLimits(64,3,128,3,32,2,128,64,32,4,8,32,32,2,16,128,32);
+        try(Browser fixture=new Browser(db->args->{if(command(args).equals("SCAN"))return switch(scans.incrementAndGet()){
+            case 1->List.of(bytes("7"),List.of(a));case 2->List.of(bytes("0"),List.of(b,c));default->List.of(bytes("0"),List.of(a.clone(),b));};return normal(args,bytes("value"));},limits)) {
+            fixture.installed();Object old=FxUiTestSupport.call(()->tree(fixture.pane).getRoot());fixture.arm();fixture.fire("redis-load-more");fixture.failed();
+            FxUiTestSupport.call(()->{assertSame(old,tree(fixture.pane).getRoot());assertEquals(7,snapshot(fixture.pane).cursor());assertEquals(1,snapshot(fixture.pane).keys().size());return null;});
+            fixture.hook.set(()->{throw new IllegalStateException("synthetic binary install refusal");});fixture.arm();fixture.fire("redis-load-more");fixture.failed();
+            FxUiTestSupport.call(()->{assertSame(old,tree(fixture.pane).getRoot());assertEquals(7,snapshot(fixture.pane).cursor());return null;});
+            fixture.hook.set(()->{});fixture.arm();fixture.fire("redis-load-more");fixture.installed();
+            FxUiTestSupport.call(()->{assertEquals(2,snapshot(fixture.pane).keys().size());assertEquals(2,snapshot(fixture.pane).rawBytes());assertEquals(0,snapshot(fixture.pane).cursor());return null;});
+        }
+    }
+    @Test void delayedBinaryValueCannotOverwriteDifferentRawSelection() throws Exception {
+        gate();byte[] first={(byte)0xff},second={(byte)0xfe};RedisKey last=RedisKey.of(second);
+        CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
+        try(Browser fixture=new Browser(db->args->{
+            if(command(args).equals("SCAN"))return List.of(bytes("0"),List.of(first,second));
+            if(command(args).equals("GET")){
+                if(java.util.Arrays.equals(first,args[1])){entered.countDown();awaitIgnoringInterrupt(release);return bytes("old");}
+                assertArrayEquals(second,args[1]);return bytes("new");
+            }
+            return normal(args,bytes("value"));
+        },SMALL)) {
+            fixture.installed();fixture.arm();fixture.select(RedisKey.of(first));await(entered);fixture.select(last);release.countDown();fixture.installed();
+            FxUiTestSupport.call(()->{assertEquals(last,field(fixture.pane,"displayedKey",RedisKey.class));assertEquals("new",find(fixture.pane.getNode(),"redis-string-editor",TextArea.class).getText());return null;});
+        }finally{release.countDown();}
+    }
     private static Object normal(byte[][] args,byte[] value){return switch(command(args)){case "PING"->bytes("PONG");case "TYPE"->bytes("string");case "TTL"->-1L;case "STRLEN"->(long)value.length;case "GET","GETRANGE"->value;case "DEL"->1L;default->throw new AssertionError("Unexpected synthetic command: "+command(args));};}
     private static String keySafe(byte[][] args){return args.length>1?key(args):"value";}
     private static void execute(RedisConsolePane pane,String text)throws Exception{FxUiTestSupport.call(()->{TextField input=find(pane.getNode(),"redis-console-input",TextField.class);input.setText(text);input.fireEvent(new ActionEvent());return null;});}
@@ -202,6 +276,13 @@ class RedisPaneBudgetTest {
         void db(int db)throws Exception{FxUiTestSupport.call(()->{find(pane.getNode(),"redis-database",ComboBox.class).setValue(db);return null;});}
         void select(String key)throws Exception{FxUiTestSupport.call(()->{TreeItem<Object> selected=findItem(tree(pane).getRoot(),key);tree(pane).getSelectionModel().select(selected);return null;});}
         void selectAgain(String key)throws Exception{FxUiTestSupport.call(()->{tree(pane).getSelectionModel().clearSelection();return null;});select(key);}
+        void select(RedisKey key)throws Exception{FxUiTestSupport.call(()->{TreeItem<Object> item=findIdentity(tree(pane).getRoot(),key);assertNotNull(item);tree(pane).getSelectionModel().select(item);return null;});}
+        void selectAgain(RedisKey key)throws Exception{FxUiTestSupport.call(()->{tree(pane).getSelectionModel().clearSelection();return null;});select(key);}
+        private static TreeItem<Object> findIdentity(TreeItem<Object> item,RedisKey key)throws Exception{
+            var accessor=item.getValue().getClass().getDeclaredMethod("key");accessor.setAccessible(true);
+            if(key.equals(accessor.invoke(item.getValue())))return item;
+            for(var child:item.getChildren()){var found=findIdentity(child,key);if(found!=null)return found;}return null;
+        }
         private static TreeItem<Object> findItem(TreeItem<Object> root,String key){if(root.getValue().toString().equals(key))return root;for(var child:root.getChildren()){TreeItem<Object> found=findItemOrNull(child,key);if(found!=null)return found;}throw new AssertionError("key missing");}
         private static TreeItem<Object> findItemOrNull(TreeItem<Object> item,String key){if(item.getValue().toString().equals(key))return item;for(var child:item.getChildren()){TreeItem<Object> found=findItemOrNull(child,key);if(found!=null)return found;}return null;}
         @Override public void close()throws Exception{pane.close();runner.close();}

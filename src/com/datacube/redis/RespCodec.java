@@ -30,6 +30,8 @@ final class RespCodec {
             if (args[i] instanceof byte[] bytes) {
                 System.arraycopy(bytes, 0, frame, offset, bytes.length);
                 offset += bytes.length;
+            } else if(args[i] instanceof RedisKey key) {
+                byte[] bytes=key.bytes(); System.arraycopy(bytes,0,frame,offset,bytes.length); offset+=bytes.length;
             } else offset = writeUtf8(textArgument(args[i]), frame, offset);
             frame[offset++] = '\r';
             frame[offset++] = '\n';
@@ -42,7 +44,7 @@ final class RespCodec {
         preflight(args, limits); // Before getBytes and the argument matrix.
         byte[][] result = new byte[args.length][];
         for (int i = 0; i < args.length; i++) {
-            result[i] = args[i] instanceof byte[] bytes ? bytes : textArgument(args[i]).getBytes(StandardCharsets.UTF_8);
+            result[i] = args[i] instanceof byte[] bytes ? bytes : args[i] instanceof RedisKey key ? key.bytes() : textArgument(args[i]).getBytes(StandardCharsets.UTF_8);
         }
         return result;
     }
@@ -61,7 +63,7 @@ final class RespCodec {
         long frame = 1L + digits(args.length) + 2;
         for (int i = 0; i < args.length; i++) {
             Object arg = Objects.requireNonNull(args[i], "Redis command argument");
-            int length = arg instanceof byte[] bytes ? bytes.length : utf8Length(textArgument(arg), limits.requestPayloadBytes());
+            int length = arg instanceof byte[] bytes ? bytes.length : arg instanceof RedisKey key ? key.size() : utf8Length(textArgument(arg), limits.requestPayloadBytes());
             if (length > limits.requestPayloadBytes() - payload) throw requestFailure();
             payload += length;
             frame += 1L + digits(length) + 2 + length + 2;

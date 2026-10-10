@@ -46,7 +46,15 @@ public final class RedisSession implements AutoCloseable {
         return text(call("TYPE", key), 128);
     }
 
+    public String type(RedisKey key) {
+        return text(call("TYPE", key), 128);
+    }
+
     public long ttl(String key) {
+        return integer(call("TTL", key));
+    }
+
+    public long ttl(RedisKey key) {
         return integer(call("TTL", key));
     }
 
@@ -54,7 +62,15 @@ public final class RedisSession implements AutoCloseable {
         return integer(call("EXPIRE", key, seconds)) != 0;
     }
 
+    public boolean expire(RedisKey key, long seconds) {
+        return integer(call("EXPIRE", key, seconds)) != 0;
+    }
+
     public boolean persist(String key) {
+        return integer(call("PERSIST", key)) != 0;
+    }
+
+    public boolean persist(RedisKey key) {
         return integer(call("PERSIST", key)) != 0;
     }
 
@@ -62,11 +78,23 @@ public final class RedisSession implements AutoCloseable {
         return integer(call("DEL", key)) != 0;
     }
 
+    public boolean del(RedisKey key) {
+        return integer(call("DEL", key)) != 0;
+    }
+
     public void rename(String key, String newKey) {
         expectOk(call("RENAME", key, newKey), "RENAME");
     }
 
+    public void rename(RedisKey key, RedisKey newKey) {
+        expectOk(call("RENAME", key, newKey), "RENAME");
+    }
+
     public boolean exists(String key) {
+        return integer(call("EXISTS", key)) != 0;
+    }
+
+    public boolean exists(RedisKey key) {
         return integer(call("EXISTS", key)) != 0;
     }
 
@@ -93,7 +121,15 @@ public final class RedisSession implements AutoCloseable {
         return bytesOrNull(call("GET", key));
     }
 
+    public byte[] get(RedisKey key) {
+        return bytesOrNull(call("GET", key));
+    }
+
     public long strlen(String key) {
+        return integer(call("STRLEN", key));
+    }
+
+    public long strlen(RedisKey key) {
         return integer(call("STRLEN", key));
     }
 
@@ -101,7 +137,15 @@ public final class RedisSession implements AutoCloseable {
         return bytesOrNull(call("GETRANGE", key, start, end));
     }
 
+    public byte[] getrange(RedisKey key, long start, long end) {
+        return bytesOrNull(call("GETRANGE", key, start, end));
+    }
+
     public void set(String key, byte[] value) {
+        expectOk(call("SET", key, value), "SET");
+    }
+
+    public void set(RedisKey key, byte[] value) {
         expectOk(call("SET", key, value), "SET");
     }
 
@@ -115,7 +159,21 @@ public final class RedisSession implements AutoCloseable {
         return new HashScanPage(page.cursor(), List.copyOf(entries));
     }
 
+    public HashScanPage hscan(RedisKey key, long cursor, int count) {
+        ScanPage page = scanPage(call("HSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
+        requirePairs(page.values(), "HSCAN");
+        List<HashEntry> entries = new ArrayList<>(page.values().size() / 2);
+        for (int i = 0; i + 1 < page.values().size(); i += 2) {
+            entries.add(new HashEntry(page.values().get(i), page.values().get(i + 1)));
+        }
+        return new HashScanPage(page.cursor(), List.copyOf(entries));
+    }
+
     public boolean hset(String key, byte[] field, byte[] value) {
+        return integer(call("HSET", key, field, value)) != 0;
+    }
+
+    public boolean hset(RedisKey key, byte[] field, byte[] value) {
         return integer(call("HSET", key, field, value)) != 0;
     }
 
@@ -123,7 +181,15 @@ public final class RedisSession implements AutoCloseable {
         return integer(call("HDEL", key, field)) != 0;
     }
 
+    public boolean hdel(RedisKey key, byte[] field) {
+        return integer(call("HDEL", key, field)) != 0;
+    }
+
     public long llen(String key) {
+        return integer(call("LLEN", key));
+    }
+
+    public long llen(RedisKey key) {
         return integer(call("LLEN", key));
     }
 
@@ -131,7 +197,15 @@ public final class RedisSession implements AutoCloseable {
         return byteList(call("LRANGE", key, start, stop));
     }
 
+    public List<byte[]> lrange(RedisKey key, long start, long stop) {
+        return byteList(call("LRANGE", key, start, stop));
+    }
+
     public long lpush(String key, byte[] value) {
+        return integer(call("LPUSH", key, value));
+    }
+
+    public long lpush(RedisKey key, byte[] value) {
         return integer(call("LPUSH", key, value));
     }
 
@@ -139,7 +213,15 @@ public final class RedisSession implements AutoCloseable {
         return integer(call("RPUSH", key, value));
     }
 
+    public long rpush(RedisKey key, byte[] value) {
+        return integer(call("RPUSH", key, value));
+    }
+
     public void lset(String key, long index, byte[] value) {
+        expectOk(call("LSET", key, index, value), "LSET");
+    }
+
+    public void lset(RedisKey key, long index, byte[] value) {
         expectOk(call("LSET", key, index, value), "LSET");
     }
 
@@ -147,7 +229,15 @@ public final class RedisSession implements AutoCloseable {
         return integer(call("LREM", key, count, value));
     }
 
+    public long lrem(RedisKey key, long count, byte[] value) {
+        return integer(call("LREM", key, count, value));
+    }
+
     public ScanPage sscan(String key, long cursor, int count) {
+        return scanPage(call("SSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
+    }
+
+    public ScanPage sscan(RedisKey key, long cursor, int count) {
         return scanPage(call("SSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
     }
 
@@ -155,7 +245,15 @@ public final class RedisSession implements AutoCloseable {
         return integer(call("SADD", key, member)) != 0;
     }
 
+    public boolean sadd(RedisKey key, byte[] member) {
+        return integer(call("SADD", key, member)) != 0;
+    }
+
     public boolean srem(String key, byte[] member) {
+        return integer(call("SREM", key, member)) != 0;
+    }
+
+    public boolean srem(RedisKey key, byte[] member) {
         return integer(call("SREM", key, member)) != 0;
     }
 
@@ -173,7 +271,25 @@ public final class RedisSession implements AutoCloseable {
         return new ZScanPage(page.cursor(), List.copyOf(entries));
     }
 
+    public ZScanPage zscan(RedisKey key, long cursor, int count) {
+        ScanPage page = scanPage(call("ZSCAN", key, Long.toUnsignedString(cursor), "COUNT", count));
+        requirePairs(page.values(), "ZSCAN");
+        List<ScoredValue> entries = new ArrayList<>(page.values().size() / 2);
+        for (int i = 0; i + 1 < page.values().size(); i += 2) {
+            try {
+                entries.add(new ScoredValue(page.values().get(i), Double.parseDouble(text(page.values().get(i + 1), 128))));
+            } catch (NumberFormatException invalid) {
+                throw RedisException.rejected(RedisException.Kind.PROTOCOL, RedisException.Delivery.REPLIED);
+            }
+        }
+        return new ZScanPage(page.cursor(), List.copyOf(entries));
+    }
+
     public boolean zadd(String key, double score, byte[] member) {
+        return integer(call("ZADD", key, Double.toString(score), member)) != 0;
+    }
+
+    public boolean zadd(RedisKey key, double score, byte[] member) {
         return integer(call("ZADD", key, Double.toString(score), member)) != 0;
     }
 
@@ -181,7 +297,15 @@ public final class RedisSession implements AutoCloseable {
         return integer(call("ZREM", key, member)) != 0;
     }
 
+    public boolean zrem(RedisKey key, byte[] member) {
+        return integer(call("ZREM", key, member)) != 0;
+    }
+
     public long zcard(String key) {
+        return integer(call("ZCARD", key));
+    }
+
+    public long zcard(RedisKey key) {
         return integer(call("ZCARD", key));
     }
 

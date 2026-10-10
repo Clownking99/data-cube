@@ -53,8 +53,9 @@ class RedisDisplayBudgetTest {
         assertEquals(2,duplicate.keys().size()); assertEquals(4,duplicate.rawBytes()); assertEquals(-1,duplicate.cursor());
         var empty=RedisKeySnapshot.candidate(duplicate,page(3),0,"*",":",SMALL); assertEquals(3,empty.cursor());
         assertThrows(IllegalArgumentException.class,()->RedisKeySnapshot.candidate(first,page(0,"c","d"),0,"*",":",SMALL));
-        assertEquals(7,first.cursor()); assertEquals(List.of("a:b","a"),List.copyOf(first.keys().keySet()));
-        assertThrows(IllegalArgumentException.class,()->RedisKeySnapshot.candidate(first,new RedisSession.ScanPage(0,List.of(new byte[]{-1})),0,"*",":",SMALL));
+        assertEquals(7,first.cursor()); assertEquals(List.of("a:b","a"),first.keys().keySet().stream().map(RedisKey::text).toList());
+        var mixed=RedisKeySnapshot.candidate(first,new RedisSession.ScanPage(0,List.of(new byte[]{-1})),0,"*",":",SMALL);
+        assertEquals(3,mixed.keys().size());assertTrue(mixed.keys().containsKey(RedisKey.of(new byte[]{-1})));assertEquals(0,mixed.cursor());assertEquals(7,first.cursor());
         assertThrows(IllegalArgumentException.class,()->RedisKeySnapshot.candidate(first,page(0,"a:b:c:d"),0,"*",":",SMALL));
     }
     @Test void countIsOnlyAHintAndKeyByteTreeDepthAndNodeBoundariesAreIndependent() {

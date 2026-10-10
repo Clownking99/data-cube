@@ -1,0 +1,80 @@
+diff --git a/test/com/datacube/fx/AppShellWorkspaceShutdownTest.java b/test/com/datacube/fx/AppShellWorkspaceShutdownTest.java
+index 31a08b0a..b6e40c30 100644
+--- a/test/com/datacube/fx/AppShellWorkspaceShutdownTest.java
++++ b/test/com/datacube/fx/AppShellWorkspaceShutdownTest.java
+@@ -29,6 +29,55 @@ class AppShellWorkspaceShutdownTest {
+         });
+     }
+ 
++    @Test void fixtureSeedWaitsForActualInFlightWorkspacePublication() throws Exception {
++        try (Fixture f = new Fixture()) {
++            Tab tab = f.open("seed-barrier.sql", "select 1;\n");
++            f.checkpoint(tab);
++            SqlWorkspace prior = f.capture(); f.seed(prior);
++            SqlWorkspace seeded = new SqlWorkspace(prior.capturedAt() + 1, prior.entries(), prior.selectedDraftId());
++            SqlWorkspaceActivity owner = FxUiTestSupport.call(() -> f.drafts.workspace().owner());
++            var token = FxUiTestSupport.call(() -> owner.freezeForExit(prior));
++            Object directory = get(get(get(f.drafts.runtime(), "backend"), "store"), "directory");
++            Object delegate = get(directory, "mover");
++            Class<?> type = delegate.getClass().getInterfaces()[0];
++            CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
++            AtomicInteger publications = new AtomicInteger();
++            Object gate = Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, args) -> {
++                Path target = (Path) args[1];
++                if (target.equals(f.workspacePath) && publications.incrementAndGet() == 1) {
++                    entered.countDown();
++                    assertTrue(release.await(5, TimeUnit.SECONDS), "controlled workspace publication not released");
++                }
++                method.setAccessible(true);
++                try { return method.invoke(delegate, args); }
++                catch (InvocationTargetException failure) { throw failure.getCause(); }
++            });
++            set(directory, "mover", gate);
++            try {
++                var first = FxUiTestSupport.call(() -> owner.saveFrozen(token, prior));
++                assertTrue(entered.await(5, TimeUnit.SECONDS), "actual workspace atomic publication not entered");
++                var seed = f.seedAsync(seeded);
++                assertFalse(first.isDone()); assertFalse(seed.isDone(), "seed must wait for the actual in-flight save");
++                FxUiTestSupport.call(() -> { owner.pulse(); return null; });
++                assertEquals(1, publications.get(), "seed must not submit a competing publication");
++                release.countDown(); first.get(5, TimeUnit.SECONDS); seed.get(5, TimeUnit.SECONDS);
++                assertEquals(2, publications.get(), "seed must publish after the first save settles");
++                var stored = FxUiTestSupport.call(() -> f.drafts.runtime().workspaceSnapshot()).get(5, TimeUnit.SECONDS);
++                assertEquals(seeded, stored.workspace());
++                FxUiTestSupport.call(() -> { assertEquals(SqlWorkspaceActivity.Status.SAVED, owner.status()); return null; });
++                assertTrue(f.attempts.isEmpty(), "seed clears observations only after its publication completes");
++                var entry = seeded.entries().getFirst();
++                SqlWorkspace changed = new SqlWorkspace(seeded.capturedAt() + 1,
++                        List.of(new SqlWorkspace.Entry(entry.draftId(), entry.anchor() + 1, entry.caret() + 1)), seeded.selectedDraftId());
++                FxUiTestSupport.call(() -> {
++                    owner.activity(changed);
++                    assertEquals(SqlWorkspaceActivity.Status.PENDING, owner.status(), "seed must restore later activity admission");
++                    return null;
++                });
++            } finally { release.countDown(); }
++        }
++    }
++
+     @Test void cancelRepeatedExitThenExplicitFileActivityPublishesNewLayout() throws Exception {
+         try (Fixture f = new Fixture()) {
+             Tab a = f.open("initial-a.sql", "select 101;\n");
+@@ -216,7 +265,18 @@ class AppShellWorkspaceShutdownTest {
+         }
+         SqlWorkspace capture() throws Exception { return FxUiTestSupport.call(() -> drafts.workspace().capture()); }
+         SqlWorkspace frozen() throws Exception { return ((SqlWorkspaceActivity.Frozen) FxUiTestSupport.call(() -> get(drafts.workspace(), "frozen"))).workspace(); }
+-        void seed(SqlWorkspace workspace) throws Exception { FxUiTestSupport.call(() -> drafts.runtime().saveWorkspace(workspace)).get(5, TimeUnit.SECONDS); attempts.clear(); }
++        CompletableFuture<Void> seedAsync(SqlWorkspace workspace) throws Exception {
++            return FxUiTestSupport.call(() -> {
++                SqlWorkspaceActivity owner = drafts.workspace().owner();
++                owner.activity(workspace);
++                var frozen = owner.freezeForExit(workspace);
++                return owner.saveFrozen(frozen, workspace).thenRun(() -> {
++                    owner.activity(workspace);
++                    attempts.clear();
++                });
++            });
++        }
++        void seed(SqlWorkspace workspace) throws Exception { seedAsync(workspace).get(5, TimeUnit.SECONDS); }
+         CompletableFuture<ShutdownOutcome> shutdown() throws Exception {
+             if(completed)return FxUiTestSupport.call(shell::shutdownAsync).toCompletableFuture();
+             return FxUiTestSupport.call(()->{DataCubeFxShutdownContractTest.closeRequest(stage);return requested.get();});
