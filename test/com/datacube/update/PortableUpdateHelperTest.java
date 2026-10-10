@@ -9,7 +9,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 import static com.datacube.update.UpdateTestSupport.*;
 
@@ -104,19 +103,10 @@ class PortableUpdateHelperTest {
         }
     }
     private String run(String script,int expectedExit) throws Exception {
-        Path harness=directory.resolve("harness-"+UUID.randomUUID()+".ps1");
-        // Windows PowerShell 5.1 needs BOM to parse literal Unicode test paths.
-        Files.writeString(harness,"\uFEFF"+script,StandardCharsets.UTF_8);
-        Path output=directory.resolve("output-"+UUID.randomUUID()+".txt");
-        String powershell=Path.of(System.getenv().getOrDefault("SystemRoot","C:\\Windows"),
-                "System32","WindowsPowerShell","v1.0","powershell.exe").toString();
-        Process process=new ProcessBuilder(powershell,"-NoProfile","-NonInteractive","-File",harness.toString())
-                .redirectErrorStream(true).redirectOutput(output.toFile()).start();
-        try {
-            assertTrue(process.waitFor(20,TimeUnit.SECONDS),"synthetic helper did not finish");
-            assertEquals(expectedExit,process.exitValue(),Files.readString(output));
-            return Files.readString(output);
-        } finally {if(process.isAlive()) process.destroyForcibly();}
+        var receipt=new UpdateHelperProcess().run(directory,script,expectedExit);
+        return new String(Base64.getDecoder().decode(receipt.stdoutBase64()),StandardCharsets.UTF_8)
+                + new String(Base64.getDecoder().decode(receipt.stderrBase64()),StandardCharsets.UTF_8);
     }
+
     static String ps(String value){return "'"+value.replace("'","''")+"'";}
 }
